@@ -1,0 +1,24 @@
+---
+# Root requirements file - includes all system, unit, platform, and OTS requirements
+# root-tags: any requirement not (transitively) linked as a child of a requirement
+# tagged with one of these tags is reported as an orphan by
+# `dotnet reqstream --requirements requirements.yaml --enforce`. This catches
+# low-level implementation requirements (and tests/code) that were added without
+# ever being connected to user-visible functionality.
+root-tags: [system, quality]
+includes:
+  - docs/reqstream/quality.yaml
+  - docs/reqstream/template-dot-net-library.yaml
+  - docs/reqstream/template-dot-net-library/demo.yaml
+  - docs/reqstream/template-dot-net-library/platform-requirements.yaml
+  - docs/reqstream/ots/xunit.yaml
+  - docs/reqstream/ots/reqstream.yaml
+  - docs/reqstream/ots/buildmark.yaml
+  - docs/reqstream/ots/versionmark.yaml
+  - docs/reqstream/ots/sarifmark.yaml
+  - docs/reqstream/ots/sonarmark.yaml
+  - docs/reqstream/ots/sysml2tools.yaml
+  - docs/reqstream/ots/reviewmark.yaml
+  - docs/reqstream/ots/pandoc.yaml
+  - docs/reqstream/ots/weasyprint.yaml
+  - docs/reqstream/ots/fileassert.yaml

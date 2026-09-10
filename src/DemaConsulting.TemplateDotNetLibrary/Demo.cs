@@ -1,0 +1,94 @@
+namespace TemplateDotNetLibrary;
+
+/// <summary>
+///     Demonstration class for the template library.
+/// </summary>
+/// <remarks>
+///     This class serves as the sole software unit in the Template DotNet Library,
+///     demonstrating DEMA Consulting patterns for structure, documentation, and testing.
+///     Instances are immutable after construction and are therefore thread-safe.
+/// </remarks>
+public class Demo
+{
+    /// <summary>
+    ///     The greeting prefix used when no custom prefix is specified.
+    /// </summary>
+    public const string DefaultPrefix = "Hello";
+
+    /// <summary>
+    ///     The prefix prepended to every greeting produced by this instance.
+    /// </summary>
+    private readonly string _prefix;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Demo"/> class with the default prefix.
+    /// </summary>
+    /// <remarks>
+    ///     Provides a zero-argument construction path for callers who want the standard greeting
+    ///     without specifying a prefix. Delegates to <see cref="Demo(string)"/> so that
+    ///     validation and storage logic remain in one place.
+    /// </remarks>
+    public Demo()
+        : this(DefaultPrefix)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Demo"/> class with a custom prefix.
+    /// </summary>
+    /// <param name="prefix">The prefix to use in greetings.</param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="prefix"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="prefix"/> is an empty string.
+    /// </exception>
+    /// <remarks>
+    ///     Validation is performed at construction time so that a misconfigured instance is
+    ///     refused immediately rather than silently producing malformed output on the first
+    ///     method call. This is the canonical constructor; <see cref="Demo()"/> delegates
+    ///     to this overload with <see cref="DefaultPrefix"/>.
+    /// </remarks>
+    public Demo(string prefix)
+    {
+        // Validate that the prefix is non-null and non-empty before storing it
+        ArgumentException.ThrowIfNullOrEmpty(prefix);
+        _prefix = prefix;
+    }
+
+    /// <summary>
+    ///     Gets the greeting prefix used by this instance.
+    /// </summary>
+    /// <remarks>
+    ///     Exposed so that callers can inspect the configured prefix without maintaining an
+    ///     independent copy of the value passed at construction time.
+    /// </remarks>
+    public string Prefix => _prefix;
+
+    /// <summary>
+    ///     Returns a greeting message that combines the instance prefix with the given name.
+    /// </summary>
+    /// <param name="name">The name to include in the greeting.</param>
+    /// <returns>
+    ///     A greeting string in the format <c>{prefix}, {name}!</c>,
+    ///     for example <c>Hello, World!</c>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="name"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="name"/> is an empty string.
+    /// </exception>
+    /// <remarks>
+    ///     This method is stateless and has no side effects. The output depends only on
+    ///     the prefix stored at construction time and the <paramref name="name"/> argument.
+    /// </remarks>
+    public string DemoMethod(string name)
+    {
+        // Validate that the name is non-null and non-empty before building the greeting
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        // Combine the prefix and name into the standard greeting format
+        return $"{_prefix}, {name}!";
+    }
+}
