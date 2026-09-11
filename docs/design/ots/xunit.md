@@ -3,14 +3,14 @@
 ### Purpose
 
 xUnit v3 (`xunit.v3` and `xunit.runner.visualstudio`) is used as the unit-testing framework for
-the Template DotNet Library. It was chosen as the standard, widely supported .NET test framework
+the AgentKit. It was chosen as the standard, widely supported .NET test framework
 that discovers and executes `[Fact]`/`[Theory]` test methods and produces TRX results consumable
 by downstream tooling.
 
 ### Features Used
 
 - Test discovery and execution of `[Fact]`-annotated test methods in
-  `DemaConsulting.TemplateDotNetLibrary.Tests`
+  `DemaConsulting.AgentKit.Core.Tests`
 - TRX result-file generation, consumed by ReqStream for requirements-to-test traceability
 
 ### Integration Pattern

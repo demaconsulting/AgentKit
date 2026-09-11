@@ -1,12 +1,12 @@
 # Introduction
 
-This document contains the review report for the Template DotNet Library project.
+This document contains the review report for the AgentKit project.
 
 ## Purpose
 
 This review report provides evidence that each review-set is current — the review
 evidence matches the current file fingerprints. It confirms that all formal reviews
-conducted for Template DotNet Library remain valid for the current state of the
+conducted for AgentKit remain valid for the current state of the
 reviewed files.
 
 ## Scope
@@ -27,7 +27,7 @@ review-sets are current and no reviewed file has changed since its review was co
 
 This document is intended for:
 
-- Software developers working on Template DotNet Library
+- Software developers working on AgentKit
 - Quality assurance teams validating review currency
 - Project stakeholders reviewing compliance status
 - Auditors verifying that all reviews remain valid for the current release

@@ -5,8 +5,8 @@ resource-path:
 input-files:
   - docs/design/title.txt
   - docs/design/introduction.md
-  - docs/design/template-dot-net-library.md
-  - docs/design/template-dot-net-library/demo.md
+  - docs/design/agent-kit-core.md
+  - docs/design/agent-kit-core/demo.md
   - docs/design/ots.md
   - docs/design/ots/buildmark.md
   - docs/design/ots/fileassert.md

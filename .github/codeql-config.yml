@@ -1,4 +1,4 @@
 ---
-# CodeQL configuration for Template DotNet Library
+# CodeQL configuration for AgentKit
 
-name: "Template DotNet Library CodeQL Config"
+name: "AgentKit CodeQL Config"

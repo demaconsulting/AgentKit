@@ -1,11 +1,11 @@
 # Introduction
 
-This document contains the build notes for the Template DotNet Library project.
+This document contains the build notes for the AgentKit project.
 
 ## Purpose
 
 This report serves as a comprehensive record of changes and bug fixes for this
-release of Template DotNet Library. It provides transparency about what has changed since the
+release of AgentKit. It provides transparency about what has changed since the
 previous version and helps users understand the improvements and fixes included
 in this build.
 
@@ -27,7 +27,7 @@ changes and improvements included in this release.
 
 This document is intended for:
 
-- Software developers working on Template DotNet Library
+- Software developers working on AgentKit
 - Users evaluating what has changed in this release
 - Project stakeholders tracking progress
 - Contributors understanding recent changes

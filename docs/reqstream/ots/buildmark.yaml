@@ -8,7 +8,7 @@ sections:
     sections:
       - title: BuildMark Requirements
         requirements:
-          - id: Template-OTS-BuildMark
+          - id: AgentKit-OTS-BuildMark
             title: BuildMark shall generate build-notes documentation from GitHub Actions metadata.
             justification: |
               DemaConsulting.BuildMark queries the GitHub API to capture workflow run details and

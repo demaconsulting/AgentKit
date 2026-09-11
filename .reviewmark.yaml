@@ -25,7 +25,7 @@ needs-review:
 # and an index.json before enforcement (--enforce flag) can be enabled in the pipeline.
 evidence-source:
   type: url
-  location: https://raw.githubusercontent.com/demaconsulting/TemplateDotNetLibrary/reviews/index.json
+  location: https://raw.githubusercontent.com/demaconsulting/AgentKit/reviews/index.json
 
 # Global context shown to every reviewer for orientation (not fingerprinted).
 context:
@@ -45,7 +45,7 @@ reviews:
 
   # Decomposition Review (only one per repository)
   - id: Decomposition
-    title: Review that TemplateDotNetLibrary Decomposition Addresses the Stated Purpose
+    title: Review that AgentKit Decomposition Addresses the Stated Purpose
     context:
       - "README.md"
       - "docs/user_guide/**/*.md"
@@ -54,65 +54,65 @@ reviews:
       - "docs/design/introduction.md"                               # design introduction
       - "docs/sysml2/**/*.sysml"                                    # SysML2 model (authoritative structure)
 
-  # TemplateDotNetLibrary-Architecture Review (one per system)
-  - id: TemplateDotNetLibrary-Architecture
-    title: Review that TemplateDotNetLibrary Architecture Satisfies Requirements
+  # AgentKitCore-Architecture Review (one per system)
+  - id: AgentKitCore-Architecture
+    title: Review that AgentKitCore Architecture Satisfies Requirements
     context:
       - "README.md"
       - "docs/user_guide/**/*.md"
     paths:
-      - "docs/reqstream/template-dot-net-library.yaml"                      # system requirements
+      - "docs/reqstream/agent-kit-core.yaml"                      # system requirements
       - "docs/design/introduction.md"                                           # design introduction
-      - "docs/design/template-dot-net-library.md"                               # system design
+      - "docs/design/agent-kit-core.md"                               # system design
       - "docs/verification/introduction.md"                                    # verification introduction
-      - "docs/verification/template-dot-net-library.md"                        # system verification
-      - "test/DemaConsulting.TemplateDotNetLibrary.Tests/TemplateDotNetLibraryTests.cs"  # integration tests
+      - "docs/verification/agent-kit-core.md"                        # system verification
+      - "test/DemaConsulting.AgentKit.Core.Tests/AgentKitCoreTests.cs"  # integration tests
 
-  # TemplateDotNetLibrary-Design Review (one per system)
-  - id: TemplateDotNetLibrary-Design
-    title: Review that TemplateDotNetLibrary Design is Consistent and Complete
+  # AgentKitCore-Design Review (one per system)
+  - id: AgentKitCore-Design
+    title: Review that AgentKitCore Design is Consistent and Complete
     context:
-      - "docs/reqstream/template-dot-net-library.yaml"
+      - "docs/reqstream/agent-kit-core.yaml"
     paths:
-      - "docs/reqstream/template-dot-net-library/platform-requirements.yaml"  # platform requirements
+      - "docs/reqstream/agent-kit-core/platform-requirements.yaml"  # platform requirements
       - "docs/design/introduction.md"                                       # design introduction
-      - "docs/design/template-dot-net-library.md"                           # system design
-      - "docs/design/template-dot-net-library/**/*.md"                      # all system design documents
+      - "docs/design/agent-kit-core.md"                           # system design
+      - "docs/design/agent-kit-core/**/*.md"                      # all system design documents
       - "docs/design/ots.md"                                                # OTS overview
 
-  # TemplateDotNetLibrary-Verification Review (one per system)
-  - id: TemplateDotNetLibrary-Verification
-    title: Review that TemplateDotNetLibrary Verification is Consistent and Complete
+  # AgentKitCore-Verification Review (one per system)
+  - id: AgentKitCore-Verification
+    title: Review that AgentKitCore Verification is Consistent and Complete
     context:
-      - "docs/reqstream/template-dot-net-library.yaml"
+      - "docs/reqstream/agent-kit-core.yaml"
     paths:
       - "docs/verification/introduction.md"                                 # verification introduction
-      - "docs/verification/template-dot-net-library.md"                     # system verification
-      - "docs/verification/template-dot-net-library/**/*.md"               # all verification documents
+      - "docs/verification/agent-kit-core.md"                     # system verification
+      - "docs/verification/agent-kit-core/**/*.md"               # all verification documents
       - "docs/verification/ots.md"                                          # OTS overview
 
-  # TemplateDotNetLibrary-AllRequirements Review (one per system)
-  - id: TemplateDotNetLibrary-AllRequirements
-    title: Review that All TemplateDotNetLibrary Requirements are Complete
+  # AgentKitCore-AllRequirements Review (one per system)
+  - id: AgentKitCore-AllRequirements
+    title: Review that All AgentKitCore Requirements are Complete
     context:
-      - "docs/design/template-dot-net-library.md"
-      - "docs/reqstream/template-dot-net-library.yaml"
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
     paths:
       - "requirements.yaml"                                                 # root requirements file
       - "docs/reqstream/**/*.yaml"                                          # all requirements files
 
-  # TemplateDotNetLibrary-Demo Review (one per unit)
-  - id: TemplateDotNetLibrary-Demo
-    title: Review that TemplateDotNetLibrary Demo Implementation is Correct
+  # AgentKitCore-Demo Review (one per unit)
+  - id: AgentKitCore-Demo
+    title: Review that AgentKitCore Demo Implementation is Correct
     context:
-      - "docs/design/template-dot-net-library.md"
-      - "docs/reqstream/template-dot-net-library.yaml"
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
     paths:
-      - "docs/reqstream/template-dot-net-library/demo.yaml"                 # unit requirements
-      - "docs/design/template-dot-net-library/demo.md"                     # unit design
-      - "docs/verification/template-dot-net-library/demo.md"               # unit verification
-      - "src/DemaConsulting.TemplateDotNetLibrary/Demo.cs"                  # unit source
-      - "test/DemaConsulting.TemplateDotNetLibrary.Tests/DemoTests.cs"      # unit tests
+      - "docs/reqstream/agent-kit-core/demo.yaml"                 # unit requirements
+      - "docs/design/agent-kit-core/demo.md"                     # unit design
+      - "docs/verification/agent-kit-core/demo.md"               # unit verification
+      - "src/DemaConsulting.AgentKit.Core/Demo.cs"                  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/DemoTests.cs"      # unit tests
 
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark

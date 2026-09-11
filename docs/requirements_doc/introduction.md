@@ -1,10 +1,10 @@
 # Introduction
 
-This document contains the requirements for the Template DotNet Library project.
+This document contains the requirements for the AgentKit project.
 
 ## Purpose
 
-Template DotNet Library is a reference implementation demonstrating best practices for DEMA Consulting
+AgentKit is a reference implementation demonstrating best practices for DEMA Consulting
 .NET libraries. It provides a standardized approach to library design, self-validation,
 and comprehensive documentation generation.
 
@@ -23,7 +23,7 @@ This requirements document covers:
 
 This document is intended for:
 
-- Software developers working on Template DotNet Library
+- Software developers working on AgentKit
 - Quality assurance teams validating requirements
 - Project stakeholders reviewing project scope
 - Users understanding the library's capabilities

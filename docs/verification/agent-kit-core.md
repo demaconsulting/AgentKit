@@ -1,17 +1,17 @@
 # System Verification Design
 
-This document describes the system-level verification strategy for the Template DotNet Library.
+This document describes the system-level verification strategy for the AgentKit Core.
 
 ## Verification Approach
 
-The Template DotNet Library system is verified through system-level integration tests that
+The AgentKit Core system is verified through system-level integration tests that
 exercise the library as a whole from the perspective of a consumer. Tests instantiate the library
 using its public API and assert on observable outputs, without relying on knowledge of internal
 implementation details. No mocking or stubbing is required at the system level — the entire
 integrated system is exercised as it would be used by a real caller.
 
-System tests reside in `TemplateDotNetLibraryTests.cs` within the
-`DemaConsulting.TemplateDotNetLibrary.Tests` project.
+System tests reside in `AgentKitCoreTests.cs` within the
+`DemaConsulting.AgentKit.Core.Tests` project.
 
 ## Test Environment
 
@@ -30,7 +30,7 @@ with controlled inputs and verify returned values and thrown exceptions.
 
 ### Integration: Provides Expected Functionality
 
-**Test**: `TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting`
+**Test**: `AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting`
 
 Exercises end-to-end system behavior: constructs a `Demo` instance using the default constructor
 and calls `DemoMethod` with a valid name. Asserts that the system produces the expected greeting
@@ -39,7 +39,7 @@ configuration.
 
 ### Customization: Handles Configuration Properly
 
-**Test**: `TemplateDotNetLibrary_SystemCustomization_CustomPrefix_ReturnsExpectedGreeting`
+**Test**: `AgentKitCore_SystemCustomization_CustomPrefix_ReturnsExpectedGreeting`
 
 Verifies that the system correctly propagates a custom prefix supplied at construction time.
 Constructs a `Demo` instance with prefix `"Welcome"`, calls `DemoMethod` with a valid name, and
@@ -48,7 +48,7 @@ integrated components functions as expected.
 
 ### Validation: DemoMethod Null Input Throws ArgumentNullException
 
-**Test**: `TemplateDotNetLibrary_SystemValidation_DemoMethodNullInput_ThrowsArgumentNullException`
+**Test**: `AgentKitCore_SystemValidation_DemoMethodNullInput_ThrowsArgumentNullException`
 
 Verifies that the system rejects a `null` argument to `DemoMethod` with `ArgumentNullException`.
 Constructs a `Demo` instance with the default constructor and passes `null` to `DemoMethod`.
@@ -56,7 +56,7 @@ Confirms that the system boundary enforces the null-rejection contract.
 
 ### Validation: DemoMethod Empty Input Throws ArgumentException
 
-**Test**: `TemplateDotNetLibrary_SystemValidation_DemoMethodEmptyInput_ThrowsArgumentException`
+**Test**: `AgentKitCore_SystemValidation_DemoMethodEmptyInput_ThrowsArgumentException`
 
 Verifies that the system rejects an empty-string argument to `DemoMethod` with `ArgumentException`.
 Constructs a `Demo` instance with the default constructor and passes `string.Empty` to `DemoMethod`.
@@ -64,7 +64,7 @@ Confirms that the system boundary enforces the empty-string rejection contract.
 
 ### Validation: Constructor Null Prefix Throws ArgumentNullException
 
-**Test**: `TemplateDotNetLibrary_SystemValidation_ConstructorNullPrefix_ThrowsArgumentNullException`
+**Test**: `AgentKitCore_SystemValidation_ConstructorNullPrefix_ThrowsArgumentNullException`
 
 Verifies that the system rejects a `null` prefix argument at construction time with
 `ArgumentNullException`. Attempts to construct a `Demo` instance with `null` as the prefix.
@@ -72,7 +72,7 @@ Confirms that the system boundary prevents invalid configuration from being esta
 
 ### Validation: Constructor Empty Prefix Throws ArgumentException
 
-**Test**: `TemplateDotNetLibrary_SystemValidation_ConstructorEmptyPrefix_ThrowsArgumentException`
+**Test**: `AgentKitCore_SystemValidation_ConstructorEmptyPrefix_ThrowsArgumentException`
 
 Verifies that the system rejects an empty-string prefix argument at construction time with
 `ArgumentException`. Attempts to construct a `Demo` instance with `string.Empty` as the prefix.
@@ -80,7 +80,7 @@ Confirms that the system boundary prevents empty-string configuration from being
 
 ### Integration: Exposes Configured Prefix
 
-**Test**: `TemplateDotNetLibrary_SystemIntegration_CustomPrefix_ExposesPrefix`
+**Test**: `AgentKitCore_SystemIntegration_CustomPrefix_ExposesPrefix`
 
 Verifies that the `Prefix` property exposes the prefix supplied at construction time. Constructs
 a `Demo` instance with a custom prefix and reads the `Prefix` property. Confirms the system's

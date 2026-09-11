@@ -8,7 +8,7 @@ sections:
     sections:
       - title: ReqStream Requirements
         requirements:
-          - id: Template-OTS-ReqStream
+          - id: AgentKit-OTS-ReqStream
             title: ReqStream shall enforce that every requirement is linked to passing test evidence.
             justification: |
               DemaConsulting.ReqStream processes requirements.yaml and the TRX test-result files to
@@ -23,7 +23,7 @@ sections:
               - ReqStream_ReportExport
               - ReqStream_TagsFiltering
               - ReqStream_EnforcementMode
-          - id: Template-OTS-ReqStream-Lint
+          - id: AgentKit-OTS-ReqStream-Lint
             title: ReqStream shall identify and report issues in requirements files when run in lint mode.
             justification: |
               DemaConsulting.ReqStream provides a lint mode that checks requirements YAML files for

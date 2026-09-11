@@ -34,6 +34,7 @@ words:
   - WeasyPrint
   - weasyprint
   - netstandard
+  - Ollama
   - yamlfix
 
 # Exclude common build artifacts, dependencies, and vendored third-party code

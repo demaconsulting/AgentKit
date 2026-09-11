@@ -8,7 +8,7 @@ sections:
     sections:
       - title: SonarMark Requirements
         requirements:
-          - id: Template-OTS-SonarMark
+          - id: AgentKit-OTS-SonarMark
             title: SonarMark shall generate a SonarCloud quality report.
             justification: |
               DemaConsulting.SonarMark retrieves quality-gate and metrics data from SonarCloud and

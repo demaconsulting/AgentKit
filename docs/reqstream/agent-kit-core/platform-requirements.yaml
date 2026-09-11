@@ -15,71 +15,57 @@
 #   net8.0@TestName   - proves the test passed under the .NET 8 runtime
 #   net9.0@TestName   - proves the test passed under the .NET 9 runtime
 #   net10.0@TestName  - proves the test passed under the .NET 10 runtime
-#   net481@TestName   - proves the test passed under .NET Framework 4.8.1 (implements .NET Standard 2.0)
 
 sections:
   - title: Platform Support
     requirements:
-      - id: Template-Platform-Windows
+      - id: AgentKitCore-Platform-Windows
         title: The library shall build and run on Windows platforms.
         tags: [system]
         justification: |
           DEMA Consulting libraries must support Windows as a major development platform.
         tests:
           # Tests link to "windows" to ensure results come from Windows platform
-          - "windows@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "windows@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
 
-      - id: Template-Platform-Linux
+      - id: AgentKitCore-Platform-Linux
         title: The library shall build and run on Linux platforms.
         tags: [system]
         justification: |
           DEMA Consulting libraries must support Linux for CI/CD and containerized environments.
         tests:
           # Tests link to "ubuntu" to ensure results come from Linux platform
-          - "ubuntu@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "ubuntu@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
 
-      - id: Template-Platform-MacOS
+      - id: AgentKitCore-Platform-MacOS
         title: The library shall build and run on macOS platforms.
         tags: [system]
         justification: |
           DEMA Consulting libraries must support macOS for developers using Apple platforms.
         tests:
           # Tests link to "macos" to ensure results come from macOS platform
-          - "macos@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "macos@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
 
-      - id: Template-Platform-Net8
+      - id: AgentKitCore-Platform-Net8
         title: The library shall support .NET 8 runtime.
         tags: [system]
         justification: |
           .NET 8 is an LTS release providing long-term stability for enterprise users.
         tests:
-          - "net8.0@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "net8.0@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
 
-      - id: Template-Platform-Net9
+      - id: AgentKitCore-Platform-Net9
         title: The library shall support .NET 9 runtime.
         tags: [system]
         justification: |
           .NET 9 support enables users to leverage the latest .NET features.
         tests:
-          - "net9.0@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "net9.0@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
 
-      - id: Template-Platform-Net10
+      - id: AgentKitCore-Platform-Net10
         title: The library shall support .NET 10 runtime.
         tags: [system]
         justification: |
           .NET 10 support ensures the library remains compatible with the latest .NET ecosystem.
         tests:
-          - "net10.0@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
-
-      - id: Template-Platform-NetStd20
-        title: The library shall support the .NET Standard 2.0 target framework.
-        tags: [system]
-        justification: |
-          .NET Standard 2.0 is a widely-supported target framework that enables the library to
-          be used in MSBuild extensions and other tooling that requires .NET Standard compatibility.
-          Supporting this target framework ensures the library can be integrated into a broader
-          range of .NET projects, including those targeting .NET Framework and older .NET Core versions.
-          Because .NET Framework 4.8.1 implements .NET Standard 2.0, a passing test on net481
-          demonstrates .NET Standard 2.0 compatibility.
-        tests:
-          - "net481@TemplateDotNetLibrary_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"
+          - "net10.0@AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting"

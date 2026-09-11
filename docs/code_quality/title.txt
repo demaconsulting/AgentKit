@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library Code Quality Report
+title: AgentKit Code Quality Report
 subtitle: Code Quality Analysis Report
 author: DEMA Consulting
-description: Code Quality Analysis Report for Template DotNet Library
+description: Code Quality Analysis Report for AgentKit
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - Code Quality
   - Analysis
   - .NET

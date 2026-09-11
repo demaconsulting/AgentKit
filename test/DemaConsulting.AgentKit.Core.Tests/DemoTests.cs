@@ -1,6 +1,6 @@
-using TemplateDotNetLibrary;
+using AgentKitCore;
 
-namespace DemaConsulting.TemplateDotNetLibrary.Tests;
+namespace DemaConsulting.AgentKit.Core.Tests;
 
 /// <summary>
 ///     Unit tests for the Demo class.

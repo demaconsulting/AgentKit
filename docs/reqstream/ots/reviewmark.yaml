@@ -8,7 +8,7 @@ sections:
     sections:
       - title: ReviewMark Requirements
         requirements:
-          - id: Template-OTS-ReviewMark
+          - id: AgentKit-OTS-ReviewMark
             title: ReviewMark shall produce review documentation from the review configuration.
             justification: |
               DemaConsulting.ReviewMark reads the .reviewmark.yaml configuration and the review
@@ -19,7 +19,7 @@ sections:
             tests:
               - ReviewMark_ReviewPlanGeneration
               - ReviewMark_ReviewReportGeneration
-          - id: Template-OTS-ReviewMark-IndexScan
+          - id: AgentKit-OTS-ReviewMark-IndexScan
             title: ReviewMark shall scan PDF evidence files into an index catalogue.
             justification: |
               ReviewMark's --index command scans review evidence PDFs and writes an index.json
@@ -27,7 +27,7 @@ sections:
             tags: [ots]
             tests:
               - ReviewMark_IndexScan
-          - id: Template-OTS-ReviewMark-Enforce
+          - id: AgentKit-OTS-ReviewMark-Enforce
             title: ReviewMark shall enforce review currency by exiting non-zero when files are not current.
             justification: |
               ReviewMark's --enforce command exits with a non-zero code when any file in a review
@@ -36,7 +36,7 @@ sections:
             tags: [ots]
             tests:
               - ReviewMark_Enforce
-          - id: Template-OTS-ReviewMark-Elaborate
+          - id: AgentKit-OTS-ReviewMark-Elaborate
             title: ReviewMark shall elaborate review-set details for agent and pipeline use.
             justification: |
               ReviewMark's --elaborate command prints the review-set ID, fingerprint, and file
@@ -45,7 +45,7 @@ sections:
             tags: [ots]
             tests:
               - ReviewMark_Elaborate
-          - id: Template-OTS-ReviewMark-Lint
+          - id: AgentKit-OTS-ReviewMark-Lint
             title: ReviewMark shall validate review definition files and report configuration issues.
             justification: |
               ReviewMark's --lint command checks the .reviewmark.yaml configuration for structural
@@ -54,7 +54,7 @@ sections:
             tags: [ots]
             tests:
               - ReviewMark_Lint
-          - id: Template-OTS-ReviewMark-DirectoryOverride
+          - id: AgentKit-OTS-ReviewMark-DirectoryOverride
             title: ReviewMark shall support overriding the working directory for file operations.
             justification: |
               ReviewMark's --dir flag allows callers to specify the working directory used when

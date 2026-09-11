@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library Review Plan
-subtitle: File Review Plan for the Template DotNet Library
+title: AgentKit Review Plan
+subtitle: File Review Plan for the AgentKit
 author: DEMA Consulting
-description: File Review Plan for the Template DotNet Library
+description: File Review Plan for the AgentKit
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - Review Plan
   - File Reviews
   - .NET

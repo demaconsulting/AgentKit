@@ -33,7 +33,7 @@ results containing both passing and failing outcomes.
 
 **Expected**: Writes a TRX results file with correctly classified pass and fail entries.
 
-**Requirement coverage**: `Template-OTS-FileAssert`.
+**Requirement coverage**: `AgentKit-OTS-FileAssert`.
 
 #### FileAssert_Exists
 
@@ -42,7 +42,7 @@ assert file existence.
 
 **Expected**: Passes when the specified file is present.
 
-**Requirement coverage**: `Template-OTS-FileAssert`.
+**Requirement coverage**: `AgentKit-OTS-FileAssert`.
 
 #### FileAssert_Contains
 
@@ -51,8 +51,8 @@ to verify file content.
 
 **Expected**: Passes when the specified content is present.
 
-**Requirement coverage**: `Template-OTS-FileAssert`.
+**Requirement coverage**: `AgentKit-OTS-FileAssert`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-FileAssert`**: FileAssert_Results, FileAssert_Exists, FileAssert_Contains
+- **`AgentKit-OTS-FileAssert`**: FileAssert_Results, FileAssert_Exists, FileAssert_Contains

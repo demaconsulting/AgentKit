@@ -1,7 +1,6 @@
 # OTS Verification Evidence
 
-This document describes the overall Off-The-Shelf (OTS) verification strategy for the Template
-DotNet Library repository.
+This document describes the overall Off-The-Shelf (OTS) verification strategy for the AgentKit repository.
 
 ## Overview
 

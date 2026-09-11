@@ -8,7 +8,7 @@ sections:
     sections:
       - title: WeasyPrint Requirements
         requirements:
-          - id: Template-OTS-WeasyPrint
+          - id: AgentKit-OTS-WeasyPrint
             title: WeasyPrint shall convert HTML documents to valid PDF.
             justification: |
               DemaConsulting.WeasyPrintTool converts HTML documents to PDF as part of the

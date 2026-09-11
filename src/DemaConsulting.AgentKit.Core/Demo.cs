@@ -1,10 +1,10 @@
-namespace TemplateDotNetLibrary;
+namespace AgentKitCore;
 
 /// <summary>
 ///     Demonstration class for the template library.
 /// </summary>
 /// <remarks>
-///     This class serves as the sole software unit in the Template DotNet Library,
+///     This class serves as the sole software unit in the AgentKit Core,
 ///     demonstrating DEMA Consulting patterns for structure, documentation, and testing.
 ///     Instances are immutable after construction and are therefore thread-safe.
 /// </remarks>

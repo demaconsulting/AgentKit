@@ -8,7 +8,7 @@ sections:
     sections:
       - title: FileAssert Requirements
         requirements:
-          - id: Template-OTS-FileAssert
+          - id: AgentKit-OTS-FileAssert
             title: FileAssert shall validate generated documents against acceptance criteria.
             justification: |
               DemaConsulting.FileAssert validates HTML and PDF documents produced during the

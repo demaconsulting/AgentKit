@@ -31,7 +31,7 @@ BuildMark did not produce the required output.
 **Expected**: BuildMark exits without error and produces a non-empty markdown build-notes document
 in the release artifacts.
 
-**Requirement coverage**: `Template-OTS-BuildMark`.
+**Requirement coverage**: `AgentKit-OTS-BuildMark`.
 
 #### BuildMark_GitIntegration
 
@@ -39,7 +39,7 @@ in the release artifacts.
 
 **Expected**: Exits 0 and correctly reads version tags and commit history.
 
-**Requirement coverage**: `Template-OTS-BuildMark`.
+**Requirement coverage**: `AgentKit-OTS-BuildMark`.
 
 #### BuildMark_IssueTracking
 
@@ -47,7 +47,7 @@ in the release artifacts.
 
 **Expected**: Exits 0 and correctly fetches and processes mock issues and pull requests.
 
-**Requirement coverage**: `Template-OTS-BuildMark`.
+**Requirement coverage**: `AgentKit-OTS-BuildMark`.
 
 #### BuildMark_KnownIssuesReporting
 
@@ -55,7 +55,7 @@ in the release artifacts.
 
 **Expected**: Exits 0 and correctly includes known issues.
 
-**Requirement coverage**: `Template-OTS-BuildMark`.
+**Requirement coverage**: `AgentKit-OTS-BuildMark`.
 
 #### BuildMark_RulesRouting
 
@@ -64,9 +64,9 @@ type rules.
 
 **Expected**: Exits 0 and correctly routes items to the expected sections.
 
-**Requirement coverage**: `Template-OTS-BuildMark`.
+**Requirement coverage**: `AgentKit-OTS-BuildMark`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-BuildMark`**: BuildMark_MarkdownReportGeneration, BuildMark_GitIntegration,
+- **`AgentKit-OTS-BuildMark`**: BuildMark_MarkdownReportGeneration, BuildMark_GitIntegration,
   BuildMark_IssueTracking, BuildMark_KnownIssuesReporting, BuildMark_RulesRouting

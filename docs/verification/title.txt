@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library Verification Design Document
+title: AgentKit Verification Design Document
 subtitle: A .NET Reference Implementation for Libraries
 author: DEMA Consulting
-description: Verification design document for the Template DotNet Library
+description: Verification design document for the AgentKit
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - .NET
   - Library
   - Verification

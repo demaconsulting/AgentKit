@@ -1,21 +1,23 @@
 # Project Overview
 
-> **Downstream customization required**: Replace the `TODO` values below with
-> values specific to the target repository. These values are the canonical source
-> for project-wide template placeholders used throughout the repository.
+These values are the canonical source for project-wide template placeholders used
+throughout the repository.
 
-- **project-name**: TODO — repository/project name (e.g., `ReqStream`)
-- **organization**: TODO — organization name for document authorship (e.g., `DEMA Consulting`)
-- **project-tagline**: TODO — document subtitle; 4–8 words, noun phrase, no period
-  (e.g., `Requirements traceability for .NET projects`)
-- **description**: TODO — full project description, may be multiple sentences
-- **languages**: TODO — programming languages used (e.g., `C#`, `C++`)
-- **technologies**: TODO — key technologies and frameworks (e.g., `.NET`, `CMake`)
+- **project-name**: AgentKit
+- **organization**: DEMA Consulting
+- **project-tagline**: AI agent composition for .NET
+- **description**: AgentKit is a set of .NET libraries for composing and running AI
+  agent systems. An application selects a provider back-end (GitHub Copilot SDK, or
+  any Microsoft.Extensions.AI `IChatClient` such as OllamaSharp or Azure AI Foundry),
+  attaches a permission-governed set of tools, configures a context-window management
+  policy, and spawns agents that the application can interact with. AgentKit supplies
+  the agent runtime, the tool safety model, and a library of reusable tools, while
+  remaining extensible for target applications.
+- **languages**: `C#`
+- **technologies**: `.NET`, `Microsoft.Extensions.AI`, `GitHub Copilot SDK`, `OllamaSharp`,
+  `Azure AI Foundry`
 
 # Project Structure
-
-> **Downstream customization required**: Replace `{project}` and
-> `{test-project}` with the actual source and test project folder names.
 
 ```text
 ├── docs/
@@ -31,9 +33,9 @@
 │   ├── user_guide/
 │   └── verification/
 ├── src/
-│   └── {project}/
+│   └── DemaConsulting.AgentKit.Core/
 └── test/
-    └── {test-project}/
+    └── DemaConsulting.AgentKit.Core.Tests/
 ```
 
 # Language and Spelling (ALL Agents)

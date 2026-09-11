@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library Review Report
-subtitle: File Review Report for the Template DotNet Library
+title: AgentKit Review Report
+subtitle: File Review Report for the AgentKit
 author: DEMA Consulting
-description: File Review Report for the Template DotNet Library
+description: File Review Report for the AgentKit
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - Review Report
   - File Reviews
   - .NET

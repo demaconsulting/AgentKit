@@ -24,7 +24,7 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the build-notes HTML document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_CodeQualityHtml
 
@@ -33,7 +33,7 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the code-quality HTML document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_ReviewPlanHtml
 
@@ -42,7 +42,7 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the review plan HTML document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_ReviewReportHtml
 
@@ -51,7 +51,7 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the review report HTML document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_DesignHtml
 
@@ -60,7 +60,7 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the design document HTML.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_VerificationHtml
 
@@ -69,7 +69,7 @@ element, and includes expected verification document content.
 
 **Expected**: FileAssert exits 0 for the verification document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 #### Pandoc_UserGuideHtml
 
@@ -78,9 +78,9 @@ element, and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the user guide HTML document.
 
-**Requirement coverage**: `Template-OTS-Pandoc`.
+**Requirement coverage**: `AgentKit-OTS-Pandoc`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-Pandoc`**: Pandoc_BuildNotesHtml, Pandoc_CodeQualityHtml, Pandoc_ReviewPlanHtml,
+- **`AgentKit-OTS-Pandoc`**: Pandoc_BuildNotesHtml, Pandoc_CodeQualityHtml, Pandoc_ReviewPlanHtml,
   Pandoc_ReviewReportHtml, Pandoc_DesignHtml, Pandoc_VerificationHtml, Pandoc_UserGuideHtml

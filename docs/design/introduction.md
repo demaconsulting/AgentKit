@@ -1,12 +1,12 @@
 # Introduction
 
-This document provides the detailed design for the Template DotNet Library, a .NET library
+This document provides the detailed design for the AgentKit, a .NET library
 demonstrating best practices for DEMA Consulting DotNet Libraries.
 
 ## Purpose
 
 The purpose of this document is to serve as the design entry point and provide detailed design
-specifications for the Template DotNet Library system. This documentation enables formal code
+specifications for the AgentKit system. This documentation enables formal code
 review by providing implementation specifications, supports compliance auditing by maintaining
 clear traceability from requirements through design to code, aids maintenance by documenting
 system structure and interactions, and ensures quality assurance through detailed technical
@@ -21,10 +21,10 @@ This document is intended for:
 
 ## Scope
 
-This document covers the detailed design of the Template DotNet Library system and its constituent
+This document covers the detailed design of the AgentKit system and its constituent
 software items, specifically:
 
-- **TemplateDotNetLibrary (System)** — The complete .NET library template system
+- **AgentKit (System)** — The complete .NET library template system
 - **Demo (Unit)** — Demonstration greeting class providing example functionality
 
 The following OTS items are also covered:
@@ -41,7 +41,7 @@ The following OTS items are also covered:
 - **WeasyPrint** — HTML-to-PDF conversion tool
 - **xUnit** — unit-testing framework
 
-Version applicability: This design applies to all versions of the Template DotNet Library.
+Version applicability: This design applies to all versions of the AgentKit.
 
 The following topics are explicitly excluded from this design documentation:
 
@@ -71,7 +71,7 @@ The source code folder structure mirrors the software structure organization, wi
 and descriptions as follows:
 
 ```text
-src/DemaConsulting.TemplateDotNetLibrary/
+src/DemaConsulting.AgentKit.Core/
 └── Demo.cs                     — Demonstration greeting class implementing template functionality
 ```
 
@@ -103,6 +103,6 @@ Each software item has corresponding artifacts in parallel directory trees:
 
 ## References
 
-- Template DotNet Library User Guide — the compiled User Guide document for this repository.
-- Template DotNet Library Repository — the TemplateDotNetLibrary source repository hosted on
+- AgentKit User Guide — the compiled User Guide document for this repository.
+- AgentKit Repository — the AgentKit source repository hosted on
   GitHub.

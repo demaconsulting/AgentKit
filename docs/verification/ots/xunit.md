@@ -25,7 +25,7 @@ expected greeting using the default prefix.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_DemoMethod_CustomPrefix_ReturnsGreeting
 
@@ -34,7 +34,7 @@ expected greeting using a custom prefix.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_DemoMethod_NullInput_ThrowsArgumentNullException
 
@@ -43,7 +43,7 @@ argument with ArgumentNullException.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_DemoMethod_EmptyInput_ThrowsArgumentException
 
@@ -52,7 +52,7 @@ empty string argument with ArgumentException.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_Constructor_NullPrefix_ThrowsArgumentNullException
 
@@ -61,7 +61,7 @@ null prefix with ArgumentNullException.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_Constructor_EmptyPrefix_ThrowsArgumentException
 
@@ -70,7 +70,7 @@ empty string prefix with ArgumentException.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_DefaultPrefix_Read_IsHello
 
@@ -79,7 +79,7 @@ has the value "Hello".
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
 
@@ -88,7 +88,7 @@ returns the value supplied at construction.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 #### Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
 
@@ -97,11 +97,11 @@ sets Prefix to the DefaultPrefix constant.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
-**Requirement coverage**: `Template-OTS-xUnit-Execute`, `Template-OTS-xUnit-Report`.
+**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-xUnit-Execute`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
+- **`AgentKit-OTS-xUnit-Execute`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
   Demo_DemoMethod_CustomPrefix_ReturnsGreeting,
   Demo_DemoMethod_NullInput_ThrowsArgumentNullException,
   Demo_DemoMethod_EmptyInput_ThrowsArgumentException,
@@ -109,7 +109,7 @@ sets Prefix to the DefaultPrefix constant.
   Demo_Constructor_EmptyPrefix_ThrowsArgumentException, Demo_DefaultPrefix_Read_IsHello,
   Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix,
   Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
-- **`Template-OTS-xUnit-Report`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
+- **`AgentKit-OTS-xUnit-Report`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
   Demo_DemoMethod_CustomPrefix_ReturnsGreeting,
   Demo_DemoMethod_NullInput_ThrowsArgumentNullException,
   Demo_DemoMethod_EmptyInput_ThrowsArgumentException,

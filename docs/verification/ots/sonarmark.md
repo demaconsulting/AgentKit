@@ -32,7 +32,7 @@ not retrieve and render quality data correctly.
 
 **Expected**: Exits 0 and retrieves quality-gate data.
 
-**Requirement coverage**: `Template-OTS-SonarMark`.
+**Requirement coverage**: `AgentKit-OTS-SonarMark`.
 
 #### SonarMark_IssuesRetrieval
 
@@ -40,7 +40,7 @@ not retrieve and render quality data correctly.
 
 **Expected**: Exits 0 and retrieves issues data.
 
-**Requirement coverage**: `Template-OTS-SonarMark`.
+**Requirement coverage**: `AgentKit-OTS-SonarMark`.
 
 #### SonarMark_HotSpotsRetrieval
 
@@ -48,7 +48,7 @@ not retrieve and render quality data correctly.
 
 **Expected**: Exits 0 and retrieves hot-spots data.
 
-**Requirement coverage**: `Template-OTS-SonarMark`.
+**Requirement coverage**: `AgentKit-OTS-SonarMark`.
 
 #### SonarMark_MarkdownReportGeneration
 
@@ -56,9 +56,9 @@ not retrieve and render quality data correctly.
 
 **Expected**: Exits 0 and produces a non-empty markdown quality report.
 
-**Requirement coverage**: `Template-OTS-SonarMark`.
+**Requirement coverage**: `AgentKit-OTS-SonarMark`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-SonarMark`**: SonarMark_QualityGateRetrieval, SonarMark_IssuesRetrieval,
+- **`AgentKit-OTS-SonarMark`**: SonarMark_QualityGateRetrieval, SonarMark_IssuesRetrieval,
   SonarMark_HotSpotsRetrieval, SonarMark_MarkdownReportGeneration

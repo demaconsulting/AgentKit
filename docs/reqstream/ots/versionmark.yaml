@@ -8,7 +8,7 @@ sections:
     sections:
       - title: VersionMark Requirements
         requirements:
-          - id: Template-OTS-VersionMark
+          - id: AgentKit-OTS-VersionMark
             title: VersionMark shall publish captured tool-version information.
             justification: |
               DemaConsulting.VersionMark reads version metadata for each dotnet tool used in the
@@ -19,7 +19,7 @@ sections:
             tests:
               - VersionMark_CapturesVersions
               - VersionMark_GeneratesMarkdownReport
-          - id: Template-OTS-VersionMark-Lint
+          - id: AgentKit-OTS-VersionMark-Lint
             title: VersionMark shall validate its configuration file and report errors for invalid input.
             justification: |
               DemaConsulting.VersionMark provides a lint mode that checks the .versionmark.yaml

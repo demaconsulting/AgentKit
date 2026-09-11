@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library User Guide
+title: AgentKit User Guide
 subtitle: A .NET Reference Implementation for Libraries
 author: DEMA Consulting
 description: A .NET Reference Implementation for Libraries
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - .NET
   - Library
   - Documentation

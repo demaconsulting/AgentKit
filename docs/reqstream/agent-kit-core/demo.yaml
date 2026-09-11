@@ -6,7 +6,7 @@
 sections:
   - title: Demo Unit
     requirements:
-      - id: Template-Demo-Greeting
+      - id: AgentKitCore-Demo-Greeting
         title: The Demo class shall return a greeting in the format "{prefix}, {name}!".
         justification: |
           The greeting format is the core contract of the Demo unit: combining the
@@ -15,7 +15,7 @@ sections:
           - Demo_DemoMethod_DefaultPrefix_ReturnsGreeting
           - Demo_DemoMethod_CustomPrefix_ReturnsGreeting
 
-      - id: Template-Demo-DefaultPrefix
+      - id: AgentKitCore-Demo-DefaultPrefix
         title: The Demo class shall use "Hello" as the default greeting prefix.
         justification: |
           Callers constructing Demo without a prefix argument need a stable, well-known default
@@ -24,7 +24,7 @@ sections:
           - Demo_DefaultPrefix_Read_IsHello
           - Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
 
-      - id: Template-Demo-AcceptCustomPrefix
+      - id: AgentKitCore-Demo-AcceptCustomPrefix
         title: The Demo class shall accept a caller-specified prefix at construction time.
         justification: |
           Callers who need a non-default greeting style must be able to supply their own prefix
@@ -32,7 +32,7 @@ sections:
         tests:
           - Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
 
-      - id: Template-Demo-Prefix
+      - id: AgentKitCore-Demo-Prefix
         title: The Demo class shall allow callers to read the configured greeting prefix.
         justification: |
           Callers may need to inspect which prefix a Demo instance was configured with,
@@ -41,7 +41,7 @@ sections:
           - Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
           - Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
 
-      - id: Template-Demo-ValidationNull-DemoMethod
+      - id: AgentKitCore-Demo-ValidationNull-DemoMethod
         title: The Demo class shall reject a null name argument to DemoMethod with ArgumentNullException.
         justification: |
           Null-safety is a fundamental contract: DemoMethod must throw ArgumentNullException
@@ -49,7 +49,7 @@ sections:
         tests:
           - Demo_DemoMethod_NullInput_ThrowsArgumentNullException
 
-      - id: Template-Demo-ValidationNull-Constructor
+      - id: AgentKitCore-Demo-ValidationNull-Constructor
         title: The Demo class shall reject a null prefix argument to the constructor with ArgumentNullException.
         justification: |
           Null-safety is a fundamental contract: the custom-prefix constructor must throw
@@ -58,7 +58,7 @@ sections:
         tests:
           - Demo_Constructor_NullPrefix_ThrowsArgumentNullException
 
-      - id: Template-Demo-ValidationEmpty-DemoMethod
+      - id: AgentKitCore-Demo-ValidationEmpty-DemoMethod
         title: The Demo class shall reject an empty-string name argument to DemoMethod with ArgumentException.
         justification: |
           Non-empty validation is a fundamental contract: DemoMethod must throw ArgumentException
@@ -66,7 +66,7 @@ sections:
         tests:
           - Demo_DemoMethod_EmptyInput_ThrowsArgumentException
 
-      - id: Template-Demo-ValidationEmpty-Constructor
+      - id: AgentKitCore-Demo-ValidationEmpty-Constructor
         title: The Demo class shall reject an empty-string prefix argument to the constructor with ArgumentException.
         justification: |
           Non-empty validation is a fundamental contract: the custom-prefix constructor must throw

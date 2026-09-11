@@ -1,11 +1,11 @@
 ---
-title: Template DotNet Library Requirements
-subtitle: Requirements Specification for the Template DotNet Library
+title: AgentKit Requirements
+subtitle: Requirements Specification for the AgentKit
 author: DEMA Consulting
-description: Requirements Specification for the Template DotNet Library
+description: Requirements Specification for the AgentKit
 lang: en-US
 keywords:
-  - Template DotNet Library
+  - AgentKit
   - Requirements
   - Specification
   - .NET

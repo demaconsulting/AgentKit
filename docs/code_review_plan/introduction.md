@@ -1,11 +1,11 @@
 # Introduction
 
-This document contains the review plan for the Template DotNet Library project.
+This document contains the review plan for the AgentKit project.
 
 ## Purpose
 
 This review plan provides a comprehensive overview of all files requiring formal review
-in the Template DotNet Library project. It identifies which review-sets cover which
+in the AgentKit project. It identifies which review-sets cover which
 files and serves as evidence that every file requiring review is covered by at least
 one named review-set.
 
@@ -27,7 +27,7 @@ that every file requiring review is covered by a current, valid review.
 
 This document is intended for:
 
-- Software developers working on Template DotNet Library
+- Software developers working on AgentKit
 - Quality assurance teams validating review coverage
 - Project stakeholders reviewing compliance status
 - Auditors verifying that all required files have been reviewed

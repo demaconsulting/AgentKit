@@ -25,7 +25,7 @@ includes expected document content.
 
 **Expected**: FileAssert exits 0 for the build-notes PDF document.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_CodeQualityPdf
 
@@ -34,7 +34,7 @@ includes expected document content.
 
 **Expected**: FileAssert exits 0 for the code-quality PDF document.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_ReviewPlanPdf
 
@@ -43,7 +43,7 @@ includes expected document content.
 
 **Expected**: FileAssert exits 0 for the review plan PDF document.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_ReviewReportPdf
 
@@ -52,7 +52,7 @@ includes expected document content.
 
 **Expected**: FileAssert exits 0 for the review report PDF document.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_DesignPdf
 
@@ -61,7 +61,7 @@ and includes expected document content.
 
 **Expected**: FileAssert exits 0 for the design document PDF.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_VerificationPdf
 
@@ -70,7 +70,7 @@ includes expected verification document content.
 
 **Expected**: FileAssert exits 0 for the verification PDF.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 #### WeasyPrint_UserGuidePdf
 
@@ -79,10 +79,10 @@ includes expected document content.
 
 **Expected**: FileAssert exits 0 for the user guide PDF document.
 
-**Requirement coverage**: `Template-OTS-WeasyPrint`.
+**Requirement coverage**: `AgentKit-OTS-WeasyPrint`.
 
 ### Requirements Coverage
 
-- **`Template-OTS-WeasyPrint`**: WeasyPrint_BuildNotesPdf, WeasyPrint_CodeQualityPdf,
+- **`AgentKit-OTS-WeasyPrint`**: WeasyPrint_BuildNotesPdf, WeasyPrint_CodeQualityPdf,
   WeasyPrint_ReviewPlanPdf, WeasyPrint_ReviewReportPdf, WeasyPrint_DesignPdf,
   WeasyPrint_VerificationPdf, WeasyPrint_UserGuidePdf

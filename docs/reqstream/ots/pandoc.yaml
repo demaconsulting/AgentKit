@@ -8,7 +8,7 @@ sections:
     sections:
       - title: Pandoc Requirements
         requirements:
-          - id: Template-OTS-Pandoc
+          - id: AgentKit-OTS-Pandoc
             title: Pandoc shall convert Markdown documents to valid HTML.
             justification: |
               DemaConsulting.PandocTool converts Markdown source documents to HTML as part of the
