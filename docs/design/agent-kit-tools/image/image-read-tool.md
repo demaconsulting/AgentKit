@@ -93,7 +93,7 @@ File system failures are caught by an explicit classification — `IOException`,
 `UnauthorizedAccessException`, `NotSupportedException`, `SecurityException` — and reported as an
 `InvalidRequest` refusal. The classification is enumerated rather than catching everything so that a
 genuine defect still surfaces during development instead of being reported to a model as an
-unreadable file. Cancellation is not classified, so a cancelled read propagates as the runtime
+unreadable file. Cancellation is not classified, so a canceled read propagates as the runtime
 expects.
 
 **An oversized file is refused, never truncated.** A partial image is corruption the model cannot

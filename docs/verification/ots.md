@@ -4,25 +4,30 @@ This document describes the overall Off-The-Shelf (OTS) verification strategy fo
 
 ## Overview
 
-Every OTS item used to build and verify this repository is verified through a combination of
-self-validation CLI flags (where the tool provides a `--validate` or equivalent self-test mode)
-and pipeline-evidence-based verification (where a passing CI pipeline run, having produced and
-validated the expected output at each stage, constitutes proof that the tool executed correctly).
-Each item's individual verification document (`docs/verification/ots/{ots-name}.md`) records the
-detailed approach and named test scenarios.
+The OTS items this repository depends on fall into two groups, each verified in the way that suits
+it. `Microsoft.Extensions.AI.Abstractions` is a runtime library with no self-validation CLI; per
+`software-items.md` it is verified through AgentKit's own integration tests, which build and invoke
+real guarded tools and observe that the library's `AIFunction`, `MarshalResult`, and `AIContent`
+functionality behaves as required. Every other OTS item is a build-and-verify pipeline tool,
+verified through a combination of self-validation CLI flags (where the tool provides a `--validate`
+or equivalent self-test mode) and pipeline-evidence-based verification (where a passing CI pipeline
+run, having produced and validated the expected output at each stage, constitutes proof that the
+tool executed correctly). Each item's individual verification document
+(`docs/verification/ots/{ots-name}.md`) records the detailed approach and named test scenarios.
 
 ## OTS Items
 
-| OTS Item    | Verification Approach                                                       |
-|-------------|-----------------------------------------------------------------------------|
-| BuildMark   | Self-validation CLI suite plus pipeline evidence via build-notes document   |
-| FileAssert  | Self-validation CLI suite plus transitive evidence from document assertions |
-| Pandoc      | Pipeline evidence: FileAssert assertions on each generated HTML document    |
-| ReqStream   | Self-validation CLI suite plus pipeline evidence via --enforce traceability |
-| ReviewMark  | Self-validation CLI suite plus pipeline evidence via review plan/report     |
-| SarifMark   | Self-validation CLI suite plus pipeline evidence via SARIF markdown report  |
-| SonarMark   | Self-validation CLI suite plus pipeline evidence via SonarCloud report      |
-| SysML2Tools | Self-validation CLI suite plus pipeline evidence via lint and rendered SVGs |
-| VersionMark | Self-validation CLI suite plus pipeline evidence via version data           |
-| WeasyPrint  | Pipeline evidence: FileAssert assertions on each generated PDF document     |
-| xUnit       | Self-validation via discovery, execution, and TRX reporting of tests        |
+| OTS Item                             | Verification Approach                                                       |
+|--------------------------------------|-----------------------------------------------------------------------------|
+| BuildMark                            | Self-validation CLI suite plus pipeline evidence via build-notes document   |
+| FileAssert                           | Self-validation CLI suite plus transitive evidence from document assertions |
+| Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools              |
+| Pandoc                               | Pipeline evidence: FileAssert assertions on each generated HTML document    |
+| ReqStream                            | Self-validation CLI suite plus pipeline evidence via --enforce traceability |
+| ReviewMark                           | Self-validation CLI suite plus pipeline evidence via review plan/report     |
+| SarifMark                            | Self-validation CLI suite plus pipeline evidence via SARIF markdown report  |
+| SonarMark                            | Self-validation CLI suite plus pipeline evidence via SonarCloud report      |
+| SysML2Tools                          | Self-validation CLI suite plus pipeline evidence via lint and rendered SVGs |
+| VersionMark                          | Self-validation CLI suite plus pipeline evidence via version data           |
+| WeasyPrint                           | Pipeline evidence: FileAssert assertions on each generated PDF document     |
+| xUnit                                | Self-validation via discovery, execution, and TRX reporting of tests        |

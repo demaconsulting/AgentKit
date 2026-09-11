@@ -16,16 +16,19 @@ permission-governed set of tools to the agent framework of its choice, bounded b
 application configures and a tool cannot omit.
 
 > **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
-> construction, tool results, and the tool pack contract — is implemented; the tool families built
-> on it are not yet published, and the public API is not yet stable.
+> construction, tool results, and the tool pack contract — is implemented, and two guarded tool
+> families, text file and image, are built on it in `DemaConsulting.AgentKit.Tools`. Neither
+> package is published to NuGet yet, and the public API is not yet stable.
 
-## Planned Capabilities
+## Capabilities
 
-- **Guarded tool families**: text file, file system, image, transfer buffer, work queue,
-  user interaction, and sub-agent delegation — each bound at construction to a policy that
-  constrains what it may touch
+- **Guarded tool families**: each family is bound at construction to a policy that constrains what
+  it may touch. Two families ship today — **text file** (read, write, list) and **image** (read
+  images and PDF documents for a vision-capable agent) — in `DemaConsulting.AgentKit.Tools`.
+  File system, transfer buffer, work queue, user interaction, and sub-agent delegation families
+  are planned.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
-  into guarded agent tools
+  into guarded agent tools (planned)
 - **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
   Agent Framework, the GitHub Copilot SDK, and any `IChatClient` implementation
 
@@ -36,6 +39,8 @@ abstraction. Microsoft Agent Framework supplies those.
 
 - **`DemaConsulting.AgentKit.Core`** — policy primitives, guarded tool construction, tool result
   helpers, and the tool-pack contract.
+- **`DemaConsulting.AgentKit.Tools`** — ready-made guarded tool families (text file and image),
+  each composed onto a policy through the pack contract.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -55,10 +60,11 @@ Additional provider and tool packages will be added as the architecture is imple
 
 ## Installation
 
-Install the library using the .NET CLI:
+Install the libraries using the .NET CLI:
 
 ```bash
 dotnet add package DemaConsulting.AgentKit.Core
+dotnet add package DemaConsulting.AgentKit.Tools
 ```
 
 ## Usage
@@ -77,8 +83,33 @@ an application's own tools — are built against:
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
   gated on host capability
 
-Ready-made tool families will ship in `DemaConsulting.AgentKit.Tools`, which is not yet published.
-Usage examples will follow with that package.
+`DemaConsulting.AgentKit.Tools` ships ready-made guarded tool families built on this contract. An
+application composes a policy, adds the packs it wants, declares what its host supports, and
+receives the tool list to hand to its agent framework of choice:
+
+```csharp
+using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Image;
+using Microsoft.Extensions.AI;
+
+var policy = new PathPolicy(
+    readRule: PathRule.Rooted("/workspace"),
+    writeRule: PathRule.Rooted("/workspace"));
+
+IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
+    .WithHostCapabilities(HostCapabilities.Vision)
+    .Add(new TextFilePack())
+    .Add(new ImagePack())
+    .Build();
+
+// Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
+```
+
+The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
+but AgentKit does not replace OS-level isolation for untrusted code. Because the image family
+requires the `Vision` host capability, `ImagePack` contributes its tool only when the host
+declares that capability; a host that does not is never offered `image_read`.
 
 ## Documentation
 

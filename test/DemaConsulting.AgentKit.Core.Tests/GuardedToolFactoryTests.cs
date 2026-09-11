@@ -280,12 +280,15 @@ public class GuardedToolFactoryTests
     ///     when no result-delivery guard is supplied.
     /// </summary>
     /// <remarks>
-    ///     <b>This test is deliberately not linked to any requirement.</b> It characterizes
-    ///     third-party behavior in <c>Microsoft.Extensions.AI.Abstractions</c> rather than
-    ///     behavior this library promises. Leaving it unlinked means that if Microsoft later
-    ///     changes how an <c>object</c>-declared return is handled, only this clearly labeled
-    ///     characterization test fails, without invalidating the compliance evidence for the
-    ///     guard itself. Its name begins with the third-party type under characterization, not
+    ///     This test characterizes third-party behavior in
+    ///     <c>Microsoft.Extensions.AI.Abstractions</c> rather than behavior this library
+    ///     promises, so it is linked to the off-the-shelf requirement describing what that
+    ///     package supplies, not to a requirement describing what AgentKit does. The
+    ///     distinction matters: if Microsoft later changes how an <c>object</c>-declared
+    ///     return is handled, what has become untrue is a documented assumption about the
+    ///     dependency, and failing the evidence for that assumption is the correct outcome.
+    ///     The guard's own requirements are unaffected, because the guard keeps its promise
+    ///     either way. Its name begins with the third-party type under characterization, not
     ///     with this library's unit, for the same reason; it lives beside the guard because it
     ///     is the evidence that justifies the guard's existence.
     /// </remarks>

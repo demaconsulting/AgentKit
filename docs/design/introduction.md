@@ -42,12 +42,26 @@ software items, specifically:
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
-  built on the AgentKitCore contract; its tool families are introduced in subsequent increments
+  built on the AgentKitCore contract, organized as one subsystem per tool family
+- **TextFile (Subsystem)** — The text file tool family: policy-governed reading, writing and
+  listing of text files, published as one capability-gated pack
+- **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
+- **TextFileListTool (Unit)** — Publishes the `text_file_list` tool
+- **TextFilePack (Unit)** — Publishes the text file family as one pack
+- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
+  documents for a vision-capable agent, published as one capability-gated pack
+- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
+  and composes the refusal for a file whose type it cannot read
+- **ImageReadTool (Unit)** — Publishes the `image_read` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack
 
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **FileAssert** — document assertion tool
+- **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
+  `AIFunction`/`AIContent` tool currency
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool
@@ -84,12 +98,14 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
-The repository now contains two systems. `AgentKitTools` is a general-purpose capability package
-of guarded tool families built on the AgentKitCore contract, scaffolded ahead of its first family:
-it builds, tests, traces and reviews as an empty shell today, and its tool families — each its own
-subsystem — are introduced in subsequent increments. `AgentKitTools` is a peer of the other
-capability packages an application may attach, depending on `AgentKitCore` but never depended upon
-by another capability package. The `SoftwareStructureView.svg` above renders both systems.
+The repository contains two systems. `AgentKitTools` is a general-purpose capability package of
+guarded tool families built on the AgentKitCore contract. It ships two families today, each its
+own subsystem: `TextFile`, which reads, writes and lists text files within the policy, and
+`Image`, which reads images and PDF documents for a vision-capable agent. Both compose through
+the same guarded construction path and pack contract Core publishes. `AgentKitTools` is a peer of
+the other capability packages an application may attach, depending on `AgentKitCore` but never
+depended upon by another capability package. The `SoftwareStructureView.svg` above renders both
+systems.
 
 ## Folder Layout
 
@@ -113,10 +129,23 @@ The folder is flat because the system is flat: each unit is one file directly un
 root, mirroring the software structure above. A future system organized into subsystems will
 mirror those subsystems as folders containing their respective units.
 
-`AgentKitTools` has its own source tree under `src/DemaConsulting.AgentKit.Tools/`, which contains
-no `.cs` files yet — the package is an empty shell scaffolded ahead of its first tool family, so no
-folder tree is shown here. Its source tree appears with its first family, when that family's units
-are added.
+`AgentKitTools` has its own source tree under `src/DemaConsulting.AgentKit.Tools/`, organized into
+one folder per tool family, each folder holding that family's units:
+
+```text
+src/DemaConsulting.AgentKit.Tools/
+├── Image/
+│   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
+│   ├── ImagePack.cs             — publishes the image family as one pack
+│   └── ImageReadTool.cs         — the image_read tool
+└── TextFile/
+    ├── TextFileListTool.cs      — the text_file_list tool
+    ├── TextFilePack.cs          — publishes the text file family as one pack
+    ├── TextFileReadTool.cs      — the text_file_read tool
+    └── TextFileWriteTool.cs     — the text_file_write tool
+```
+
+Each family folder mirrors the subsystem it represents in the software structure above.
 
 ## Document Conventions
 

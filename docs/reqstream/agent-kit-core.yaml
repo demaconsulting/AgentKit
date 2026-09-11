@@ -262,3 +262,25 @@ sections:
           - AgentKitCore-ToolPackBuilder-PrefixAgreement
         tests:
           - AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected
+
+      - id: AgentKitCore-ToolCurrency-AIFunctionAbstractions
+        title: >-
+          The library shall present each tool to the runtime as a Microsoft.Extensions.AI
+          AIFunction, delivering its results through that abstraction's content hierarchy and
+          result-marshalling control.
+        tags: [system]
+        justification: |
+          A guarded tool is handed to a provider as a Microsoft.Extensions.AI AIFunction, built
+          through that library's function factory, and its results reach the model through the
+          AIContent hierarchy and the factory's result-marshalling control rather than as
+          serialized JSON. This externally visible behavior is what lets one tool be offered to
+          the GitHub Copilot SDK, the Microsoft Agent Framework, and any IChatClient alike. The
+          requirement records the repository's reliance on that off-the-shelf abstraction and
+          links its OTS requirements to the system root; see OTS Integration Design
+          (docs/design/ots.md).
+        children:
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-Content
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult
+        tests:
+          - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent

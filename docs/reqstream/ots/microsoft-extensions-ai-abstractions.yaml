@@ -1,0 +1,56 @@
+---
+# Microsoft.Extensions.AI.Abstractions OTS Software Requirements
+#
+# Requirements for the Microsoft.Extensions.AI.Abstractions runtime library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: Microsoft.Extensions.AI.Abstractions Requirements
+        requirements:
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall provide AIFunction and
+              AIFunctionFactory for expressing an agent tool.
+            justification: |
+              Microsoft.Extensions.AI.Abstractions defines AIFunction, the provider-neutral
+              currency every AgentKit tool is, and AIFunctionFactory.Create, which builds an
+              AIFunction from a delegate. GuardedToolFactory constructs every tool through
+              AIFunctionFactory.Create, so AgentKit's own tests that build and invoke a guarded
+              tool prove this library supplies a working function factory whose product carries
+              the name and behavior the factory was given.
+            tags: [ots]
+            tests:
+              - GuardedToolFactory_Create_ValidName_IsCarriedByTheCreatedTool
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_BinaryResultIsNotJsonSerialized
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-Content
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall provide the AIContent type hierarchy
+              for carrying tool results to the model.
+            justification: |
+              Microsoft.Extensions.AI.Abstractions defines AIContent and its derived types
+              (TextContent, DataContent) that carry a tool's result to the provider in a typed
+              form rather than as serialized JSON. AgentKit returns binary and image results as
+              AIContent so a returned image is recognized as an image. AgentKit's tests that
+              observe a captioned image survive as a content list, and binary content survive
+              without JSON serialization, prove the content hierarchy behaves as required.
+            tags: [ots]
+            tests:
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_CaptionedImageSurvivesAsContentList
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_BinaryResultIsNotJsonSerialized
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall provide the
+              AIFunctionFactoryOptions.MarshalResult control the guarded factory relies upon.
+            justification: |
+              Microsoft.Extensions.AI.Abstractions exposes AIFunctionFactoryOptions.MarshalResult,
+              a hook that lets a caller control how a delegate's return value is marshalled into the
+              function's result. GuardedToolFactory installs its result-delivery guard through this
+              hook, so a refusal reaches the model as a string and typed content passes through
+              intact instead of being flattened to JSON. AgentKit's tests that observe a denial
+              survive as a string, and that an unguarded object return flattens data content to a
+              JSON element, prove the marshalling control is present and honored.
+            tags: [ots]
+            tests:
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString
+              - AIFunctionFactory_UnguardedObjectReturn_FlattensDataContentToJsonElement

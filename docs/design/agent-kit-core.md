@@ -187,7 +187,10 @@ The AgentKit Core takes exactly one runtime NuGet dependency,
 and any `Microsoft.Extensions.AI` `IChatClient`. Depending on the abstractions package — rather
 than on any provider, runtime or agent loop — is what lets one guarded tool be offered to all of
 them without Core choosing a provider on the application's behalf. Nothing further is taken:
-there is no provider package, no agent framework package and no transitive runtime.
+there is no provider package, no agent framework package and no transitive runtime. As a
+third-party published library, `Microsoft.Extensions.AI.Abstractions` is an OTS item; its
+integration is recorded in _OTS Integration Design_ (`docs/design/ots.md`) and its dedicated
+_Microsoft.Extensions.AI.Abstractions Design_.
 
 The following OTS items are used for building and verifying this system and are not consumed at
 runtime; see _OTS Integration Design_ (`docs/design/ots.md`) and each item's dedicated design

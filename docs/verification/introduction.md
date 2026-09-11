@@ -41,12 +41,26 @@ constituent software items, specifically:
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
-  built on the AgentKitCore contract; its tool families are introduced in subsequent increments
+  built on the AgentKitCore contract, organized as one subsystem per tool family
+- **TextFile (Subsystem)** — The text file tool family: policy-governed reading, writing and
+  listing of text files, published as one capability-gated pack
+- **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
+- **TextFileListTool (Unit)** — Publishes the `text_file_list` tool
+- **TextFilePack (Unit)** — Publishes the text file family as one pack
+- **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
+  documents for a vision-capable agent, published as one capability-gated pack
+- **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
+  and composes the refusal for a file whose type it cannot read
+- **ImageReadTool (Unit)** — Publishes the `image_read` tool
+- **ImagePack (Unit)** — Publishes the image family as one pack
 
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **FileAssert** — document assertion tool
+- **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
+  `AIFunction`/`AIContent` tool currency
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool

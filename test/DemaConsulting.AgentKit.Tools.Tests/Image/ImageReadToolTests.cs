@@ -138,9 +138,14 @@ public class ImageReadToolTests
         // Act: read the document
         var result = await InvokeAsync(tool, file);
 
-        // Assert: the content survives unserialized and carries the PDF media type and bytes
+        // Assert: the caption-plus-content shape survives unserialized, carrying the PDF
+        // media type and bytes. The caption is asserted as well as the data, because a
+        // regression that preserved the bytes while dropping or reordering the caption would
+        // otherwise pass unnoticed.
         var content = Assert.IsType<List<AIContent>>(result);
         Assert.IsNotType<JsonElement>(result);
+        Assert.Equal(2, content.Count);
+        Assert.IsType<TextContent>(content[0]);
         var data = Assert.IsType<DataContent>(content[1]);
         Assert.Equal(ImageMediaTypes.Pdf, data.MediaType);
         Assert.Equal(SampleBytes, data.Data.ToArray());

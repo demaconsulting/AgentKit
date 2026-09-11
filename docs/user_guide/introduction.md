@@ -32,18 +32,20 @@ compliance evidence is generated automatically on every CI run.
 
 # Installation
 
-Install the library using the .NET CLI:
+Install the libraries using the .NET CLI:
 
 ```bash
 dotnet add package DemaConsulting.AgentKit.Core
+dotnet add package DemaConsulting.AgentKit.Tools
 ```
 
 # What the Library Provides Today
 
-AgentKit Core is the contract package. It does not itself ship ready-made tools; it defines the
-safety model that every AgentKit tool, and every tool an application writes for itself, is built
-against. The ready-made tool families will ship in `DemaConsulting.AgentKit.Tools`, which is not
-yet published, so a consumer today writes tools against this contract directly.
+AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
+every tool an application writes for itself, is built against. Ready-made guarded tool families
+ship in `DemaConsulting.AgentKit.Tools` — the text file and image families described under
+[Tool Families](#tool-families) below — so a consumer can attach shipped tools directly, or write
+its own tools against this contract.
 
 ## Path Policy
 
@@ -96,6 +98,55 @@ its tools carry and the `HostCapabilities` the host must provide. An application
 through `ToolPackBuilder`, declaring what its host supports and adding one pack per capability it
 wishes to attach. A pack whose required capabilities the host does not provide is never asked to
 create its tools at all, so the model is never offered a tool it cannot use.
+
+# Tool Families
+
+`DemaConsulting.AgentKit.Tools` ships two ready-made guarded tool families. Each family is a pack
+an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
+requires and returns the `AIFunction` list to hand to an agent framework.
+
+## Available Tools
+
+| Family    | Tool              | Purpose                                                   | Required capability |
+|-----------|-------------------|-----------------------------------------------------------|---------------------|
+| Text file | `text_file_read`  | Reads a text file within the policy                       | None                |
+| Text file | `text_file_write` | Writes a text file within the policy                      | None                |
+| Text file | `text_file_list`  | Lists text files within the policy                        | None                |
+| Image     | `image_read`      | Reads an image or PDF document for a vision-capable agent | `Vision`            |
+
+The text file family (`TextFilePack`) requires no host capability. The image family (`ImagePack`)
+requires the `Vision` host capability: unless the host declares `HostCapabilities.Vision`, the
+builder never asks the pack to create `image_read`, so a model is never offered a tool its host
+cannot use.
+
+## Composing a Tool List
+
+An application pairs a read rule and a write rule into a `PathPolicy`, adds the packs it wants to a
+`ToolPackBuilder`, declares the capabilities its host supports, and builds the tool list:
+
+```csharp
+using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.Image;
+using Microsoft.Extensions.AI;
+
+var policy = new PathPolicy(
+    readRule: PathRule.Rooted("/workspace"),
+    writeRule: PathRule.Rooted("/workspace"));
+
+IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
+    .WithHostCapabilities(HostCapabilities.Vision)
+    .Add(new TextFilePack())
+    .Add(new ImagePack())
+    .Build();
+
+// Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
+```
+
+Every tool returned observes the same policy and limits: a `text_file_read` that steps outside the
+rooted location, or exceeds the byte ceiling, returns a refusal rather than the file. The tool
+`Create` factories are internal, so composing through the packs is the only supported way to obtain
+these tools.
 
 # References
 

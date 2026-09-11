@@ -5,29 +5,31 @@ This document describes the overall Off-The-Shelf (OTS) integration strategy for
 ## Overview
 
 AgentKit Core carries exactly one runtime NuGet dependency,
-`Microsoft.Extensions.AI.Abstractions`, which is **not** an OTS item covered by this document and
-does not appear in the table below; it is described in the AgentKitCore _System Design_. All OTS
-items listed below are build-time and quality-pipeline tools, not runtime library dependencies.
-Each OTS item provides one stage of the documentation, requirements-traceability, testing, and
-quality-reporting pipeline invoked by `build.ps1`, `lint.ps1`, and the
-`.github/workflows/build.yaml` CI workflow. None of these tools are linked into, or shipped with,
-the compiled NuGet package.
+`Microsoft.Extensions.AI.Abstractions`. As a third-party published library providing
+functionality not developed within the program, it is an OTS item and appears in the table below;
+its integration is detailed in its dedicated design document, and the AgentKitCore _System Design_
+records that Core depends on it. Every other OTS item listed below is a build-time or
+quality-pipeline tool rather than a runtime library dependency: each provides one stage of the
+documentation, requirements-traceability, testing, and quality-reporting pipeline invoked by
+`build.ps1`, `lint.ps1`, and the `.github/workflows/build.yaml` CI workflow, and none of those
+tools are linked into, or shipped with, the compiled NuGet package.
 
 ## OTS Items
 
-| OTS Item    | Purpose                                                              |
-|-------------|----------------------------------------------------------------------|
-| BuildMark   | Generates build-notes documentation from GitHub Actions metadata     |
-| FileAssert  | Validates generated documents (HTML/PDF) against acceptance criteria |
-| Pandoc      | Converts Markdown documentation to HTML                              |
-| ReqStream   | Enforces requirements-to-test traceability                           |
-| ReviewMark  | Enforces file review coverage and currency                           |
-| SarifMark   | Converts CodeQL SARIF results into a markdown report                 |
-| SonarMark   | Generates a SonarCloud quality report                                |
-| SysML2Tools | Validates the SysML2 architecture model and renders its views to SVG |
-| VersionMark | Captures and publishes tool-version information                      |
-| WeasyPrint  | Converts HTML documentation to PDF                                   |
-| xUnit       | Discovers and executes unit and integration tests                    |
+| OTS Item                             | Purpose                                                              |
+|--------------------------------------|----------------------------------------------------------------------|
+| BuildMark                            | Generates build-notes documentation from GitHub Actions metadata     |
+| FileAssert                           | Validates generated documents (HTML/PDF) against acceptance criteria |
+| Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency  |
+| Pandoc                               | Converts Markdown documentation to HTML                              |
+| ReqStream                            | Enforces requirements-to-test traceability                           |
+| ReviewMark                           | Enforces file review coverage and currency                           |
+| SarifMark                            | Converts CodeQL SARIF results into a markdown report                 |
+| SonarMark                            | Generates a SonarCloud quality report                                |
+| SysML2Tools                          | Validates the SysML2 architecture model and renders its views to SVG |
+| VersionMark                          | Captures and publishes tool-version information                      |
+| WeasyPrint                           | Converts HTML documentation to PDF                                   |
+| xUnit                                | Discovers and executes unit and integration tests                    |
 
 Each item's individual design document (`docs/design/ots/{ots-name}.md`) records its Purpose,
 Features Used, and Integration Pattern. Each item's requirements and verification evidence are

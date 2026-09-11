@@ -413,6 +413,14 @@ reviews:
       - "docs/design/ots/fileassert.md"                                    # OTS integration design
       - "docs/verification/ots/fileassert.md"                              # OTS verification
 
+  # OTS-MicrosoftExtensionsAIAbstractions Review (one per OTS item)
+  - id: OTS-MicrosoftExtensionsAIAbstractions
+    title: Review that Microsoft.Extensions.AI.Abstractions Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/microsoft-extensions-ai-abstractions.yaml"      # OTS requirements
+      - "docs/design/ots/microsoft-extensions-ai-abstractions.md"           # OTS integration design
+      - "docs/verification/ots/microsoft-extensions-ai-abstractions.md"    # OTS verification
+
   # OTS-Pandoc Review (one per OTS item)
   - id: OTS-Pandoc
     title: Review that Pandoc Provides Required Functionality

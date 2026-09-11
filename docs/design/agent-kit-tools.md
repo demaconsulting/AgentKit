@@ -65,7 +65,10 @@ path, the result constructors and the pack contract every family in this package
 `Microsoft.Extensions.AI.Abstractions` — the package that defines the `AIFunction` a tool is —
 reaches this package transitively through Core rather than as a direct dependency, so a tool
 family composes through the same currency Core publishes without this package choosing a provider
-or restating a dependency Core already owns.
+or restating a dependency Core already owns. That abstraction is the one OTS runtime library the
+software depends on; its integration is recorded in _OTS Integration Design_
+(`docs/design/ots.md`) and its dedicated _Microsoft.Extensions.AI.Abstractions Design_, where the
+transitive path through Core is documented.
 
 The dependency runs in exactly one direction: Tools depends on Core, never the reverse, and no
 other capability package depends on Tools. The package is a peer of the other packs an application
