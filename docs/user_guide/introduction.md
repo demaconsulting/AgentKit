@@ -2,20 +2,22 @@
 
 ## Purpose
 
-This document is the user guide for the AgentKit, a demonstration project that
-showcases best practices for DEMA Consulting DotNet Libraries.
+This document is the user guide for AgentKit, a family of .NET libraries providing hardened,
+provider-neutral agent tools. It exists so that a developer can hand an AI agent a set of
+capabilities that are safe by construction — where the unsafe operation is not refused at call
+time, but cannot be expressed.
 
 ## Scope
 
 This user guide covers:
 
 - Installation of the library
-- Basic usage and examples
-- API reference
+- What the library provides today, and how each part is used
+- The path policy, tool limits, naming, result and tool pack contracts
 
 # Continuous Compliance
 
-This template follows the
+AgentKit follows the
 [Continuous Compliance](https://github.com/demaconsulting/ContinuousCompliance) methodology, which ensures
 compliance evidence is generated automatically on every CI run.
 
@@ -33,144 +35,67 @@ compliance evidence is generated automatically on every CI run.
 Install the library using the .NET CLI:
 
 ```bash
-dotnet add package AgentKit
+dotnet add package DemaConsulting.AgentKit.Core
 ```
 
-# Usage
+# What the Library Provides Today
 
-## Basic Usage
+AgentKit Core is the contract package. It does not itself ship ready-made tools; it defines the
+safety model that every AgentKit tool, and every tool an application writes for itself, is built
+against. The ready-made tool families will ship in `DemaConsulting.AgentKit.Tools`, which is not
+yet published, so a consumer today writes tools against this contract directly.
 
-```csharp
-using AgentKit;
+## Path Policy
 
-var demo = new Demo();
-var result = demo.DemoMethod("World");
-Console.WriteLine(result); // Output: Hello, World!
-```
+Read access and write access are expressed as two independent rules. A rule is either unrestricted
+or confined to one location, and each rule carries its own denied patterns. Rules are created
+through `PathRule.Unrestricted` and `PathRule.Rooted`, and paired into a `PathPolicy`.
 
-## API Reference
+A policy cannot be constructed without both of its rules, so an unguarded policy cannot exist.
+Access is requested through `PathPolicy.TryResolveRead` and `PathPolicy.TryResolveWrite`, which
+return whether the access is permitted, the real location on success, and a redacted reason on
+refusal. Directory listings are obtained through `PathPolicy.EnumerateFiles`, which applies the
+same decision, so a listing can never advertise a file that access would refuse.
 
-### Demo
+Every containment decision resolves symbolic links and directory junctions at every path component,
+so a path that merely looks contained cannot reach outside the location the operator granted.
+A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
+turn.
 
-The `Demo` class provides demonstration functionality for the template library.
+## Tool Limits
 
-#### Constants
+`ToolLimits` carries the ceilings a tool observes: the bytes it may read, the characters its
+result may return to the model, the bytes of binary content it may return, and the attachments it
+may add in one turn. Limits are carried with the policy, through `PathPolicy.Limits`, so every
+tool an application attaches observes one budget rather than each inventing its own. A host that
+configures nothing still operates within the published defaults.
 
-##### DefaultPrefix
+## Tool Names and Guarded Construction
 
-```csharp
-public const string DefaultPrefix = "Hello";
-```
+`ToolName.Create` composes a name from a family and a verb, and `ToolName.Validate` checks a
+name against the convention. Every tool name carries a family prefix, which is what stops an
+application combining AgentKit with another tool provider from presenting the model with two
+identically named tools.
 
-The greeting prefix used when no custom prefix is specified.
+`GuardedToolFactory.Create` is the only supported way to construct a tool. It validates the name
+and applies the result-delivery guard to every tool it creates, so a tool author cannot omit either
+by forgetting it.
 
-#### Constructors
+## Tool Results
 
-##### Demo()
+`ToolResult` constructs what a tool returns: `Text` for text, `Binary` and `Image` for
+content carrying a media type and an optional caption, and `Denied` for a refusal. A refusal names
+its reason and may redirect the model to a more appropriate tool. Results reach the provider in the
+form the tool produced them rather than as serialized JSON, which is what allows a returned image
+to be recognized as an image.
 
-```csharp
-public Demo()
-```
+## Tool Packs
 
-Initializes a new instance of the `Demo` class with the default prefix "Hello".
-
-##### Demo(string prefix)
-
-```csharp
-public Demo(string prefix)
-```
-
-Initializes a new instance of the `Demo` class with a custom prefix.
-
-**Parameters:**
-
-- `prefix` (string): The prefix to use in greetings. Must not be null or empty.
-
-**Exceptions:**
-
-- `ArgumentNullException`: Thrown when `prefix` is null.
-- `ArgumentException`: Thrown when `prefix` is an empty string.
-
-#### Properties
-
-##### Prefix
-
-```csharp
-public string Prefix { get; }
-```
-
-Gets the greeting prefix used by this instance.
-
-#### Methods
-
-##### DemoMethod
-
-```csharp
-public string DemoMethod(string name)
-```
-
-Returns a greeting message for the specified name.
-
-**Parameters:**
-
-- `name` (string): The name to greet. Must not be null or empty.
-
-**Returns:**
-
-A string containing the greeting message in the format "{prefix}, {name}!".
-
-**Exceptions:**
-
-- `ArgumentNullException`: Thrown when `name` is null.
-- `ArgumentException`: Thrown when `name` is an empty string.
-
-**Example:**
-
-```csharp
-var demo = new Demo();
-var greeting = demo.DemoMethod("World");
-// greeting = "Hello, World!"
-```
-
-# Examples
-
-## Example 1: Basic Greeting
-
-```csharp
-using AgentKit;
-
-var demo = new Demo();
-var result = demo.DemoMethod("Alice");
-Console.WriteLine(result);
-// Output: Hello, Alice!
-```
-
-## Example 2: Custom Prefix
-
-```csharp
-using AgentKit;
-
-var demo = new Demo("Hi");
-var result = demo.DemoMethod("Alice");
-Console.WriteLine(result);
-// Output: Hi, Alice!
-```
-
-## Example 3: Error Handling
-
-```csharp
-using AgentKit;
-
-var demo = new Demo();
-try
-{
-    var result = demo.DemoMethod(null);
-}
-catch (ArgumentNullException ex)
-{
-    Console.WriteLine("Name cannot be null");
-}
-```
+A package publishes its tools as a pack by implementing `IToolPack`, declaring the family prefix
+its tools carry and the `HostCapabilities` the host must provide. An application composes packs
+through `ToolPackBuilder`, declaring what its host supports and adding one pack per capability it
+wishes to attach. A pack whose required capabilities the host does not provide is never asked to
+create its tools at all, so the model is never offered a tool it cannot use.
 
 # References
 

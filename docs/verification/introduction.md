@@ -1,7 +1,7 @@
 # Introduction
 
-This document provides the verification design for the AgentKit, a .NET library
-demonstrating best practices for DEMA Consulting DotNet Libraries.
+This document provides the verification design for AgentKit, a family of .NET libraries providing
+hardened, provider-neutral agent tools.
 
 ## Purpose
 
@@ -23,8 +23,23 @@ This document is intended for:
 This document covers the verification design for the AgentKit system and its
 constituent software items, specifically:
 
-- **AgentKit (System)** — The complete .NET library template system
-- **Demo (Unit)** — Demonstration greeting class providing example functionality
+- **AgentKitCore (System)** — The contract package every other AgentKit package depends upon
+- **RealPathResolver (Unit)** — Reports the real file system location a path reaches, resolving
+  symbolic links and directory junctions at every path component
+- **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
+  denied patterns
+- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, and makes the single
+  containment decision used by both direct access and directory enumeration
+- **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
+  attaching content
+- **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals
+- **ToolName (Unit)** — The family-prefix naming convention and its validation
+- **GuardedToolFactory (Unit)** — The only supported way to construct a tool, applying the
+  result-delivery guard and the naming rules to every tool it creates
+- **ToolPack (Unit)** — The contract a package implements to publish its tools as one
+  capability-gated family, and the host capabilities a pack may require
+- **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
+  application offers a model
 
 The following OTS items are also covered:
 

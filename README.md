@@ -11,11 +11,13 @@
 
 DEMA Consulting libraries for composing and running AI agent systems in .NET.
 
-AgentKit lets an application select a provider back-end, attach a permission-governed set of tools,
-configure a context-window management policy, and spawn agents the application can interact with.
+AgentKit provides hardened, provider-neutral agent tools: an application attaches a
+permission-governed set of tools to the agent framework of its choice, bounded by a policy the
+application configures and a tool cannot omit.
 
-> **Status**: Early development. The repository is scaffolded and the architecture is being
-> established; the public API is not yet stable and the `Demo` type is a placeholder.
+> **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
+> construction, tool results, and the tool pack contract — is implemented; the tool families built
+> on it are not yet published, and the public API is not yet stable.
 
 ## Planned Capabilities
 
@@ -28,8 +30,8 @@ configure a context-window management policy, and spawn agents the application c
 
 ## Packages
 
-- **`DemaConsulting.AgentKit.Core`** — core abstractions, agent runtime, tool and permission model,
-  and context management.
+- **`DemaConsulting.AgentKit.Core`** — policy primitives, guarded tool construction, tool result
+  helpers, and the tool-pack contract.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -57,15 +59,22 @@ dotnet add package DemaConsulting.AgentKit.Core
 
 ## Usage
 
-The agent composition API is still being designed. The package currently exposes only the
-placeholder `Demo` type:
+`DemaConsulting.AgentKit.Core` currently provides the contract that other AgentKit packages — and
+an application's own tools — are built against:
 
-```csharp
-using DemaConsulting.AgentKit.Core;
+- **Path policy**: an independent read rule and write rule, each unrestricted or confined to a
+  location, each with its own denied patterns, and all containment decisions resolving symbolic
+  links and directory junctions at every path component
+- **Tool limits**: ceilings on bytes read, result size returned to the model, and attachments per
+  turn, carried with the policy so every tool observes the same budget
+- **Guarded tool construction**: the only supported way to build a tool, so the safety conventions
+  cannot be forgotten
+- **Tool results**: text, binary, and image results, and refusals that carry a reason
+- **Tool pack contract**: composition of packs into the tool list an application offers a model,
+  gated on host capability
 
-var demo = new Demo();
-var result = demo.DemoMethod("World"); // result = "Hello, World!"
-```
+Ready-made tool families will ship in `DemaConsulting.AgentKit.Tools`, which is not yet published.
+Usage examples will follow with that package.
 
 ## Documentation
 

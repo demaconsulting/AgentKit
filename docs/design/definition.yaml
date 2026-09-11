@@ -6,7 +6,6 @@ input-files:
   - docs/design/title.txt
   - docs/design/introduction.md
   - docs/design/agent-kit-core.md
-  - docs/design/agent-kit-core/demo.md
   - docs/design/agent-kit-core/guarded-tool-factory.md
   - docs/design/agent-kit-core/path-policy.md
   - docs/design/agent-kit-core/path-rule.md

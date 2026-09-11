@@ -1,7 +1,7 @@
 # Introduction
 
-This document provides the detailed design for the AgentKit, a .NET library
-demonstrating best practices for DEMA Consulting DotNet Libraries.
+This document provides the detailed design for AgentKit, a family of .NET libraries providing
+hardened, provider-neutral agent tools.
 
 ## Purpose
 
@@ -24,8 +24,23 @@ This document is intended for:
 This document covers the detailed design of the AgentKit system and its constituent
 software items, specifically:
 
-- **AgentKit (System)** — The complete .NET library template system
-- **Demo (Unit)** — Demonstration greeting class providing example functionality
+- **AgentKitCore (System)** — The contract package every other AgentKit package depends upon
+- **RealPathResolver (Unit)** — Reports the real file system location a path reaches, resolving
+  symbolic links and directory junctions at every path component
+- **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
+  denied patterns
+- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, and makes the single
+  containment decision used by both direct access and directory enumeration
+- **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
+  attaching content
+- **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals
+- **ToolName (Unit)** — The family-prefix naming convention and its validation
+- **GuardedToolFactory (Unit)** — The only supported way to construct a tool, applying the
+  result-delivery guard and the naming rules to every tool it creates
+- **ToolPack (Unit)** — The contract a package implements to publish its tools as one
+  capability-gated family, and the host capabilities a pack may require
+- **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
+  application offers a model
 
 The following OTS items are also covered:
 
@@ -60,10 +75,12 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-This template demonstrates a minimal system structure with no subsystems — it contains only the
-`Demo` unit directly under the system level. In more complex implementations, subsystems would
-organize related units and provide architectural boundaries with well-defined interfaces and
-responsibilities.
+`AgentKitCore` is deliberately flat: its nine units sit directly under the system with no
+intervening subsystems. Core is a small contract package, and a subsystem layer would add
+artifacts — a requirements file, a design document, a verification document and a review set per
+subsystem — without reducing the number of units anyone has to review. Subsystems will be
+introduced when a system in this repository has enough units that architectural boundaries
+between them carry real information.
 
 ## Folder Layout
 
@@ -72,12 +89,20 @@ and descriptions as follows:
 
 ```text
 src/DemaConsulting.AgentKit.Core/
-└── Demo.cs                     — Demonstration greeting class implementing template functionality
+├── GuardedToolFactory.cs       — the only supported way to construct a tool
+├── PathPolicy.cs               — the single containment decision, and the limits it carries
+├── PathRule.cs                 — one access rule: unrestricted or rooted
+├── RealPathResolver.cs         — the real location a path reaches
+├── ToolLimits.cs               — the ceilings every governed tool observes
+├── ToolName.cs                 — the family-prefix naming convention
+├── ToolPack.cs                 — the pack contract and host capabilities
+├── ToolPackBuilder.cs          — capability-gated composition
+└── ToolResult.cs               — text, content and denial results
 ```
 
-This flat folder structure reflects the single-unit nature of this template system. As the system
-grows with additional subsystems and units, the folder structure will expand to mirror the
-software architecture with subsystem-specific folders containing their respective units.
+The folder is flat because the system is flat: each unit is one file directly under the project
+root, mirroring the software structure above. A future system organized into subsystems will
+mirror those subsystems as folders containing their respective units.
 
 ## Document Conventions
 

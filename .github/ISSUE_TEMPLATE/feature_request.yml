@@ -42,9 +42,8 @@ body:
       description: If applicable, provide examples of how this feature would be used
       placeholder: |
         ```csharp
-        // Example usage
-        var demo = new Demo("Greetings");
-        var result = demo.DemoMethod("User");
+        // Show how you would expect to use the feature, using types that exist today
+        // or a short sketch of the API you are proposing.
         ```
       render: csharp
 

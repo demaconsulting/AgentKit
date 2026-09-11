@@ -26,7 +26,7 @@ A rule is immutable after construction and is safe for concurrent use.
 | `DenyPatterns`       | `IReadOnlyList<string>` | Patterns whose match denies a path regardless of location.     |
 | `_denyPatterns`      | `string[]`              | Private copy of the validated patterns; never changes.         |
 | `_containmentPrefix` | `string?`               | `Root` plus a trailing separator; `null` when unrestricted.    |
-| `PathComparison`     | `StringComparison`      | Ordinal, ignoring case on Windows and macOS.                   |
+| `PathComparison`     | `StringComparison`      | Ordinal; ignores case on Windows and macOS only.               |
 | `IgnoreCase`         | `bool`                  | Pattern-matching case sensitivity; matches `PathComparison`.   |
 
 Invariants:
@@ -36,11 +36,29 @@ Invariants:
 - `_containmentPrefix` is non-null exactly when `Root` is non-null.
 - `_denyPatterns` contains no null or empty entry, and never changes after construction.
 
-**Case sensitivity.** Comparison is ordinal and ignores case on Windows and macOS, and is ordinal
-on Linux, matching the default file system semantics of each platform. On a case-insensitive file
-system a case-sensitive comparison would let a differently-cased spelling of a location pass
-containment while still reaching the same file; on a case-sensitive file system an
-insensitive comparison would refuse two genuinely different locations as if they were one.
+**Case sensitivity.** Containment comparison is ordinal and ignores case on Windows and macOS,
+and is ordinal on Linux, matching the default file system semantics of each platform. Pattern
+matching follows the same choice.
+
+Always ignoring case would be **unsafe on Linux**. There, `/allowed/foo` and `/allowed/Foo` are
+genuinely different directories, so a case-insensitive containment test would judge a path under
+`/allowed/Foo` to be contained by a rule rooted at `/allowed/foo` and permit access to a location
+the operator never granted. That is a **false allow** — a security defect, not an inconvenience.
+
+Always comparing case-sensitively has the opposite failure. On Windows and macOS a
+differently-cased spelling reaches the same file, so a case-sensitive comparison would refuse a
+path the operator did grant. That is a **false denial**: an unnecessary refusal the caller can
+see and correct. The asymmetry between the two — a false allow is a breach, a false denial is an
+annoyance — is why the comparison follows the platform rather than picking one setting for
+everywhere.
+
+**Known limitation.** This is a platform heuristic, not a file system probe. NTFS supports
+per-directory case sensitivity, and APFS can be configured case-sensitive, so a volume configured
+against its platform default is judged by the default rather than by its actual behavior. On such
+a volume the Linux reasoning above would apply on Windows or macOS, and the comparison would be
+wrong in the unsafe direction. This is recorded as a known and accepted limitation; closing it
+would require probing the containing volume at rule construction, which is an owner decision and
+out of scope for the current design.
 
 **The trailing separator.** `_containmentPrefix` is precomputed with a trailing separator because
 that separator is what distinguishes containment from a shared name prefix. Without it a rule

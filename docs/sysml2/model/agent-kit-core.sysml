@@ -1,9 +1,9 @@
 package AgentKitCore {
     doc
     /*
-     * AgentKitCore provides the core abstractions and agent runtime used to compose
-     * AI agent systems in .NET, including the provider seam, tool and permission
-     * model, and context-window management.
+     * AgentKitCore provides the small, stable contract every other AgentKit package
+     * depends upon: policy primitives, guarded tool construction, tool result helpers,
+     * and the tool-pack contract.
      */
 
     part def AgentKitCoreSystem {
@@ -14,7 +14,6 @@ package AgentKitCore {
         comment verificationRef /* Verification: docs/verification/agent-kit-core.md */
         comment reqRef /* Requirements: docs/reqstream/agent-kit-core.yaml */
 
-        part demo : Demo;
         part realPathResolver : RealPathResolver;
         part pathRule : PathRule;
         part pathPolicy : PathPolicy;

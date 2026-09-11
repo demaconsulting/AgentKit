@@ -9,7 +9,6 @@ root-tags: [system, quality]
 includes:
   - docs/reqstream/quality.yaml
   - docs/reqstream/agent-kit-core.yaml
-  - docs/reqstream/agent-kit-core/demo.yaml
   - docs/reqstream/agent-kit-core/guarded-tool-factory.yaml
   - docs/reqstream/agent-kit-core/path-policy.yaml
   - docs/reqstream/agent-kit-core/path-rule.yaml

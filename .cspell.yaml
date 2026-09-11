@@ -35,6 +35,8 @@ words:
   - WeasyPrint
   - weasyprint
   - netstandard
+  - NTFS
+  - APFS
   - Ollama
   - postconditions
   - yamlfix

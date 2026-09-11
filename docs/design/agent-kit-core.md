@@ -6,10 +6,15 @@ This document provides the system-level design for the AgentKit Core.
 
 ## Architecture
 
-The AgentKit Core is a minimal .NET library template demonstrating DEMA Consulting
-best practices. The system consists of:
+The AgentKit Core is the small, stable contract package on which every other AgentKit package
+depends. It supplies the policy primitives that bound where a tool may act, the single guarded
+path by which a tool is constructed, the result constructors a tool returns through, and the pack
+contract by which a package publishes its tools to an application. It provides no agent, no
+tool-calling loop and no provider abstraction; those belong to the agent framework an application
+chooses. Core is deliberately slow-moving, because every other package inherits its churn.
 
-- **Demo Unit**: Simple greeting functionality demonstrating library patterns
+The system consists of:
+
 - **RealPathResolver Unit**: Reports the real file system location of a path, following
   symbolic links and directory junctions at every path component
 - **PathRule Unit**: One access rule — unrestricted or confined to a location — carrying its own
@@ -28,8 +33,7 @@ best practices. The system consists of:
 - **ToolPackBuilder Unit**: Composes tool packs into the tool list an application offers a model,
   registering a pack only when the host provides every capability the pack requires
 
-There are no subsystems. The `Demo` unit is a self-contained leaf class exposed directly through
-the public API; see _Demo Unit Design_. The three path-safety units form one collaboration:
+There are no subsystems. The three path-safety units form one collaboration:
 `PathPolicy` resolves a requested path through `RealPathResolver` and then consults exactly one
 `PathRule`, which itself resolved its confined location through `RealPathResolver` when it was
 created. `RealPathResolver` depends on nothing within the system, so the collaboration is
@@ -55,25 +59,9 @@ holds, and verifies that each tool a pack returns carries the family prefix that
 
 ## External Interfaces
 
-The system exposes the following public API to external consumers:
+The system exposes the following public API to external consumers.
 
-- **Demo()**: Default constructor; initializes the instance with the default prefix `"Hello"`
-- **Demo(string prefix)**: Custom-prefix constructor; initializes the instance with the specified
-  prefix. Throws `ArgumentNullException` if `prefix` is null; throws `ArgumentException` if
-  `prefix` is an empty string.
-- **Demo.Prefix**: Read-only property that returns the greeting prefix configured at construction
-- **Demo.DemoMethod(string name)**: Returns a greeting string in the format `{prefix}, {name}!`.
-  Throws `ArgumentNullException` if `name` is null; throws `ArgumentException` if `name` is an
-  empty string.
-
-| Interface                      | Direction        | Format                        | Constraints                  |
-|--------------------------------|------------------|-------------------------------|------------------------------|
-| `Demo()`                       | Inbound          | Constructor call              | None; always succeeds        |
-| `Demo(string prefix)`          | Inbound          | Constructor call              | `prefix` non-null, non-empty |
-| `Demo.Prefix`                  | Outbound         | `string` property read        | None; always succeeds        |
-| `Demo.DemoMethod(string name)` | Inbound/Outbound | Method call / `string` return | `name` non-null, non-empty   |
-
-The system additionally exposes the path-safety API:
+The path-safety API:
 
 - **RealPathResolver.Resolve(string path)**: Returns the real, absolute, normalized location of
   `path`. Throws `ArgumentNullException` for a null path, `ArgumentException` for an empty or
@@ -193,10 +181,17 @@ The system additionally exposes the pack composition API:
 
 ## Dependencies
 
-The AgentKit Core has zero runtime NuGet dependencies — it is implemented exclusively
-against the .NET Base Class Library. The following OTS items are used for building and verifying
-this system (not consumed at runtime); see _OTS Integration Design_ (`docs/design/ots.md`) and
-each item's dedicated design document for details:
+The AgentKit Core takes exactly one runtime NuGet dependency,
+`Microsoft.Extensions.AI.Abstractions`. It exists because a tool is an `AIFunction`, and
+`AIFunction` is the common currency across the GitHub Copilot SDK, the Microsoft Agent Framework
+and any `Microsoft.Extensions.AI` `IChatClient`. Depending on the abstractions package — rather
+than on any provider, runtime or agent loop — is what lets one guarded tool be offered to all of
+them without Core choosing a provider on the application's behalf. Nothing further is taken:
+there is no provider package, no agent framework package and no transitive runtime.
+
+The following OTS items are used for building and verifying this system and are not consumed at
+runtime; see _OTS Integration Design_ (`docs/design/ots.md`) and each item's dedicated design
+document for details:
 
 - **BuildMark** — generates build-notes documentation; see _BuildMark Design_
 - **FileAssert** — validates generated documents against acceptance criteria; see
@@ -252,24 +247,7 @@ see _ToolPackBuilder Unit Design_. Family prefix ownership is part of the same m
 claims a prefix no other pack claims, and every tool it publishes must carry that prefix, so an
 application cannot present the model with two tools it cannot tell apart.
 
-The `Demo` unit carries no risk control responsibility.
-
 ## Data Flow
-
-**Construction path:**
-
-1. **Input**: Constructor parameter `prefix` (optional; defaults to `"Hello"` when using `Demo()`)
-2. **Validation**: `Demo(string prefix)` rejects null with `ArgumentNullException`; rejects empty
-   string with `ArgumentException`
-3. **Storage**: Valid prefix stored for use in subsequent greeting calls
-
-**Method-call path:**
-
-1. **Input**: Method parameter `name` (required, non-empty string)
-2. **Validation**: `DemoMethod` rejects null with `ArgumentNullException`; rejects empty string
-   with `ArgumentException`
-3. **Processing**: Simple string formatting combining stored prefix and supplied name
-4. **Output**: Formatted greeting string in the format `{prefix}, {name}!`
 
 **Path containment path:**
 
@@ -315,7 +293,8 @@ The `Demo` unit carries no risk control responsibility.
 
 ## Design Constraints
 
-- **Simplicity**: Minimal functionality to serve as template
+- **Minimal contract**: The smallest public surface that packs must share, changed slowly,
+  because every other AgentKit package depends on it and inherits its churn
 - **Compliance**: All functionality must be traceable to requirements
 - **Quality**: Zero warnings, full test coverage, complete documentation
 - **Portability**: Compatible across supported .NET platforms
@@ -337,8 +316,9 @@ The library is supported on the following operating systems:
 - **Linux** — CI/CD and containerized environments
 - **macOS** — developer workstations using Apple platforms
 
-Portability is achieved by restricting the implementation exclusively to Base Class Library (BCL)
-APIs available across all target frameworks. No platform-specific native interop, OS-specific
+Portability is achieved by restricting the implementation to Base Class Library (BCL) APIs
+available across all target frameworks and to the provider-neutral
+`Microsoft.Extensions.AI.Abstractions` surface. No platform-specific native interop, OS-specific
 APIs, or framework-version-specific features are used.
 
 ### Integration Patterns

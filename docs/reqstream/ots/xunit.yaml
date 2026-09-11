@@ -17,15 +17,10 @@ sections:
               test method.
             tags: [ots]
             tests:
-              - Demo_DemoMethod_DefaultPrefix_ReturnsGreeting
-              - Demo_DemoMethod_CustomPrefix_ReturnsGreeting
-              - Demo_DemoMethod_NullInput_ThrowsArgumentNullException
-              - Demo_DemoMethod_EmptyInput_ThrowsArgumentException
-              - Demo_Constructor_NullPrefix_ThrowsArgumentNullException
-              - Demo_Constructor_EmptyPrefix_ThrowsArgumentException
-              - Demo_DefaultPrefix_Read_IsHello
-              - Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
-              - Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
+              - ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
+              - ToolName_Validate_BareAgentFrameworkName_IsRejected
+              - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
+              - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
           - id: AgentKit-OTS-xUnit-Report
             title: xUnit shall record test results in TRX output files.
             justification: |
@@ -35,12 +30,7 @@ sections:
               correctly.
             tags: [ots]
             tests:
-              - Demo_DemoMethod_DefaultPrefix_ReturnsGreeting
-              - Demo_DemoMethod_CustomPrefix_ReturnsGreeting
-              - Demo_DemoMethod_NullInput_ThrowsArgumentNullException
-              - Demo_DemoMethod_EmptyInput_ThrowsArgumentException
-              - Demo_Constructor_NullPrefix_ThrowsArgumentNullException
-              - Demo_Constructor_EmptyPrefix_ThrowsArgumentException
-              - Demo_DefaultPrefix_Read_IsHello
-              - Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
-              - Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
+              - ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
+              - ToolName_Validate_BareAgentFrameworkName_IsRejected
+              - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
+              - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied

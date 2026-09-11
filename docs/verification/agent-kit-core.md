@@ -10,6 +10,12 @@ using its public API and assert on observable outputs, without relying on knowle
 implementation details. No mocking or stubbing is required at the system level — the entire
 integrated system is exercised as it would be used by a real caller.
 
+The system under verification is the contract Core publishes: the policy primitives that bound
+where a tool may act, the guarded path by which a tool is constructed, the results a tool returns
+through, and the pack contract by which an application composes tools. Each scenario below
+therefore exercises one of those properties end to end rather than any single unit in isolation;
+unit-level behavior is verified separately in the unit verification documents.
+
 System tests reside in `AgentKitCoreTests.cs` within the
 `DemaConsulting.AgentKit.Core.Tests` project.
 
@@ -24,15 +30,12 @@ System tests reside in `AgentKitCoreTests.cs` within the
   symbolic link is deliberately not used, because it requires a privilege an unelevated developer
   session does not hold and would therefore pass on the elevated CI runner while failing on every
   workstation
-- **Isolation**: Each test method constructs its own `Demo` instance or its own temporary
-  directory tree; no shared state between tests
+- **Isolation**: Each test method constructs its own policy, tool, or temporary directory tree;
+  no state is shared between tests
 
 ## External Interface Simulation
 
-The greeting scenarios have no external interfaces requiring simulation; they call the public API
-directly with controlled inputs and verify returned values and thrown exceptions.
-
-The path-containment scenarios do touch one external interface — the host file system — and it is
+The path-containment scenarios touch one external interface — the host file system — and it is
 deliberately **not** simulated. The behavior under verification is exactly the operating system's
 own link resolution and directory enumeration, so a simulated file system would verify the
 simulation rather than the control. Each scenario instead creates a disposable temporary tree
@@ -40,64 +43,6 @@ containing a genuine reparse point and removes it afterwards, deleting directory
 recursive delete because a recursive delete over a tree containing a junction fails.
 
 ## System-Level Test Scenarios
-
-### Integration: Provides Expected Functionality
-
-**Test**: `AgentKitCore_SystemIntegration_DefaultConstruction_ReturnsExpectedGreeting`
-
-Exercises end-to-end system behavior: constructs a `Demo` instance using the default constructor
-and calls `DemoMethod` with a valid name. Asserts that the system produces the expected greeting
-string `"Hello, System!"`, confirming that all components integrate correctly under default
-configuration.
-
-### Customization: Handles Configuration Properly
-
-**Test**: `AgentKitCore_SystemCustomization_CustomPrefix_ReturnsExpectedGreeting`
-
-Verifies that the system correctly propagates a custom prefix supplied at construction time.
-Constructs a `Demo` instance with prefix `"Welcome"`, calls `DemoMethod` with a valid name, and
-asserts the result is `"Welcome, Integration!"`. Confirms that the configuration path through all
-integrated components functions as expected.
-
-### Validation: DemoMethod Null Input Throws ArgumentNullException
-
-**Test**: `AgentKitCore_SystemValidation_DemoMethodNullInput_ThrowsArgumentNullException`
-
-Verifies that the system rejects a `null` argument to `DemoMethod` with `ArgumentNullException`.
-Constructs a `Demo` instance with the default constructor and passes `null` to `DemoMethod`.
-Confirms that the system boundary enforces the null-rejection contract.
-
-### Validation: DemoMethod Empty Input Throws ArgumentException
-
-**Test**: `AgentKitCore_SystemValidation_DemoMethodEmptyInput_ThrowsArgumentException`
-
-Verifies that the system rejects an empty-string argument to `DemoMethod` with `ArgumentException`.
-Constructs a `Demo` instance with the default constructor and passes `string.Empty` to `DemoMethod`.
-Confirms that the system boundary enforces the empty-string rejection contract.
-
-### Validation: Constructor Null Prefix Throws ArgumentNullException
-
-**Test**: `AgentKitCore_SystemValidation_ConstructorNullPrefix_ThrowsArgumentNullException`
-
-Verifies that the system rejects a `null` prefix argument at construction time with
-`ArgumentNullException`. Attempts to construct a `Demo` instance with `null` as the prefix.
-Confirms that the system boundary prevents invalid configuration from being established.
-
-### Validation: Constructor Empty Prefix Throws ArgumentException
-
-**Test**: `AgentKitCore_SystemValidation_ConstructorEmptyPrefix_ThrowsArgumentException`
-
-Verifies that the system rejects an empty-string prefix argument at construction time with
-`ArgumentException`. Attempts to construct a `Demo` instance with `string.Empty` as the prefix.
-Confirms that the system boundary prevents empty-string configuration from being established.
-
-### Integration: Exposes Configured Prefix
-
-**Test**: `AgentKitCore_SystemIntegration_CustomPrefix_ExposesPrefix`
-
-Verifies that the `Prefix` property exposes the prefix supplied at construction time. Constructs
-a `Demo` instance with a custom prefix and reads the `Prefix` property. Confirms the system's
-public API correctly surfaces the configured prefix to callers.
 
 ### Path Containment: A File Beneath a Directory Link Is Denied
 
@@ -221,7 +166,7 @@ behavior later.
 
 ## Acceptance Criteria
 
-A system-level test run passes when all twenty-one scenarios above pass without error or exception
+A system-level test run passes when all fourteen scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
 value, permitted path that should have been refused, escaped file appearing in a listing, tool
 result arriving as serialized JSON rather than as the content the tool produced, or tool offered

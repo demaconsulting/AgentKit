@@ -101,19 +101,6 @@ reviews:
       - "requirements.yaml"                                                 # root requirements file
       - "docs/reqstream/**/*.yaml"                                          # all requirements files
 
-  # AgentKitCore-Demo Review (one per unit)
-  - id: AgentKitCore-Demo
-    title: Review that AgentKitCore Demo Implementation is Correct
-    context:
-      - "docs/design/agent-kit-core.md"
-      - "docs/reqstream/agent-kit-core.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-core/demo.yaml"                 # unit requirements
-      - "docs/design/agent-kit-core/demo.md"                     # unit design
-      - "docs/verification/agent-kit-core/demo.md"               # unit verification
-      - "src/DemaConsulting.AgentKit.Core/Demo.cs"                  # unit source
-      - "test/DemaConsulting.AgentKit.Core.Tests/DemoTests.cs"      # unit tests
-
   # AgentKitCore-GuardedToolFactory Review (one per unit)
   - id: AgentKitCore-GuardedToolFactory
     title: Review that AgentKitCore GuardedToolFactory Implementation is Correct

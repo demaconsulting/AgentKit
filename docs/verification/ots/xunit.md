@@ -18,102 +18,53 @@ run for all scenarios constitutes evidence that both requirements are satisfied.
 
 ### Test Scenarios
 
-#### Demo_DemoMethod_DefaultPrefix_ReturnsGreeting
+#### ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
 
-**Scenario**: xUnit discovers and runs this test; the test verifies that DemoMethod returns the
-expected greeting using the default prefix.
-
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
-
-**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
-
-#### Demo_DemoMethod_CustomPrefix_ReturnsGreeting
-
-**Scenario**: xUnit discovers and runs this test; the test verifies that DemoMethod returns the
-expected greeting using a custom prefix.
+**Scenario**: xUnit discovers and runs this synchronous [Fact] test; the test verifies that a tool
+name composed from a family and a verb is separated by an underscore.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
 
 **Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
-#### Demo_DemoMethod_NullInput_ThrowsArgumentNullException
+#### ToolName_Validate_BareAgentFrameworkName_IsRejected
 
-**Scenario**: xUnit discovers and runs this test; the test verifies that DemoMethod rejects a null
-argument with ArgumentNullException.
+**Scenario**: xUnit discovers and runs this data-driven [Theory] test once per inline data case;
+the test verifies that a bare Agent Framework tool name is rejected.
 
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
-
-**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
-
-#### Demo_DemoMethod_EmptyInput_ThrowsArgumentException
-
-**Scenario**: xUnit discovers and runs this test; the test verifies that DemoMethod rejects an
-empty string argument with ArgumentException.
-
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
+**Expected**: xUnit executes every data case, each passes, and each result appears in the TRX
+output, confirming that discovery covers theories as well as facts.
 
 **Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
-#### Demo_Constructor_NullPrefix_ThrowsArgumentNullException
+#### AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
 
-**Scenario**: xUnit discovers and runs this test; the test verifies that the constructor rejects a
-null prefix with ArgumentNullException.
+**Scenario**: xUnit discovers and runs this asynchronous [Fact] test; the test verifies that an
+image result reaches the runtime as content rather than as serialized JSON.
 
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
-
-**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
-
-#### Demo_Constructor_EmptyPrefix_ThrowsArgumentException
-
-**Scenario**: xUnit discovers and runs this test; the test verifies that the constructor rejects an
-empty string prefix with ArgumentException.
-
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
+**Expected**: xUnit executes the asynchronous test to completion, the test passes, and the result
+appears in the TRX output, confirming that discovery and execution cover asynchronous tests.
 
 **Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
-#### Demo_DefaultPrefix_Read_IsHello
+#### AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
 
-**Scenario**: xUnit discovers and runs this test; the test verifies that the DefaultPrefix constant
-has the value "Hello".
+**Scenario**: xUnit discovers and runs this test on every platform and target framework in the CI
+matrix; the test verifies that a file reachable only through a directory link is denied.
 
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
-
-**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
-
-#### Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix
-
-**Scenario**: xUnit discovers and runs this test; the test verifies that the Prefix property
-returns the value supplied at construction.
-
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
-
-**Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
-
-#### Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
-
-**Scenario**: xUnit discovers and runs this test; the test verifies that the default constructor
-sets Prefix to the DefaultPrefix constant.
-
-**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output.
+**Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output
+attributed to the platform and framework that produced it, which is what lets the platform
+requirements filter results by source.
 
 **Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
 ### Requirements Coverage
 
-- **`AgentKit-OTS-xUnit-Execute`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
-  Demo_DemoMethod_CustomPrefix_ReturnsGreeting,
-  Demo_DemoMethod_NullInput_ThrowsArgumentNullException,
-  Demo_DemoMethod_EmptyInput_ThrowsArgumentException,
-  Demo_Constructor_NullPrefix_ThrowsArgumentNullException,
-  Demo_Constructor_EmptyPrefix_ThrowsArgumentException, Demo_DefaultPrefix_Read_IsHello,
-  Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix,
-  Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
-- **`AgentKit-OTS-xUnit-Report`**: Demo_DemoMethod_DefaultPrefix_ReturnsGreeting,
-  Demo_DemoMethod_CustomPrefix_ReturnsGreeting,
-  Demo_DemoMethod_NullInput_ThrowsArgumentNullException,
-  Demo_DemoMethod_EmptyInput_ThrowsArgumentException,
-  Demo_Constructor_NullPrefix_ThrowsArgumentNullException,
-  Demo_Constructor_EmptyPrefix_ThrowsArgumentException, Demo_DefaultPrefix_Read_IsHello,
-  Demo_Prefix_WithCustomConstruction_ReturnsCustomPrefix,
-  Demo_DefaultConstructor_WithNoArgs_SetsDefaultPrefix
+- **`AgentKit-OTS-xUnit-Execute`**: ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName,
+  ToolName_Validate_BareAgentFrameworkName_IsRejected,
+  AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent,
+  AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+- **`AgentKit-OTS-xUnit-Report`**: ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName,
+  ToolName_Validate_BareAgentFrameworkName_IsRejected,
+  AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent,
+  AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
