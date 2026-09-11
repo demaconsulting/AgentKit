@@ -147,6 +147,16 @@ Generated documentation includes:
 - **Requirements Justifications**: Detailed requirement rationale
 - **Trace Matrix**: Requirements to test traceability
 
+## Samples
+
+Runnable samples live under [`samples/`](https://github.com/demaconsulting/AgentKit/tree/main/samples):
+
+- **[01 — Document Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/01-document-assistant)**:
+  A console chat application that confines an agent to a workspace folder and gives it the shipped
+  text-file and image tool packs. It runs unchanged against the GitHub Copilot runtime and any Ollama
+  model, and prints every tool call so the containment, capability gating, and built-in suppression are
+  visible as they happen. See the sample's README for how to run it and what to try.
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md][link-contributing] for development setup, coding

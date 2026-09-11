@@ -1,0 +1,6 @@
+This file lives OUTSIDE the workspace folder, one level up from it.
+
+It exists only to demonstrate containment. When you ask the document assistant to read
+../outside-workspace.txt, the path resolves to a location outside the workspace, and the text file
+tool refuses it with guidance rather than returning this text. If you can see these words in the
+assistant's answer, containment has failed; in a correct run the assistant never reaches this file.

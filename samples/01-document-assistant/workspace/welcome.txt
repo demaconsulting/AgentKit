@@ -1,0 +1,17 @@
+Welcome to the AgentKit document assistant sample workspace.
+
+This folder is the only place the assistant can read from or write to. When you ask it to read a
+file by a plain name such as welcome.txt, that name is resolved against this workspace, not against
+whatever folder you happened to start the program from. A request for a path outside this folder is
+refused by the tool itself, so the assistant cannot reach your wider file system even if it tries.
+
+Things worth trying with this workspace:
+
+- Ask the assistant to list the files. It should report welcome.txt, notes.txt, and diagram.png.
+- Ask it to read notes.txt and summarize the shopping list.
+- Ask it to describe diagram.png. With vision enabled it will read the shapes and the verification
+  text printed on the image.
+- Ask it to read ../outside-workspace.txt and watch the request be refused.
+
+Everything the assistant can do here is safe by construction: the unsafe operation is not merely
+discouraged, it cannot be expressed.

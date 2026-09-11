@@ -7,6 +7,7 @@
 # Processed in order; prefix a pattern with '!' to exclude.
 needs-review:
   - "README.md"                   # Root README file
+  - "samples/01-document-assistant/README.md"  # Document assistant sample README (user-facing)
   - "requirements.yaml"           # Root requirements file
   - "**/*.cs"                     # All C# source and test files
   - "docs/reqstream/**/*.yaml"    # Requirements files
@@ -42,6 +43,8 @@ reviews:
     paths:
       - "README.md"                                                 # project readme
       - "docs/user_guide/**/*.md"                                   # user guide
+      - "samples/01-document-assistant/README.md"                   # document assistant sample readme
+      - "samples/01-document-assistant/**/*.cs"                     # document assistant sample sources
 
   # Decomposition Review (only one per repository)
   - id: Decomposition

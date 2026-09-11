@@ -41,6 +41,7 @@ words:
   - NTFS
   - APFS
   - Ollama
+  - qwen
   - postconditions
   - unserialized
   - yamlfix

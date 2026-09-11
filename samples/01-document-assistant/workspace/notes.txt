@@ -1,0 +1,16 @@
+Project notes for the document assistant demo.
+
+Shopping list for the office kitchen:
+
+- Coffee beans (dark roast)
+- Oat milk
+- Green tea
+- Sparkling water
+- Fresh fruit for the bowl
+
+Reminders:
+
+- The weekly sync moves to Thursday at ten in the morning.
+- Send the updated onboarding guide to the new engineer.
+- The verification code printed on diagram.png is there so you can confirm the vision tool truly
+  read the image rather than guessing a plausible description.
