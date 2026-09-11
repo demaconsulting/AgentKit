@@ -9,7 +9,7 @@
 [![Security][badge-security]][link-security]
 [![NuGet][badge-nuget]][link-nuget]
 
-DEMA Consulting libraries for composing and running AI agent systems in .NET.
+DEMA Consulting libraries of hardened, provider-neutral agent tools for .NET.
 
 AgentKit provides hardened, provider-neutral agent tools: an application attaches a
 permission-governed set of tools to the agent framework of its choice, bounded by a policy the
@@ -21,12 +21,16 @@ application configures and a tool cannot omit.
 
 ## Planned Capabilities
 
-- **Provider back-ends**: GitHub Copilot SDK, and any `Microsoft.Extensions.AI` `IChatClient`
-  implementation such as OllamaSharp or Azure AI Foundry
-- **Tool library**: file system, text file, image file, todo list, and sub-agent tools, made safe
-  through permission policies and path allow-listing, and extensible by the target application
-- **Context-window management**: preserved seed prompts, auto-summarization, and RAG-backed memory
-  in future
+- **Guarded tool families**: text file, file system, image, transfer buffer, work queue,
+  user interaction, and sub-agent delegation — each bound at construction to a policy that
+  constrains what it may touch
+- **Capability packs**: adapting other libraries, such as document extraction and speech,
+  into guarded agent tools
+- **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
+  Agent Framework, the GitHub Copilot SDK, and any `IChatClient` implementation
+
+AgentKit does not provide an agent runtime, context-window management, or provider
+abstraction. Microsoft Agent Framework supplies those.
 
 ## Packages
 

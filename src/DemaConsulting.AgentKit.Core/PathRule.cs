@@ -27,10 +27,27 @@ public sealed class PathRule
     ///     the platform's default file system.
     /// </summary>
     /// <remarks>
+    ///     The comparison must match the platform's file system, and getting it wrong is unsafe
+    ///     in one direction rather than merely inconvenient in both.
+    ///     <para>
     ///     Windows and macOS default file systems are case-insensitive. Comparing
     ///     case-sensitively there would let a differently-cased spelling of a denied location
-    ///     slip past containment while still reaching the same file, so those platforms use an
-    ///     ordinal case-insensitive comparison and Linux uses an ordinal comparison.
+    ///     slip past containment while still reaching the same file.
+    ///     </para>
+    ///     <para>
+    ///     Linux file systems are case-sensitive, so two paths differing only in case are
+    ///     genuinely different locations. Comparing case-insensitively there would judge a path
+    ///     contained by a root it does not actually lie beneath — a permitted access to a
+    ///     location the rule was meant to exclude. This direction is the dangerous one, which is
+    ///     why the comparison follows the platform rather than defaulting to ignoring case
+    ///     everywhere.
+    ///     </para>
+    ///     <para>
+    ///     This is a platform default rather than a probe of the file system actually in use.
+    ///     Windows supports per-directory case sensitivity and macOS can be configured with a
+    ///     case-sensitive volume; in those unusual configurations containment is judged by the
+    ///     platform convention rather than by observed behavior.
+    ///     </para>
     /// </remarks>
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()

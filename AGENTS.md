@@ -5,17 +5,18 @@ throughout the repository.
 
 - **project-name**: AgentKit
 - **organization**: DEMA Consulting
-- **project-tagline**: AI agent composition for .NET
-- **description**: AgentKit is a set of .NET libraries for composing and running AI
-  agent systems. An application selects a provider back-end (GitHub Copilot SDK, or
-  any Microsoft.Extensions.AI `IChatClient` such as OllamaSharp or Azure AI Foundry),
-  attaches a permission-governed set of tools, configures a context-window management
-  policy, and spawns agents that the application can interact with. AgentKit supplies
-  the agent runtime, the tool safety model, and a library of reusable tools, while
-  remaining extensible for target applications.
+- **project-tagline**: Safe agent tools for .NET
+- **description**: AgentKit is a family of .NET libraries providing hardened,
+  provider-neutral agent tools. It exists so that a developer can hand an AI agent a set
+  of capabilities that are safe by construction, where an unsafe operation is not refused
+  at call time but is impossible to express. An application author decides which tools an
+  agent receives and configures the controls those tools carry; AgentKit ensures each tool
+  behaves correctly and predictably within them. It deliberately does not provide an agent
+  runtime, context-window management, or provider abstraction — Microsoft Agent Framework
+  supplies those, and AgentKit's tools work with it, with the GitHub Copilot SDK, and with
+  any `IChatClient` alike.
 - **languages**: `C#`
-- **technologies**: `.NET`, `Microsoft.Extensions.AI`, `GitHub Copilot SDK`, `OllamaSharp`,
-  `Azure AI Foundry`
+- **technologies**: `.NET`, `Microsoft.Extensions.AI`
 
 # Project Structure
 
