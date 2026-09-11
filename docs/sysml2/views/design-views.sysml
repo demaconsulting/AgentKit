@@ -18,4 +18,8 @@ package AgentKitTools {
     view AgentKitToolsView {
         expose AgentKitToolsSystem;
     }
+
+    view TextFileView {
+        expose TextFile;
+    }
 }

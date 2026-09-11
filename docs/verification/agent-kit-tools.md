@@ -12,9 +12,10 @@ required at the system level.
 
 The system under verification at this stage is the package's integration surface: the promise that
 its tool families are composed through the AgentKitCore `ToolPackBuilder` under one access policy,
-and that a composition to which no family has been attached is well defined and contributes no
-tools. The tool families themselves are introduced in subsequent increments, each with its own
-verification; this document covers the composition baseline the families will build on.
+that a composition to which no family has been attached is well defined and contributes no tools,
+and that attaching a family contributes exactly that family's tools. The first such family, the
+TextFile family, has its own subsystem and unit verification; see _TextFile Subsystem Verification
+Design_. The families introduced in subsequent increments are verified the same way.
 
 System tests reside in `AgentKitToolsTests.cs` within the
 `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -31,10 +32,11 @@ System tests reside in `AgentKitToolsTests.cs` within the
 
 ## External Interface Simulation
 
-No external interface is exercised at this stage. The composition baseline runs entirely against
-the in-memory AgentKitCore pack contract, so there is nothing to simulate. The file-system
-interfaces the future tool families will exercise are verified with those families when they are
-introduced.
+No external interface is simulated at the system level. The composition scenarios run against the
+in-memory AgentKitCore pack contract, so there is nothing to substitute. The file-system interface
+the TextFile family exercises is not simulated either: its subsystem and unit tests use a real
+temporary directory tree containing a real reparse point, because path containment is a security
+control and a simulated link would prove only that the simulation was written consistently.
 
 ## System-Level Test Scenarios
 
@@ -48,8 +50,20 @@ unrestricted rules, builds a `ToolPackBuilder` governed by that policy without a
 and asserts the resulting tool list is empty. Confirms the integration surface is well defined
 before any family is added and that the package is a peer composed like any other AgentKit pack.
 
+### Composition: The TextFile Family Is Contributed to a Composition
+
+**Test**: `AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily`
+
+Verifies that attaching the TextFile pack contributes that family's tools to a composition, under
+the one family prefix the pack claims. Constructs a real access policy, adds `TextFilePack` to a
+`ToolPackBuilder` governed by it, and asserts the composed list is exactly `text_file_read`,
+`text_file_write` and `text_file_list`. Confirms at the system level that a family is attached as
+one pack rather than tool by tool, and that the package now contributes a capability rather than
+only a composition baseline.
+
 ## Acceptance Criteria
 
-A system-level test run passes when the scenario above passes without error or exception beyond
+A system-level test run passes when the scenarios above pass without error or exception beyond
 those explicitly asserted. Any unexpected exception, a non-empty tool list from an empty
-composition, or a failure to compose through the AgentKitCore pack contract constitutes a failure.
+composition, a family that does not contribute its tools when attached, or a failure to compose
+through the AgentKitCore pack contract constitutes a failure.

@@ -1,0 +1,151 @@
+---
+# Software Unit Requirements for TextFileListTool
+#
+# These requirements describe the design-level behavior of the TextFileListTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileListTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-ListTool-ToolName
+                title: >-
+                  The list tool shall be published under the name text_file_list, exposed as a
+                  constant on the unit that defines it, and shall carry a description.
+                justification: |
+                  The read and write tools redirect a model to this tool by name, so the name
+                  must be published as a constant rather than repeated as a literal that could
+                  drift from the one actually registered. A description is the only basis a model
+                  has for choosing this tool over another.
+                tests:
+                  - TextFileListTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - TextFileListTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-TextFile-ListTool-GuardedConstruction
+                title: >-
+                  The list tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction, and shall deliver its result to
+                  the caller in the form it returned it.
+                tags: [security]
+                justification: |
+                  A listing tool governed by nothing would advertise the whole host to an agent.
+                  Requiring the policy at construction makes that impossible to express, and the
+                  guard keeps the result from being flattened into JSON even though this tool's
+                  implementation is synchronous.
+                tests:
+                  - TextFileListTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - TextFileListTool_List_PermittedDirectory_ResultIsPlainTextNotJsonElement
+
+              - id: AgentKitTools-TextFile-ListTool-PolicyEnumeration
+                title: >-
+                  The list tool shall enumerate strictly through the access policy's enumeration,
+                  so that a file reachable only by leaving the permitted location is never
+                  listed.
+                tags: [security]
+                justification: |
+                  Recursive enumeration performed by the operating system follows directory
+                  junctions and symbolic links out of a permitted location, so a tool that
+                  enumerated the file system directly would advertise files whose reading is
+                  refused. Disclosing that such a file exists, and inviting the agent to ask for
+                  it, is itself the leak this control prevents.
+                tests:
+                  - TextFileListTool_List_PermittedDirectory_ListsThePermittedFiles
+                  - TextFileListTool_List_LinkToOutsideRoot_DoesNotListEscapedFile
+
+              - id: AgentKitTools-TextFile-ListTool-RelativeNames
+                title: >-
+                  The list tool shall report each file as a name relative to the requested
+                  directory, using a forward slash as the separator.
+                tags: [security]
+                justification: |
+                  An absolute listing would disclose exactly the host layout every refusal
+                  withholds, into a transcript that leaves this process. A relative name is also
+                  the more useful one: the model can hand it straight back to the read tool
+                  against the directory it just asked about, on any platform.
+                tests:
+                  - TextFileListTool_List_PermittedDirectory_NamesAreRelativeToTheRequestedDirectory
+
+              - id: AgentKitTools-TextFile-ListTool-DeterministicOrder
+                title: >-
+                  The list tool shall report names in a deterministic order independent of the
+                  order the file system returns them.
+                justification: |
+                  An agent that lists the same directory twice and sees two different orderings
+                  cannot tell whether the tree changed. A stable ordering also makes a listing
+                  comparable across a developer workstation and a build agent, which is what
+                  makes a failure reproducible.
+                tests:
+                  - TextFileListTool_List_SeveralFiles_AreListedInDeterministicOrder
+
+              - id: AgentKitTools-TextFile-ListTool-SearchPattern
+                title: >-
+                  The list tool shall limit the listing to files matching a supplied search
+                  pattern, and shall list every permitted file when no pattern is supplied.
+                justification: |
+                  A model looking for one kind of file should not have to pay the context cost of
+                  every other kind, and narrowing is also how it recovers from a listing refused
+                  for exceeding the result ceiling. An absent pattern means "everything here",
+                  which is the least surprising reading for a model exploring a new directory.
+                tests:
+                  - TextFileListTool_List_SearchPattern_LimitsTheListingToMatchingFiles
+                  - TextFileListTool_List_NoSearchPattern_ListsEveryPermittedFile
+
+              - id: AgentKitTools-TextFile-ListTool-EmptyListing
+                title: >-
+                  The list tool shall report an empty listing as a result rather than as a
+                  refusal when nothing matches.
+                justification: |
+                  Nothing about a request that matches no file is wrong, and refusing would tell
+                  the model to correct something that is already correct. An empty listing is an
+                  answer the agent can reason from: the file it expected is not there.
+                tests:
+                  - TextFileListTool_List_NoMatches_ReturnsAnEmptyListingNotADenial
+
+              - id: AgentKitTools-TextFile-ListTool-ResultCeiling
+                title: >-
+                  The list tool shall refuse a listing exceeding the policy's result ceiling,
+                  naming the ceiling, rather than returning a truncated listing.
+                justification: |
+                  A truncated listing silently hides files the model would then never ask for,
+                  and it has no way to detect the omission. Refusing and naming the ceiling lets
+                  the agent narrow its search pattern and get a complete answer instead.
+                tests:
+                  - TextFileListTool_List_ListingBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-TextFile-ListTool-DeniedDirectory
+                title: >-
+                  The list tool shall refuse a request for a directory outside the permitted read
+                  location rather than reporting an empty listing.
+                tags: [security]
+                justification: |
+                  An empty listing and a refused directory mean different things to an agent: the
+                  first says the directory holds nothing, the second says it may not look there.
+                  Reporting a refusal keeps the agent from concluding a populated location is
+                  empty and acting on that belief.
+                tests:
+                  - TextFileListTool_List_DirectoryOutsideTheReadRoot_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-ListTool-MalformedRequestDenied
+                title: >-
+                  The list tool shall return a refusal, rather than raising an exception, when
+                  the requested directory is empty.
+                justification: |
+                  A malformed request comes from the model, so the model must be told how to
+                  correct it. An exception at a tool call ends the agent's turn and strands it
+                  with no way forward.
+                tests:
+                  - TextFileListTool_List_EmptyDirectory_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-TextFile-ListTool-DenialRedaction
+                title: >-
+                  A refusal from the list tool shall contain no host location — no requested
+                  path, no permitted location and no directory separator.
+                tags: [security]
+                justification: |
+                  The refusal text is handed to a model and the resulting transcript leaves this
+                  process. A refusal naming the requested directory would disclose the very host
+                  layout the listing itself is careful to relativize away.
+                tests:
+                  - TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail

@@ -22,3 +22,26 @@ sections:
           rather than a layer they depend on.
         tests:
           - AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools
+
+      - id: AgentKitTools-TextFileFamily-GuardedTextFileAccess
+        title: >-
+          The library shall provide a text file family that reads, writes and lists text files
+          under the access policy the composing application supplies, publishing every tool under
+          one family prefix and refusing rather than throwing when the policy does not permit a
+          request.
+        tags: [system, security]
+        justification: |
+          Reading, writing and listing text files is the capability an agent needs most often and
+          the one an operator is least willing to grant unconditionally. Providing it as one
+          policy-governed family means an application grants file access in a single, auditable
+          step, with containment applied to every request rather than to whichever tool happened
+          to remember to check. Refusing rather than throwing keeps a denied request from ending
+          the agent's turn, so a model that asks for the wrong file learns why and can ask again.
+        children:
+          - AgentKitTools-TextFile-FamilyComposition
+          - AgentKitTools-TextFile-GuardedConstruction
+          - AgentKitTools-TextFile-PolicyGoverned
+          - AgentKitTools-TextFile-DenialsAreResults
+          - AgentKitTools-TextFile-ObservesPolicyLimits
+        tests:
+          - AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily

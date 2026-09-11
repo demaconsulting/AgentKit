@@ -16,6 +16,11 @@ input-files:
   - docs/design/agent-kit-core/tool-pack.md
   - docs/design/agent-kit-core/tool-result.md
   - docs/design/agent-kit-tools.md
+  - docs/design/agent-kit-tools/text-file.md
+  - docs/design/agent-kit-tools/text-file/text-file-list-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-pack.md
+  - docs/design/agent-kit-tools/text-file/text-file-read-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-write-tool.md
   - docs/design/ots.md
   - docs/design/ots/buildmark.md
   - docs/design/ots/fileassert.md

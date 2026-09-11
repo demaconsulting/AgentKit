@@ -1,0 +1,140 @@
+---
+# Software Unit Requirements for TextFileWriteTool
+#
+# These requirements describe the design-level behavior of the TextFileWriteTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileWriteTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-WriteTool-ToolName
+                title: >-
+                  The write tool shall be published under the name text_file_write, exposed as a
+                  constant on the unit that defines it, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and publishing it as a
+                  constant keeps every caller that names it from drifting from the name actually
+                  registered. A description is the only basis a model has for choosing this tool
+                  over another.
+                tests:
+                  - TextFileWriteTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - TextFileWriteTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-TextFile-WriteTool-GuardedConstruction
+                title: >-
+                  The write tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction, and shall deliver its result to
+                  the caller in the form it returned it.
+                tags: [security]
+                justification: |
+                  A write tool governed by nothing is the most dangerous thing this library could
+                  hand an agent, so the policy must be inseparable from construction. The guard
+                  keeps the result from being flattened into JSON, a failure that is silent
+                  because the model reports success either way.
+                tests:
+                  - TextFileWriteTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - TextFileWriteTool_Write_PermittedPath_ResultIsPlainTextNotJsonElement
+
+              - id: AgentKitTools-TextFile-WriteTool-WritePermittedFile
+                title: >-
+                  The write tool shall write the supplied text to a path the access policy
+                  permits it to write, including empty text, and shall confirm the write without
+                  naming a location.
+                justification: |
+                  Writing a permitted file is the tool's reason to exist, and the agent needs a
+                  confirmation to know the step succeeded. Empty text produces an empty file
+                  because that is a real outcome an agent may intend. The confirmation names a
+                  count rather than a path because it reaches a transcript that leaves this
+                  process.
+                tests:
+                  - TextFileWriteTool_Write_PermittedPath_WritesTheContentAndConfirms
+                  - TextFileWriteTool_Write_EmptyContent_WritesAnEmptyFile
+
+              - id: AgentKitTools-TextFile-WriteTool-IndependentWriteRule
+                title: >-
+                  The write tool shall consult the write decision alone, refusing a path the read
+                  rule permits when the write rule does not.
+                tags: [security]
+                justification: |
+                  An operator who grants wide reading and narrow writing has expressed exactly
+                  this expectation, and it is only real if the write tool ignores what the read
+                  rule permits. Were reading to imply writing, every read grant would silently
+                  become a write grant and the narrow write location would be decorative.
+                tests:
+                  - TextFileWriteTool_Write_ReadableButNotWritablePath_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-WriteTool-DenyOutsideRoot
+                title: >-
+                  The write tool shall refuse a request whose real location lies outside the
+                  permitted write location, including one that reaches outside through a link.
+                tags: [security]
+                justification: |
+                  A write that escapes the permitted location modifies a host the operator never
+                  put at risk, and unlike a read it cannot be undone by ignoring the result.
+                  Judging the request on the location it actually reaches is what stops a
+                  reparse point from turning a contained-looking path into an escape.
+                tests:
+                  - TextFileWriteTool_Write_PathOutsideTheWriteRoot_ReturnsDenial
+                  - TextFileWriteTool_Write_PathBeneathLinkOutsideRoot_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-WriteTool-ReplacesExistingContent
+                title: >-
+                  The write tool shall replace the entire content of an existing file rather than
+                  appending to it.
+                justification: |
+                  An agent editing a file expects the content it supplied to be the content of
+                  the file afterwards. Appending would silently duplicate text, and the model —
+                  which cannot see the result — would build its next step on a file that no
+                  longer says what it believes.
+                tests:
+                  - TextFileWriteTool_Write_ExistingFile_ReplacesItsContent
+
+              - id: AgentKitTools-TextFile-WriteTool-MissingParentDenied
+                title: >-
+                  The write tool shall refuse a request whose parent directory does not exist,
+                  and shall create no directory.
+                justification: |
+                  Silently materializing a directory tree is a file system side effect the
+                  operator never asked for, and a mistyped path would scatter directories the
+                  agent then believes are real. Refusing is the fail-safe reading and it tells
+                  the model precisely what is wrong.
+                tests:
+                  - TextFileWriteTool_Write_MissingParentDirectory_ReturnsDenialAndCreatesNothing
+
+              - id: AgentKitTools-TextFile-WriteTool-DirectoryRefused
+                title: >-
+                  The write tool shall refuse a request naming an existing directory.
+                justification: |
+                  Writing text over a directory is not a meaningful operation on any supported
+                  platform, so the request can only be a mistake. Refusing it explicitly turns an
+                  obscure file system error into a reason the model can act on.
+                tests:
+                  - TextFileWriteTool_Write_DirectoryPath_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
+                title: >-
+                  The write tool shall return a refusal, rather than raising an exception, when
+                  the requested path is empty or the content is absent.
+                justification: |
+                  A malformed request comes from the model, so the model must be told how to
+                  correct it rather than having its turn ended by an exception. Absent content is
+                  distinguished from empty content deliberately: the first is a broken request,
+                  the second is a legitimate empty file.
+                tests:
+                  - TextFileWriteTool_Write_EmptyPath_ReturnsDenialWithoutThrowing
+                  - TextFileWriteTool_Write_NullContent_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-TextFile-WriteTool-DenialRedaction
+                title: >-
+                  A refusal from the write tool shall contain no host location — no requested
+                  path, no permitted location and no directory separator.
+                tags: [security]
+                justification: |
+                  The refusal text is handed to a model and the resulting transcript leaves this
+                  process. A refusal that named the permitted write location would tell a third
+                  party exactly where the agent is allowed to modify the host.
+                tests:
+                  - TextFileWriteTool_Write_DeniedPath_DenialTextContainsNoHostDetail

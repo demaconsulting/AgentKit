@@ -1,0 +1,129 @@
+---
+# Software Subsystem Requirements for the TextFile tool family
+#
+# These requirements describe the behavior of the TextFile subsystem as a whole,
+# decomposing the system-level text file family requirement into the behavior each
+# of its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        requirements:
+          - id: AgentKitTools-TextFile-FamilyComposition
+            title: >-
+              The text file family shall publish a read tool, a write tool and a list tool under
+              the text_file family prefix, and shall require no host capability.
+            justification: |
+              An application attaches a capability to an agent as one pack rather than as a
+              handful of individually registered tools, so the family must be the unit of
+              attachment. Publishing every tool under one prefix is what keeps this family's
+              names from colliding with those of any other library an application combines.
+              Requiring no host capability means an operator does not have to discover and
+              declare something before ordinary text file access works.
+            children:
+              - AgentKitTools-TextFile-ReadTool-ToolName
+              - AgentKitTools-TextFile-WriteTool-ToolName
+              - AgentKitTools-TextFile-ListTool-ToolName
+              - AgentKitTools-TextFile-Pack-FamilyPrefix
+              - AgentKitTools-TextFile-Pack-NoCapabilityRequired
+              - AgentKitTools-TextFile-Pack-RegistersThreeTools
+              - AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
+            tests:
+              - TextFile_Family_ComposedThroughBuilder_PublishesReadWriteAndList
+              - TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily
+
+          - id: AgentKitTools-TextFile-GuardedConstruction
+            title: >-
+              Every tool in the text file family shall be constructed through the guarded
+              construction path and shall take its access policy at construction.
+            tags: [security]
+            justification: |
+              A tool built any other way has its result flattened into JSON before a provider
+              sees it, and a tool that received its policy later — or not at all — could be
+              attached to an agent while governed by nothing. Making construction the only
+              moment a policy can be supplied is what makes an unguarded tool, or one governed by
+              no policy, impossible to express rather than merely discouraged.
+            children:
+              - AgentKitTools-TextFile-ReadTool-GuardedConstruction
+              - AgentKitTools-TextFile-WriteTool-GuardedConstruction
+              - AgentKitTools-TextFile-ListTool-GuardedConstruction
+              - AgentKitTools-TextFile-Pack-RequiresPolicy
+              - AgentKitTools-TextFile-Pack-PolicyGovernsCreatedTools
+            tests:
+              - TextFile_Family_EveryTool_CarriesAValidatedNameAndDescription
+              - TextFile_Family_ToolResult_ReachesTheCallerUnserialized
+
+          - id: AgentKitTools-TextFile-PolicyGoverned
+            title: >-
+              The text file family shall judge each request with the policy decision matching the
+              operation — the read decision for reads and listings, the write decision for writes
+              — including requests that reach outside a permitted location through a link.
+            tags: [security]
+            justification: |
+              An operator commonly wants an agent that reads widely but writes into one working
+              directory, and that configuration is meaningless unless each tool consults the rule
+              belonging to the operation it performs. Judging a request by the location it
+              actually reaches, rather than by how its path was spelled, is what stops an agent
+              from stepping outside the location its operator granted.
+            children:
+              - AgentKitTools-TextFile-ReadTool-ReadPermittedFile
+              - AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
+              - AgentKitTools-TextFile-WriteTool-WritePermittedFile
+              - AgentKitTools-TextFile-WriteTool-ReplacesExistingContent
+              - AgentKitTools-TextFile-WriteTool-IndependentWriteRule
+              - AgentKitTools-TextFile-WriteTool-DenyOutsideRoot
+              - AgentKitTools-TextFile-ListTool-PolicyEnumeration
+              - AgentKitTools-TextFile-ListTool-RelativeNames
+              - AgentKitTools-TextFile-ListTool-DeterministicOrder
+              - AgentKitTools-TextFile-ListTool-SearchPattern
+              - AgentKitTools-TextFile-ListTool-EmptyListing
+            tests:
+              - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheWrite
+              - TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool
+
+          - id: AgentKitTools-TextFile-DenialsAreResults
+            title: >-
+              The text file family shall report every refusal as a returned result that names its
+              reason, carries no host location, and directs the model to a better tool where one
+              exists.
+            tags: [security]
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it with no way forward, whereas a returned refusal lets it read the reason
+              and choose a permitted alternative. The refusal is handed to a model and the
+              resulting transcript leaves this process, so it must disclose nothing about the
+              host's layout — the very thing containment exists to protect.
+            children:
+              - AgentKitTools-TextFile-ReadTool-MissingFileDenied
+              - AgentKitTools-TextFile-ReadTool-DirectoryRefused
+              - AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
+              - AgentKitTools-TextFile-ReadTool-DenialRedaction
+              - AgentKitTools-TextFile-WriteTool-MissingParentDenied
+              - AgentKitTools-TextFile-WriteTool-DirectoryRefused
+              - AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
+              - AgentKitTools-TextFile-WriteTool-DenialRedaction
+              - AgentKitTools-TextFile-ListTool-DeniedDirectory
+              - AgentKitTools-TextFile-ListTool-MalformedRequestDenied
+              - AgentKitTools-TextFile-ListTool-DenialRedaction
+            tests:
+              - TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing
+              - TextFile_Family_DenialText_ContainsNoHostPath
+
+          - id: AgentKitTools-TextFile-ObservesPolicyLimits
+            title: >-
+              The text file family shall observe the ceilings the access policy carries, refusing
+              an oversized operation and naming the ceiling rather than returning truncated
+              content.
+            justification: |
+              Everything a tool returns is spent out of the same finite context window the
+              conversation must share, so the ceilings have to be honored rather than advisory.
+              Truncating instead of refusing is worse than either: the model receives an
+              incomplete document it has no way to detect and then reasons confidently about
+              content it never saw. Naming the ceiling lets it narrow the request instead.
+            children:
+              - AgentKitTools-TextFile-ReadTool-ReadCeiling
+              - AgentKitTools-TextFile-ReadTool-ResultCeiling
+              - AgentKitTools-TextFile-ListTool-ResultCeiling
+            tests:
+              - TextFile_Family_FileBeyondTheReadCeiling_IsRefusedNotTruncated

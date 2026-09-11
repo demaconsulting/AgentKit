@@ -18,18 +18,18 @@ another capability package would depend on Tools rather than on Core directly. T
 package set flat: applications attach the families they want, in any combination, without a Tools
 dependency being forced upon a family that does not need it.
 
-The system currently contains no subsystems. It is scaffolded ahead of its first tool family so
-that its build, tests, requirements traceability and review coverage are established before any
-family is added. The tool families this package will provide — a file text family and an image
-family among them — are introduced in subsequent increments, each as its own subsystem with its
-own units, requirements, design, verification and review set. Until then the package exposes no
-public surface of its own and contributes no tools to a composition.
+The system contains the **TextFile** subsystem: the text file tool family, publishing
+`text_file_read`, `text_file_write` and `text_file_list` under the `text_file` family prefix and
+attached to an application as one pack. It was scaffolded ahead of that family so that its build,
+tests, requirements traceability and review coverage were established before any family was added.
+The remaining tool families this package will provide are introduced in subsequent increments, each
+as its own subsystem with its own units, requirements, design, verification and review set.
 
 ## External Interfaces
 
-The system publishes no public API of its own at this stage. Its tool families are composed into
-an application through the AgentKitCore pack contract rather than through any type this package
-defines:
+The system's public API is the pack type each family publishes; it defines no policy primitive,
+construction path or pack contract of its own. Its tool families are composed into an application
+through the AgentKitCore pack contract:
 
 - **IToolPack** (from AgentKitCore) — each family this package provides implements the Core pack
   contract, publishing its tools as one capability-gated family under a family prefix no other
@@ -37,13 +37,16 @@ defines:
 - **ToolPackBuilder** (from AgentKitCore) — an application composes this package's families, with
   any other AgentKit packs, into one ordered tool list governed by a single `PathPolicy`.
 
-Because no family exists yet, the package contributes nothing to a composition: an empty
-`ToolPackBuilder` built with a valid policy yields an empty tool list.
+An application attaches a family by adding that family's pack: `TextFilePack` is the type an
+application adds to give an agent the text file family. A composition to which no family has been
+added remains well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty
+tool list.
 
-| Interface           | Direction        | Format                        | Constraints                      |
-|---------------------|------------------|-------------------------------|----------------------------------|
-| `IToolPack`         | Outbound         | AgentKitCore pack contract    | Implemented by each family       |
-| `ToolPackBuilder`   | Inbound/Outbound | AgentKitCore composition      | Governed by one `PathPolicy`     |
+| Interface         | Direction        | Format                     | Constraints                       |
+|-------------------|------------------|----------------------------|-----------------------------------|
+| `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family        |
+| `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`      |
+| `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability |
 
 ## Dependencies
 
@@ -85,7 +88,10 @@ policy — lives in AgentKitCore, which this package composes through unchanged.
 this package adds will inherit those controls by constructing its tools through Core's single
 guarded construction path and governing them with the one access policy the composing application
 supplies; the risk controls specific to a family are described in that family's design when the
-family is introduced.
+family is introduced. For the TextFile family, that containment control is the `PathPolicy`
+decision applied to every read, every write and every enumeration it performs — the read decision
+for reads and listings, the write decision for writes — with enumeration going through the policy
+so a listing can never advertise a file a read would refuse.
 
 ## Data Flow
 
@@ -97,8 +103,8 @@ family is introduced.
    it requires, exactly as Core's composition dictates
 3. **Creation**: Only a registered family is asked for its tools, and it is handed the one policy
    the builder holds
-4. **Output**: One ordered tool list, governed by the single policy — currently empty, because no
-   family has been attached yet
+4. **Output**: One ordered tool list, governed by the single policy — the tools of every family the
+   application attached, in the order it attached them
 
 ## Design Constraints
 
@@ -117,11 +123,11 @@ family is introduced.
 The library targets the following frameworks, enabling broad compatibility across modern .NET
 runtimes:
 
-| Target Framework   | Runtime / Environment                             |
-|--------------------|---------------------------------------------------|
-| `net8.0`           | .NET 8 LTS                                        |
-| `net9.0`           | .NET 9                                            |
-| `net10.0`          | .NET 10                                           |
+| Target Framework | Runtime / Environment |
+|------------------|-----------------------|
+| `net8.0`         | .NET 8 LTS            |
+| `net9.0`         | .NET 9                |
+| `net10.0`        | .NET 10               |
 
 The library is supported on the following operating systems:
 

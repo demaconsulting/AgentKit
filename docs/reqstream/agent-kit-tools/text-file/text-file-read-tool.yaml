@@ -1,0 +1,137 @@
+---
+# Software Unit Requirements for TextFileReadTool
+#
+# These requirements describe the design-level behavior of the TextFileReadTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileReadTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-ReadTool-ToolName
+                title: >-
+                  The read tool shall be published under the name text_file_read, exposed as a
+                  constant on the unit that defines it, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a sibling tool that
+                  redirects to it must name it without repeating a literal that could drift.
+                  A description is the only basis a model has for choosing this tool over
+                  another, so a tool offered without one is offered blind.
+                tests:
+                  - TextFileReadTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-TextFile-ReadTool-GuardedConstruction
+                title: >-
+                  The read tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction, and shall deliver its result to
+                  the caller in the form it returned it.
+                tags: [security]
+                justification: |
+                  Without the guard the result is serialized to JSON before a provider sees it,
+                  a failure that is silent because the model reports success either way.
+                  Requiring the policy at construction is what makes a read tool governed by no policy
+                  impossible to build rather than merely a mistake somebody might notice.
+                tests:
+                  - TextFileReadTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - TextFileReadTool_Read_PermittedFile_ResultIsPlainTextNotJsonElement
+
+              - id: AgentKitTools-TextFile-ReadTool-ReadPermittedFile
+                title: >-
+                  The read tool shall return the text content of a file the access policy permits
+                  it to read, including an empty file.
+                justification: |
+                  Reading a permitted file is the tool's reason to exist, and the content
+                  returned must be that of the real file rather than of whatever the requested
+                  path appeared to name. An empty file is a legitimate result; reporting it as a
+                  refusal would tell the model something untrue about the host.
+                tests:
+                  - TextFileReadTool_Read_PermittedFile_ReturnsTheFileContents
+                  - TextFileReadTool_Read_EmptyFile_ReturnsEmptyTextNotDenial
+
+              - id: AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
+                title: >-
+                  The read tool shall refuse a request whose real location lies outside the
+                  permitted read location, including one that reaches outside through a link.
+                tags: [security]
+                justification: |
+                  This is the primary threat the library exists to control: a path that looks
+                  contained can still reach outside it when a reparse point sits anywhere along
+                  it. Judging the request on the location it actually reaches keeps an agent
+                  inside what its operator granted.
+                tests:
+                  - TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial
+                  - TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-ReadTool-MissingFileDenied
+                title: >-
+                  The read tool shall refuse a request for a file that does not exist, directing
+                  the model to the listing tool.
+                justification: |
+                  An agent told only "no" retries the same tool with the same name, while an
+                  agent told which tool would find the right name makes progress. A missing file
+                  is the case where the better alternative is obvious, so naming it costs the
+                  model nothing and saves a wasted turn.
+                tests:
+                  - TextFileReadTool_Read_MissingFile_ReturnsDenialRedirectingToList
+
+              - id: AgentKitTools-TextFile-ReadTool-DirectoryRefused
+                title: >-
+                  The read tool shall refuse a request naming a directory, directing the model to
+                  the listing tool.
+                justification: |
+                  A directory has no text to return, and the operation the model almost certainly
+                  intended has its own tool. Refusing with that redirect turns a dead end into the
+                  next step.
+                tests:
+                  - TextFileReadTool_Read_DirectoryPath_ReturnsDenialRedirectingToList
+
+              - id: AgentKitTools-TextFile-ReadTool-ReadCeiling
+                title: >-
+                  The read tool shall refuse a file larger than the policy's read ceiling, naming
+                  the ceiling, and shall read a file that sits exactly on it.
+                justification: |
+                  A file read past the ceiling crowds out the conversation the agent still has to
+                  have, and the failure presents as the model becoming vague rather than as an
+                  error anyone can see. The boundary is stated explicitly because a ceiling whose
+                  inclusiveness is undefined is one every caller has to guess at.
+                tests:
+                  - TextFileReadTool_Read_FileLargerThanTheReadCeiling_ReturnsDenialNamingTheCeiling
+                  - TextFileReadTool_Read_FileAtTheReadCeiling_IsRead
+
+              - id: AgentKitTools-TextFile-ReadTool-ResultCeiling
+                title: >-
+                  The read tool shall refuse to return text exceeding the policy's result ceiling
+                  rather than returning a truncated part of it.
+                justification: |
+                  What a tool may read and what it may return are deliberately different budgets,
+                  and the return budget is the tighter one. Truncating would hand the model a
+                  silently incomplete document, which is worse than a refusal it can act on.
+                tests:
+                  - TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncatedText
+
+              - id: AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
+                title: >-
+                  The read tool shall return a refusal, rather than raising an exception, when
+                  the requested path is empty or consists only of whitespace.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must be
+                  told how to correct it. An exception at a tool call ends the agent's turn and
+                  strands it, turning a typo into a failed task.
+                tests:
+                  - TextFileReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing
+                  - TextFileReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-TextFile-ReadTool-DenialRedaction
+                title: >-
+                  A refusal from the read tool shall contain no host location — no requested
+                  path, no permitted location and no directory separator.
+                tags: [security]
+                justification: |
+                  The refusal text is handed to a model and the resulting transcript leaves this
+                  process. Naming the path or the permitted location in a refusal would disclose
+                  to a third party exactly the host layout that containment exists to protect.
+                tests:
+                  - TextFileReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail

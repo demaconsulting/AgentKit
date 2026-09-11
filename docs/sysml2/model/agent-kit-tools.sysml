@@ -14,5 +14,7 @@ package AgentKitTools {
         comment designRef /* Design: docs/design/agent-kit-tools.md */
         comment verificationRef /* Verification: docs/verification/agent-kit-tools.md */
         comment reqRef /* Requirements: docs/reqstream/agent-kit-tools.yaml */
+
+        part textFile : TextFile;
     }
 }
