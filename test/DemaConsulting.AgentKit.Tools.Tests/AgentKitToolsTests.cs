@@ -1,4 +1,5 @@
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
 
 namespace DemaConsulting.AgentKit.Tools.Tests;
@@ -43,5 +44,47 @@ public class AgentKitToolsTests
         Assert.Equal(
             ["text_file_read", "text_file_write", "text_file_list"],
             tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that attaching the Image pack to a vision host contributes the image family to
+    ///     a composition, under the one family prefix the pack claims.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily()
+    {
+        // Arrange: a vision host governing a composition with the image family attached
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var builder = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new ImagePack());
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: the family's read tool is published, under the family prefix
+        Assert.Equal(
+            ["image_read"],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that a host that does not declare vision receives none of the image family's
+    ///     tools, so a model that cannot see is never offered content it could only fabricate
+    ///     around.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools()
+    {
+        // Arrange: a host that declares no capability, governing a composition with the image
+        // family attached
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var builder = new ToolPackBuilder(policy).Add(new ImagePack());
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: the vision requirement is unmet, so the family contributes nothing
+        Assert.Empty(tools);
     }
 }

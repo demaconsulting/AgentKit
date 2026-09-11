@@ -22,8 +22,14 @@ The system contains the **TextFile** subsystem: the text file tool family, publi
 `text_file_read`, `text_file_write` and `text_file_list` under the `text_file` family prefix and
 attached to an application as one pack. It was scaffolded ahead of that family so that its build,
 tests, requirements traceability and review coverage were established before any family was added.
-The remaining tool families this package will provide are introduced in subsequent increments, each
-as its own subsystem with its own units, requirements, design, verification and review set.
+
+The system also contains the **Image** subsystem: the image tool family, publishing `image_read`
+under the `image` family prefix and attached to an application as one pack. Unlike the text file
+family, it is gated on a host capability — it is registered only for a host that declares it can
+present visual content to a model — because its tool returns image and PDF content that a
+non-vision host could not use. The remaining tool families this package will provide are introduced
+in subsequent increments, each as its own subsystem with its own units, requirements, design,
+verification and review set.
 
 ## External Interfaces
 
@@ -38,15 +44,18 @@ through the AgentKitCore pack contract:
   any other AgentKit packs, into one ordered tool list governed by a single `PathPolicy`.
 
 An application attaches a family by adding that family's pack: `TextFilePack` is the type an
-application adds to give an agent the text file family. A composition to which no family has been
-added remains well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty
-tool list.
+application adds to give an agent the text file family, and `ImagePack` is the type it adds to give
+a vision-capable agent the image family. A composition to which no family has been added remains
+well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty tool list — and
+a family whose required capability the host has not declared, such as the image family on a
+non-vision host, contributes no tools because the composition never asks its pack for them.
 
 | Interface         | Direction        | Format                     | Constraints                       |
 |-------------------|------------------|----------------------------|-----------------------------------|
 | `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family        |
 | `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`      |
 | `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability |
+| `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision   |
 
 ## Dependencies
 
@@ -91,7 +100,12 @@ supplies; the risk controls specific to a family are described in that family's 
 family is introduced. For the TextFile family, that containment control is the `PathPolicy`
 decision applied to every read, every write and every enumeration it performs — the read decision
 for reads and listings, the write decision for writes — with enumeration going through the policy
-so a listing can never advertise a file a read would refuse.
+so a listing can never advertise a file a read would refuse. For the Image family, the containment
+control is that same `PathPolicy` read decision applied to every read, and it adds a second control
+of its own: the Vision capability gate, which withholds the family from a host that has not declared
+it can present visual content — withholding it by never asking the pack for its tools — so a model
+that cannot see an image is never offered a tool that returns one it could only fabricate a
+description of.
 
 ## Data Flow
 

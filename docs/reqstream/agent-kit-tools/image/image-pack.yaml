@@ -1,0 +1,86 @@
+---
+# Software Unit Requirements for ImagePack
+#
+# These requirements describe the design-level behavior of the ImagePack unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImagePack Requirements
+            requirements:
+              - id: AgentKitTools-Image-Pack-FamilyPrefix
+                title: >-
+                  The image pack shall declare the family prefix image, exposed as a constant on
+                  the pack and reported through the pack contract.
+                justification: |
+                  The prefix is the family's identity: two packs claiming one prefix would
+                  publish tools a model cannot tell apart, which the composition refuses.
+                  Publishing it as a constant as well as through the contract lets an application
+                  or a test name the family without a literal that could drift from the names the
+                  tools actually carry.
+                tests:
+                  - ImagePack_FamilyPrefix_Constant_IsImage
+                  - ImagePack_FamilyPrefix_Contract_ReportsTheDeclaredConstant
+
+              - id: AgentKitTools-Image-Pack-RequiresVisionCapability
+                title: >-
+                  The image pack shall require the host to provide the vision capability.
+                tags: [security]
+                justification: |
+                  The family returns image content, which is of no use to a host that cannot
+                  present it to a model. Declaring the requirement is what lets the composition
+                  withhold the family from a host that cannot see, rather than offering a tool
+                  whose result the model can only fabricate around.
+                tests:
+                  - ImagePack_RequiredCapabilities_Pack_RequiresVision
+
+              - id: AgentKitTools-Image-Pack-RegistersReadTool
+                title: >-
+                  The image pack shall create the read tool, with no null element.
+                justification: |
+                  The pack is the unit of attachment, so it must produce the family's tool for an
+                  application to receive it. A null element would fail the composition at build
+                  time for a reason no caller could act on, so the pack honors the contract it is
+                  judged against.
+                tests:
+                  - ImagePack_CreateTools_Policy_CreatesTheReadTool
+                  - ImagePack_CreateTools_Policy_ReturnsNoNullTool
+
+              - id: AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix
+                title: >-
+                  Every tool the image pack creates shall carry the declared family prefix
+                  followed by an underscore.
+                justification: |
+                  The collision check a composition performs when a pack is added is only
+                  meaningful if the pack's declaration is true of the names it later publishes.
+                  A tool published outside its declared family would escape that protection and
+                  could collide with another library's name.
+                tests:
+                  - ImagePack_CreateTools_EveryTool_CarriesTheFamilyPrefix
+
+              - id: AgentKitTools-Image-Pack-RequiresPolicy
+                title: >-
+                  The image pack shall reject an absent access policy as a programming error
+                  rather than creating tools governed by nothing.
+                tags: [security]
+                justification: |
+                  A family created without a policy would hand an agent unrestricted file access
+                  while appearing to be correctly composed. Failing at the line that made the
+                  mistake reports it to the developer who can fix it, rather than to a model that
+                  cannot.
+                tests:
+                  - ImagePack_CreateTools_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Image-Pack-PolicyGovernsCreatedTools
+                title: >-
+                  The access policy supplied to the image pack shall govern every tool the pack
+                  creates.
+                tags: [security]
+                justification: |
+                  An application configures one policy and expects every tool it attached to obey
+                  it. A tool that quietly observed a different policy from its neighbor would make
+                  the configured containment unverifiable, which is the same as not having it.
+                tests:
+                  - ImagePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools

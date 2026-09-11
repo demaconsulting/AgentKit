@@ -13,9 +13,12 @@ required at the system level.
 The system under verification at this stage is the package's integration surface: the promise that
 its tool families are composed through the AgentKitCore `ToolPackBuilder` under one access policy,
 that a composition to which no family has been attached is well defined and contributes no tools,
-and that attaching a family contributes exactly that family's tools. The first such family, the
+and that attaching a family contributes exactly that family's tools — or, where the family declares
+a host capability, contributes them only when the host provides it. The first such family, the
 TextFile family, has its own subsystem and unit verification; see _TextFile Subsystem Verification
-Design_. The families introduced in subsequent increments are verified the same way.
+Design_. The Image family, gated on the Vision capability, likewise has its own; see _Image
+Subsystem Verification Design_. The families introduced in subsequent increments are verified the
+same way.
 
 System tests reside in `AgentKitToolsTests.cs` within the
 `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -60,6 +63,26 @@ the one family prefix the pack claims. Constructs a real access policy, adds `Te
 `text_file_write` and `text_file_list`. Confirms at the system level that a family is attached as
 one pack rather than tool by tool, and that the package now contributes a capability rather than
 only a composition baseline.
+
+### Composition: The Image Family Is Contributed to a Vision Host
+
+**Test**: `AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily`
+
+Verifies that attaching the Image pack to a host that declares the Vision capability contributes
+that family's tools, under the one family prefix the pack claims. Constructs a real access policy,
+declares Vision on a `ToolPackBuilder`, adds `ImagePack`, and asserts the composed list is exactly
+`image_read`. Confirms at the system level that a capability-gated family, on a host that meets its
+requirement, is attached as one pack.
+
+### Composition: The Image Family Is Withheld From a Non-Vision Host
+
+**Test**: `AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools`
+
+Verifies that attaching the Image pack to a host that declares no capability contributes no tools.
+Constructs a real access policy, adds `ImagePack` to a `ToolPackBuilder` that declares nothing, and
+asserts the composed list is empty. Confirms at the system level that a family whose required
+capability the host has not declared is withheld, so a model that cannot see is never offered a tool
+that returns content it could only fabricate around.
 
 ## Acceptance Criteria
 

@@ -1,0 +1,64 @@
+---
+# Software Unit Requirements for ImageMediaTypes
+#
+# These requirements describe the design-level behavior of the ImageMediaTypes unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageMediaTypes Requirements
+            requirements:
+              - id: AgentKitTools-Image-MediaTypes-SupportedTypes
+                title: >-
+                  The media-type map shall resolve the extensions png, jpg, jpeg, gif, webp and
+                  pdf to their media types, matching the extension without regard to case.
+                justification: |
+                  The media type is what a provider is told the content is, and it is decided
+                  from the extension because a caller that named a file is asking for it to be
+                  delivered as the type that extension denotes. Matching case-insensitively means
+                  a capitalized extension names the same content as a lower-case one rather than
+                  being refused for a difference that means nothing.
+                tests:
+                  - ImageMediaTypes_TryResolveMediaType_SupportedExtension_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveMediaType_ExtensionCaseInsensitive_ReturnsMediaType
+
+              - id: AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
+                title: >-
+                  The media-type map shall refuse an svg file as an unsupported type and direct
+                  the model to the text file read tool.
+                tags: [security]
+                justification: |
+                  An .svg is text and vector content, not a raster image, and the tool that can
+                  actually read it is the text file read tool. An agent told only "no" retries
+                  the same tool, while an agent told which tool reads the content makes progress,
+                  so the refusal names that tool rather than leaving the model to guess.
+                tests:
+                  - ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead
+
+              - id: AgentKitTools-Image-MediaTypes-RefusesSvgzNoTool
+                title: >-
+                  The media-type map shall refuse an svgz file as an unsupported type without a
+                  redirect, since no tool in the family can read it.
+                justification: |
+                  An .svgz is gzip-compressed vector content, which no tool in this family reads
+                  and which the text file read tool would fail on too. Naming a redirect that
+                  would also fail is worse than naming none: it costs the model a wasted turn.
+                  The refusal therefore says plainly that the content cannot be read here rather
+                  than sending the model somewhere that cannot help it.
+                tests:
+                  - ImageMediaTypes_DenyUnsupportedType_Svgz_RefusesWithoutRedirect
+
+              - id: AgentKitTools-Image-MediaTypes-RefusesUnknownType
+                title: >-
+                  The media-type map shall report any other extension as unsupported and, when
+                  asked to refuse it, shall do so without inventing a redirect.
+                justification: |
+                  An extension the family does not read has no honest better tool to name, and a
+                  redirect the library cannot stand behind would send the model to a tool that
+                  cannot help. Reporting the type as unsupported so the read tool can refuse it,
+                  and refusing without a redirect, keeps the refusal truthful.
+                tests:
+                  - ImageMediaTypes_TryResolveMediaType_UnsupportedExtension_ReturnsFalse
+                  - ImageMediaTypes_DenyUnsupportedType_UnknownType_RefusesWithoutRedirect

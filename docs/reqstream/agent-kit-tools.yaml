@@ -45,3 +45,32 @@ sections:
           - AgentKitTools-TextFile-ObservesPolicyLimits
         tests:
           - AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily
+
+      - id: AgentKitTools-ImageFamily-GuardedImageAccess
+        title: >-
+          The library shall provide an image family that reads images and PDF documents under the
+          access policy the composing application supplies, publishing every tool under one family
+          prefix, delivering the content to the caller rather than a serialized copy of it, and
+          registering the family only for a host that declares it can present visual content to a
+          model.
+        tags: [system, security]
+        justification: |
+          Handing a model an image is the capability a vision-enabled agent needs and the one that
+          fails most silently when it is done wrong: a tool whose content is serialized to JSON
+          delivers no image, and the model then confidently describes a picture it never received.
+          Providing it as one policy-governed family means an application grants image access in a
+          single, auditable step, with containment applied to every request and the content
+          delivered intact through the guarded construction path. Gating the family behind the
+          vision capability keeps a model that cannot see from ever being offered a tool whose
+          result it could only fabricate around, and the composition withholds the family by never
+          asking the pack for its tools rather than by offering them and refusing later.
+        children:
+          - AgentKitTools-Image-FamilyComposition
+          - AgentKitTools-Image-CapabilityGated
+          - AgentKitTools-Image-GuardedConstruction
+          - AgentKitTools-Image-PolicyGoverned
+          - AgentKitTools-Image-DenialsAreResults
+          - AgentKitTools-Image-ObservesPolicyLimits
+        tests:
+          - AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily
+          - AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools

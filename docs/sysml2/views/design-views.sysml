@@ -22,4 +22,8 @@ package AgentKitTools {
     view TextFileView {
         expose TextFile;
     }
+
+    view ImageView {
+        expose Image;
+    }
 }

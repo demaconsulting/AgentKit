@@ -16,5 +16,6 @@ package AgentKitTools {
         comment reqRef /* Requirements: docs/reqstream/agent-kit-tools.yaml */
 
         part textFile : TextFile;
+        part image : Image;
     }
 }

@@ -339,6 +339,64 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFilePack.cs"            # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFilePackTests.cs"  # unit tests
 
+  # AgentKitTools-Image Review (one per subsystem)
+  - id: AgentKitTools-Image
+    title: Review that AgentKitTools Image Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image.yaml"                # subsystem requirements
+      - "docs/design/agent-kit-tools/image.md"                     # subsystem design
+      - "docs/verification/agent-kit-tools/image.md"               # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
+
+  # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
+  - id: AgentKitTools-Image-ImageMediaTypes
+    title: Review that AgentKitTools Image ImageMediaTypes Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-media-types.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-media-types.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-media-types.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageMediaTypes.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageMediaTypesTests.cs"  # unit tests
+
+  # AgentKitTools-Image-ImageReadTool Review (one per unit)
+  - id: AgentKitTools-Image-ImageReadTool
+    title: Review that AgentKitTools Image ImageReadTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-read-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-read-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-read-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageReadTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageReadToolTests.cs"  # unit tests
+
+  # AgentKitTools-Image-ImagePack Review (one per unit)
+  - id: AgentKitTools-Image-ImagePack
+    title: Review that AgentKitTools Image ImagePack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-pack.yaml"         # unit requirements
+      - "docs/design/agent-kit-tools/image/image-pack.md"              # unit design
+      - "docs/verification/agent-kit-tools/image/image-pack.md"        # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImagePack.cs"          # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImagePackTests.cs"  # unit tests
+
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark
     title: Review that BuildMark Provides Required Functionality

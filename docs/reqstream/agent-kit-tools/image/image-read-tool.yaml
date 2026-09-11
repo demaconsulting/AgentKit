@@ -1,0 +1,155 @@
+---
+# Software Unit Requirements for ImageReadTool
+#
+# These requirements describe the design-level behavior of the ImageReadTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageReadTool Requirements
+            requirements:
+              - id: AgentKitTools-Image-ReadTool-ToolName
+                title: >-
+                  The read tool shall be published under the name image_read, exposed as a
+                  constant on the unit that defines it, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a sibling tool that
+                  redirects to it must name it without repeating a literal that could drift.
+                  A description is the only basis a model has for choosing this tool over
+                  another, so a tool offered without one is offered blind.
+                tests:
+                  - ImageReadTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - ImageReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-Image-ReadTool-GuardedConstruction
+                title: >-
+                  The read tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction, and shall deliver its content
+                  result to the caller in the form it returned it rather than serialized to JSON.
+                tags: [security]
+                justification: |
+                  Without the guard the caption-plus-content result is serialized into a
+                  JsonElement before a provider sees it, so the provider never receives the image
+                  and the model — told a tool returned one — describes content it never got. The
+                  failure is silent, which is exactly why the guarded path must be the only one.
+                  Requiring the policy at construction is what makes a read tool governed by no
+                  policy impossible to build rather than merely a mistake somebody might notice.
+                tests:
+                  - ImageReadTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - ImageReadTool_Read_SupportedImage_ResultIsContentListNotJsonElement
+
+              - id: AgentKitTools-Image-ReadTool-ReadPermittedImage
+                title: >-
+                  The read tool shall return a permitted image as image content carrying its
+                  media type and the file's bytes, preceded by a caption.
+                justification: |
+                  Reading a permitted image is the tool's reason to exist, and the content
+                  returned must be that of the real file rather than of whatever the requested
+                  path appeared to name. The caption tells the model what it is being handed
+                  before it reaches the attachment, and the media type is what lets a provider
+                  present the bytes as the image they are.
+                tests:
+                  - ImageReadTool_Read_SupportedImage_ReturnsDataContentWithMediaType
+
+              - id: AgentKitTools-Image-ReadTool-ReadPermittedPdf
+                title: >-
+                  The read tool shall return a permitted PDF as binary content carrying the
+                  application/pdf media type, preceded by a caption.
+                justification: |
+                  A PDF is visual content a vision host can render, so it belongs in the family,
+                  but it is not an image media type and the image result constructor refuses a
+                  non-image media type. Returning it through the binary result path is the only
+                  correct reading of that contract, and it produces the identical
+                  caption-plus-content shape the guard must deliver unserialized.
+                tests:
+                  - ImageReadTool_Read_PermittedPdf_ReturnsBinaryContentWithPdfMediaType
+
+              - id: AgentKitTools-Image-ReadTool-DenyOutsideRoot
+                title: >-
+                  The read tool shall refuse a request whose real location lies outside the
+                  permitted read location, including one that reaches outside through a link.
+                tags: [security]
+                justification: |
+                  This is the primary threat the library exists to control: a path that looks
+                  contained can still reach outside it when a reparse point sits anywhere along
+                  it. Judging the request on the location it actually reaches keeps an agent
+                  inside what its operator granted, and the decision is made before anything is
+                  learned about the file, so a refused path never reveals whether it exists.
+                tests:
+                  - ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial
+                  - ImageReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial
+
+              - id: AgentKitTools-Image-ReadTool-UnsupportedTypeDenied
+                title: >-
+                  The read tool shall refuse a permitted file whose type the family cannot read,
+                  composing the refusal through the media-type map so a redirect is given where
+                  one is useful.
+                justification: |
+                  A file of a type the family cannot read has no content to return, and where a
+                  better tool exists — a text tool for an .svg — naming it turns a dead end into
+                  the agent's next step. Delegating the refusal to the media-type map keeps the
+                  redirect decision in one place rather than duplicated in the tool.
+                tests:
+                  - ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead
+
+              - id: AgentKitTools-Image-ReadTool-DirectoryRefused
+                title: >-
+                  The read tool shall refuse a request naming a directory.
+                justification: |
+                  A directory has no visual content to return, and this family has no listing
+                  tool to redirect a model to, so the refusal names the mistake plainly rather
+                  than pointing at a tool that does not exist.
+                tests:
+                  - ImageReadTool_Read_DirectoryPath_ReturnsDenial
+
+              - id: AgentKitTools-Image-ReadTool-MissingFileDenied
+                title: >-
+                  The read tool shall refuse a request for a supported-type file that does not
+                  exist.
+                justification: |
+                  A missing file cannot be read, and the refusal reports that as a returned
+                  result the model can act on rather than as an exception that would end the
+                  agent's turn. The type is judged from the extension before existence, so a
+                  supported extension that names no file is refused as not found rather than as
+                  an unsupported type.
+                tests:
+                  - ImageReadTool_Read_MissingFile_ReturnsDenial
+
+              - id: AgentKitTools-Image-ReadTool-BinaryCeiling
+                title: >-
+                  The read tool shall refuse a file larger than the policy's binary ceiling,
+                  naming the ceiling, and shall read a file that sits exactly on it.
+                justification: |
+                  A file past the binary ceiling exceeds what a provider will accept as one
+                  attachment, and returning part of it would hand the model corrupt content it
+                  cannot detect. The boundary is stated explicitly because a ceiling whose
+                  inclusiveness is undefined is one every caller has to guess at.
+                tests:
+                  - ImageReadTool_Read_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling
+                  - ImageReadTool_Read_FileAtTheBinaryCeiling_IsRead
+
+              - id: AgentKitTools-Image-ReadTool-MalformedRequestDenied
+                title: >-
+                  The read tool shall return a refusal, rather than raising an exception, when
+                  the requested path is empty or consists only of whitespace.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must be
+                  told how to correct it. An exception at a tool call ends the agent's turn and
+                  strands it, turning a typo into a failed task.
+                tests:
+                  - ImageReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing
+                  - ImageReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-Image-ReadTool-DenialRedaction
+                title: >-
+                  A refusal from the read tool shall contain no host location — no requested
+                  path, no permitted location and no directory separator.
+                tags: [security]
+                justification: |
+                  The refusal text is handed to a model and the resulting transcript leaves this
+                  process. Naming the path or the permitted location in a refusal would disclose
+                  to a third party exactly the host layout that containment exists to protect.
+                tests:
+                  - ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail

@@ -1,0 +1,141 @@
+---
+# Software Subsystem Requirements for the Image tool family
+#
+# These requirements describe the behavior of the Image subsystem as a whole,
+# decomposing the system-level image family requirement into the behavior each
+# of its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        requirements:
+          - id: AgentKitTools-Image-FamilyComposition
+            title: >-
+              The image family shall publish a read tool under the image family prefix, composed
+              as one pack an application attaches.
+            justification: |
+              An application attaches a capability to an agent as one pack rather than as a
+              handful of individually registered tools, so the family must be the unit of
+              attachment. Publishing the tool under one prefix is what keeps this family's names
+              from colliding with those of any other library an application combines, and it is
+              what lets the family grow without an application changing how it attaches it.
+            children:
+              - AgentKitTools-Image-ReadTool-ToolName
+              - AgentKitTools-Image-Pack-FamilyPrefix
+              - AgentKitTools-Image-Pack-RegistersReadTool
+              - AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix
+            tests:
+              - Image_Family_ComposedThroughBuilder_PublishesTheReadTool
+              - Image_Family_HostDeclaringVision_ReceivesTheFamily
+
+          - id: AgentKitTools-Image-CapabilityGated
+            title: >-
+              The image family shall be registered only for a host that declares the vision
+              capability, and a host that does not declare it shall receive none of the family's
+              tools without the pack being asked to create them.
+            tags: [security]
+            justification: |
+              The family returns image content, which is useful only to a host that can present
+              it to a model. A model that cannot see an image but is offered a tool that returns
+              one will report that it can see the image and then fabricate a description of
+              content it never received, a failure with no error to notice. Withholding the
+              family from a non-vision host — and withholding it by never asking the pack for its
+              tools, not by offering them and refusing later — is what makes that failure
+              impossible rather than merely unlikely.
+            children:
+              - AgentKitTools-Image-Pack-RequiresVisionCapability
+            tests:
+              - Image_Family_HostWithoutVision_ReceivesNoTools
+              - Image_Family_HostWithoutVision_PackIsNotConsulted
+
+          - id: AgentKitTools-Image-GuardedConstruction
+            title: >-
+              Every tool in the image family shall be constructed through the guarded
+              construction path, shall take its access policy at construction, and shall deliver
+              its content result to the caller in the form it returned it rather than serialized.
+            tags: [security]
+            justification: |
+              A tool built any other way has its result flattened into JSON before a provider
+              sees it — and for a tool returning an image that is the difference between the
+              model seeing the picture and confidently describing one it never received. A tool
+              that received its policy later, or not at all, could be attached to an agent while
+              governed by nothing. Making construction the only moment a policy can be supplied,
+              and construction always the guarded path, is what makes an image tool that is
+              unguarded, or governed by no policy, impossible to express rather than merely
+              discouraged.
+            children:
+              - AgentKitTools-Image-ReadTool-GuardedConstruction
+              - AgentKitTools-Image-Pack-RequiresPolicy
+              - AgentKitTools-Image-Pack-PolicyGovernsCreatedTools
+            tests:
+              - Image_Family_EveryTool_CarriesAValidatedNameAndDescription
+              - Image_Family_ToolResult_ReachesTheCallerUnserialized
+
+          - id: AgentKitTools-Image-PolicyGoverned
+            title: >-
+              The image family shall judge each request with the policy's read decision,
+              returning the permitted content — an image as image content and a PDF as binary
+              content — and refusing a request that reaches outside the permitted location,
+              including one that reaches outside through a link.
+            tags: [security]
+            justification: |
+              An operator grants an agent access to a location, and that grant is meaningless
+              unless every read consults the rule belonging to it. Judging a request by the
+              location it actually reaches, rather than by how its path was spelled, is what
+              stops an agent from stepping outside the location its operator granted. Returning an
+              image as image content and a PDF as binary content is not a detail: the result
+              constructor for an image refuses a non-image media type, so a PDF must take the
+              binary path or the read would throw.
+            children:
+              - AgentKitTools-Image-ReadTool-ReadPermittedImage
+              - AgentKitTools-Image-ReadTool-ReadPermittedPdf
+              - AgentKitTools-Image-ReadTool-DenyOutsideRoot
+              - AgentKitTools-Image-MediaTypes-SupportedTypes
+            tests:
+              - Image_Family_PermittedImage_IsReturnedAsImageContent
+              - Image_Family_PathOutsideRoot_IsRefused
+
+          - id: AgentKitTools-Image-DenialsAreResults
+            title: >-
+              The image family shall report every refusal as a returned result that names its
+              reason, carries no host location, and directs the model to a better tool where one
+              exists.
+            tags: [security]
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it with no way forward, whereas a returned refusal lets it read the reason
+              and choose a permitted alternative. The refusal is handed to a model and the
+              resulting transcript leaves this process, so it must disclose nothing about the
+              host's layout. A refusal that also names a better tool — a text tool for an .svg —
+              turns a dead end into the agent's next step, while one that has no honest
+              alternative says so rather than sending the model to a tool that would also fail.
+            children:
+              - AgentKitTools-Image-ReadTool-UnsupportedTypeDenied
+              - AgentKitTools-Image-ReadTool-DirectoryRefused
+              - AgentKitTools-Image-ReadTool-MissingFileDenied
+              - AgentKitTools-Image-ReadTool-MalformedRequestDenied
+              - AgentKitTools-Image-ReadTool-DenialRedaction
+              - AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
+              - AgentKitTools-Image-MediaTypes-RefusesSvgzNoTool
+              - AgentKitTools-Image-MediaTypes-RefusesUnknownType
+            tests:
+              - Image_Family_DeniedRequest_ReturnsAResultWithoutThrowing
+              - Image_Family_DenialText_ContainsNoHostPath
+              - Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful
+
+          - id: AgentKitTools-Image-ObservesPolicyLimits
+            title: >-
+              The image family shall observe the binary ceiling the access policy carries,
+              refusing an oversized file and naming the ceiling rather than returning truncated
+              content.
+            justification: |
+              Content this family returns is bounded by a byte ceiling because an image is not
+              charged against the context window by the same route as text. Truncating instead of
+              refusing is worse than either: the model receives corrupt content it has no way to
+              detect and then reasons confidently about a picture it never wholly saw. Naming the
+              ceiling lets it narrow the request instead.
+            children:
+              - AgentKitTools-Image-ReadTool-BinaryCeiling
+            tests:
+              - Image_Family_FileBeyondTheBinaryCeiling_IsRefusedNotTruncated

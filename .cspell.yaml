@@ -29,11 +29,13 @@ words:
   - SARIF
   - sarifmark
   - sonarmark
+  - svgz
   - sysml
   - versionmark
   - Weasy
   - WeasyPrint
   - weasyprint
+  - webp
   - netstandard
   - NTFS
   - APFS
