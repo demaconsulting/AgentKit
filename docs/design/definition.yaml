@@ -7,6 +7,9 @@ input-files:
   - docs/design/introduction.md
   - docs/design/agent-kit-core.md
   - docs/design/agent-kit-core/demo.md
+  - docs/design/agent-kit-core/path-policy.md
+  - docs/design/agent-kit-core/path-rule.md
+  - docs/design/agent-kit-core/real-path-resolver.md
   - docs/design/ots.md
   - docs/design/ots/buildmark.md
   - docs/design/ots/fileassert.md

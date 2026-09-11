@@ -1,0 +1,68 @@
+---
+# Software Unit Requirements for RealPathResolver
+#
+# These requirements describe the design-level behavior of the RealPathResolver unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: RealPathResolver Requirements
+        requirements:
+          - id: AgentKitCore-RealPathResolver-ComponentWalk
+            title: >-
+              The RealPathResolver shall report the real location of a path whose enclosing
+              directory is reached through a link, even when the path itself is not a link.
+            justification: |
+              A file sitting beneath a directory junction is an ordinary file and reports no link
+              target of its own, so an escape is only detectable by examining every enclosing
+              directory in turn. Without this behavior the containment decision made by the rest
+              of the library would be based on a location the operation never touches.
+            tests:
+              - RealPathResolver_Resolve_PathBeneathDirectoryLink_ReturnsRealTargetOutsideRoot
+              - RealPathResolver_Resolve_LeafResolutionAlone_DoesNotDetectEscape
+
+          - id: AgentKitCore-RealPathResolver-LinkTarget
+            title: >-
+              The RealPathResolver shall report the target location of a path that is itself a
+              link.
+            justification: |
+              An agent may name a link directly rather than something beneath it. Reporting the
+              link's own location would leave the containment decision judging the alias instead
+              of the location that will actually be read or written.
+            tests:
+              - RealPathResolver_Resolve_DirectoryLinkItself_ReturnsLinkTarget
+
+          - id: AgentKitCore-RealPathResolver-NonExistentPath
+            title: >-
+              The RealPathResolver shall report a location for a path that does not yet exist, by
+              resolving the portion of the path that does exist.
+            justification: |
+              A write decision must be made before the file exists. Refusing to report a location
+              for a path that has not been created would make it impossible to decide whether a
+              new file would be created inside or outside the permitted location.
+            tests:
+              - RealPathResolver_Resolve_NonExistentFileBeneathLink_ReturnsRealTargetLocation
+
+          - id: AgentKitCore-RealPathResolver-Normalization
+            title: >-
+              The RealPathResolver shall report an absolute, normalized location for a relative
+              path or a path containing relative segments.
+            justification: |
+              Callers and models supply paths in whatever form is convenient, including relative
+              spellings and redundant parent segments. Containment can only be decided between two
+              locations expressed the same way, so every reported location must be absolute and
+              free of relative segments.
+            tests:
+              - RealPathResolver_Resolve_RelativeSegments_ReturnsNormalizedAbsolutePath
+              - RealPathResolver_Resolve_PathWithNoLinks_ReturnsSamePath
+
+          - id: AgentKitCore-RealPathResolver-RejectInvalidPath
+            title: >-
+              The RealPathResolver shall reject a null or empty path as a programming error.
+            justification: |
+              A missing path is a defect in the calling code rather than something a model
+              requested. Reporting it as a location, or as a denial, would hide a defect that
+              should be fixed before the software ships.
+            tests:
+              - RealPathResolver_Resolve_NullPath_ThrowsArgumentNullException
+              - RealPathResolver_Resolve_EmptyPath_ThrowsArgumentException

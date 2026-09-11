@@ -15,5 +15,8 @@ package AgentKitCore {
         comment reqRef /* Requirements: docs/reqstream/agent-kit-core.yaml */
 
         part demo : Demo;
+        part realPathResolver : RealPathResolver;
+        part pathRule : PathRule;
+        part pathPolicy : PathPolicy;
     }
 }

@@ -18,13 +18,26 @@ System tests reside in `AgentKitCoreTests.cs` within the
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: No external services, databases, or network access required
-- **Isolation**: Each test method constructs its own `Demo` instance; no shared state between tests
+- **File system**: The path-containment scenarios require a writable temporary directory and the
+  ability to create a real reparse point within it — a directory junction created by
+  `cmd.exe /c mklink /J` on Windows, and a directory symbolic link on Linux and macOS. A Windows
+  symbolic link is deliberately not used, because it requires a privilege an unelevated developer
+  session does not hold and would therefore pass on the elevated CI runner while failing on every
+  workstation
+- **Isolation**: Each test method constructs its own `Demo` instance or its own temporary
+  directory tree; no shared state between tests
 
 ## External Interface Simulation
 
-The system has no external interfaces requiring simulation. It is a pure in-process .NET library
-with no I/O, network calls, or platform services. System tests call the public API directly
-with controlled inputs and verify returned values and thrown exceptions.
+The greeting scenarios have no external interfaces requiring simulation; they call the public API
+directly with controlled inputs and verify returned values and thrown exceptions.
+
+The path-containment scenarios do touch one external interface — the host file system — and it is
+deliberately **not** simulated. The behavior under verification is exactly the operating system's
+own link resolution and directory enumeration, so a simulated file system would verify the
+simulation rather than the control. Each scenario instead creates a disposable temporary tree
+containing a genuine reparse point and removes it afterwards, deleting directory links before the
+recursive delete because a recursive delete over a tree containing a junction fails.
 
 ## System-Level Test Scenarios
 
@@ -86,8 +99,58 @@ Verifies that the `Prefix` property exposes the prefix supplied at construction 
 a `Demo` instance with a custom prefix and reads the `Prefix` property. Confirms the system's
 public API correctly surfaces the configured prefix to callers.
 
+### Path Containment: A File Beneath a Directory Link Is Denied
+
+**Test**: `AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied`
+
+Verifies that the system judges access by the location a path actually reaches. Configures a
+policy confined to one location, creates a genuine directory link inside it pointing at a sibling
+directory, and requests a file through that link. Asserts the request is refused, that no location
+is handed back, and that a reason is supplied.
+
+### Path Containment: Enumeration Across a Link Excludes the Escaped File
+
+**Test**: `AgentKitCore_SystemPathContainment_EnumerationAcrossLink_ExcludesEscapedFile`
+
+Verifies that the system applies the same containment decision to listing as to direct access.
+Places one file inside the permitted location and one outside it, links the two, and lists the
+permitted location through the public API. Asserts the contained file appears and the escaped
+file does not.
+
+### Path Policy: Reading Widely While Writing Narrowly
+
+**Test**: `AgentKitCore_SystemPathPolicy_ReadWideWriteNarrow_AllowsReadDeniesWrite`
+
+Verifies that read access and write access are independent. Configures unrestricted reads with
+writes confined to one location, then reads and attempts to write the same location outside it.
+Asserts the read is permitted and the write is refused.
+
+### Path Policy: A Denied Path Returns a Denial Without Throwing
+
+**Test**: `AgentKitCore_SystemPathPolicy_DeniedPath_ReturnsDenialWithoutThrowing`
+
+Verifies that a refusal reaches the caller as a return value carrying a reason, not as an
+exception. Requests a location outside the permitted one and asserts the call returns a refusal
+with no location and a non-empty reason.
+
+### Path Policy: A Denial Message Contains No Host Paths
+
+**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_ContainsNoHostPaths`
+
+Verifies that nothing about the host's layout leaves the system in a denial message. Asserts the
+message contains neither the requested path nor the permitted location, and contains no directory
+separator at all.
+
+### Path Policy: Construction Without Rules Is Rejected
+
+**Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected`
+
+Verifies that the system refuses to create a path access policy with either rule missing,
+confirming at the system boundary that an unguarded policy is unrepresentable.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all seven scenarios above pass without error or exception beyond
-those explicitly asserted. Any unexpected exception, wrong exception type, or wrong return value
+A system-level test run passes when all thirteen scenarios above pass without error or exception
+beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
+value, permitted path that should have been refused, or escaped file appearing in a listing
 constitutes a failure.

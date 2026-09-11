@@ -1,0 +1,101 @@
+---
+# Software Unit Requirements for PathPolicy
+#
+# These requirements describe the design-level behavior of the PathPolicy unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: PathPolicy Requirements
+        requirements:
+          - id: AgentKitCore-PathPolicy-RequiredRules
+            title: >-
+              A path policy shall require both a read rule and a write rule when it is created.
+            justification: |
+              Making both rules mandatory at creation removes the possibility of an unguarded
+              policy existing even momentarily, so no code path can hand an agent unrestricted
+              file access by omission.
+            tests:
+              - PathPolicy_Constructor_NullReadRule_ThrowsArgumentNullException
+              - PathPolicy_Constructor_NullWriteRule_ThrowsArgumentNullException
+
+          - id: AgentKitCore-PathPolicy-IndependentRules
+            title: >-
+              A path policy shall decide a read request using its read rule alone and a write
+              request using its write rule alone.
+            justification: |
+              The read-wide, write-narrow configuration only means anything if neither rule can
+              widen the other. Consulting both rules for either decision would silently grant
+              write access wherever reading was permitted, or the reverse.
+            tests:
+              - PathPolicy_TryResolveRead_WriteRootOnly_DeniesReadOutsideReadRoot
+              - PathPolicy_TryResolveWrite_ReadableButNotWritablePath_ReturnsDenial
+
+          - id: AgentKitCore-PathPolicy-DenyEscapedPath
+            title: >-
+              A path policy shall deny a request whose real location lies outside the permitted
+              location, including a request that reaches outside through a link.
+            justification: |
+              This is the decision the whole library exists to make. A request that reaches outside
+              through a link is indistinguishable from a permitted one by inspection of the
+              requested text, so the decision must be made on the real location.
+            tests:
+              - PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial
+              - PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied
+
+          - id: AgentKitCore-PathPolicy-RealPathReported
+            title: >-
+              A path policy shall report the real location of a permitted path to the caller.
+            justification: |
+              A caller that performs the operation on the requested text rather than on the
+              approved location would reopen the gap the policy just closed. Handing back the real
+              location makes the approved location the obvious thing to act on.
+            tests:
+              - PathPolicy_TryResolveRead_PermittedPath_ReturnsRealPath
+              - PathPolicy_TryResolveWrite_PermittedPath_ReturnsRealPath
+
+          - id: AgentKitCore-PathPolicy-EnumerationFiltered
+            title: >-
+              A path policy shall exclude from directory enumeration every file whose real
+              location it would deny, and shall list every file it would permit.
+            justification: |
+              Listing is how an agent discovers what it may work on. A listing that is broader
+              than what access permits discloses files the operator withheld; one that is narrower
+              hides work the agent was asked to do.
+            tests:
+              - PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile
+              - PathPolicy_EnumerateFiles_PermittedFiles_AreListed
+              - PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty
+
+          - id: AgentKitCore-PathPolicy-DenialResult
+            title: >-
+              A path policy shall report a refused request as a returned denial and shall not
+              throw.
+            justification: |
+              A model that receives an exception cannot continue its turn, whereas a model that
+              receives a denial can choose a permitted path. Refusals are expected traffic in
+              agent operation, not exceptional conditions.
+            tests:
+              - PathPolicy_TryResolveRead_DeniedPath_ReturnsFalseWithoutThrowing
+              - PathPolicy_TryResolveWrite_DeniedPath_ReturnsFalseWithoutThrowing
+
+          - id: AgentKitCore-PathPolicy-UnresolvablePathDenied
+            title: >-
+              A path policy shall deny a request whose location cannot be determined.
+            justification: |
+              A model can supply text that no platform can interpret as a path. Denying what
+              cannot be understood is the fail-safe reading and keeps the non-throwing contract
+              intact for input the model controls.
+            tests:
+              - PathPolicy_TryResolveRead_MalformedPath_ReturnsDenial
+
+          - id: AgentKitCore-PathPolicy-DenialMessageRedacted
+            title: >-
+              A denial reported by a path policy shall not contain the requested path or any other
+              host location.
+            justification: |
+              Denial text is returned to the model and recorded in a transcript that leaves the
+              process. Host locations in that text would disclose directory layout and user names
+              to whoever holds the transcript.
+            tests:
+              - PathPolicy_TryResolveRead_DeniedPath_DenialMessageOmitsRequestedPath

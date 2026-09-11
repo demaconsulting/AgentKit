@@ -10,6 +10,9 @@ includes:
   - docs/reqstream/quality.yaml
   - docs/reqstream/agent-kit-core.yaml
   - docs/reqstream/agent-kit-core/demo.yaml
+  - docs/reqstream/agent-kit-core/path-policy.yaml
+  - docs/reqstream/agent-kit-core/path-rule.yaml
+  - docs/reqstream/agent-kit-core/real-path-resolver.yaml
   - docs/reqstream/agent-kit-core/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/reqstream.yaml

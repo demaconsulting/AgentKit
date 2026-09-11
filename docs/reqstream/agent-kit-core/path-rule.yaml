@@ -1,0 +1,76 @@
+---
+# Software Unit Requirements for PathRule
+#
+# These requirements describe the design-level behavior of the PathRule unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: PathRule Requirements
+        requirements:
+          - id: AgentKitCore-PathRule-Unrestricted
+            title: >-
+              A path rule shall be expressible as unrestricted, permitting any location not
+              matched by its denied patterns.
+            justification: |
+              Reading widely is a legitimate configuration for a development assistant that must
+              consult documentation and dependencies outside its working directory. Keeping denied
+              patterns available on an unrestricted rule means wide access does not have to mean
+              unconditional access.
+            tests:
+              - PathRule_Allows_UnrestrictedRule_AnyPath_ReturnsTrue
+              - PathRule_Allows_UnrestrictedRuleWithDenyPattern_MatchingPath_ReturnsFalse
+
+          - id: AgentKitCore-PathRule-Rooted
+            title: >-
+              A path rule shall be expressible as confined to one location, permitting that
+              location and its contents and nothing else.
+            justification: |
+              Confining an agent to a working directory is the most common way operators bound
+              its blast radius. The location itself must be permitted so that it can be listed,
+              and a neighboring location whose name merely begins with the same text must not be,
+              because such a neighbor is trivially created by an attacker.
+            tests:
+              - PathRule_Allows_RootedRule_PathInsideRoot_ReturnsTrue
+              - PathRule_Allows_RootedRule_RootItself_ReturnsTrue
+              - PathRule_Allows_RootedRule_PathOutsideRoot_ReturnsFalse
+              - PathRule_Allows_RootedRule_SiblingWithSharedPrefix_ReturnsFalse
+
+          - id: AgentKitCore-PathRule-DenyPatterns
+            title: >-
+              A path rule shall deny a path whose name, or the name of any enclosing directory,
+              matches one of its denied patterns, irrespective of whether the location is
+              otherwise permitted.
+            justification: |
+              Credential files and repository metadata commonly live inside the very location an
+              agent is allowed to work in. Excluding them by name, at any depth, is the only way
+              to grant a working directory without also granting its secrets.
+            tests:
+              - PathRule_Allows_DenyPatternMatchingFileName_ReturnsFalse
+              - PathRule_Allows_DenyPatternMatchingDirectorySegment_ReturnsFalse
+
+          - id: AgentKitCore-PathRule-RootResolvedAtConstruction
+            title: >-
+              A path rule confined to a location shall judge containment against the real location
+              of that location, so a permitted location that is itself reached through a link
+              still permits its own contents.
+            justification: |
+              Operators routinely point an agent at a working directory that is itself a link, for
+              example a checkout reached through a convenience alias. Comparing a resolved
+              candidate against an unresolved permitted location would refuse everything and make
+              such a configuration unusable.
+            tests:
+              - PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath
+
+          - id: AgentKitCore-PathRule-RejectInvalidRule
+            title: >-
+              A path rule shall reject a null or empty location, and a null or empty denied
+              pattern, as a programming error.
+            justification: |
+              A malformed rule is a defect in the calling code. Accepting one would produce an
+              access rule that looks configured while permitting more than the operator intended,
+              which is precisely the failure mode this library exists to prevent.
+            tests:
+              - PathRule_Rooted_NullRoot_ThrowsArgumentNullException
+              - PathRule_Rooted_EmptyRoot_ThrowsArgumentException
+              - PathRule_Rooted_NullDenyPattern_ThrowsArgumentException

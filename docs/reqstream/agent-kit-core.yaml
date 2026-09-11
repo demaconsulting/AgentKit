@@ -110,3 +110,107 @@ sections:
           - AgentKitCore-Demo-ValidationEmpty-Constructor
         tests:
           - AgentKitCore_SystemValidation_ConstructorEmptyPrefix_ThrowsArgumentException
+
+  - title: AgentKitCore Requirements
+    requirements:
+      - id: AgentKitCore-PathContainment-ResolveLinks
+        title: >-
+          The library shall judge path access by the real file system location of the requested
+          path, with symbolic links and directory junctions resolved at every path component.
+        tags: [system, security]
+        justification: |
+          A path string that looks contained within a permitted location can still reach outside
+          it when a reparse point sits anywhere along the path. Judging access on the requested
+          string rather than on the location it actually reaches would let an agent read or write
+          outside the location its operator granted, which is the primary threat this library
+          exists to control.
+        children:
+          - AgentKitCore-RealPathResolver-ComponentWalk
+          - AgentKitCore-RealPathResolver-LinkTarget
+          - AgentKitCore-RealPathResolver-Normalization
+          - AgentKitCore-RealPathResolver-NonExistentPath
+          - AgentKitCore-RealPathResolver-RejectInvalidPath
+          - AgentKitCore-PathRule-RootResolvedAtConstruction
+          - AgentKitCore-PathPolicy-DenyEscapedPath
+          - AgentKitCore-PathPolicy-RealPathReported
+        tests:
+          - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+
+      - id: AgentKitCore-PathContainment-EnumerationFiltered
+        title: >-
+          The library shall apply the same containment decision to directory enumeration as to
+          direct path access, so a file reachable only by leaving a permitted location is never
+          listed.
+        tags: [system, security]
+        justification: |
+          Recursive directory enumeration provided by the operating system follows links out of
+          a permitted location. A listing that advertises such a file discloses its existence and
+          invites the agent to request it, so enumeration must reach the same conclusion as direct
+          access rather than applying a weaker check of its own.
+        children:
+          - AgentKitCore-PathPolicy-EnumerationFiltered
+        tests:
+          - AgentKitCore_SystemPathContainment_EnumerationAcrossLink_ExcludesEscapedFile
+
+      - id: AgentKitCore-PathAccess-IndependentReadWrite
+        title: >-
+          The library shall permit read access and write access to be expressed independently,
+          each either unrestricted or confined to a location, and each with its own denied
+          patterns.
+        tags: [system]
+        justification: |
+          A development assistant is commonly expected to read widely across a machine while
+          writing only into one working directory. Collapsing read and write into a single setting
+          would force operators to choose between an assistant that cannot see enough context and
+          one that can modify more than intended.
+        children:
+          - AgentKitCore-PathRule-Unrestricted
+          - AgentKitCore-PathRule-Rooted
+          - AgentKitCore-PathRule-DenyPatterns
+          - AgentKitCore-PathRule-RejectInvalidRule
+          - AgentKitCore-PathPolicy-IndependentRules
+        tests:
+          - AgentKitCore_SystemPathPolicy_ReadWideWriteNarrow_AllowsReadDeniesWrite
+
+      - id: AgentKitCore-PathAccess-DenialNotException
+        title: >-
+          The library shall report a refused path access as a returned denial rather than by
+          throwing an exception.
+        tags: [system]
+        justification: |
+          An exception raised while a model is calling a tool ends the agent's turn and strands
+          it with no way to continue. A returned denial lets the model read the reason and choose
+          a permitted path instead, which turns a refusal into a recoverable step rather than a
+          failed session.
+        children:
+          - AgentKitCore-PathPolicy-DenialResult
+          - AgentKitCore-PathPolicy-UnresolvablePathDenied
+        tests:
+          - AgentKitCore_SystemPathPolicy_DeniedPath_ReturnsDenialWithoutThrowing
+
+      - id: AgentKitCore-PathAccess-DenialRedaction
+        title: >-
+          The library shall exclude the requested path and other host detail from denial messages.
+        tags: [system, security]
+        justification: |
+          A denial message is returned to the model and becomes part of a transcript that leaves
+          the process, often to a third-party provider. Including absolute paths would disclose
+          the host's directory layout, user names and project structure to that provider.
+        children:
+          - AgentKitCore-PathPolicy-DenialMessageRedacted
+        tests:
+          - AgentKitCore_SystemPathPolicy_DenialMessage_ContainsNoHostPaths
+
+      - id: AgentKitCore-PathAccess-GuardedConstruction
+        title: >-
+          The library shall not permit a path access policy to exist without both a read rule and
+          a write rule.
+        tags: [system, security]
+        justification: |
+          A policy that can be created without its rules invites a caller to construct one
+          and forget to restrict it, producing an agent with unbounded file access that looks
+          governed. Requiring both rules at creation makes an unguarded policy unrepresentable.
+        children:
+          - AgentKitCore-PathPolicy-RequiredRules
+        tests:
+          - AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected

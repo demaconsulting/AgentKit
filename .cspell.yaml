@@ -20,6 +20,7 @@ words:
   - FileAssert
   - fileassert
   - xunit
+  - mklink
   - Pandoc
   - Qube
   - reqstream
@@ -35,6 +36,7 @@ words:
   - weasyprint
   - netstandard
   - Ollama
+  - postconditions
   - yamlfix
 
 # Exclude common build artifacts, dependencies, and vendored third-party code

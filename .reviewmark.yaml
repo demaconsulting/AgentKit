@@ -114,6 +114,46 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/Demo.cs"                  # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/DemoTests.cs"      # unit tests
 
+  # AgentKitCore-PathPolicy Review (one per unit)
+  - id: AgentKitCore-PathPolicy
+    title: Review that AgentKitCore PathPolicy Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/path-policy.yaml"           # unit requirements
+      - "docs/design/agent-kit-core/path-policy.md"                # unit design
+      - "docs/verification/agent-kit-core/path-policy.md"          # unit verification
+      - "src/DemaConsulting.AgentKit.Core/PathPolicy.cs"            # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/PathPolicyTests.cs"  # unit tests
+
+  # AgentKitCore-PathRule Review (one per unit)
+  - id: AgentKitCore-PathRule
+    title: Review that AgentKitCore PathRule Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/path-rule.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/path-rule.md"                  # unit design
+      - "docs/verification/agent-kit-core/path-rule.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/PathRule.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/PathRuleTests.cs"   # unit tests
+
+  # AgentKitCore-RealPathResolver Review (one per unit)
+  - id: AgentKitCore-RealPathResolver
+    title: Review that AgentKitCore RealPathResolver Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/real-path-resolver.yaml"    # unit requirements
+      - "docs/design/agent-kit-core/real-path-resolver.md"         # unit design
+      - "docs/verification/agent-kit-core/real-path-resolver.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Core/RealPathResolver.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/RealPathResolverTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Core.Tests/ReparsePointFixture.cs"    # reparse-point test fixture
+
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark
     title: Review that BuildMark Provides Required Functionality
