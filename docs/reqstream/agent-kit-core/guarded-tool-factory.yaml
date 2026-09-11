@@ -8,28 +8,36 @@ sections:
     sections:
       - title: GuardedToolFactory Requirements
         requirements:
-          - id: AgentKitCore-GuardedToolFactory-ResultPassthrough
+          - id: AgentKitCore-GuardedToolFactory-SelectiveMarshalling
             title: >-
-              A tool created by the guarded factory shall deliver its result to the runtime in
-              the form the tool returned it, without serializing it, for a tool whose declared
-              return type is an object.
+              A tool created by the guarded factory shall deliver text, content and sequences of
+              content to the runtime in the form the tool returned them, and shall deliver any
+              other result as serialized JSON, for a tool whose declared return type is an
+              object.
             justification: |
               The underlying function factory decides whether to serialize a result by the
-              delegate's declared return type, and a tool returning a union of a refusal, text or
-              content is necessarily declared to return an object. Without the guard a returned
-              image is flattened into a data URI inside JSON, the provider never recognizes an
-              attachment, and the model states that it can see the image and then fabricates a
-              description of it. The failure is silent and the output is confidently wrong.
+              delegate's declared return type, and a tool returning a union of a refusal, text,
+              content or data is necessarily declared to return an object. Without the guard a
+              returned image is flattened into a data URI inside JSON, the provider never
+              recognizes an attachment, and the model states that it can see the image and then
+              fabricates a description of it — a silent failure with confidently wrong output.
+              Preserving every result indiscriminately is not the remedy either: a tool returning
+              structured data was then handed to the provider as a raw object it reported back by
+              its compiler-generated type name and could not read. Selecting by shape keeps the
+              first property and removes the second failure.
             tests:
               - GuardedToolFactory_Create_DelegateDeclaredReturningObject_BinaryResultIsNotJsonSerialized
               - GuardedToolFactory_Create_DelegateDeclaredReturningObject_CaptionedImageSurvivesAsContentList
               - GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_AnonymousObjectIsSerializedToJsonElement
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_StructuredResultIsSerializedToJsonElement
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_NullResultIsPassedThrough
 
           - id: AgentKitCore-GuardedToolFactory-GuardAlwaysApplied
             title: >-
-              The guarded factory shall apply the result-delivery guard to every tool it creates,
-              irrespective of whether the tool is synchronous or asynchronous and irrespective of
-              its parameters.
+              The guarded factory shall apply the selective result-delivery guard to every tool
+              it creates, irrespective of whether the tool is synchronous or asynchronous and
+              irrespective of its parameters.
             justification: |
               A guard a tool author can forget is a guard that will be forgotten. Constructing the
               factory options internally, and applying them to every shape of delegate, is what

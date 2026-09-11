@@ -48,11 +48,12 @@ Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate record
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all twelve scenarios below pass without error or exception beyond
+A subsystem test run passes when all thirteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool published outside the family prefix, image content arriving as a
 `JsonElement`, a family registered for a non-vision host, a pack consulted despite an unmet
 capability, a refusal raised as an exception rather than returned, a refusal containing a host path
-or separator, a permitted read that fails, and a truncated result where a refusal was required each
+or separator, a relative name that is not resolved against the workspace, a permitted read that
+fails, and a truncated result where a refusal was required each
 constitute a failure.
 
 ### Test Scenarios
@@ -117,6 +118,15 @@ named.
 
 Error path and security control: a request for a location outside the permitted one is refused as
 `PathNotPermitted`, confirming the read decision governs the composed tool.
+
+#### AgentKitTools-Image-PolicyGoverned: A Relative Path From a Model Is Resolved Against the Workspace
+
+**Test**: `Image_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace`
+
+Normal operation for the request a model actually makes: the image is asked for by name alone and
+the real bytes come back. The family shares the access policy the text file family uses, so a name
+a text file listing reported is directly usable here; a family that read names differently would
+make a discovered name unusable.
 
 #### AgentKitTools-Image-DenialsAreResults: A Refused Request Returns a Result
 

@@ -32,9 +32,11 @@ Unit tests reside in `TextFile/TextFileWriteToolTests.cs`, with the shared repar
 
 #### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond those
-explicitly asserted. A permitted write that does not reach the file, a refused write that does, a
-directory created by the tool, an exception raised at a malformed request, and a refusal containing
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond
+those explicitly asserted. A permitted write that does not reach the file, a relative name that is
+not written beneath the workspace, a refused write that does reach the file, a
+directory created by the tool, an exception or framework error raised at a malformed or omitted
+request, a refusal offering no way forward, and a refusal containing
 a host path each constitute a failure.
 
 #### Test Scenarios
@@ -132,9 +134,26 @@ must be a returned refusal rather than an exception.
 Error path: the request omits its content entirely. The refusal is returned and no file is created,
 distinguishing absent content from the legitimate empty-content case above.
 
+##### AgentKitTools-TextFile-WriteTool-RelativePath: A Bare File Name Is Written Beneath the Workspace
+
+**Test**: `TextFileWriteTool_Write_BareFileName_WritesBeneathTheWorkspaceRoot`
+
+Normal operation for the request a model actually makes. Asserts the file appears inside the
+workspace holding what was written, so that an agent can write back under the name it read.
+
+##### AgentKitTools-TextFile-WriteTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
+
+**Test**: `TextFileWriteTool_Write_MissingPathArgument_ReturnsDenialWithoutThrowing`
+
+The scenario that pins the parameter as optional. A parameter with no default fails inside the
+function factory before the tool body is reached, and the model then receives an opaque framework
+error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
+path should take.
+
 ##### AgentKitTools-TextFile-WriteTool-DenialRedaction: A Refusal Contains No Host Detail
 
 **Test**: `TextFileWriteTool_Write_DeniedPath_DenialTextContainsNoHostDetail`
 
 Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator.
+location, the requested file name, nor a directory separator. The absence of a separator is also
+what keeps the recovery guidance the refusal now carries from reintroducing host layout.

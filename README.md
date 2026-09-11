@@ -79,7 +79,8 @@ an application's own tools — are built against:
   turn, carried with the policy so every tool observes the same budget
 - **Guarded tool construction**: the only supported way to build a tool, so the safety conventions
   cannot be forgotten
-- **Tool results**: text, binary, and image results, and refusals that carry a reason
+- **Tool results**: text, structured data, binary, and image results, and refusals that carry a
+  reason
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
   gated on host capability
 
@@ -93,9 +94,7 @@ using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
-var policy = new PathPolicy(
-    readRule: PathRule.Rooted("/workspace"),
-    writeRule: PathRule.Rooted("/workspace"));
+var policy = PathPolicy.ForWorkspace("/workspace");
 
 IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .WithHostCapabilities(HostCapabilities.Vision)
@@ -106,10 +105,24 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 // Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
 ```
 
+`ForWorkspace` names the workspace once: it becomes the permitted read location, the permitted
+write location, and the location a relative path is interpreted against. That last part matters
+because a model asks for `notes.txt`, not for its absolute location — a policy that measured that
+name from wherever the host process was started would refuse every legitimate request. Absolute
+paths remain expressible and remain subject to the same containment decision, and a request naming
+no path at all means the workspace itself. Use a `PathPolicy` constructor directly when reads and
+writes need different locations.
+
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
 but AgentKit does not replace OS-level isolation for untrusted code. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tool only when the host
 declares that capability; a host that does not is never offered `image_read`.
+
+Providers differ in where they accept images. Some deliver an image a tool returned straight to
+the model; others accept images only on messages and silently discard one that arrives in a tool
+response, after which the model describes a picture it never received. A host targeting such a
+provider wraps its chat client in `ImagePromotingChatClient`, beneath the function-invocation loop,
+and the image is carried onto a user message instead.
 
 ## Documentation
 

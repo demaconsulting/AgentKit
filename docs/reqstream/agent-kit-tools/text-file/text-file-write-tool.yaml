@@ -114,27 +114,49 @@ sections:
                 tests:
                   - TextFileWriteTool_Write_DirectoryPath_ReturnsDenial
 
+              - id: AgentKitTools-TextFile-WriteTool-RelativePath
+                title: >-
+                  The write tool shall write to a file named relative to the workspace root, and
+                  shall continue to accept one named absolutely.
+                justification: |
+                  Reading and writing must interpret a name identically, or an agent could read a
+                  file it then cannot write back under the same name. A model states a name the
+                  way a person does, and the listing tool reports names relatively, so the
+                  relative form is the one an agent actually holds.
+                tests:
+                  - TextFileWriteTool_Write_BareFileName_WritesBeneathTheWorkspaceRoot
+
               - id: AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
                 title: >-
-                  The write tool shall return a refusal, rather than raising an exception, when
-                  the requested path is empty or the content is absent.
+                  The write tool shall return a refusal, rather than raising an exception or a
+                  framework error, when the requested path is omitted or empty or the content is
+                  absent.
                 justification: |
                   A malformed request comes from the model, so the model must be told how to
                   correct it rather than having its turn ended by an exception. Absent content is
                   distinguished from empty content deliberately: the first is a broken request,
-                  the second is a legitimate empty file.
+                  the second is a legitimate empty file. An omitted argument is the same case
+                  reached by a different route: a parameter that is required rather than
+                  defaulted fails inside the function factory before the tool is reached, and the
+                  model receives an opaque framework error instead of a refusal naming what to
+                  supply.
                 tests:
                   - TextFileWriteTool_Write_EmptyPath_ReturnsDenialWithoutThrowing
                   - TextFileWriteTool_Write_NullContent_ReturnsDenialWithoutThrowing
+                  - TextFileWriteTool_Write_MissingPathArgument_ReturnsDenialWithoutThrowing
 
               - id: AgentKitTools-TextFile-WriteTool-DenialRedaction
                 title: >-
-                  A refusal from the write tool shall contain no host location — no requested
-                  path, no permitted location and no directory separator.
+                  A refusal from the write tool shall state how to phrase a request that could
+                  succeed, and shall contain no host location — no requested path, no permitted
+                  location and no directory separator.
                 tags: [security]
                 justification: |
                   The refusal text is handed to a model and the resulting transcript leaves this
                   process. A refusal that named the permitted write location would tell a third
-                  party exactly where the agent is allowed to modify the host.
+                  party exactly where the agent is allowed to modify the host. A refusal that
+                  names nothing at all is equally useless to the agent, which retries the same
+                  request until it gives up, so the guidance is phrased without a separator
+                  rather than omitted.
                 tests:
                   - TextFileWriteTool_Write_DeniedPath_DenialTextContainsNoHostDetail

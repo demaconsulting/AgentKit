@@ -48,13 +48,19 @@ Design*. The policy is captured by the delegate's closure.
 **Postconditions:** the returned tool carries `ToolName`, carries a non-empty description, and is
 governed by the supplied policy for the rest of its life.
 
-##### The tool delegate: `(path, cancellationToken)`
+##### The tool delegate: `(string? path = null, CancellationToken cancellationToken = default)`
 
 **Algorithm**, in this order, because the order is itself the contract:
 
-1. An absent, empty or whitespace `path` is refused as `InvalidRequest`
+1. An absent, empty or whitespace `path` is refused as `InvalidRequest`, naming the form a
+   request should take. **The parameter carries a default**, which is load-bearing rather than
+   cosmetic: a parameter with no default is required by the function factory, and an omitted
+   argument then fails inside the factory before this step is reached, leaving the model an
+   opaque framework error rather than a refusal it can act on
 2. `policy.TryResolveRead(path, …)` — a refusal is returned as `PathNotPermitted` carrying the
-   policy's own message unchanged. This step resolves every path component, so a link that escapes
+   policy's own message unchanged. **A relative path is interpreted against the workspace here**,
+   which is why a bare file name a listing reported is directly usable, and an absolute path is
+   accepted unchanged. This step resolves every path component, so a link that escapes
    the permitted location is refused here without this unit knowing links exist
 3. An existing directory is refused as `InvalidRequest`, redirecting to `text_file_list`
 4. A non-existent file is refused as `TargetNotFound`, redirecting to `text_file_list`
@@ -88,7 +94,11 @@ detect; it would then reason confidently about content it never saw. Refusing wi
 named lets it narrow the request instead.
 
 No refusal message contains a path, a permitted location or a directory separator. The messages are
-constants and the only interpolated values are integers naming a ceiling.
+constants and the only interpolated values are integers naming a ceiling. **Each nevertheless
+states what the model should do instead** — the form a path takes, or the tool that would find the
+right name — because an agent told only "no" retries the same request until it abandons the task.
+The guidance is phrased without a separator, so that "contains no separator" remains a usable test
+for "contains no host location".
 
 #### Dependencies
 

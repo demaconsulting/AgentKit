@@ -35,6 +35,14 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     rather than truncated, for the same reason a partial file is refused.
 ///     </para>
 ///     <para>
+///     <b>An omitted directory means the workspace root.</b> A model that has not yet seen the
+///     workspace has no directory name to give, and what it sends instead — no argument, an
+///     empty one, or its own runtime's word for absence — is a question this tool can answer.
+///     Both parameters therefore carry a default, so a missing argument reaches the tool body
+///     rather than failing inside the function factory as a framework error the model cannot
+///     interpret. No caller-supplied directory causes this tool to raise an exception.
+///     </para>
+///     <para>
 ///     The delegate is synchronous and declared to return <see cref="object"/> deliberately —
 ///     the guard applies identically to a synchronous tool, and <see cref="object"/> is the only
 ///     type expressing the refusal-or-listing union; see the remarks on
@@ -61,8 +69,8 @@ public static class TextFileListTool
     /// </summary>
     private const string ToolDescription =
         "Lists the files beneath a directory the agent is permitted to read, as names relative "
-        + "to that directory. Returns the listing, or a denial explaining why the request was "
-        + "refused.";
+        + "to that directory. Paths are relative to the workspace root. Returns the listing, or "
+        + "a denial explaining why the request was refused.";
 
     /// <summary>
     ///     The search pattern used when the request supplies none.
@@ -93,11 +101,6 @@ public static class TextFileListTool
     private const char ReportedSeparator = '/';
 
     /// <summary>
-    ///     The refusal used when the request carries no directory at all.
-    /// </summary>
-    private const string DirectoryRequired = "A directory path is required.";
-
-    /// <summary>
     ///     The result reported when nothing matched.
     /// </summary>
     private const string NoMatches = "No files matched.";
@@ -121,17 +124,21 @@ public static class TextFileListTool
         // A missing policy is a programming error in the composing application.
         ArgumentNullException.ThrowIfNull(policy);
 
-        // Declared to return object on purpose; see the type remarks before changing this.
-        return GuardedToolFactory.Create(
-            (Func<string, string?, object>)(
-                ([Description("The path of the directory to list.")] string directory,
-                    [Description(
-                        "The file-name search pattern to match, for example '*.txt'. "
-                        + "Leave empty to list every file.")]
-                    string? searchPattern) =>
-                    List(policy, directory, searchPattern)),
-            ToolName,
-            ToolDescription);
+        // Declared to return object on purpose; see the type remarks before changing this. Both
+        // parameters carry a default so that a model omitting either supplies a request this
+        // tool answers, rather than one the function factory rejects before the body is reached.
+        var list = (
+                [Description(
+                    "The directory to list, relative to the workspace root. Optional: omit it "
+                    + "to list the workspace root itself.")]
+                string? directory = null,
+                [Description(
+                    "The file-name search pattern to match, for example '*.txt'. "
+                    + "Leave empty to list every file.")]
+                string? searchPattern = null) =>
+            List(policy, directory, searchPattern);
+
+        return GuardedToolFactory.Create(list, ToolName, ToolDescription);
     }
 
     /// <summary>
@@ -139,23 +146,27 @@ public static class TextFileListTool
     ///     the request cannot be honored.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The directory is resolved before it is enumerated, for two reasons: a refused
     ///     directory then produces a denial rather than the empty sequence enumeration alone
     ///     would return, and the resolved location is what every reported name is made relative
     ///     to.
+    ///     </para>
+    ///     <para>
+    ///     <b>An omitted directory means the workspace root.</b> A model exploring a workspace
+    ///     for the first time has no directory name to supply, and the request it makes instead
+    ///     — no argument, an empty one, or its runtime's own word for absence — is a question
+    ///     this tool can answer. Refusing it merely sends the model guessing at locations it has
+    ///     no business exploring. The reading is not invented here: the access policy applies it
+    ///     to every path, so listing and reading agree.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy governing the listing.</param>
-    /// <param name="directory">The directory the model requested.</param>
+    /// <param name="directory">The directory the model requested, or null for the workspace root.</param>
     /// <param name="searchPattern">The pattern the model requested, or null for everything.</param>
     /// <returns>The listing, or a refusal naming its reason.</returns>
-    private static object List(PathPolicy policy, string directory, string? searchPattern)
+    private static object List(PathPolicy policy, string? directory, string? searchPattern)
     {
-        // A malformed request is refused rather than thrown: the model supplied it.
-        if (string.IsNullOrWhiteSpace(directory))
-        {
-            return ToolResult.Denied(DenialReason.InvalidRequest, DirectoryRequired);
-        }
-
         // An absent pattern means everything, which is what a model asking "what is here?" means.
         var pattern = string.IsNullOrWhiteSpace(searchPattern)
             ? DefaultSearchPattern

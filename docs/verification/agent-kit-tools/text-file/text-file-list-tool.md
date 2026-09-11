@@ -36,10 +36,11 @@ Unit tests reside in `TextFile/TextFileListToolTests.cs`, with the shared repars
 
 #### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond those
+A unit test run passes when all twenty scenarios below pass without error or exception beyond those
 explicitly asserted. An escaped file appearing in a listing, an absolute name in a listing, a
 non-deterministic order, a truncated listing where a refusal was required, an empty listing reported
-as a refusal, an exception raised at a malformed request, and a refusal containing a host path each
+as a refusal, a request naming no directory refused or raising rather than listing the workspace,
+an exception raised at a malformed request, and a refusal containing a host path each
 constitute a failure.
 
 #### Test Scenarios
@@ -135,16 +136,45 @@ which is what distinguishes a refusal from a truncation.
 Error path: a refusal rather than an empty listing, so the agent learns it may not look there rather
 than concluding the location is empty.
 
-##### AgentKitTools-TextFile-ListTool-MalformedRequestDenied: An Empty Directory Argument Is Refused
+##### AgentKitTools-TextFile-ListTool-OmittedDirectory: An Omitted Directory Lists the Workspace Root
 
-**Test**: `TextFileListTool_List_EmptyDirectory_ReturnsDenialWithoutThrowing`
+**Test**: `TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot`
 
-Error path: the policy is unrestricted, so only the request itself can be at fault, and the outcome
-must be a returned refusal rather than an exception.
+A theory over a missing, an empty and a whitespace directory argument. Asserts each produces the
+listing of the workspace root rather than a refusal. This scenario **replaces** an earlier one
+that asserted the opposite: an agent exploring a workspace for the first time has no directory
+name to give, so refusing the only request it can make sent it guessing at locations it has no
+business exploring.
+
+##### AgentKitTools-TextFile-ListTool-OmittedDirectory: A Placeholder Directory Lists the Workspace Root
+
+**Test**: `TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot`
+
+A theory over the literal words a model's own runtime prints for absence. Asserts each is treated
+exactly as an omitted argument is, because a model whose schema marks an argument optional
+frequently sends the word rather than omitting the argument.
+
+##### AgentKitTools-TextFile-ListTool-OmittedDirectory: Omitting the Argument Entirely Does Not Throw
+
+**Test**: `TextFileListTool_List_MissingDirectoryArgument_DoesNotThrow`
+
+The scenario that pins the parameter as optional. A parameter with no default fails inside the
+function factory before the tool body is reached, and the model then receives an opaque framework
+error rather than anything it can act on — the observed failure this scenario exists to prevent.
+Invokes the tool with no arguments at all and asserts an ordinary listing comes back.
+
+##### AgentKitTools-TextFile-ListTool-RelativeDirectory: A Bare Relative Directory Lists That Directory
+
+**Test**: `TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory`
+
+Normal operation for the way a model names a subdirectory. Places a file in a subdirectory and
+another elsewhere in the workspace, and asserts only the named subdirectory is listed — so the
+relative name narrows the listing rather than being ignored.
 
 ##### AgentKitTools-TextFile-ListTool-DenialRedaction: A Refusal Contains No Host Detail
 
 **Test**: `TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail`
 
 Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, nor a directory separator.
+location, nor a directory separator. The absence of a separator is also what keeps the recovery
+guidance the refusal now carries from reintroducing host layout.

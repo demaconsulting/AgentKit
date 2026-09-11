@@ -310,6 +310,143 @@ public class TextFileReadToolTests
     }
 
     /// <summary>
+    ///     Proves a bare file name — the path a model actually writes — is read from the
+    ///     workspace.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_BareFileName_ReturnsTheFileContents()
+    {
+        // Arrange: a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the file by name alone
+        var result = await InvokeAsync(tool, "notes.txt");
+
+        // Assert: the file's text, not a refusal
+        Assert.Equal("inside-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a name prefixed with the current-directory token is read from the workspace.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_DotSlashFileName_ReturnsTheFileContents()
+    {
+        // Arrange: a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for it with the leading token a model often adds
+        var result = await InvokeAsync(tool, "./notes.txt");
+
+        // Assert: the same file the bare name reaches
+        Assert.Equal("inside-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a nested relative path is read from the workspace.
+    /// </summary>
+    /// <remarks>
+    ///     The forward slash is deliberate: it is the separator a model writes regardless of the
+    ///     host platform, and it is the separator the listing tool reports names with.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_NestedRelativePath_ReturnsTheFileContents()
+    {
+        // Arrange: a file one level below the workspace root
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "nested");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for it the way a listing would have named it
+        var result = await InvokeAsync(tool, "sub/child.txt");
+
+        // Assert: the nested file's text
+        Assert.Equal("nested", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves an absolute path inside the workspace is still read.
+    /// </summary>
+    /// <remarks>
+    ///     Interpreting a bare name against the workspace must not withdraw the absolute form,
+    ///     which a host composing paths itself still relies on.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_AbsolutePathInsideRoot_ReturnsTheFileContents()
+    {
+        // Arrange: a workspace holding one file, addressed absolutely
+        using var fixture = new ReparsePointFixture();
+        var path = ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the file by its absolute location
+        var result = await InvokeAsync(tool, path);
+
+        // Assert: the same content the bare name returns
+        Assert.Equal("inside-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves that omitting the path argument produces a refusal rather than a framework
+    ///     error.
+    /// </summary>
+    /// <remarks>
+    ///     A parameter with no default fails inside the function factory before the tool body is
+    ///     reached, leaving the model an opaque error it cannot act on. A read really does need
+    ///     a path, so the correct answer is a refusal that says which one to supply.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a workspace-governed tool, so only the request is at fault
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke with no arguments at all
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal composed by the tool, naming what to supply
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("workspace root", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a refusal tells the model what form a path should take.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm()
+    {
+        // Arrange: a file outside the workspace
+        using var fixture = new ReparsePointFixture();
+        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: request the refused file
+        var result = await InvokeAsync(tool, outsideFile);
+
+        // Assert: guidance the model can act on, without any host location in it
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("workspace root", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            Path.DirectorySeparatorChar.ToString(),
+            text,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a refusal discloses no host location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
@@ -336,17 +473,19 @@ public class TextFileReadToolTests
     }
 
     /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one location.
+    ///     Creates a policy permitting reads and writes only beneath one workspace, and
+    ///     interpreting relative requests against it.
     /// </summary>
+    /// <remarks>
+    ///     Built through the workspace shorthand deliberately: it is the configuration the
+    ///     documentation recommends, so the tests exercise what a host actually builds.
+    /// </remarks>
     /// <param name="root">The permitted location.</param>
     /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return new PathPolicy(
-            PathRule.Rooted(root),
-            PathRule.Rooted(root),
-            limits ?? ToolLimits.Default);
+        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
     }
 
     /// <summary>

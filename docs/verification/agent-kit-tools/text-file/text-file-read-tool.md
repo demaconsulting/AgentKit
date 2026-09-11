@@ -31,9 +31,11 @@ Unit tests reside in `TextFile/TextFileReadToolTests.cs`, with the shared repars
 
 #### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
-explicitly asserted. A permitted file that does not read, a refused file whose content leaks, a
-truncated result where a refusal was required, an exception raised at a malformed request, and a
+A unit test run passes when all twenty-two scenarios below pass without error or exception beyond
+those explicitly asserted. A permitted file that does not read, a relative name that is not read
+from the workspace, a refused file whose content leaks, a
+truncated result where a refusal was required, an exception or framework error raised at a
+malformed or omitted request, a refusal offering no way forward, and a
 refusal containing a host path each constitute a failure.
 
 #### Test Scenarios
@@ -144,6 +146,51 @@ must be a returned refusal rather than an exception that would end the agent's t
 
 Error path: a whitespace-only path would otherwise reach the policy, which raises rather than
 refuses for a malformed argument.
+
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Bare File Name Is Read From the Workspace
+
+**Test**: `TextFileReadTool_Read_BareFileName_ReturnsTheFileContents`
+
+Normal operation for the request a model actually makes. Asserts the file's text comes back for a
+name stated with no location at all.
+
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Current-Directory Prefix Is Read From the Workspace
+
+**Test**: `TextFileReadTool_Read_DotSlashFileName_ReturnsTheFileContents`
+
+Asserts the leading token a model often adds reaches the same file the bare name reaches.
+
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Nested Relative Path Is Read From the Workspace
+
+**Test**: `TextFileReadTool_Read_NestedRelativePath_ReturnsTheFileContents`
+
+Uses a forward slash deliberately: it is the separator a model writes on any platform, and the
+separator the list tool reports names with, so this is the exact form an agent holds after a
+listing.
+
+##### AgentKitTools-TextFile-ReadTool-RelativePath: An Absolute Path Inside the Workspace Is Read
+
+**Test**: `TextFileReadTool_Read_AbsolutePathInsideRoot_ReturnsTheFileContents`
+
+Asserts that reading a bare name from the workspace does not withdraw the absolute form a host
+composing paths itself relies on.
+
+##### AgentKitTools-TextFile-ReadTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
+
+**Test**: `TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing`
+
+The scenario that pins the parameter as optional. A parameter with no default fails inside the
+function factory before the tool body is reached, and the model then receives an opaque framework
+error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
+path should take.
+
+##### AgentKitTools-TextFile-ReadTool-DenialRedaction: A Refusal States the Expected Path Form
+
+**Test**: `TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm`
+
+Asserts the refusal names the workspace-relative form while still containing no directory
+separator, so the guidance was added without reopening the disclosure the redaction scenario
+closes.
 
 ##### AgentKitTools-TextFile-ReadTool-DenialRedaction: A Refusal Contains No Host Detail
 

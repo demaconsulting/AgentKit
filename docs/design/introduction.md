@@ -29,8 +29,9 @@ software items, specifically:
   symbolic links and directory junctions at every path component
 - **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
   denied patterns
-- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, and makes the single
-  containment decision used by both direct access and directory enumeration
+- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, carries the workspace
+  location relative paths are interpreted against, and makes the single containment decision used
+  by both direct access and directory enumeration
 - **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
   attaching content
 - **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals
@@ -41,6 +42,8 @@ software items, specifically:
   capability-gated family, and the host capabilities a pack may require
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
+- **ImagePromotingChatClient (Unit)** — Makes an image a tool returned visible to a provider whose
+  tool-result channel cannot carry one, by promoting it onto a following user message
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed reading, writing and
@@ -91,7 +94,7 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is deliberately flat: its nine units sit directly under the system with no
+`AgentKitCore` is deliberately flat: its ten units sit directly under the system with no
 intervening subsystems. Core is a small contract package, and a subsystem layer would add
 artifacts — a requirements file, a design document, a verification document and a review set per
 subsystem — without reducing the number of units anyone has to review. Subsystems will be
@@ -115,14 +118,16 @@ and descriptions as follows:
 ```text
 src/DemaConsulting.AgentKit.Core/
 ├── GuardedToolFactory.cs       — the only supported way to construct a tool
-├── PathPolicy.cs               — the single containment decision, and the limits it carries
+├── ImagePromotingChatClient.cs — promotes a tool-returned image onto a user message
+├── PathPolicy.cs               — the workspace base, the single containment decision, and the
+│                                 limits it carries
 ├── PathRule.cs                 — one access rule: unrestricted or rooted
 ├── RealPathResolver.cs         — the real location a path reaches
 ├── ToolLimits.cs               — the ceilings every governed tool observes
 ├── ToolName.cs                 — the family-prefix naming convention
 ├── ToolPack.cs                 — the pack contract and host capabilities
 ├── ToolPackBuilder.cs          — capability-gated composition
-└── ToolResult.cs               — text, content and denial results
+└── ToolResult.cs               — text, content, structured data and denial results
 ```
 
 The folder is flat because the system is flat: each unit is one file directly under the project

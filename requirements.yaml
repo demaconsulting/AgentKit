@@ -10,6 +10,7 @@ includes:
   - docs/reqstream/quality.yaml
   - docs/reqstream/agent-kit-core.yaml
   - docs/reqstream/agent-kit-core/guarded-tool-factory.yaml
+  - docs/reqstream/agent-kit-core/image-promoting-chat-client.yaml
   - docs/reqstream/agent-kit-core/path-policy.yaml
   - docs/reqstream/agent-kit-core/path-rule.yaml
   - docs/reqstream/agent-kit-core/real-path-resolver.yaml

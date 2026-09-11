@@ -53,16 +53,39 @@ Read access and write access are expressed as two independent rules. A rule is e
 or confined to one location, and each rule carries its own denied patterns. Rules are created
 through `PathRule.Unrestricted` and `PathRule.Rooted`, and paired into a `PathPolicy`.
 
+Most applications want one workspace for both directions, and `PathPolicy.ForWorkspace` names it
+once:
+
+```csharp
+var policy = PathPolicy.ForWorkspace("/workspace");
+```
+
+That single argument becomes the permitted read location, the permitted write location, and the
+**base directory** — the location a relative path is interpreted against. Use a `PathPolicy`
+constructor directly when reads and writes need different locations; the constructor takes an
+optional base directory, and defaults it to the read rule's location.
+
+**A path a model supplies is read relative to the base directory.** A model asks for `notes.txt`,
+not for its absolute location, so that is the request the policy answers. A path resolved against
+the location the host process happened to be started from would refuse every legitimate request
+while looking, from the outside, like a containment decision. Absolute paths remain expressible and
+remain subject to the same containment decision. A request naming no path at all — an omitted,
+empty or whitespace argument, or the literal word a model's runtime prints for absence — means the
+base directory itself.
+
 A policy cannot be constructed without both of its rules, so an unguarded policy cannot exist.
 Access is requested through `PathPolicy.TryResolveRead` and `PathPolicy.TryResolveWrite`, which
 return whether the access is permitted, the real location on success, and a redacted reason on
 refusal. Directory listings are obtained through `PathPolicy.EnumerateFiles`, which applies the
-same decision, so a listing can never advertise a file that access would refuse.
+same decision, so a listing can never advertise a file that access would refuse; a listing that
+names no directory lists the base directory.
 
 Every containment decision resolves symbolic links and directory junctions at every path component,
 so a path that merely looks contained cannot reach outside the location the operator granted.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
-turn.
+turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
+states the form a permitted request takes while still naming no host location, so a refused agent
+has something to act on rather than a bare "no" to retry against.
 
 ## Tool Limits
 
@@ -85,11 +108,33 @@ by forgetting it.
 
 ## Tool Results
 
-`ToolResult` constructs what a tool returns: `Text` for text, `Binary` and `Image` for
+`ToolResult` constructs what a tool returns: `Text` for text, `Structured` for data that is
+neither text nor content, `Binary` and `Image` for
 content carrying a media type and an optional caption, and `Denied` for a refusal. A refusal names
-its reason and may redirect the model to a more appropriate tool. Results reach the provider in the
-form the tool produced them rather than as serialized JSON, which is what allows a returned image
-to be recognized as an image.
+its reason and may redirect the model to a more appropriate tool. Text and content reach the
+provider in the form the tool produced them rather than as serialized JSON, which is what allows a
+returned image to be recognized as an image; a structured result is serialized to JSON on the way
+out, because JSON is the form in which a provider can read structured data.
+
+## Delivering Images to Any Provider
+
+Providers differ in where they accept image content, and the difference is silent. Some deliver an
+image a tool returned straight to the model. Others accept images on messages but not in tool
+responses: the content is preserved all the way through the framework and then discarded at the
+wire, after which the model describes a picture it never received and nothing reports an error.
+
+A host targeting such a provider wraps its chat client once:
+
+```csharp
+IChatClient client = new ImagePromotingChatClient(providerClient);
+```
+
+The wrapper must sit **beneath** the function-invocation loop, so that it observes the conversation
+after tool results have been appended. It then carries any image a tool result holds onto a
+following user message, announced as coming from the tool, leaving every other message and their
+order untouched. A conversation whose tool results carry no image is forwarded unchanged, so the
+wrapper can be left installed. A host whose provider already delivers images from tool results
+needs nothing.
 
 ## Tool Packs
 
@@ -121,7 +166,7 @@ cannot use.
 
 ## Composing a Tool List
 
-An application pairs a read rule and a write rule into a `PathPolicy`, adds the packs it wants to a
+An application names its workspace, adds the packs it wants to a
 `ToolPackBuilder`, declares the capabilities its host supports, and builds the tool list:
 
 ```csharp
@@ -130,9 +175,7 @@ using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
-var policy = new PathPolicy(
-    readRule: PathRule.Rooted("/workspace"),
-    writeRule: PathRule.Rooted("/workspace"));
+var policy = PathPolicy.ForWorkspace("/workspace");
 
 IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .WithHostCapabilities(HostCapabilities.Vision)
@@ -144,7 +187,10 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 ```
 
 Every tool returned observes the same policy and limits: a `text_file_read` that steps outside the
-rooted location, or exceeds the byte ceiling, returns a refusal rather than the file. The tool
+rooted location, or exceeds the byte ceiling, returns a refusal rather than the file. Every tool
+also reads a path the same way, so a name `text_file_list` reported can be handed straight back to
+`text_file_read` or `image_read`, and `text_file_list` called with no directory lists the
+workspace root. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
 

@@ -48,6 +48,22 @@ sections:
               - ToolResult_Image_WithCaption_ReturnsCaptionThenImageContent
               - ToolResult_Image_NonImageMediaType_ThrowsArgumentException
 
+          - id: AgentKitCore-ToolResult-Structured
+            title: >-
+              A tool result shall express structured data as the supplied value, and shall reject
+              a missing value as a programming error.
+            justification: |
+              Every kind of response a tool can give needs one uniform expression, or a reader
+              cannot tell a deliberate structured result from a value somebody forgot to wrap.
+              The value is returned as supplied rather than serialized here, so a tool author can
+              assert on what their tool produced; the guarded construction path serializes it on
+              the way to the runtime, which is the one result kind a provider genuinely cannot
+              read in its original form. A tool with nothing to say returns text or a refusal, so
+              a missing value is a defect rather than an outcome to show a model.
+            tests:
+              - ToolResult_Structured_Value_ReturnsTheSuppliedValue
+              - ToolResult_Structured_NullValue_ThrowsArgumentNullException
+
           - id: AgentKitCore-ToolResult-Denied
             title: >-
               A tool result shall express a refusal as a returned result that names its reason,

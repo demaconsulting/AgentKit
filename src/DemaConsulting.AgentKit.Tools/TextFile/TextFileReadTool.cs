@@ -26,6 +26,18 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <see cref="GuardedToolFactory"/>.
 ///     </para>
 ///     <para>
+///     <b>A path the model supplies is read relative to the workspace root.</b> A model asks for
+///     <c>notes.txt</c>, and that is the request this tool answers; the access policy holds the
+///     workspace the name is resolved against. An absolute path remains expressible and remains
+///     subject to the same containment decision.
+///     </para>
+///     <para>
+///     <b>A missing path argument is a refusal, never a framework error.</b> The path parameter
+///     carries a default so that an omitted argument reaches the tool body. A file path really
+///     is required here — unlike a listing, a read has no sensible default target — so the tool
+///     refuses and says what to supply instead.
+///     </para>
+///     <para>
 ///     <b>An oversized file is a denial naming the ceiling, never a truncation.</b> Silently
 ///     returning the first part of a file would hand the model an incomplete document it has no
 ///     way to detect, and it would then reason confidently about content it never saw. A denial
@@ -33,9 +45,11 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     </para>
 ///     <para>
 ///     Every refusal is returned rather than thrown, and carries no host detail: no absolute
-///     path, no permitted location, no directory separator. The refusal text reaches a model and
-///     the resulting transcript leaves this process, so the messages here are constants, and the
-///     only interpolated values are integers naming a ceiling.
+///     path, no permitted location, no directory separator. Each nevertheless states what the
+///     model should do instead, because an agent told only "no" retries the same request. The
+///     refusal text reaches a model and the resulting transcript leaves this process, so the
+///     messages here are constants, and the only interpolated values are integers naming a
+///     ceiling.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -58,23 +72,29 @@ public static class TextFileReadTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     private const string ToolDescription =
-        "Reads the text content of a file the agent is permitted to read. "
-        + "Returns the file's text, or a denial explaining why the request was refused.";
+        "Reads the text content of a file the agent is permitted to read. Paths are relative to "
+        + "the workspace root. Returns the file's text, or a denial explaining why the request "
+        + "was refused.";
 
     /// <summary>
     ///     The refusal used when the request carries no path at all.
     /// </summary>
-    private const string PathRequired = "A file path is required.";
+    private const string PathRequired =
+        "A file path is required. Supply a path relative to the workspace root, "
+        + "for example 'notes.txt'.";
 
     /// <summary>
     ///     The refusal used when the request names a directory rather than a file.
     /// </summary>
-    private const string PathIsDirectory = "The requested path is a directory, not a file.";
+    private const string PathIsDirectory =
+        "The requested path is a directory, not a file. List it to discover the file names it "
+        + "holds, then read one of those.";
 
     /// <summary>
     ///     The refusal used when the requested file does not exist.
     /// </summary>
-    private const string FileNotFound = "The requested file does not exist.";
+    private const string FileNotFound =
+        "The requested file does not exist. List the workspace to discover the names that do.";
 
     /// <summary>
     ///     The refusal used when the file exists and is permitted but cannot be read.
@@ -101,14 +121,18 @@ public static class TextFileReadTool
         // model supplied, so it is surfaced rather than converted into a denial.
         ArgumentNullException.ThrowIfNull(policy);
 
-        // Declared Task<object> on purpose; see the type remarks before changing this.
-        return GuardedToolFactory.Create(
-            (Func<string, CancellationToken, Task<object>>)(
-                ([Description("The path of the file to read.")] string path,
-                    CancellationToken cancellationToken) =>
-                    ReadAsync(policy, path, cancellationToken)),
-            ToolName,
-            ToolDescription);
+        // Declared to return Task<object> on purpose; see the type remarks before changing this.
+        // The path carries a default so that an omitted argument becomes a refusal this tool
+        // composes, rather than a framework error raised before the body is reached.
+        var read = (
+                [Description(
+                    "The path of the file to read, relative to the workspace root, "
+                    + "for example 'notes.txt'.")]
+                string? path = null,
+                CancellationToken cancellationToken = default) =>
+            ReadAsync(policy, path, cancellationToken);
+
+        return GuardedToolFactory.Create(read, ToolName, ToolDescription);
     }
 
     /// <summary>
@@ -121,12 +145,12 @@ public static class TextFileReadTool
     ///     rather than handed a partial document.
     /// </remarks>
     /// <param name="policy">The access policy governing the read.</param>
-    /// <param name="path">The path the model requested.</param>
+    /// <param name="path">The path the model requested, or null when it supplied none.</param>
     /// <param name="cancellationToken">A token that cancels the read.</param>
     /// <returns>The file's text, or a refusal naming its reason.</returns>
     private static async Task<object> ReadAsync(
         PathPolicy policy,
-        string path,
+        string? path,
         CancellationToken cancellationToken)
     {
         // A malformed request is refused rather than thrown: the model supplied it, so the model

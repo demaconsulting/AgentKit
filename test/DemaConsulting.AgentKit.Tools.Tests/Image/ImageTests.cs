@@ -320,13 +320,41 @@ public class ImageTests
     }
 
     /// <summary>
+    ///     Proves a path stated the way a model states it is resolved against the workspace.
+    /// </summary>
+    /// <remarks>
+    ///     The image family shares the same access policy the text file family does, so a bare
+    ///     name a listing reported is directly usable here. An image family that read names
+    ///     differently would make a discovered name unusable.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace()
+    {
+        // Arrange: the family composed over a workspace holding one image
+        using var fixture = new ReparsePointFixture();
+        WriteBytes(fixture.Root, "picture.png", SampleBytes);
+        var tools = Compose(fixture.Root);
+
+        // Act: read the image by name alone
+        var result = await InvokeAsync(
+            tools,
+            ImageReadTool.ToolName,
+            new AIFunctionArguments { ["path"] = "picture.png" });
+
+        // Assert: the real bytes, reached from the workspace
+        var content = Assert.IsType<List<AIContent>>(result);
+        Assert.Equal(SampleBytes, Assert.IsType<DataContent>(content[1]).Data.ToArray());
+    }
+
+    /// <summary>
     ///     Composes the family under a policy rooted at one location, on a vision host.
     /// </summary>
     /// <param name="root">The permitted read and write location.</param>
     /// <returns>The composed tool list.</returns>
     private static IReadOnlyList<AIFunction> Compose(string root)
     {
-        var policy = new PathPolicy(PathRule.Rooted(root), PathRule.Rooted(root));
+        var policy = PathPolicy.ForWorkspace(root);
         return new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack())

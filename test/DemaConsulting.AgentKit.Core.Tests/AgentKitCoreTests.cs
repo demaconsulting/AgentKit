@@ -126,6 +126,99 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that a path stated the way a model states it is resolved against the workspace
+    ///     the host configured.
+    /// </summary>
+    /// <remarks>
+    ///     A model asks for <c>notes.txt</c>, not for its absolute location. Resolving that
+    ///     anywhere other than the workspace refuses every legitimate request while looking, from
+    ///     the outside, like a containment decision.
+    /// </remarks>
+    [Fact]
+    public void AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkspaceRoot()
+    {
+        // Arrange: a system configured for one workspace, holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        var policy = PathPolicy.ForWorkspace(fixture.Root);
+
+        // Act: request the file the way a model would name it
+        var permitted = policy.TryResolveRead("notes.txt", out var realPath, out var denialMessage);
+
+        // Assert: the real file inside the workspace, not a refusal
+        Assert.True(permitted);
+        Assert.Null(denialMessage);
+        Assert.Equal("inside-content", File.ReadAllText(realPath!));
+    }
+
+    /// <summary>
+    ///     Proves that a denial the system produces tells the model how to recover.
+    /// </summary>
+    /// <remarks>
+    ///     An agent told only "no" re-submits variations of the same path until it abandons the
+    ///     task. Stating the expected form is what makes a refusal a recoverable step, and it is
+    ///     done without reintroducing any host detail.
+    /// </remarks>
+    [Fact]
+    public void AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover()
+    {
+        // Arrange: a system confined to one workspace
+        using var fixture = new ReparsePointFixture();
+        var policy = PathPolicy.ForWorkspace(fixture.Root);
+        var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
+
+        // Act: request a path outside the workspace
+        policy.TryResolveRead(requested, out _, out var denialMessage);
+
+        // Assert: guidance the model can act on, still carrying no host location
+        Assert.NotNull(denialMessage);
+        Assert.Contains("workspace root", denialMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.BaseDirectory, denialMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            Path.DirectorySeparatorChar.ToString(),
+            denialMessage,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that an image a tool returns reaches the provider on a channel it honors, even
+    ///     when the provider would drop it from a tool response.
+    /// </summary>
+    /// <remarks>
+    ///     The asymmetry is observed rather than theoretical: one provider delivers images from
+    ///     tool results and another silently discards them, after which the model describes an
+    ///     image it never received. Promoting the content onto a user message is what makes the
+    ///     delivery independent of which provider a host chose.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage()
+    {
+        // Arrange: a conversation whose tool result carries the caption-then-image shape a
+        // guarded tool produces
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47 };
+        var image = new DataContent(bytes, "image/png");
+        var toolResult = new List<AIContent> { new TextContent("A screenshot."), image };
+        using var provider = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(provider);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "What does the screenshot show?"),
+            new(ChatRole.Tool, [new FunctionResultContent("call-1", toolResult)])
+        };
+
+        // Act: send the conversation as a function-invocation loop would
+        await client.GetResponseAsync(
+            messages,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the provider received the image on a user message, unchanged
+        Assert.Equal(3, provider.ReceivedMessages.Count);
+        Assert.Equal(ChatRole.User, provider.ReceivedMessages[2].Role);
+        Assert.Same(image, Assert.IsType<DataContent>(provider.ReceivedMessages[2].Contents[1]));
+    }
+
+    /// <summary>
     ///     Proves that the system refuses to create a path access policy without both rules.
     /// </summary>
     [Fact]

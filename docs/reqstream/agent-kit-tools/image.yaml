@@ -75,7 +75,8 @@ sections:
           - id: AgentKitTools-Image-PolicyGoverned
             title: >-
               The image family shall judge each request with the policy's read decision,
-              returning the permitted content — an image as image content and a PDF as binary
+              interpreting a path a model states relative to the workspace, returning the
+              permitted content — an image as image content and a PDF as binary
               content — and refusing a request that reaches outside the permitted location,
               including one that reaches outside through a link.
             tags: [security]
@@ -83,18 +84,23 @@ sections:
               An operator grants an agent access to a location, and that grant is meaningless
               unless every read consults the rule belonging to it. Judging a request by the
               location it actually reaches, rather than by how its path was spelled, is what
-              stops an agent from stepping outside the location its operator granted. Returning an
+              stops an agent from stepping outside the location its operator granted. The family
+              shares the access policy the text file family uses, so a name a listing reported is
+              directly usable here; a family that read names differently would make a discovered
+              name unusable. Returning an
               image as image content and a PDF as binary content is not a detail: the result
               constructor for an image refuses a non-image media type, so a PDF must take the
               binary path or the read would throw.
             children:
               - AgentKitTools-Image-ReadTool-ReadPermittedImage
               - AgentKitTools-Image-ReadTool-ReadPermittedPdf
+              - AgentKitTools-Image-ReadTool-RelativePath
               - AgentKitTools-Image-ReadTool-DenyOutsideRoot
               - AgentKitTools-Image-MediaTypes-SupportedTypes
             tests:
               - Image_Family_PermittedImage_IsReturnedAsImageContent
               - Image_Family_PathOutsideRoot_IsRefused
+              - Image_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace
 
           - id: AgentKitTools-Image-DenialsAreResults
             title: >-

@@ -114,6 +114,20 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/GuardedToolFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/GuardedToolFactoryTests.cs"  # unit tests
 
+  # AgentKitCore-ImagePromotingChatClient Review (one per unit)
+  - id: AgentKitCore-ImagePromotingChatClient
+    title: Review that AgentKitCore ImagePromotingChatClient Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/image-promoting-chat-client.yaml"
+      - "docs/design/agent-kit-core/image-promoting-chat-client.md"
+      - "docs/verification/agent-kit-core/image-promoting-chat-client.md"
+      - "src/DemaConsulting.AgentKit.Core/ImagePromotingChatClient.cs"
+      - "test/DemaConsulting.AgentKit.Core.Tests/ImagePromotingChatClientTests.cs"
+      - "test/DemaConsulting.AgentKit.Core.Tests/ScriptedChatClient.cs"  # scripted chat client test fake
+
   # AgentKitCore-PathPolicy Review (one per unit)
   - id: AgentKitCore-PathPolicy
     title: Review that AgentKitCore PathPolicy Implementation is Correct

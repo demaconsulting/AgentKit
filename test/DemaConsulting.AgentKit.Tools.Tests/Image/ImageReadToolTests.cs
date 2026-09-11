@@ -341,6 +341,51 @@ public class ImageReadToolTests
     }
 
     /// <summary>
+    ///     Proves a bare file name — the path a model actually writes — is read from the
+    ///     workspace.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_BareFileName_ReturnsTheImageContent()
+    {
+        // Arrange: a workspace holding one image
+        using var fixture = new ReparsePointFixture();
+        WriteBytes(fixture.Root, "picture.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the image by name alone
+        var result = await InvokeAsync(tool, "picture.png");
+
+        // Assert: the caption and the real bytes, not a refusal
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+    }
+
+    /// <summary>
+    ///     Proves that omitting the path argument produces a refusal rather than a framework
+    ///     error.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a workspace-governed tool, so only the request is at fault
+        using var fixture = new ReparsePointFixture();
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke with no arguments at all
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal composed by the tool, naming what to supply
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("workspace root", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a refusal discloses no host location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
@@ -367,17 +412,19 @@ public class ImageReadToolTests
     }
 
     /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one location.
+    ///     Creates a policy permitting reads and writes only beneath one workspace, and
+    ///     interpreting relative requests against it.
     /// </summary>
+    /// <remarks>
+    ///     Built through the workspace shorthand deliberately: it is the configuration the
+    ///     documentation recommends, so the tests exercise what a host actually builds.
+    /// </remarks>
     /// <param name="root">The permitted location.</param>
     /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return new PathPolicy(
-            PathRule.Rooted(root),
-            PathRule.Rooted(root),
-            limits ?? ToolLimits.Default);
+        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
     }
 
     /// <summary>

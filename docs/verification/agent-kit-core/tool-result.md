@@ -32,7 +32,7 @@ Unit tests reside in `ToolResultTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all fourteen scenarios below pass without error or exception beyond
+A unit test run passes when all sixteen scenarios below pass without error or exception beyond
 those explicitly asserted. Any result returned in the wrong shape, any caption and content
 returned in the wrong order, any refusal expressed by throwing, and any host detail contributed
 by the library to a refusal constitutes a failure.
@@ -50,6 +50,21 @@ Normal operation: the plain string arrives unwrapped, ready for any runtime to p
 **Test**: `ToolResult_Text_NullText_ThrowsArgumentNullException`
 
 Error path: a null text is a defect in the tool, not a refusal for the model.
+
+#### AgentKitCore-ToolResult-Structured: Structured Data Is Returned as the Supplied Value
+
+**Test**: `ToolResult_Structured_Value_ReturnsTheSuppliedValue`
+
+Normal operation: the value itself, asserted by reference. The constructor deliberately does not
+serialize — the guarded construction path does that on the way to the runtime — so a tool author
+asserts on the value their tool produced rather than on its JSON form.
+
+#### AgentKitCore-ToolResult-Structured: A Missing Value Is Refused
+
+**Test**: `ToolResult_Structured_NullValue_ThrowsArgumentNullException`
+
+Error path: a tool with nothing to say returns text or a refusal, so null data is a defect in the
+tool rather than an outcome to show a model.
 
 #### AgentKitCore-ToolResult-Binary: Content Without a Caption Carries Its Media Type
 

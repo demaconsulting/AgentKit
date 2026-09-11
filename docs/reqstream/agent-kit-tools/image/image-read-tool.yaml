@@ -130,26 +130,49 @@ sections:
                   - ImageReadTool_Read_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling
                   - ImageReadTool_Read_FileAtTheBinaryCeiling_IsRead
 
+              - id: AgentKitTools-Image-ReadTool-RelativePath
+                title: >-
+                  The read tool shall read a file named relative to the workspace root, and shall
+                  continue to read one named absolutely.
+                justification: |
+                  A model asks for a file by name, and a name a text file listing reported is
+                  relative, so the same name must be usable here. The image family shares the
+                  access policy the text file family uses, which is what makes the two agree. The
+                  absolute form remains accepted and remains subject to the same containment
+                  decision.
+                tests:
+                  - ImageReadTool_Read_BareFileName_ReturnsTheImageContent
+
               - id: AgentKitTools-Image-ReadTool-MalformedRequestDenied
                 title: >-
-                  The read tool shall return a refusal, rather than raising an exception, when
-                  the requested path is empty or consists only of whitespace.
+                  The read tool shall return a refusal, rather than raising an exception or a
+                  framework error, when the requested path is omitted, empty or consists only of
+                  whitespace.
                 justification: |
                   A malformed request comes from the model, so the model is the one that must be
                   told how to correct it. An exception at a tool call ends the agent's turn and
-                  strands it, turning a typo into a failed task.
+                  strands it, turning a typo into a failed task. An omitted argument is the same
+                  case reached by a different route: a path parameter that is required rather
+                  than defaulted fails inside the function factory before the tool is reached,
+                  and the model receives an opaque framework error instead of a refusal naming
+                  what to supply.
                 tests:
                   - ImageReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing
                   - ImageReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
+                  - ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing
 
               - id: AgentKitTools-Image-ReadTool-DenialRedaction
                 title: >-
-                  A refusal from the read tool shall contain no host location — no requested
-                  path, no permitted location and no directory separator.
+                  A refusal from the read tool shall state how to phrase a request that could
+                  succeed, and shall contain no host location — no requested path, no permitted
+                  location and no directory separator.
                 tags: [security]
                 justification: |
                   The refusal text is handed to a model and the resulting transcript leaves this
                   process. Naming the path or the permitted location in a refusal would disclose
-                  to a third party exactly the host layout that containment exists to protect.
+                  to a third party exactly the host layout that containment exists to protect. A
+                  refusal that names nothing at all is equally useless to the agent, which
+                  retries the same request until it gives up, so the guidance is phrased without
+                  a separator rather than omitted.
                 tests:
                   - ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail

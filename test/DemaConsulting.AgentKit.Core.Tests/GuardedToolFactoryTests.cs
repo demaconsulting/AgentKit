@@ -181,6 +181,92 @@ public class GuardedToolFactoryTests
     }
 
     /// <summary>
+    ///     Proves that an anonymous object returned by an object-declared tool is serialized to
+    ///     JSON rather than handed to the provider as a raw CLR instance.
+    /// </summary>
+    /// <remarks>
+    ///     This is the scenario blanket passthrough failed. Preserving every result
+    ///     indiscriminately delivered the anonymous object itself, which the provider reported
+    ///     back as a compiler-generated type name and could not read. Selecting by shape keeps
+    ///     content intact and serializes everything else exactly as the factory would.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_Create_DelegateDeclaredReturningObject_AnonymousObjectIsSerializedToJsonElement()
+    {
+        // Arrange: a tool whose declared return type is object, returning an anonymous object
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult<object>(new { name = "a.txt", size = 3 })),
+            "structured_probe",
+            "Returns an anonymous object.");
+
+        // Act: invoke the tool as the runtime would
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: readable JSON rather than an opaque instance the provider cannot interpret
+        var element = Assert.IsType<JsonElement>(result);
+        Assert.Contains("a.txt", element.GetRawText(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a structured result is serialized to JSON on its way to the runtime.
+    /// </summary>
+    /// <remarks>
+    ///     Declared <c>Task&lt;object&gt;</c> for the reason given on the type. The structured
+    ///     result constructor is the uniform way a tool expresses data that is neither text nor
+    ///     content, and JSON is the form in which a provider can read it.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_Create_DelegateDeclaredReturningObject_StructuredResultIsSerializedToJsonElement()
+    {
+        // Arrange: a tool whose declared return type is object, returning structured data
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(
+                ToolResult.Structured(new Dictionary<string, int> { ["matches"] = 2 }))),
+            "counting_probe",
+            "Returns structured data.");
+
+        // Act: invoke the tool as the runtime would
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: the data reaches the model as JSON it can read
+        var element = Assert.IsType<JsonElement>(result);
+        Assert.Contains("matches", element.GetRawText(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a null result is delivered unchanged rather than serialized.
+    /// </summary>
+    /// <remarks>
+    ///     There is nothing to serialize and nothing for a provider to misread, so the absence
+    ///     is carried through as an absence. Declared <c>Task&lt;object?&gt;</c>, the nullable
+    ///     counterpart of the trapped case.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_Create_DelegateDeclaredReturningObject_NullResultIsPassedThrough()
+    {
+        // Arrange: a tool whose declared return type is object, returning nothing
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object?>>)(() => Task.FromResult<object?>(null)),
+            "empty_probe",
+            "Returns nothing.");
+
+        // Act: invoke the tool as the runtime would
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: an absence, not a JSON null wrapped in an element
+        Assert.Null(result);
+    }
+
+    /// <summary>
     ///     Proves that a name carrying no family prefix is rejected at construction.
     /// </summary>
     [Fact]

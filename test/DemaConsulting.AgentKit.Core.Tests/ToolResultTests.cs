@@ -40,6 +40,37 @@ public class ToolResultTests
     }
 
     /// <summary>
+    ///     Proves that a structured result is returned as the supplied value itself.
+    /// </summary>
+    /// <remarks>
+    ///     The constructor does not serialize; the guarded factory does that on the way to the
+    ///     runtime. Keeping the two separate means a tool author can assert on the value their
+    ///     tool produced rather than on its JSON form.
+    /// </remarks>
+    [Fact]
+    public void ToolResult_Structured_Value_ReturnsTheSuppliedValue()
+    {
+        // Arrange: data a tool would hand back that is neither text nor content
+        var value = new Dictionary<string, int> { ["matches"] = 2 };
+
+        // Act: construct a structured result
+        var result = ToolResult.Structured(value);
+
+        // Assert: the value itself, unchanged
+        Assert.Same(value, result);
+    }
+
+    /// <summary>
+    ///     Proves that a missing structured value is rejected as a programming error.
+    /// </summary>
+    [Fact]
+    public void ToolResult_Structured_NullValue_ThrowsArgumentNullException()
+    {
+        // Act & Assert: a tool with nothing to say returns text or a refusal, never null data
+        Assert.Throws<ArgumentNullException>(() => ToolResult.Structured(null!));
+    }
+
+    /// <summary>
     ///     Proves that binary content without a caption is returned as content carrying its media
     ///     type.
     /// </summary>

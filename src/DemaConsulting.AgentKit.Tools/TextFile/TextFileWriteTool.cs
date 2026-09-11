@@ -31,9 +31,18 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     the model's own output.
 ///     </para>
 ///     <para>
-///     The delegate is declared <c>Task&lt;object&gt;</c> deliberately — see the remarks on
-///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown,
-///     composed from constants so that no host location reaches the transcript.
+///     <b>A path the model supplies is written relative to the workspace root.</b> The access
+///     policy holds the workspace a bare name is resolved against, and an absolute path remains
+///     expressible and remains subject to the same containment decision. Both parameters carry a
+///     default, so an omitted argument becomes a refusal stating what to supply rather than a
+///     framework error the model cannot interpret.
+///     </para>
+///     <para>
+///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the
+///     remarks on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than
+///     thrown, composed from constants so that no host location reaches the transcript. Each
+///     refusal states what the model should do instead, because an agent told only "no" retries
+///     the same request.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -56,12 +65,15 @@ public static class TextFileWriteTool
     /// </summary>
     private const string ToolDescription =
         "Writes text content to a file the agent is permitted to write, replacing any existing "
-        + "content. Returns a confirmation, or a denial explaining why the request was refused.";
+        + "content. Paths are relative to the workspace root. Returns a confirmation, or a "
+        + "denial explaining why the request was refused.";
 
     /// <summary>
     ///     The refusal used when the request carries no path at all.
     /// </summary>
-    private const string PathRequired = "A file path is required.";
+    private const string PathRequired =
+        "A file path is required. Supply a path relative to the workspace root, "
+        + "for example 'notes.txt'.";
 
     /// <summary>
     ///     The refusal used when the request carries no content at all.
@@ -70,18 +82,22 @@ public static class TextFileWriteTool
     ///     Absent content is a malformed request; empty content is not. An empty file is a real
     ///     outcome an agent may legitimately want, so only <see langword="null"/> is refused.
     /// </remarks>
-    private const string ContentRequired = "File content is required.";
+    private const string ContentRequired =
+        "File content is required. Supply the text to write, which may be an empty string when "
+        + "an empty file is what is wanted.";
 
     /// <summary>
     ///     The refusal used when the request names a directory rather than a file.
     /// </summary>
-    private const string PathIsDirectory = "The requested path is a directory, not a file.";
+    private const string PathIsDirectory =
+        "The requested path is a directory, not a file. Name the file to write within it.";
 
     /// <summary>
     ///     The refusal used when the parent directory of the requested path does not exist.
     /// </summary>
     private const string ParentMissing =
-        "The parent directory of the requested path does not exist.";
+        "The parent directory of the requested path does not exist. Write to a location that "
+        + "already exists, such as the workspace root.";
 
     /// <summary>
     ///     The refusal used when a permitted path cannot be written.
@@ -107,16 +123,20 @@ public static class TextFileWriteTool
         // A missing policy is a programming error in the composing application.
         ArgumentNullException.ThrowIfNull(policy);
 
-        // Declared Task<object> on purpose; see the type remarks before changing this.
-        return GuardedToolFactory.Create(
-            (Func<string, string, CancellationToken, Task<object>>)(
-                ([Description("The path of the file to write.")] string path,
-                    [Description("The text content to write, replacing any existing content.")]
-                    string content,
-                    CancellationToken cancellationToken) =>
-                    WriteAsync(policy, path, content, cancellationToken)),
-            ToolName,
-            ToolDescription);
+        // Declared to return Task<object> on purpose; see the type remarks before changing this.
+        // Both parameters carry a default so that an omitted argument becomes a refusal this
+        // tool composes, rather than a framework error raised before the body is reached.
+        var write = (
+                [Description(
+                    "The path of the file to write, relative to the workspace root, "
+                    + "for example 'notes.txt'.")]
+                string? path = null,
+                [Description("The text content to write, replacing any existing content.")]
+                string? content = null,
+                CancellationToken cancellationToken = default) =>
+            WriteAsync(policy, path, content, cancellationToken);
+
+        return GuardedToolFactory.Create(write, ToolName, ToolDescription);
     }
 
     /// <summary>
@@ -128,14 +148,14 @@ public static class TextFileWriteTool
     ///     write location.
     /// </remarks>
     /// <param name="policy">The access policy governing the write.</param>
-    /// <param name="path">The path the model requested.</param>
-    /// <param name="content">The text the model wishes to write.</param>
+    /// <param name="path">The path the model requested, or null when it supplied none.</param>
+    /// <param name="content">The text the model wishes to write, or null when it supplied none.</param>
     /// <param name="cancellationToken">A token that cancels the write.</param>
     /// <returns>A confirmation naming no location, or a refusal naming its reason.</returns>
     private static async Task<object> WriteAsync(
         PathPolicy policy,
-        string path,
-        string content,
+        string? path,
+        string? content,
         CancellationToken cancellationToken)
     {
         // A malformed request is refused rather than thrown: the model supplied it, so the model

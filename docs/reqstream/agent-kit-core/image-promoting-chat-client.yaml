@@ -1,0 +1,92 @@
+---
+# Software Unit Requirements for ImagePromotingChatClient
+#
+# These requirements describe the design-level behavior of the ImagePromotingChatClient unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ImagePromotingChatClient Requirements
+        requirements:
+          - id: AgentKitCore-ImagePromotingChatClient-PromoteImages
+            title: >-
+              The image-promoting client shall place the image content a tool result carries onto
+              a user message that follows that tool result, whether the result holds the image
+              alone or holds it alongside other parts.
+            justification: |
+              A provider whose interface accepts images on messages but not in tool responses
+              discards the image at the wire, after which the model describes a picture it never
+              received and reports no error. The user message is the one channel every provider
+              honors, so moving the content there is what makes delivery independent of the
+              provider a host chose. Both result shapes must be read because a guarded tool
+              returns an image either alone or preceded by a caption.
+            tests:
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_AddsUserMessageCarryingTheSameDataContent
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithContentList_PromotesOnlyTheImageParts
+
+          - id: AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
+            title: >-
+              A message carrying a promoted image shall state that the image came from a tool.
+            justification: |
+              A bare attachment reads to the model as an image the user has just sent, unrelated
+              to the tool call above it, and the model then answers the wrong question. Naming
+              its origin is what ties the attachment to the call that produced it. The
+              announcement is fixed text about the exchange and contributes no host detail.
+            tests:
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_PromotedMessageAnnouncesTheAttachment
+
+          - id: AgentKitCore-ImagePromotingChatClient-TextResultUnchanged
+            title: >-
+              The image-promoting client shall add nothing to a conversation whose tool results
+              carry no image.
+            justification: |
+              There is nothing a provider would discard, so an added message would spend context
+              window on an announcement that no image was attached. A decorator a host can leave
+              installed for every conversation is one it will leave installed; a decorator that
+              taxes ordinary exchanges is one it will remove.
+            tests:
+              - ImagePromotingChatClient_GetResponseAsync_TextOnlyToolResult_AddsNoMessage
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_NonImageDataContentResult_AddsNoMessage
+
+          - id: AgentKitCore-ImagePromotingChatClient-MessageOrderPreserved
+            title: >-
+              The image-promoting client shall forward every message it received, in the order it
+              received them.
+            justification: |
+              The model reads an exchange in sequence, so a client that reordered or dropped a
+              message would change the meaning of the conversation rather than merely its
+              delivery. A promoted message is inserted immediately after the tool result it came
+              from for the same reason: promoted to the end, the image would be read as belonging
+              to whichever turn happened to be last.
+            tests:
+              - ImagePromotingChatClient_GetResponseAsync_NonToolMessages_ArePassedThroughInOrder
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_MessageAfterToolResult_PromotedMessageIsInsertedImmediatelyAfterIt
+
+          - id: AgentKitCore-ImagePromotingChatClient-StreamingAndNonStreaming
+            title: >-
+              The image-promoting client shall promote images identically whether the response is
+              streamed or returned whole.
+            justification: |
+              A host that streams would otherwise silently lose the control, and would discover
+              it only from a model describing an image it never saw. The difference between the
+              two paths is in how a response is delivered, not in what the request carries, so
+              the rewrite cannot legitimately differ between them.
+            tests:
+              - >-
+                ImagePromotingChatClient_GetStreamingResponseAsync_ToolResultWithImage_PromotesTheImage
+
+          - id: AgentKitCore-ImagePromotingChatClient-RequiresInnerClient
+            title: >-
+              The image-promoting client shall reject a missing client to forward to as a
+              programming error.
+            justification: |
+              A decorator with nothing to decorate can neither forward a request nor report a
+              response, so an absent client is a defect in the composing application discovered
+              at the point the host wrote it rather than at the first conversation.
+            tests:
+              - ImagePromotingChatClient_Constructor_NullInnerClient_ThrowsArgumentNullException

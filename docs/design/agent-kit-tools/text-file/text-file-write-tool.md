@@ -47,15 +47,21 @@ could hand an agent — cannot be constructed.
 **Postconditions:** the returned tool carries `ToolName`, carries a non-empty description, and is
 governed by the supplied policy for the rest of its life.
 
-##### The tool delegate: `(path, content, cancellationToken)`
+##### The tool delegate: `(string? path = null, string? content = null, CancellationToken cancellationToken = default)`
 
 **Algorithm**, in order:
 
-1. An absent, empty or whitespace `path` is refused as `InvalidRequest`
+1. An absent, empty or whitespace `path` is refused as `InvalidRequest`, naming the form a
+   request should take. **Both parameters carry a default**, which is load-bearing rather than
+   cosmetic: a parameter with no default is required by the function factory, and an omitted
+   argument then fails inside the factory before this step is reached, leaving the model an
+   opaque framework error rather than a refusal it can act on
 2. An absent `content` is refused as `InvalidRequest`. An **empty** string is not absent: it writes
    an empty file, which is a legitimate outcome an agent may intend
 3. `policy.TryResolveWrite(path, …)` — and only the write decision. A refusal is returned as
-   `PathNotPermitted` carrying the policy's own message unchanged. Because the policy resolves
+   `PathNotPermitted` carrying the policy's own message unchanged. **A relative path is
+   interpreted against the workspace here**, identically to a read, so an agent can write back
+   under the name it read. Because the policy resolves
    every path component, a destination that reaches outside the permitted location through a link
    is refused here
 4. An existing directory is refused as `InvalidRequest`. No redirect is offered, because no other
@@ -88,7 +94,11 @@ are real. Refusing is the fail-safe reading and tells the model precisely what i
 result — would build its next step on a file that no longer says what it believes. The replacement
 semantics are stated in the tool's description so the model is never surprised by them.
 
-No refusal message contains a path, a permitted location or a directory separator.
+No refusal message contains a path, a permitted location or a directory separator. **Each
+nevertheless states what the model should do instead** — the form a path takes, or the content to
+supply — because an agent told only "no" retries the same request until it abandons the task. The
+guidance is phrased without a separator, so that "contains no separator" remains a usable test for
+"contains no host location".
 
 #### Dependencies
 

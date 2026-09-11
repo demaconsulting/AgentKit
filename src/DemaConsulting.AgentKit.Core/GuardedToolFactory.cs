@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core;
@@ -27,6 +28,15 @@ namespace DemaConsulting.AgentKit.Core;
 ///     supported construction path.
 ///     </para>
 ///     <para>
+///     <b>The guard is selective, not a blanket passthrough.</b> Text, content and sequences of
+///     content reach the runtime exactly as the tool produced them, because those are the
+///     shapes a provider recognizes and the shapes serialization destroys. Anything else is
+///     structured data and is serialized to a <c>JsonElement</c> exactly as the factory would
+///     have done. Preserving everything indiscriminately was tried and is wrong: a tool
+///     returning an anonymous object then reaches the provider as a raw CLR instance, which no
+///     provider can read.
+///     </para>
+///     <para>
 ///     <b>Do not remove this guard after observing that a strongly-typed return works.</b> That
 ///     observation is true and irrelevant: it demonstrates the passthrough case, not the case
 ///     this library is in. The same caution applies to the tests. A test whose delegate is
@@ -44,8 +54,8 @@ namespace DemaConsulting.AgentKit.Core;
 ///     The guard also changes the <b>refusal</b> path in a way worth stating so it is not
 ///     mistaken for a defect: a refusal string reaches the runtime as a raw
 ///     <see cref="string"/> rather than as a <c>JsonElement</c> wrapping a JSON string. Both
-///     are consumable, so the change is benign — but it is observable on every tool result, not
-///     only on binary ones.
+///     are consumable, so the change is benign — but it is observable on every textual tool
+///     result, not only on binary ones.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
@@ -55,7 +65,7 @@ public static class GuardedToolFactory
 {
     /// <summary>
     ///     Creates a tool that delivers its result to the runtime in the form the tool returned
-    ///     it.
+    ///     it, serializing only what a provider could not otherwise read.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -125,8 +135,10 @@ public static class GuardedToolFactory
         ToolName.Validate(name);
 
         // Build the options internally. The result-marshaling hook is the whole point of this
-        // unit: it returns the tool's result unchanged instead of letting the factory serialize
-        // it to JSON. The lambda is static so no closure is allocated per tool.
+        // unit: it preserves the shapes a provider must receive intact and serializes anything
+        // else exactly as the factory would have. The lambda closes over the serializer options
+        // because the serialization branch needs them, so it is not static; the capture is one
+        // reference per constructed tool, which is the cost of not guessing at the options.
         return AIFunctionFactory.Create(
             method,
             new AIFunctionFactoryOptions
@@ -134,7 +146,59 @@ public static class GuardedToolFactory
                 Name = name,
                 Description = description,
                 SerializerOptions = serializerOptions,
-                MarshalResult = static (result, _, _) => new ValueTask<object?>(result)
+                MarshalResult = (result, _, _) =>
+                    new ValueTask<object?>(MarshalResult(result, serializerOptions))
             });
+    }
+
+    /// <summary>
+    ///     Delivers a tool's result to the runtime, preserving the shapes a provider must
+    ///     receive intact and serializing everything else as the underlying factory would.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Blanket passthrough is not a safe guard.</b> It preserves content, which is the
+    ///     point — but it also hands the provider whatever else a tool happens to return. A tool
+    ///     returning an anonymous object was observed to reach the provider as a raw CLR
+    ///     instance, reported back as a compiler-generated type name, which no provider can
+    ///     interpret. Selecting by shape keeps the property the guard exists for and removes
+    ///     that failure.
+    ///     </para>
+    ///     <para>
+    ///     The preserved shapes are exactly the ones a provider recognizes:
+    ///     <see langword="null"/> (nothing to deliver), <see cref="string"/> (text and every
+    ///     refusal), a single <see cref="AIContent"/>, and a sequence of
+    ///     <see cref="AIContent"/> — the caption-plus-attachment shape the result constructors
+    ///     produce. Anything else is structured data, and structured data belongs in JSON.
+    ///     </para>
+    ///     <para>
+    ///     Serialization goes through a <see cref="JsonTypeInfo"/> obtained from the options
+    ///     rather than through the reflection-based overload, so that the unit carries no
+    ///     trimming or ahead-of-time compilation warning into a consumer's build.
+    ///     </para>
+    /// </remarks>
+    /// <param name="result">The value the tool's delegate returned; may be null.</param>
+    /// <param name="serializerOptions">
+    ///     The options the caller supplied, or <see langword="null"/> for the factory default.
+    /// </param>
+    /// <returns>
+    ///     The result unchanged when its shape is one a provider recognizes; otherwise a
+    ///     <see cref="JsonElement"/> holding its serialized form.
+    /// </returns>
+    private static object? MarshalResult(object? result, JsonSerializerOptions? serializerOptions)
+    {
+        // Nothing to deliver, text, one content part, or a sequence of content parts: all four
+        // are shapes the runtime and the provider already understand, and all four are handed
+        // on untouched. This is the property the guard exists to hold.
+        if (result is null or string or AIContent or IEnumerable<AIContent>)
+        {
+            return result;
+        }
+
+        // Everything else is structured data. Serialize it exactly as the underlying factory
+        // would have done, so that a tool returning a record or an anonymous object reaches the
+        // model as readable JSON rather than as an opaque CLR instance.
+        var options = serializerOptions ?? AIJsonUtilities.DefaultOptions;
+        return JsonSerializer.SerializeToElement(result, options.GetTypeInfo(result.GetType()));
     }
 }

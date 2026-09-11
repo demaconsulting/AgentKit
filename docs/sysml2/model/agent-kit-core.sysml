@@ -2,8 +2,9 @@ package AgentKitCore {
     doc
     /*
      * AgentKitCore provides the small, stable contract every other AgentKit package
-     * depends upon: policy primitives, guarded tool construction, tool result helpers,
-     * and the tool-pack contract.
+     * depends upon: policy primitives that bound where a tool may act and how a path a
+     * model states is interpreted, guarded tool construction, tool result helpers,
+     * the tool-pack contract, and provider-independent delivery of tool-returned images.
      */
 
     part def AgentKitCoreSystem {
@@ -23,5 +24,6 @@ package AgentKitCore {
         part guardedToolFactory : GuardedToolFactory;
         part toolPack : ToolPack;
         part toolPackBuilder : ToolPackBuilder;
+        part imagePromotingChatClient : ImagePromotingChatClient;
     }
 }

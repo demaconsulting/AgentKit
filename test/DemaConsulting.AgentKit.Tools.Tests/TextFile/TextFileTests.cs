@@ -290,13 +290,46 @@ public class TextFileTests
     }
 
     /// <summary>
+    ///     Proves a path stated the way a model states it is resolved against the workspace by
+    ///     every tool in the family.
+    /// </summary>
+    /// <remarks>
+    ///     The family shares one access policy, so the workspace a bare name is measured from is
+    ///     the same for a listing, a read and a write. A family in which the three disagreed
+    ///     would let an agent list a name it then could not read.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFile_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace()
+    {
+        // Arrange: the family composed over a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        var tools = Compose(fixture.Root);
+
+        // Act: list the workspace without naming it, then read the name the listing reported
+        var listing = await InvokeAsync(
+            tools,
+            TextFileListTool.ToolName,
+            new AIFunctionArguments());
+        var read = await InvokeAsync(
+            tools,
+            TextFileReadTool.ToolName,
+            new AIFunctionArguments { ["path"] = "notes.txt" });
+
+        // Assert: the listing names the file relatively and the read accepts that name as given
+        Assert.Equal("notes.txt", Assert.IsType<string>(listing));
+        Assert.Equal("inside-content", Assert.IsType<string>(read));
+    }
+
+    /// <summary>
     ///     Composes the family under a policy rooted at one location.
     /// </summary>
     /// <param name="root">The permitted read and write location.</param>
     /// <returns>The composed tool list.</returns>
     private static IReadOnlyList<AIFunction> Compose(string root)
     {
-        var policy = new PathPolicy(PathRule.Rooted(root), PathRule.Rooted(root));
+        var policy = PathPolicy.ForWorkspace(root);
         return new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
     }
 

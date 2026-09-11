@@ -127,25 +127,47 @@ sections:
                 tests:
                   - TextFileListTool_List_DirectoryOutsideTheReadRoot_ReturnsDenial
 
-              - id: AgentKitTools-TextFile-ListTool-MalformedRequestDenied
+              - id: AgentKitTools-TextFile-ListTool-OmittedDirectory
                 title: >-
-                  The list tool shall return a refusal, rather than raising an exception, when
-                  the requested directory is empty.
+                  The list tool shall list the workspace root when the requested directory is
+                  omitted, empty, whitespace or one of the placeholder words a model sends in
+                  place of an argument, and shall raise no exception for any directory a caller
+                  supplies.
                 justification: |
-                  A malformed request comes from the model, so the model must be told how to
-                  correct it. An exception at a tool call ends the agent's turn and strands it
-                  with no way forward.
+                  A model exploring a workspace for the first time has no directory name to give,
+                  and what it sends instead is a question this tool can answer. Refusing it sends
+                  the model guessing at locations it has no business exploring. A directory
+                  argument that is required rather than defaulted fails inside the function
+                  factory before the tool is reached, so the model receives an opaque framework
+                  error instead of anything it can act on — which is why the argument being
+                  optional is part of the requirement rather than an implementation choice.
                 tests:
-                  - TextFileListTool_List_EmptyDirectory_ReturnsDenialWithoutThrowing
+                  - TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot
+                  - TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot
+                  - TextFileListTool_List_MissingDirectoryArgument_DoesNotThrow
+
+              - id: AgentKitTools-TextFile-ListTool-RelativeDirectory
+                title: >-
+                  The list tool shall list a directory named relative to the workspace root.
+                justification: |
+                  The names this tool reports are relative, so the names an agent hands back to
+                  it are relative too. A tool that reported relative names but accepted only
+                  absolute ones would make its own output unusable as input.
+                tests:
+                  - TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory
 
               - id: AgentKitTools-TextFile-ListTool-DenialRedaction
                 title: >-
-                  A refusal from the list tool shall contain no host location — no requested
-                  path, no permitted location and no directory separator.
+                  A refusal from the list tool shall state how to phrase a request that could
+                  succeed, and shall contain no host location — no requested path, no permitted
+                  location and no directory separator.
                 tags: [security]
                 justification: |
                   The refusal text is handed to a model and the resulting transcript leaves this
                   process. A refusal naming the requested directory would disclose the very host
-                  layout the listing itself is careful to relativize away.
+                  layout the listing itself is careful to relativize away. A refusal that names
+                  nothing at all is equally useless to the agent, which retries the same request
+                  until it gives up, so the guidance is phrased without a separator rather than
+                  omitted.
                 tests:
                   - TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail

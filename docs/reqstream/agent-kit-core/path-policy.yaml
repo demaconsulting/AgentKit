@@ -10,14 +10,88 @@ sections:
         requirements:
           - id: AgentKitCore-PathPolicy-RequiredRules
             title: >-
-              A path policy shall require both a read rule and a write rule when it is created.
+              A path policy shall require both a read rule and a write rule when it is created,
+              by every construction path it offers.
             justification: |
               Making both rules mandatory at creation removes the possibility of an unguarded
               policy existing even momentarily, so no code path can hand an agent unrestricted
-              file access by omission.
+              file access by omission. The workspace shorthand supplies both rules from its one
+              argument rather than leaving either unset, so adding a shorter construction path
+              does not add a way to omit a rule.
             tests:
               - PathPolicy_Constructor_NullReadRule_ThrowsArgumentNullException
               - PathPolicy_Constructor_NullWriteRule_ThrowsArgumentNullException
+
+          - id: AgentKitCore-PathPolicy-BaseDirectory
+            title: >-
+              A path policy shall carry the location a relative request is interpreted against,
+              defaulting to its read rule's location when the host states none, and shall report
+              that location at its real file system location.
+            justification: |
+              The location a relative path is measured from belongs to the policy rather than to
+              a rule, because reads may be unrestricted while writes are confined and both
+              directions must read a bare file name the same way. Defaulting to the read rule's
+              location means a policy built the ordinary rooted way behaves as the host already
+              believes it asked for, rather than silently preserving a defect. Resolving it once
+              at creation keeps every later comparison a comparison of real locations.
+            tests:
+              - PathPolicy_Constructor_NoBaseDirectory_UsesTheReadRuleRoot
+              - PathPolicy_BaseDirectory_RootReachedThroughLink_IsReportedAsItsRealLocation
+
+          - id: AgentKitCore-PathPolicy-RelativePathAgainstBase
+            title: >-
+              A path policy shall interpret a relative request against its base location and not
+              against the location the host process is running from, and shall continue to accept
+              an absolute request.
+            tags: [security]
+            justification: |
+              A model asks for a file by name. Measuring that name from the process working
+              directory refuses every legitimate request while looking, from the outside, like a
+              containment decision; an agent was observed to be refused an existing file nine
+              times before giving up. The absolute form remains accepted because a host that
+              composes paths itself still relies on it, and it remains subject to the same
+              containment decision.
+            tests:
+              - PathPolicy_TryResolveRead_BareFileName_ResolvesBeneathTheBase
+              - PathPolicy_TryResolveRead_DotSlashFileName_ResolvesBeneathTheBase
+              - PathPolicy_TryResolveRead_NestedRelativePath_ResolvesBeneathTheBase
+              - PathPolicy_TryResolveRead_RelativePath_IsNotResolvedAgainstTheProcessDirectory
+              - PathPolicy_TryResolveRead_AbsolutePathInsideRoot_ReturnsRealPath
+              - PathPolicy_TryResolveWrite_BareFileName_ResolvesBeneathTheBase
+
+          - id: AgentKitCore-PathPolicy-ForWorkspace
+            title: >-
+              A path policy shall offer a construction path that sets the base location and both
+              access rules from one workspace argument, and shall reject a missing workspace.
+            justification: |
+              Stating the rules and the base separately makes the incorrect configuration the
+              shorter one to write: a caller supplying two rooted rules and no base has said
+              nothing about how a bare file name is read, and a caller supplying a base that
+              disagrees with the rules has built a policy that denies its own relative requests.
+              Naming the workspace once removes both mistakes, and a workspace policy with no
+              workspace is a programming error because there is no safe location to assume.
+            tests:
+              - PathPolicy_ForWorkspace_Root_SetsBaseAndBothRules
+              - PathPolicy_ForWorkspace_NullRoot_ThrowsArgumentException
+              - PathPolicy_ForWorkspace_CustomLimits_ExposesSuppliedLimits
+
+          - id: AgentKitCore-PathPolicy-OmittedPathMeansBase
+            title: >-
+              A path policy shall treat an omitted, empty, whitespace or placeholder request as
+              denoting its base location, and shall raise no exception for any path a caller
+              supplies.
+            justification: |
+              A model exploring a workspace for the first time has no name to supply, and what it
+              sends instead — no argument, an empty one, or the word its own runtime prints for
+              absence — is a question the library can answer. Reading any of those as a file name
+              refuses a request that was well formed in every way the model could tell, and
+              leaves it guessing at locations it has no business exploring. Recognizing them in
+              the single decision point rather than in each tool keeps every entry point in
+              agreement.
+            tests:
+              - PathPolicy_TryResolveRead_OmittedPath_ResolvesToTheBase
+              - PathPolicy_TryResolveRead_PlaceholderPath_ResolvesToTheBase
+              - PathPolicy_TryResolveWrite_OmittedPath_DoesNotThrow
 
           - id: AgentKitCore-PathPolicy-IndependentRules
             title: >-
@@ -34,14 +108,21 @@ sections:
           - id: AgentKitCore-PathPolicy-DenyEscapedPath
             title: >-
               A path policy shall deny a request whose real location lies outside the permitted
-              location, including a request that reaches outside through a link.
+              location, whether the request was stated absolutely or relatively, and including a
+              request that reaches outside through a link.
             justification: |
-              This is the decision the whole library exists to make. A request that reaches outside
-              through a link is indistinguishable from a permitted one by inspection of the
-              requested text, so the decision must be made on the real location.
+              This is the decision the whole library exists to make. A request that reaches
+              outside through a link is indistinguishable from a permitted one by inspection of
+              the requested text, so the decision must be made on the real location. Accepting
+              relative requests must not weaken that: a relative path is made absolute against
+              the base before the same link resolution and the same containment test are applied,
+              so a relative escape and an absolute one reach the same decision.
             tests:
               - PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial
               - PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied
+              - PathPolicy_TryResolveRead_RelativeParentTraversal_ReturnsDenial
+              - PathPolicy_TryResolveRead_RelativePathBeneathLinkOutsideRoot_ReturnsDenial
+              - PathPolicy_TryResolveRead_AbsolutePathOutsideRoot_ReturnsDenial
 
           - id: AgentKitCore-PathPolicy-RealPathReported
             title: >-
@@ -57,15 +138,20 @@ sections:
           - id: AgentKitCore-PathPolicy-EnumerationFiltered
             title: >-
               A path policy shall exclude from directory enumeration every file whose real
-              location it would deny, and shall list every file it would permit.
+              location it would deny, shall list every file it would permit, and shall enumerate
+              its base location when no directory is named.
             justification: |
               Listing is how an agent discovers what it may work on. A listing that is broader
-              than what access permits discloses files the operator withheld; one that is narrower
-              hides work the agent was asked to do.
+              than what access permits discloses files the operator withheld; one that is
+              narrower hides work the agent was asked to do. A request naming no directory is the
+              first question an agent asks about a workspace it has not seen, and answering it
+              with the workspace is what keeps that question from becoming a refusal.
             tests:
               - PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile
               - PathPolicy_EnumerateFiles_PermittedFiles_AreListed
               - PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty
+              - PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheBase
+              - PathPolicy_EnumerateFiles_RelativeDirectory_ListsThatDirectory
 
           - id: AgentKitCore-PathPolicy-DenialResult
             title: >-
@@ -91,25 +177,43 @@ sections:
 
           - id: AgentKitCore-PathPolicy-DenialMessageRedacted
             title: >-
-              A denial reported by a path policy shall not contain the requested path or any other
-              host location.
+              A denial reported by a path policy shall not contain the requested path, any other
+              host location, or a directory separator, whatever guidance it carries.
             justification: |
               Denial text is returned to the model and recorded in a transcript that leaves the
               process. Host locations in that text would disclose directory layout and user names
-              to whoever holds the transcript.
+              to whoever holds the transcript. The absence of a directory separator is what makes
+              that property checkable at all, so the guidance a denial now carries is phrased
+              without one rather than being allowed to retire the check.
             tests:
               - PathPolicy_TryResolveRead_DeniedPath_DenialMessageOmitsRequestedPath
+              - PathPolicy_TryResolveRead_DeniedPath_DenialMessageContainsNoDirectorySeparator
+
+          - id: AgentKitCore-PathPolicy-DenialGuidance
+            title: >-
+              A denial reported by a path policy shall state the form a request must take in
+              order to be permitted.
+            justification: |
+              A refusal that says only "no" leaves a model re-submitting variations of the same
+              path until it abandons the task, which is the same outcome as an exception but
+              slower and harder to diagnose. Naming the expected form turns a refusal into a step
+              the agent can recover from, and it costs nothing in disclosure because the form is
+              a fixed sentence about the request rather than anything about the host.
+            tests:
+              - PathPolicy_TryResolveRead_DeniedPath_DenialMessageStatesTheExpectedPathForm
 
           - id: AgentKitCore-PathPolicy-CarriesLimits
             title: >-
               A path policy shall carry the resource ceilings the tools it governs observe,
               defaulting to the library's documented ceilings when none are supplied and
-              rejecting a missing set of ceilings.
+              rejecting a missing set of ceilings, by every construction path it offers.
             justification: |
               Ceilings that ride with the policy mean every tool a host attaches observes one
               budget rather than each inventing its own. Defaulting rather than requiring them
               keeps the existing two-rule construction working, while rejecting an explicitly
-              missing set prevents a caller from expressing "unbounded" by accident.
+              missing set prevents a caller from expressing "unbounded" by accident. The
+              workspace shorthand carries the ceilings the same way, so the shorter construction
+              path does not quietly widen the budget.
             tests:
               - PathPolicy_Constructor_NoLimits_UsesDefaultLimits
               - PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits

@@ -34,10 +34,12 @@ Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared reparse-p
 
 #### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
-explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does not read,
+A unit test run passes when all eighteen scenarios below pass without error or exception beyond
+those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does
+not read, a relative name that is not read from the workspace,
 a refused file whose content leaks, a PDF routed through the image result path, a truncated result
-where a refusal was required, an exception raised at a malformed request, and a refusal containing a
+where a refusal was required, an exception or framework error raised at a malformed or omitted
+request, a refusal offering no way forward, and a refusal containing a
 host path each constitute a failure.
 
 #### Test Scenarios
@@ -156,9 +158,26 @@ must be a returned refusal rather than an exception that would end the agent's t
 Error path: a whitespace-only path would otherwise reach the policy, which raises rather than
 refuses for a malformed argument.
 
+##### AgentKitTools-Image-ReadTool-RelativePath: A Bare File Name Is Read From the Workspace
+
+**Test**: `ImageReadTool_Read_BareFileName_ReturnsTheImageContent`
+
+Normal operation for the request a model actually makes. Asserts the real bytes come back for a
+name stated with no location at all, so a name a text file listing reported is usable here.
+
+##### AgentKitTools-Image-ReadTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
+
+**Test**: `ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing`
+
+The scenario that pins the parameter as optional. A parameter with no default fails inside the
+function factory before the tool body is reached, and the model then receives an opaque framework
+error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
+path should take.
+
 ##### AgentKitTools-Image-ReadTool-DenialRedaction: A Refusal Contains No Host Detail
 
 **Test**: `ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail`
 
 Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator.
+location, the requested file name, nor a directory separator. The absence of a separator is also
+what keeps the recovery guidance the refusal now carries from reintroducing host layout.

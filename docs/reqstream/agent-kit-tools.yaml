@@ -26,7 +26,8 @@ sections:
       - id: AgentKitTools-TextFileFamily-GuardedTextFileAccess
         title: >-
           The library shall provide a text file family that reads, writes and lists text files
-          under the access policy the composing application supplies, publishing every tool under
+          under the access policy the composing application supplies, interpreting the paths a
+          model states as relative to the workspace, publishing every tool under
           one family prefix and refusing rather than throwing when the policy does not permit a
           request.
         tags: [system, security]
@@ -35,8 +36,11 @@ sections:
           the one an operator is least willing to grant unconditionally. Providing it as one
           policy-governed family means an application grants file access in a single, auditable
           step, with containment applied to every request rather than to whichever tool happened
-          to remember to check. Refusing rather than throwing keeps a denied request from ending
-          the agent's turn, so a model that asks for the wrong file learns why and can ask again.
+          to remember to check. A model states a path the way a person does — a bare file name —
+          so the family must read it that way, or an operator's correctly configured agent is
+          refused every legitimate request. Refusing rather than throwing keeps a denied request
+          from ending the agent's turn, so a model that asks for the wrong file learns why and
+          can ask again.
         children:
           - AgentKitTools-TextFile-FamilyComposition
           - AgentKitTools-TextFile-GuardedConstruction
@@ -49,7 +53,8 @@ sections:
       - id: AgentKitTools-ImageFamily-GuardedImageAccess
         title: >-
           The library shall provide an image family that reads images and PDF documents under the
-          access policy the composing application supplies, publishing every tool under one family
+          access policy the composing application supplies, interpreting the paths a model states
+          as relative to the workspace, publishing every tool under one family
           prefix, delivering the content to the caller rather than a serialized copy of it, and
           registering the family only for a host that declares it can present visual content to a
           model.
@@ -60,7 +65,10 @@ sections:
           delivers no image, and the model then confidently describes a picture it never received.
           Providing it as one policy-governed family means an application grants image access in a
           single, auditable step, with containment applied to every request and the content
-          delivered intact through the guarded construction path. Gating the family behind the
+          delivered intact through the guarded construction path. A model states a path the way a
+          person does, and the name it holds is usually one a text file listing reported
+          relatively, so the family reads names the same way its sibling family does. Gating the
+          family behind the
           vision capability keeps a model that cannot see from ever being offered a tool whose
           result it could only fabricate around, and the composition withholds the family by never
           asking the pack for its tools rather than by offering them and refusing later.

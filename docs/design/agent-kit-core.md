@@ -19,8 +19,9 @@ The system consists of:
   symbolic links and directory junctions at every path component
 - **PathRule Unit**: One access rule — unrestricted or confined to a location — carrying its own
   denied patterns
-- **PathPolicy Unit**: Pairs an independent read rule and write rule, and provides the single
-  containment decision used by both direct access and directory enumeration
+- **PathPolicy Unit**: Pairs an independent read rule and write rule, carries the workspace
+  location relative paths are interpreted against, and provides the single containment decision
+  used by both direct access and directory enumeration
 - **ToolLimits Unit**: Carries the ceilings a tool observes when reading, returning and
   attaching content
 - **ToolResult Unit**: Constructs the results a guarded tool returns to the model, and defines
@@ -32,9 +33,12 @@ The system consists of:
   capability-gated family, and the set of host capabilities a pack may require
 - **ToolPackBuilder Unit**: Composes tool packs into the tool list an application offers a model,
   registering a pack only when the host provides every capability the pack requires
+- **ImagePromotingChatClient Unit**: Makes an image a tool returned visible to a provider whose
+  tool-result channel cannot carry one, by promoting it onto a following user message
 
 There are no subsystems. The three path-safety units form one collaboration:
-`PathPolicy` resolves a requested path through `RealPathResolver` and then consults exactly one
+`PathPolicy` makes a relative request absolute against the workspace location it carries, resolves
+the result through `RealPathResolver`, and then consults exactly one
 `PathRule`, which itself resolved its confined location through `RealPathResolver` when it was
 created. `RealPathResolver` depends on nothing within the system, so the collaboration is
 acyclic.
@@ -57,6 +61,17 @@ holds, and verifies that each tool a pack returns carries the family prefix that
 `IToolPack` depends only on `PathPolicy`, and `ToolPackBuilder` depends only on `IToolPack` and
 `PathPolicy`, so this collaboration is acyclic too.
 
+`ImagePromotingChatClient` stands apart from all three. It depends on nothing within the system —
+only on the chat client abstraction the OTS dependency supplies — and nothing within the system
+depends on it. It exists because delivering an image to a model is not finished when a tool
+returns one: one provider carries an image out of a tool result to the model, while another
+preserves the same content through the framework and discards it at the wire, after which the
+model describes a picture it never received. A host that has chosen such a provider wraps its
+client in this decorator, beneath the function-invocation loop, and the image is carried onto a
+user message instead. It is opt-in rather than automatic because a host whose provider already
+delivers images gains nothing from it, and because Core provides no agent loop of its own into
+which it could be installed.
+
 ## External Interfaces
 
 The system exposes the following public API to external consumers.
@@ -77,15 +92,27 @@ The path-safety API:
   permitted.
 - **PathPolicy(PathRule readRule, PathRule writeRule)**: Constructs a policy with the library's
   documented resource ceilings. Throws `ArgumentNullException` when either rule is null.
-- **PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits)**: Constructs a policy
-  with explicit resource ceilings. Throws `ArgumentNullException` when any argument is null.
+- **PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits, string? baseDirectory)**:
+  Constructs a policy with explicit resource ceilings and, optionally, the location relative
+  requests are interpreted against. When no base is given it defaults to the read rule's location,
+  failing that the write rule's, failing that the process working directory. Throws
+  `ArgumentNullException` when any of the first three arguments is null, and `ArgumentException`
+  for an invalid base.
+- **PathPolicy.ForWorkspace(string root)** and **PathPolicy.ForWorkspace(string root, ToolLimits
+  limits)**: Creates a policy whose read rule, write rule and base are all `root`. Throws
+  `ArgumentNullException` / `ArgumentException` for a missing or empty workspace.
 - **PathPolicy.ReadRule**, **PathPolicy.WriteRule**: Read-only properties exposing the two rules.
 - **PathPolicy.Limits**: Read-only property exposing the ceilings every governed tool observes.
-- **PathPolicy.TryResolveRead / TryResolveWrite(string path, out string? realPath, out string?
+- **PathPolicy.BaseDirectory**: Read-only property exposing the real location relative requests
+  are interpreted against.
+- **PathPolicy.TryResolveRead / TryResolveWrite(string? path, out string? realPath, out string?
   denialMessage)**: Returns whether the access is permitted, with the real location on success
-  and a redacted reason on refusal.
-- **PathPolicy.EnumerateFiles(string directory, string searchPattern)**: Returns the real
-  locations of the permitted files beneath a directory.
+  and a redacted reason carrying recovery guidance on refusal. A relative path is interpreted
+  against `BaseDirectory`; an omitted, empty, whitespace or placeholder path denotes
+  `BaseDirectory` itself.
+- **PathPolicy.EnumerateFiles(string? directory, string searchPattern)**: Returns the real
+  locations of the permitted files beneath a directory, which is `BaseDirectory` when no
+  directory is named.
 
 | Interface                    | Direction        | Format                         | Constraints                   |
 |------------------------------|------------------|--------------------------------|-------------------------------|
@@ -96,12 +123,14 @@ The path-safety API:
 | `PathRule.DenyPatterns`      | Outbound         | `IReadOnlyList<string>` read   | None; always succeeds         |
 | `PathRule.Allows`            | Inbound/Outbound | Method call / `bool` return    | Resolved, non-null, non-empty |
 | `new PathPolicy(...)`        | Inbound          | Constructor call               | Both rules non-null           |
+| `PathPolicy.ForWorkspace`    | Inbound/Outbound | Factory call / `PathPolicy`    | `root` non-null, non-empty    |
 | `PathPolicy.ReadRule`        | Outbound         | `PathRule` property read       | None; always succeeds         |
 | `PathPolicy.WriteRule`       | Outbound         | `PathRule` property read       | None; always succeeds         |
 | `PathPolicy.Limits`          | Outbound         | `ToolLimits` property read     | None; always succeeds         |
-| `PathPolicy.TryResolveRead`  | Inbound/Outbound | Method call / `bool` and `out` | `path` non-null, non-empty    |
-| `PathPolicy.TryResolveWrite` | Inbound/Outbound | Method call / `bool` and `out` | `path` non-null, non-empty    |
-| `PathPolicy.EnumerateFiles`  | Inbound/Outbound | Method call / `IEnumerable`    | Both args non-null, non-empty |
+| `PathPolicy.BaseDirectory`   | Outbound         | `string` property read         | None; always succeeds         |
+| `PathPolicy.TryResolveRead`  | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered    |
+| `PathPolicy.TryResolveWrite` | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered    |
+| `PathPolicy.EnumerateFiles`  | Inbound/Outbound | Method call / `IEnumerable`    | Pattern non-null, non-empty   |
 
 The system additionally exposes the tool-contract API:
 
@@ -114,6 +143,9 @@ The system additionally exposes the tool-contract API:
   **MaxAttachmentsPerTurn**: Read-only properties exposing the configured ceilings.
 - **ToolResult.Text(string text)**: Returns the supplied text. Throws `ArgumentNullException`
   for a null text; an empty text is permitted.
+- **ToolResult.Structured(object value)**: Returns the supplied value, which the guarded
+  construction path serializes to JSON on the way to the runtime. Throws
+  `ArgumentNullException` for a null value.
 - **ToolResult.Binary(ReadOnlyMemory&lt;byte&gt; data, string mediaType, string? caption)**:
   Returns content carrying its media type, preceded by the caption when one is supplied. Throws
   `ArgumentNullException` / `ArgumentException` for a missing or empty media type.
@@ -139,6 +171,7 @@ The system additionally exposes the tool-contract API:
 | `ToolLimits.Default`        | Outbound         | `ToolLimits` property read    | None; always succeeds             |
 | `ToolLimits.MaxReadBytes`   | Outbound         | `int` property read           | None; always succeeds             |
 | `ToolResult.Text`           | Inbound/Outbound | Method call / `object` return | `text` non-null                   |
+| `ToolResult.Structured`     | Inbound/Outbound | Method call / `object` return | `value` non-null                  |
 | `ToolResult.Binary`         | Inbound/Outbound | Method call / `object` return | `mediaType` non-null, non-empty   |
 | `ToolResult.Image`          | Inbound/Outbound | Method call / `object` return | `mediaType` denotes an image      |
 | `ToolResult.Denied`         | Inbound/Outbound | Method call / `object` return | Reason defined, message non-empty |
@@ -178,6 +211,19 @@ The system additionally exposes the pack composition API:
 | `ToolPackBuilder.WithHostCapabilities` | Inbound/Outbound | Method call / builder         | None; always succeeds |
 | `ToolPackBuilder.Add`                  | Inbound/Outbound | Method call / builder         | Prefix unclaimed      |
 | `ToolPackBuilder.Build`                | Inbound/Outbound | Method call / `IReadOnlyList` | Packs honor contracts |
+
+The system additionally exposes one provider-compatibility API:
+
+- **new ImagePromotingChatClient(IChatClient innerClient)**: Wraps a chat client so that an image
+  a tool returned is promoted onto a user message before the request is forwarded. Throws
+  `ArgumentNullException` when the inner client is null. Both the whole-response and the
+  streaming member rewrite the conversation identically and are otherwise pass-through.
+
+| Interface                           | Direction        | Format                 | Constraints       |
+|-------------------------------------|------------------|------------------------|-------------------|
+| `new ImagePromotingChatClient(...)` | Inbound          | Constructor call       | Client non-null   |
+| `GetResponseAsync`                  | Inbound/Outbound | Method call / `Task`   | Messages non-null |
+| `GetStreamingResponseAsync`         | Inbound/Outbound | Method call / sequence | Messages non-null |
 
 ## Dependencies
 
@@ -223,17 +269,27 @@ The measure is segregated into three units whose responsibilities do not overlap
 - **PathRule** establishes _what a location grants_, with read access and write access expressed
   as independent rules so that neither can silently widen the other.
 - **PathPolicy** makes _the single decision_, and both direct access and directory enumeration
-  are routed through it so that a listing can never advertise a file that access would refuse.
+  are routed through it so that a listing can never advertise a file that access would refuse. It
+  also holds _the location a relative request means_, so that a bare file name a model states is
+  made absolute against the workspace before the link resolution and the containment test are
+  applied. Placing the base on the policy rather than on a rule is what keeps reads and writes
+  interpreting one name the same way when one direction is unrestricted and the other confined.
 
-Two further properties are part of the control: a refused access is reported as a returned
-denial rather than an exception, so a refusal cannot terminate an agent's turn; and a policy
+Three further properties are part of the control: a refused access is reported as a returned
+denial rather than an exception, so a refusal cannot terminate an agent's turn; that denial
+states the form a permitted request takes, without naming any host location, so a refusal is a
+step the agent can recover from rather than a dead end it retries; and a policy
 cannot be constructed without both of its rules, so an unguarded policy is unrepresentable.
 
-Two properties of the tool contract are risk control measures in their own right. **Result
-passthrough** ensures a tool's output reaches the provider in the form the tool produced it: when
-it does not, a returned image is flattened into JSON, the provider never recognizes an
+Two properties of the tool contract are risk control measures in their own right. **Selective
+result marshalling** ensures a tool's output reaches the provider in the form the provider can
+read: text, content and sequences of content are delivered as the tool produced them, because
+when they are not, a returned image is flattened into JSON, the provider never recognizes an
 attachment, and the model states that it can see an image and then fabricates a description of
-it — a silent failure producing confidently wrong output. **Family-prefixed naming** ensures an
+it — a silent failure producing confidently wrong output. Anything else is serialized as the
+underlying factory would have serialized it, because preserving every result indiscriminately was
+tried and produced the opposite failure: a tool returning structured data reached the provider as
+a raw object it could not read. **Family-prefixed naming** ensures an
 application combining this library with the Agent Framework cannot present the model with two
 identically named tools, a situation in which which tool is invoked is undefined. Both are
 enforced at the single supported construction path, `GuardedToolFactory`, so a tool author cannot
@@ -254,16 +310,21 @@ application cannot present the model with two tools it cannot tell apart.
 
 **Path containment path:**
 
-1. **Input**: A read rule and a write rule at policy construction, then a requested path per
-   access
-2. **Resolution**: The requested path is made absolute and every path component is examined, so
-   that symbolic links and directory junctions are replaced by their real targets
-3. **Decision**: The real location is offered to exactly one rule — the read rule for a read, the
+1. **Input**: A read rule, a write rule and a workspace location at policy construction, then a
+   requested path per access
+2. **Interpretation**: An omitted, empty, whitespace or placeholder request is read as denoting
+   the workspace itself, and a relative request is made absolute against the workspace — never
+   against the location the host process happens to be running from
+3. **Resolution**: Every component of the now-absolute path is examined, so that symbolic links
+   and directory junctions are replaced by their real targets. This happens after step 2 so that
+   a relative escape and an absolute one reach the same decision
+4. **Decision**: The real location is offered to exactly one rule — the read rule for a read, the
    write rule for a write — which applies its denied patterns first and then its location
    constraint
-4. **Output**: Either the real location the caller may act on, or a denial carrying a fixed
-   reason that contains no host detail
-5. **Enumeration**: A directory listing routes the directory and every candidate file through the
+5. **Output**: Either the real location the caller may act on, or a denial carrying a fixed
+   reason and a fixed statement of the form a permitted request takes, neither of which contains
+   any host detail
+6. **Enumeration**: A directory listing routes the directory and every candidate file through the
    same read decision, so the listing and direct access always agree
 
 **Guarded tool construction and result path:**
@@ -275,11 +336,24 @@ application cannot present the model with two tools it cannot tell apart.
 3. **Construction**: The tool is created through the single supported path, which supplies the
    result-delivery guard internally so it cannot be omitted or replaced
 4. **Invocation**: The runtime calls the tool, which consults the access policy and its resource
-   ceilings and produces either text, binary content, a caption accompanied by an image, or a
-   refusal naming its reason
-5. **Output**: The guard delivers that value to the runtime unchanged rather than serializing it
-   to JSON, so content remains recognizable to the provider and a refusal remains readable text
-   the model can act on
+   ceilings and produces either text, binary content, a caption accompanied by an image,
+   structured data, or a refusal naming its reason
+5. **Output**: The guard delivers text and content to the runtime unchanged, so content remains
+   recognizable to the provider and a refusal remains readable text the model can act on, and
+   serializes anything else to JSON so that structured data reaches the model in a form it can
+   read
+
+**Provider-independent image delivery path:**
+
+1. **Input**: The conversation a function-invocation loop has assembled, with tool results
+   already appended to it
+2. **Inspection**: Each tool message is examined for a function result carrying image content,
+   in either of the two shapes a guarded tool produces
+3. **Promotion**: A user message holding a fixed announcement and the same content instances is
+   inserted immediately after each tool result that carried an image; a text-only result adds
+   nothing
+4. **Output**: The rewritten conversation is forwarded to the wrapped client, so a provider that
+   accepts images on messages but not in tool responses still receives the image
 
 **Pack composition path:**
 
@@ -330,3 +404,13 @@ APIs, or framework-version-specific features are used.
 - **CI/CD Integration**: Automated build, test, and quality validation
 - **Requirements Traceability**: All features linked to passing tests
 - **Review Management**: Systematic file review using ReviewMark patterns
+- **Providers That Drop Images From Tool Results**: Providers differ in where they accept image
+  content, and the difference is silent. One carries an image out of a tool result to the model;
+  another accepts images on messages but not in tool responses, preserves the content through the
+  framework, and discards it at the wire — after which the model describes a picture it never
+  received and reports no error. A control exchange placing the same bytes on a user message was
+  described correctly by the same model on the same provider, so the limitation is one of channel
+  rather than capability. A host targeting such a provider wraps its chat client in
+  `ImagePromotingChatClient`, **beneath** the function-invocation loop so that the decorator
+  observes tool results after they have been appended; see _ImagePromotingChatClient Unit Design_.
+  A host whose provider already delivers images from tool results installs nothing.

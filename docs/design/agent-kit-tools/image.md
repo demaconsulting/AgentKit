@@ -72,9 +72,18 @@ binary content — a `List<AIContent>`. The underlying function factory decides 
 a result by the delegate's *declared* return type, and an `object`-declared delegate would have its
 content flattened into a `JsonElement` before a provider ever saw it. Serialized, the provider
 receives no image; the model, told a tool returned one, reports that it can see the image and
-fabricates a description of content it never received, with no error to notice. The guarded factory's
-result passthrough is what keeps the content intact, which is why this family in particular cannot
-be constructed any other way.
+fabricates a description of content it never received, with no error to notice. The guarded
+factory's selective result marshalling is what keeps the content intact, which is why this
+family in particular cannot be constructed any other way. Delivering the content intact to the
+runtime is necessary but not always sufficient: a provider that accepts images on messages and not
+in tool responses discards it at the wire, which is the separate problem
+*ImagePromotingChatClient Unit Design* addresses at the host's chat client rather than here.
+
+**A path a model supplies is a workspace-relative path.** The family shares the access policy the
+text file family uses, so a name a text file listing reported is directly usable here. The tool
+interprets no path itself: it passes the model's text to the policy, which holds the workspace a
+relative name is measured against. An absolute path remains expressible and remains subject to the
+same containment decision.
 
 **One decision per read.** The read tool consults `TryResolveRead`, and nothing in the subsystem
 consults the write rule, combines the two, or re-implements either. The decision is made on the

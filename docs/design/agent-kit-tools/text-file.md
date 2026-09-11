@@ -66,6 +66,15 @@ re-implements either. This is what makes an operator's read-wide, write-narrow c
 rather than decorative, and it is verified by a scenario that reads a path successfully and is then
 refused the write of the same path.
 
+**A path a model supplies is a workspace-relative path.** A model states the paths a person states
+— `notes.txt` — and the list tool reports the names it finds relatively, so the name an agent holds
+after a listing is exactly the name it hands back to the read tool. None of the three units
+interprets a path itself: each passes the model's text to the policy, which holds the workspace a
+relative name is measured against and which alone decides what an omitted path means. That is what
+keeps the three in agreement; a family whose tools read names differently would let an agent list a
+name it then could not read. An absolute path remains expressible throughout and remains subject to
+the same containment decision.
+
 **Enumeration is a policy call.** `TextFileListTool` enumerates through `PathPolicy.EnumerateFiles`
 and never through the file system directly. Recursive enumeration by the operating system follows
 directory junctions and symbolic links out of a permitted location, so a direct enumeration would

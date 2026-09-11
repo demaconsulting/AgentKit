@@ -44,8 +44,8 @@ Unit tests reside in `GuardedToolFactoryTests.cs` within the
 - **Framework**: xUnit v3 running under the .NET SDK, using asynchronous test methods for the
   scenarios that invoke a tool
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **Dependencies**: `Microsoft.Extensions.AI.Abstractions` 10.9.0, the version this library pins.
-  The scenarios characterize that version's behavior, so a version change is expected to be
+- **Dependencies**: `Microsoft.Extensions.AI.Abstractions`, the version this library pins. The
+  scenarios characterize that version's behavior, so a version change is expected to be
   reviewed against them
 - **External services**: None; no provider is contacted and no network access is required
 - **Mocking**: None
@@ -53,14 +53,15 @@ Unit tests reside in `GuardedToolFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all twelve scenarios below pass without error or exception beyond
-those explicitly asserted. Any result arriving as a `JsonElement` from a guarded tool, any
+A unit test run passes when all fifteen scenarios below pass without error or exception beyond
+those explicitly asserted. Any content result arriving as a `JsonElement` from a guarded tool, any
+structured result arriving as a raw object, any
 invalid name or empty description accepted, and any name or description not carried by the
 created tool constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitCore-GuardedToolFactory-ResultPassthrough: Binary Content Is Not Serialized
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: Binary Content Is Not Serialized
 
 **Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_BinaryResultIsNotJsonSerialized`
 
@@ -70,7 +71,7 @@ content, invokes it, and asserts the result is a `DataContent` **and specificall
 provider never recognizes an attachment and the model fabricates a description of content it
 never saw.
 
-#### AgentKitCore-GuardedToolFactory-ResultPassthrough: A Captioned Image Survives as a Content List
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: A Captioned Image Survives as a Content List
 
 **Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_CaptionedImageSurvivesAsContentList`
 
@@ -78,14 +79,37 @@ Asserts the result is a two-element content list with the caption first and the 
 the exact shape `ToolResult.Image` produces, and the shape flattened into a JSON array without
 the guard.
 
-#### AgentKitCore-GuardedToolFactory-ResultPassthrough: A Refusal Survives as a String
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: A Refusal Survives as a String
 
 **Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString`
 
 Pins the benign but observable consequence of the guard on the refusal path: the refusal arrives
 as a raw `string` rather than as a `JsonElement` wrapping a JSON string. Both are consumable, so
-nothing is broken — but the change is visible on every tool result and must not be read as a
-defect.
+nothing is broken — but the change is visible on every textual tool result and must not be read
+as a defect.
+
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: An Anonymous Object Is Serialized
+
+**Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_AnonymousObjectIsSerializedToJsonElement`
+
+The scenario blanket passthrough failed. Preserving every result indiscriminately delivered the
+anonymous object itself, which the provider reported back by its compiler-generated type name and
+could not read. Asserts the result is a `JsonElement` whose raw text carries the object's data,
+so the selection cannot be widened back to "everything" without failing here.
+
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: A Structured Result Is Serialized
+
+**Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_StructuredResultIsSerializedToJsonElement`
+
+Asserts the uniform expression for structured data reaches the model as readable JSON, which is
+the one result kind the guard deliberately does not preserve verbatim.
+
+#### AgentKitCore-GuardedToolFactory-SelectiveMarshalling: A Null Result Is Passed Through
+
+**Test**: `GuardedToolFactory_Create_DelegateDeclaredReturningObject_NullResultIsPassedThrough`
+
+Boundary condition: there is nothing to serialize and nothing a provider could misread, so the
+absence is carried through as an absence rather than as a JSON null wrapped in an element.
 
 #### AgentKitCore-GuardedToolFactory-GuardAlwaysApplied: A Synchronous Tool Is Guarded
 

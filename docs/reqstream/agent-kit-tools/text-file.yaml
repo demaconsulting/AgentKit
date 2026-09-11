@@ -58,40 +58,51 @@ sections:
             title: >-
               The text file family shall judge each request with the policy decision matching the
               operation — the read decision for reads and listings, the write decision for writes
-              — including requests that reach outside a permitted location through a link.
+              — interpreting a path a model states relative to the workspace, and including
+              requests that reach outside a permitted location through a link.
             tags: [security]
             justification: |
               An operator commonly wants an agent that reads widely but writes into one working
               directory, and that configuration is meaningless unless each tool consults the rule
               belonging to the operation it performs. Judging a request by the location it
               actually reaches, rather than by how its path was spelled, is what stops an agent
-              from stepping outside the location its operator granted.
+              from stepping outside the location its operator granted. The family shares one
+              policy, so the workspace a bare name is measured from is the same for a listing, a
+              read and a write; a family whose three tools disagreed would let an agent list a
+              name it then could not read.
             children:
               - AgentKitTools-TextFile-ReadTool-ReadPermittedFile
+              - AgentKitTools-TextFile-ReadTool-RelativePath
               - AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
               - AgentKitTools-TextFile-WriteTool-WritePermittedFile
+              - AgentKitTools-TextFile-WriteTool-RelativePath
               - AgentKitTools-TextFile-WriteTool-ReplacesExistingContent
               - AgentKitTools-TextFile-WriteTool-IndependentWriteRule
               - AgentKitTools-TextFile-WriteTool-DenyOutsideRoot
               - AgentKitTools-TextFile-ListTool-PolicyEnumeration
               - AgentKitTools-TextFile-ListTool-RelativeNames
+              - AgentKitTools-TextFile-ListTool-RelativeDirectory
+              - AgentKitTools-TextFile-ListTool-OmittedDirectory
               - AgentKitTools-TextFile-ListTool-DeterministicOrder
               - AgentKitTools-TextFile-ListTool-SearchPattern
               - AgentKitTools-TextFile-ListTool-EmptyListing
             tests:
               - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheWrite
               - TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool
+              - TextFile_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace
 
           - id: AgentKitTools-TextFile-DenialsAreResults
             title: >-
               The text file family shall report every refusal as a returned result that names its
-              reason, carries no host location, and directs the model to a better tool where one
-              exists.
+              reason, states how to phrase a request that could succeed, carries no host location,
+              and directs the model to a better tool where one exists.
             tags: [security]
             justification: |
               An exception raised while a model is calling a tool ends the agent's turn and
               strands it with no way forward, whereas a returned refusal lets it read the reason
-              and choose a permitted alternative. The refusal is handed to a model and the
+              and choose a permitted alternative. A refusal that names no alternative is barely
+              better: an agent told only "no" retries the same request until it abandons the
+              task. The refusal is handed to a model and the
               resulting transcript leaves this process, so it must disclose nothing about the
               host's layout — the very thing containment exists to protect.
             children:
@@ -104,7 +115,6 @@ sections:
               - AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
               - AgentKitTools-TextFile-WriteTool-DenialRedaction
               - AgentKitTools-TextFile-ListTool-DeniedDirectory
-              - AgentKitTools-TextFile-ListTool-MalformedRequestDenied
               - AgentKitTools-TextFile-ListTool-DenialRedaction
             tests:
               - TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing

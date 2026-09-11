@@ -7,7 +7,7 @@ The `GuardedToolFactory` class is the only supported way to construct a tool in 
 ### Purpose
 
 `GuardedToolFactory` exists to make two safety properties impossible to omit: a tool's result reaches
-the runtime in the form the tool produced it, and a tool's name obeys the naming convention.
+the runtime in a form the provider can read, and a tool's name obeys the naming convention.
 Both are properties a tool author can forget, and the first fails silently when it is forgotten.
 Making construction the single supported path means these properties are widened deliberately or
 not at all.
@@ -25,10 +25,21 @@ becomes a JSON array, and a returned string becomes a JSON string. A delegate de
 this guard.
 
 A guarded tool is necessarily declared to return `object` or `Task<object>`, because it returns a
-union: a refusal, or text, or content, depending on what happened. No strongly-typed signature
-expresses that union and survives — a bespoke result type is a plain object and is serialized
-just the same. The natural, correct way to write a tool is therefore exactly the case the factory
-would serialize. The guard is not an edge case; it is the default path.
+union: a refusal, or text, or content, or structured data, depending on what happened. No
+strongly-typed signature expresses that union and survives — a bespoke result type is a plain
+object and is serialized just the same. The natural, correct way to write a tool is therefore
+exactly the case the factory would serialize. The guard is not an edge case; it is the default
+path.
+
+**The guard is selective, and blanket passthrough is a mistake that was made and corrected.**
+Preserving every result indiscriminately keeps content intact, which is the point — but it also
+hands the provider whatever else a tool happens to return. A tool returning an anonymous object
+was observed to reach the provider as a raw CLR instance, reported back by its compiler-generated
+type name, which no provider can interpret. The guard therefore preserves exactly the shapes a
+provider recognizes — `null`, `string`, `AIContent`, and `IEnumerable<AIContent>` — and serializes
+anything else to a `JsonElement` exactly as the factory would have done. Removing the selection
+to "simplify" the guard reintroduces the second failure; removing the guard reintroduces the
+first.
 
 **Do not remove this guard after observing that a strongly-typed return works.** That observation
 is true and irrelevant: it demonstrates the passthrough case, not the case this library is in.
@@ -44,18 +55,20 @@ the image and then fabricates a description of it. There is no error to notice.
 **The guard also changes the refusal path**, in a way worth stating so it is not mistaken for a
 defect: a refusal string reaches the runtime as a raw `string` rather than as a `JsonElement`
 wrapping a JSON string. Both are consumable by the runtime, so the change is benign — but it is
-observable on **every** tool result, not only on binary ones, and a reader who expected the
-wrapped form must not read it as a regression.
+observable on **every** textual tool result, not only on binary ones, and a reader who expected
+the wrapped form must not read it as a regression.
 
 Verified against `Microsoft.Extensions.AI.Abstractions` 10.9.0, the version this library pins:
 
-| Declared return type   | Value returned    | Without the guard                     | With the guard    |
-|------------------------|-------------------|---------------------------------------|-------------------|
-| `Task<object>`         | `DataContent`     | `JsonElement` (a `data:` URI in JSON) | `DataContent`     |
-| `Task<object>`         | `List<AIContent>` | `JsonElement` (a JSON array)          | `List<AIContent>` |
-| `Task<object>`         | `string`          | `JsonElement` (a JSON string)         | `string`          |
-| `object` (synchronous) | `DataContent`     | `JsonElement`                         | `DataContent`     |
-| `Task<DataContent>`    | `DataContent`     | `DataContent`                         | `DataContent`     |
+| Declared return type   | Value returned      | Without the guard                     | With the guard    |
+|------------------------|---------------------|---------------------------------------|-------------------|
+| `Task<object>`         | `DataContent`       | `JsonElement` (a `data:` URI in JSON) | `DataContent`     |
+| `Task<object>`         | `List<AIContent>`   | `JsonElement` (a JSON array)          | `List<AIContent>` |
+| `Task<object>`         | `string`            | `JsonElement` (a JSON string)         | `string`          |
+| `Task<object>`         | anonymous object    | `JsonElement`                         | `JsonElement`     |
+| `Task<object?>`        | `null`              | `null`                                | `null`            |
+| `object` (synchronous) | `DataContent`       | `JsonElement`                         | `DataContent`     |
+| `Task<DataContent>`    | `DataContent`       | `DataContent`                         | `DataContent`     |
 
 The last row is the trap. It is characterized by a deliberately unlinked test that lives beside
 the guard it justifies; see *GuardedToolFactory Unit Verification Design*.
@@ -69,7 +82,7 @@ which is local to `Create`.
 
 #### Create(Delegate method, string name, string description, JsonSerializerOptions? serializerOptions)
 
-Creates a tool that delivers its result to the runtime in the form the tool returned it.
+Creates a tool that delivers its result to the runtime in a form the provider can read.
 
 **Preconditions:** `method` is non-null; `name` satisfies the naming convention; `description` is
 non-null and non-empty. `serializerOptions` may be null.
@@ -84,8 +97,9 @@ non-null and non-empty. `serializerOptions` may be null.
 4. Delegate to the underlying `AIFunctionFactory.Create(Delegate, AIFunctionFactoryOptions)`
    overload and return the tool.
 
-**Postconditions:** the returned tool carries the validated name and the supplied description,
-and its result is delivered unchanged whatever its declared return type.
+**Postconditions:** the returned tool carries the validated name and the supplied description;
+its text and content results are delivered unchanged whatever its declared return type, and any
+other result is serialized to a `JsonElement`.
 
 **The wrapped overload is specifically `Create(Delegate, AIFunctionFactoryOptions)`.** It is the
 only overload that accepts a result-marshaling hook. The
@@ -115,6 +129,20 @@ casts and JSON schema generation for the parameters is unaffected.
 **Throws:** `ArgumentNullException` for a missing delegate or description; `ArgumentException`
 for an empty description or a name violating the convention.
 
+#### MarshalResult(object? result, JsonSerializerOptions? serializerOptions)
+
+Private helper implementing the guard. It returns `null`, a `string`, an `AIContent` and an
+`IEnumerable<AIContent>` unchanged, and serializes anything else to a `JsonElement`.
+
+**Serialization uses a `JsonTypeInfo` obtained from the options** rather than the
+reflection-based `SerializeToElement` overload, so the unit carries no trimming or
+ahead-of-time-compilation warning into a consumer's build under `TreatWarningsAsErrors`. The
+options are the caller's when supplied and `AIJsonUtilities.DefaultOptions` otherwise, which is
+the same source the underlying factory would have used.
+
+**Postconditions:** the returned value is either the argument itself or a `JsonElement`; the
+helper never throws for a shape reason.
+
 ### Error Handling
 
 | Condition                                  | Handling                                      |
@@ -133,7 +161,14 @@ discovered by the developer writing the tool, so each is surfaced immediately.
 A guard a tool author can omit is a guard that will be omitted, and its absence produces no error
 to notice.
 
-**The guard lambda is `static`**, so no closure is allocated per tool.
+**The guard must remain selective.** The set of preserved shapes is exactly the set a provider
+recognizes. Widening it to "everything" reintroduces the raw-object failure; narrowing it removes
+the image the guard exists to protect. A change to either edge of that set is a change to a risk
+control measure and belongs in a requirement, not in an implementation tidy-up.
+
+**The guard lambda closes over the serializer options** and is therefore not `static`. The
+capture is one reference per constructed tool, and it is the cost of serializing with the options
+the caller asked for rather than with a guess.
 
 **A future maintainer must not "simplify" a tool's declared return type to demonstrate that the
 guard is unnecessary.** See *Result Delivery* above; that demonstration is valid for the case it
@@ -145,8 +180,8 @@ tests and irrelevant to the case this library is in.
 - **ToolResult** — the results a guarded tool returns; see *ToolResult Unit Design*. The
   dependency is conceptual rather than compile-time: the factory does not reference the result
   constructors, but the guard exists precisely because of the shapes they produce.
-- **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, `AIFunctionFactory` and
-  `AIFunctionFactoryOptions`.
+- **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, `AIFunctionFactory`,
+  `AIFunctionFactoryOptions`, `AIContent` and `AIJsonUtilities.DefaultOptions`.
 
 ### Callers
 

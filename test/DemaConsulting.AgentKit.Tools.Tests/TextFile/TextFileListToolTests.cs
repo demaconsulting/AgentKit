@@ -284,22 +284,104 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves an empty directory argument is refused rather than throwing at the model.
+    ///     Proves an omitted directory lists the workspace root rather than being refused.
+    /// </summary>
+    /// <remarks>
+    ///     A model exploring a workspace for the first time has no directory name to supply, and
+    ///     what it sends instead is a question this tool can answer. Refusing it merely sends the
+    ///     model guessing at locations it has no business exploring.
+    /// </remarks>
+    /// <param name="directory">The spelling of "no directory" the model supplied.</param>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot(string? directory)
+    {
+        // Arrange: a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: list with no directory named
+        var result = await InvokeAsync(tool, directory, null);
+
+        // Assert: the workspace itself is what "no directory" means
+        Assert.Equal("note.txt", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves the literal words a model sends for "no directory" list the workspace root.
+    /// </summary>
+    /// <remarks>
+    ///     A model whose schema marks an argument optional frequently sends the word its own
+    ///     runtime prints for absence rather than omitting the argument. Reading that as a
+    ///     directory name refuses a well-formed request.
+    /// </remarks>
+    /// <param name="directory">The placeholder spelling the model supplied.</param>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData("None")]
+    [InlineData("null")]
+    public async Task TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot(string directory)
+    {
+        // Arrange: a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: list with the placeholder a model sends in place of an argument
+        var result = await InvokeAsync(tool, directory, null);
+
+        // Assert: treated exactly as an omitted argument is
+        Assert.Equal("note.txt", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves that omitting the directory argument entirely does not raise an error.
+    /// </summary>
+    /// <remarks>
+    ///     A parameter with no default fails inside the function factory before the tool body is
+    ///     reached, and the model sees an opaque framework error rather than anything it can act
+    ///     on. This scenario pins the argument as optional, which is where that failure lived.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_MissingDirectoryArgument_DoesNotThrow()
+    {
+        // Arrange: a workspace holding one file
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke with no arguments at all, as a model omitting them would
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: an answer, produced by the tool rather than refused by the framework
+        Assert.Equal("note.txt", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a bare relative directory name lists that directory beneath the workspace.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileListTool_List_EmptyDirectory_ReturnsDenialWithoutThrowing()
+    public async Task TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory()
     {
-        // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
-        var tool = TextFileListTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+        // Arrange: one file in a subdirectory and one elsewhere in the workspace
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "child");
+        ReparsePointFixture.WriteFile(fixture.Root, "top.txt", "top");
+        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: invoke with an empty directory argument
-        var result = await InvokeAsync(tool, string.Empty, null);
+        // Act: name the subdirectory the way a model names it
+        var result = await InvokeAsync(tool, "sub", null);
 
-        // Assert: a returned refusal, because an exception would end the agent's turn
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        // Assert: the named subdirectory, not the whole workspace
+        Assert.Equal("child.txt", Assert.IsType<string>(result));
     }
 
     /// <summary>
@@ -327,17 +409,19 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one location.
+    ///     Creates a policy permitting reads and writes only beneath one workspace, and
+    ///     interpreting relative requests against it.
     /// </summary>
+    /// <remarks>
+    ///     Built through the workspace shorthand deliberately: it is the configuration the
+    ///     documentation recommends, so the tests exercise what a host actually builds.
+    /// </remarks>
     /// <param name="root">The permitted location.</param>
     /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return new PathPolicy(
-            PathRule.Rooted(root),
-            PathRule.Rooted(root),
-            limits ?? ToolLimits.Default);
+        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
     }
 
     /// <summary>
@@ -349,7 +433,7 @@ public class TextFileListToolTests
     /// <returns>The result the tool returned.</returns>
     private static async Task<object?> InvokeAsync(
         AIFunction tool,
-        string directory,
+        string? directory,
         string? searchPattern)
     {
         return await tool.InvokeAsync(

@@ -312,6 +312,55 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
+    ///     Proves a bare file name is written beneath the workspace root.
+    /// </summary>
+    /// <remarks>
+    ///     Reads and writes must interpret a relative path identically, or an agent could read a
+    ///     file it then cannot write back under the same name.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileWriteTool_Write_BareFileName_WritesBeneathTheWorkspaceRoot()
+    {
+        // Arrange: a workspace and a file that does not exist yet
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: write using the name a model would supply
+        var result = await InvokeAsync(tool, "notes.txt", "written-content");
+
+        // Assert: the file exists inside the workspace, holding what was written
+        Assert.IsType<string>(result);
+        var written = Path.Combine(RealPathResolver.Resolve(fixture.Root), "notes.txt");
+        Assert.Equal("written-content", await File.ReadAllTextAsync(
+            written,
+            TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves that omitting the path argument produces a refusal rather than a framework
+    ///     error.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileWriteTool_Write_MissingPathArgument_ReturnsDenialWithoutThrowing()
+    {
+        // Arrange: a workspace-governed tool, so only the request is at fault
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: invoke with the content supplied but no path at all
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments { ["content"] = "content" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal composed by the tool, naming what to supply
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("workspace root", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a refusal discloses no host location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
@@ -338,13 +387,18 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one location.
+    ///     Creates a policy permitting reads and writes only beneath one workspace, and
+    ///     interpreting relative requests against it.
     /// </summary>
+    /// <remarks>
+    ///     Built through the workspace shorthand deliberately: it is the configuration the
+    ///     documentation recommends, so the tests exercise what a host actually builds.
+    /// </remarks>
     /// <param name="root">The permitted location.</param>
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root)
     {
-        return new PathPolicy(PathRule.Rooted(root), PathRule.Rooted(root));
+        return PathPolicy.ForWorkspace(root);
     }
 
     /// <summary>

@@ -39,9 +39,10 @@ Subsystem tests reside in `TextFile/TextFileTests.cs`, with the shared reparse-p
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all nine scenarios below pass without error or exception beyond
+A subsystem test run passes when all ten scenarios below pass without error or exception beyond
 those explicitly asserted. A tool published outside the family prefix, a refusal raised as an
-exception rather than returned, a refusal containing a host path or separator, an escaped file
+exception rather than returned, a refusal containing a host path or separator, a relative name
+that is not resolved against the workspace, an escaped file
 appearing in a listing, a permitted read that fails, a refused write that succeeds, and a truncated
 result where a refusal was required each constitute a failure.
 
@@ -92,6 +93,16 @@ Error path and security control: creates a real reparse point inside the permitt
 a sibling directory, proves the escaped file is readable through the link on disk, then asserts the
 read and the write are refused and the listing never mentions the file. The on-disk read is what
 stops a broken fixture from making the scenario pass vacuously.
+
+#### AgentKitTools-TextFile-PolicyGoverned: A Relative Path From a Model Is Resolved Against the Workspace
+
+**Test**: `TextFile_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace`
+
+Verifies the family's three tools agree about what a name means. Lists the workspace without
+naming it — the first request an agent makes — and then reads the name that listing reported,
+supplying it exactly as the listing gave it. Asserts the listing is the relative name and the read
+returns the file's content. A family whose tools interpreted names differently would let an agent
+list a name it then could not read.
 
 #### AgentKitTools-TextFile-DenialsAreResults: A Refused Request Returns a Result
 

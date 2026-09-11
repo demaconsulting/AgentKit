@@ -23,7 +23,10 @@ System tests reside in `AgentKitCoreTests.cs` within the
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **Dependencies**: No external services, databases, or network access required
+- **Dependencies**: No external services, databases, or network access required. The image
+  promotion scenario uses a scripted `IChatClient` that contacts nothing; see
+  _ImagePromotingChatClient Unit Verification Design_ for why a real provider would not observe
+  the behavior under test
 - **File system**: The path-containment scenarios require a writable temporary directory and the
   ability to create a real reparse point within it — a directory junction created by
   `cmd.exe /c mklink /J` on Windows, and a directory symbolic link on Linux and macOS. A Windows
@@ -86,6 +89,35 @@ Verifies that nothing about the host's layout leaves the system in a denial mess
 message contains neither the requested path nor the permitted location, and contains no directory
 separator at all.
 
+### Path Policy: A Relative Path From a Model Resolves Against the Workspace
+
+**Test**: `AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkspaceRoot`
+
+Verifies that the system reads a path the way a model writes one. Configures a policy for one
+workspace holding a file, requests that file by name alone, and asserts the request is permitted
+and the returned location reads back the file's content. This is the system-level regression for
+a defect in which such a request was refused because the name was measured from the location the
+host process happened to be running from.
+
+### Path Policy: A Denial Message States How to Recover
+
+**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover`
+
+Verifies that a refusal is a step an agent can act on rather than a dead end it retries. Asserts
+the message names the workspace-relative form a request should take, while still containing
+neither the permitted location nor any directory separator — so the guidance was added without
+reopening the disclosure the redaction requirement closes.
+
+### Image Delivery: A Tool-Returned Image Reaches the Provider on a User Message
+
+**Test**: `AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage`
+
+Verifies provider-independent image delivery end to end. Builds the caption-then-image tool result
+a guarded tool produces, sends the conversation through the decorator as a function-invocation
+loop would, and asserts the client behind it received the image on a following user message, as
+the same content instance. Confirms a host can make image delivery independent of whether its
+provider carries images out of tool results.
+
 ### Path Policy: Construction Without Rules Is Rejected
 
 **Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected`
@@ -111,7 +143,9 @@ through the only supported construction path whose delegate is declared to retur
 invokes it through the runtime's own entry point. Asserts the result is a two-element content
 list — caption then image — rather than serialized JSON. The declared return type is deliberate:
 a strongly-typed declaration would pass without the result-delivery guard and would prove
-nothing; see _GuardedToolFactory Unit Verification Design_.
+nothing. The guard is selective rather than a blanket passthrough — text and content are
+preserved while structured data is serialized — and the unit-level scenarios that pin both edges
+of that selection are described in _GuardedToolFactory Unit Verification Design_.
 
 ### Guarded Tool: A Denied Path Returns a Refusal Rather Than Throwing
 
@@ -166,8 +200,11 @@ behavior later.
 
 ## Acceptance Criteria
 
-A system-level test run passes when all fourteen scenarios above pass without error or exception
+A system-level test run passes when all seventeen scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
-value, permitted path that should have been refused, escaped file appearing in a listing, tool
-result arriving as serialized JSON rather than as the content the tool produced, or tool offered
+value, permitted path that should have been refused, relative path resolved against the process
+working directory, escaped file appearing in a listing, denial message containing a host location
+or offering no way forward, tool
+result arriving as serialized JSON rather than as the content the tool produced, tool-returned
+image failing to reach the provider, or tool offered
 to a host that cannot support it constitutes a failure.

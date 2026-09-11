@@ -10,14 +10,17 @@ sections:
       - id: AgentKitCore-PathContainment-ResolveLinks
         title: >-
           The library shall judge path access by the real file system location of the requested
-          path, with symbolic links and directory junctions resolved at every path component.
+          path, making a relative path absolute against the workspace location before resolving
+          symbolic links and directory junctions at every path component.
         tags: [system, security]
         justification: |
           A path string that looks contained within a permitted location can still reach outside
           it when a reparse point sits anywhere along the path. Judging access on the requested
           string rather than on the location it actually reaches would let an agent read or write
           outside the location its operator granted, which is the primary threat this library
-          exists to control.
+          exists to control. A relative path is made absolute against the workspace first, so
+          that the same link resolution and the same containment decision apply whether the
+          agent wrote a bare file name or a fully qualified one.
         children:
           - AgentKitCore-RealPathResolver-ComponentWalk
           - AgentKitCore-RealPathResolver-LinkTarget
@@ -27,8 +30,31 @@ sections:
           - AgentKitCore-PathRule-RootResolvedAtConstruction
           - AgentKitCore-PathPolicy-DenyEscapedPath
           - AgentKitCore-PathPolicy-RealPathReported
+          - AgentKitCore-PathPolicy-RelativePathAgainstBase
         tests:
           - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+
+      - id: AgentKitCore-PathAccess-WorkspaceBase
+        title: >-
+          The library shall interpret a relative path a model supplies against a workspace
+          location the host configures, rather than against the location the host process happens
+          to be running from.
+        tags: [system]
+        justification: |
+          A model states the paths a person states: it asks for a file by name, not by absolute
+          location. Measuring that name from the process working directory refuses every
+          legitimate request while presenting, from the outside, as a containment decision — an
+          agent observed nine consecutive refusals of an existing file before abandoning its
+          task. Naming the workspace once, on the access policy rather than on a rule, also keeps
+          reads and writes interpreting the same name the same way when one is unrestricted and
+          the other confined.
+        children:
+          - AgentKitCore-PathPolicy-BaseDirectory
+          - AgentKitCore-PathPolicy-RelativePathAgainstBase
+          - AgentKitCore-PathPolicy-ForWorkspace
+          - AgentKitCore-PathPolicy-OmittedPathMeansBase
+        tests:
+          - AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkspaceRoot
 
       - id: AgentKitCore-PathContainment-EnumerationFiltered
         title: >-
@@ -84,16 +110,23 @@ sections:
 
       - id: AgentKitCore-PathAccess-DenialRedaction
         title: >-
-          The library shall exclude the requested path and other host detail from denial messages.
+          The library shall state in a denial message what form a permitted request takes, and
+          shall exclude the requested path and other host detail from that message.
         tags: [system, security]
         justification: |
           A denial message is returned to the model and becomes part of a transcript that leaves
           the process, often to a third-party provider. Including absolute paths would disclose
-          the host's directory layout, user names and project structure to that provider.
+          the host's directory layout, user names and project structure to that provider. A
+          denial that only refuses is nevertheless useless to the agent receiving it: told
+          nothing but "no", a model re-submits variations of the same path until it abandons the
+          task. The message therefore states the expected form of a request, phrased so that it
+          introduces no host location of its own.
         children:
           - AgentKitCore-PathPolicy-DenialMessageRedacted
+          - AgentKitCore-PathPolicy-DenialGuidance
         tests:
           - AgentKitCore_SystemPathPolicy_DenialMessage_ContainsNoHostPaths
+          - AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover
 
       - id: AgentKitCore-PathAccess-GuardedConstruction
         title: >-
@@ -131,22 +164,52 @@ sections:
 
       - id: AgentKitCore-ToolResult-ContentPreserved
         title: >-
-          The library shall deliver a tool result to the runtime in the form the tool produced it
-          — text, binary content, or a caption accompanied by an image — rather than as
-          serialized JSON.
+          The library shall deliver text, binary content, and a caption accompanied by an image
+          to the runtime in the form the tool produced them, and shall deliver any other tool
+          result as serialized JSON.
         tags: [system, security]
         justification: |
           Without this, a returned image is flattened to a data URI string, the provider never
           recognizes it as an image, and the model states that it can see the image and then
           fabricates a description of it. The failure is silent and the output is confidently
-          wrong, which is worse than an error a caller could detect and handle.
+          wrong, which is worse than an error a caller could detect and handle. Preserving
+          everything indiscriminately is not the remedy: a tool returning ordinary structured
+          data was then handed to the provider as a raw object it reported back by its
+          compiler-generated type name and could not read. Only the shapes a provider recognizes
+          are preserved; everything else is serialized as it would have been.
         children:
           - AgentKitCore-ToolResult-Text
           - AgentKitCore-ToolResult-Binary
           - AgentKitCore-ToolResult-Image
-          - AgentKitCore-GuardedToolFactory-ResultPassthrough
+          - AgentKitCore-ToolResult-Structured
+          - AgentKitCore-GuardedToolFactory-SelectiveMarshalling
         tests:
           - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
+
+      - id: AgentKitCore-ImageDelivery-ProviderIndependent
+        title: >-
+          The library shall be able to deliver an image a tool returned to a provider whose tool
+          response channel does not carry images, by placing that image on a user message in the
+          conversation.
+        tags: [system]
+        justification: |
+          Providers differ in where they accept images, and the difference is silent. One
+          delivers an image from a tool result to the model; another preserves the same content
+          through the framework and discards it at the wire because its interface accepts images
+          on messages but not in tool responses — after which the model describes an image it
+          never received. A control exchange placing the same bytes on a user message was
+          described correctly by the same model, so the limitation is one of channel rather than
+          capability. A host must therefore be able to make image delivery independent of which
+          provider it chose.
+        children:
+          - AgentKitCore-ImagePromotingChatClient-PromoteImages
+          - AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
+          - AgentKitCore-ImagePromotingChatClient-TextResultUnchanged
+          - AgentKitCore-ImagePromotingChatClient-MessageOrderPreserved
+          - AgentKitCore-ImagePromotingChatClient-StreamingAndNonStreaming
+          - AgentKitCore-ImagePromotingChatClient-RequiresInnerClient
+        tests:
+          - AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage
 
       - id: AgentKitCore-ToolResult-RefusalIsAResult
         title: >-

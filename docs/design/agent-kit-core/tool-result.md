@@ -12,12 +12,12 @@ rather than each tool inventing its own. A model consuming a tool's output has n
 shape it is in, so the shapes have to be fixed by the library.
 
 **Every constructor returns `object`, and that is a consequence rather than a shortcut.** A tool
-returns a union — a refusal, or text, or content — and `object` is the only type that expresses
-it. No strongly-typed signature captures that union: a bespoke result type would be a plain
-object and would be serialized just the same. That union is also precisely the declared return
-type the underlying function factory would serialize into JSON, which is why a tool built from
-these results must be built through `GuardedToolFactory`; see _GuardedToolFactory Unit Design_
-for why that matters and what goes wrong when it is bypassed.
+returns a union — a refusal, or text, or content, or structured data — and `object` is the only
+type that expresses it. No strongly-typed signature captures that union: a bespoke result type
+would be a plain object and would be serialized just the same. That union is also precisely the
+declared return type the underlying function factory would serialize into JSON, which is why a
+tool built from these results must be built through `GuardedToolFactory`; see _GuardedToolFactory
+Unit Design_ for why that matters and what goes wrong when it is bypassed.
 
 **A refusal is a return value, not an exception.** An exception raised while a model is calling a
 tool ends the agent's turn and strands it with no way forward. A returned refusal lets the model
@@ -68,6 +68,28 @@ object, because a plain string is what every runtime already knows how to presen
 
 **Throws:** `ArgumentNullException` when `text` is null.
 
+#### Structured(object value)
+
+Returns the supplied value itself.
+
+**Preconditions:** `value` is non-null.
+
+**Postconditions:** the returned value is the identical object. It is deliberately **not**
+serialized here — `GuardedToolFactory` serializes it on the way to the runtime, exactly as the
+underlying function factory would have done — so a tool author can assert on the value their tool
+produced rather than on its JSON form.
+
+This member exists so that every kind of response a tool can give has one uniform expression.
+Without it a tool returning a record or a collection returns it bare, and a reader cannot tell a
+deliberate structured result from a value somebody forgot to wrap. It is also the one result kind
+the guard does not preserve verbatim, and that is deliberate: a raw object reaching a provider is
+unreadable to it.
+
+A null value is refused because a tool with nothing to say returns text or a refusal; a model
+shown "null" learns nothing it can act on.
+
+**Throws:** `ArgumentNullException` when `value` is null.
+
 #### Binary(ReadOnlyMemory&lt;byte&gt; data, string mediaType, string? caption)
 
 Returns binary content carrying its media type, preceded by a caption when one is given.
@@ -117,6 +139,7 @@ name.
 | Condition                              | Handling                                      |
 |----------------------------------------|-----------------------------------------------|
 | Null `text`                            | `ArgumentNullException` propagates            |
+| Null structured `value`                | `ArgumentNullException` propagates            |
 | Null or empty `mediaType`              | `ArgumentNullException` / `ArgumentException` |
 | `mediaType` not denoting an image      | `ArgumentException` propagates                |
 | Undefined `DenialReason`               | `ArgumentOutOfRangeException` propagates      |

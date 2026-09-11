@@ -29,15 +29,24 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     "tidied up" into a strongly-typed one; see the remarks on <see cref="GuardedToolFactory"/>.
 ///     </para>
 ///     <para>
+///     <b>A path the model supplies is read relative to the workspace root.</b> The access policy
+///     holds the workspace a bare name is resolved against, and an absolute path remains
+///     expressible and remains subject to the same containment decision. The path parameter
+///     carries a default, so an omitted argument becomes a refusal stating what to supply rather
+///     than a framework error the model cannot interpret.
+///     </para>
+///     <para>
 ///     <b>An oversized file is a denial naming the ceiling, never a truncation.</b> Returning
 ///     part of an image would hand the model corrupt content it has no way to detect. A denial
 ///     that names the ceiling lets the model narrow its request instead.
 ///     </para>
 ///     <para>
 ///     Every refusal is returned rather than thrown, and carries no host detail: no absolute
-///     path, no permitted location, no directory separator. The refusal text reaches a model and
-///     the resulting transcript leaves this process, so the messages here are constants, and the
-///     only interpolated values are an integer naming a ceiling and the resolved media type.
+///     path, no permitted location, no directory separator. Each nevertheless states what the
+///     model should do instead, because an agent told only "no" retries the same request. The
+///     refusal text reaches a model and the resulting transcript leaves this process, so the
+///     messages here are constants, and the only interpolated values are an integer naming a
+///     ceiling and the resolved media type.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -60,23 +69,28 @@ public static class ImageReadTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     private const string ToolDescription =
-        "Reads the visual content of an image or PDF file the agent is permitted to read. "
-        + "Returns the content with a caption, or a denial explaining why the request was refused.";
+        "Reads the visual content of an image or PDF file the agent is permitted to read. Paths "
+        + "are relative to the workspace root. Returns the content with a caption, or a denial "
+        + "explaining why the request was refused.";
 
     /// <summary>
     ///     The refusal used when the request carries no path at all.
     /// </summary>
-    private const string PathRequired = "A file path is required.";
+    private const string PathRequired =
+        "A file path is required. Supply a path relative to the workspace root, "
+        + "for example 'diagram.png'.";
 
     /// <summary>
     ///     The refusal used when the request names a directory rather than a file.
     /// </summary>
-    private const string PathIsDirectory = "The requested path is a directory, not a file.";
+    private const string PathIsDirectory =
+        "The requested path is a directory, not a file. Name an image file to read instead.";
 
     /// <summary>
     ///     The refusal used when the requested file does not exist.
     /// </summary>
-    private const string FileNotFound = "The requested file does not exist.";
+    private const string FileNotFound =
+        "The requested file does not exist. Check the file name and request it again.";
 
     /// <summary>
     ///     The refusal used when the file exists and is permitted but cannot be read.
@@ -108,15 +122,19 @@ public static class ImageReadTool
         // model supplied, so it is surfaced rather than converted into a denial.
         ArgumentNullException.ThrowIfNull(policy);
 
-        // Declared Task<object> on purpose; see the type remarks before changing this. Here the
-        // guarded passthrough is what keeps the image content from being serialized to JSON.
-        return GuardedToolFactory.Create(
-            (Func<string, CancellationToken, Task<object>>)(
-                ([Description("The path of the file to read.")] string path,
-                    CancellationToken cancellationToken) =>
-                    ReadAsync(policy, path, cancellationToken)),
-            ToolName,
-            ToolDescription);
+        // Declared to return Task<object> on purpose; see the type remarks before changing this.
+        // Here the guarded delivery is what keeps the image content from being serialized to
+        // JSON. The path carries a default so that an omitted argument becomes a refusal this
+        // tool composes, rather than a framework error raised before the body is reached.
+        var read = (
+                [Description(
+                    "The path of the file to read, relative to the workspace root, "
+                    + "for example 'diagram.png'.")]
+                string? path = null,
+                CancellationToken cancellationToken = default) =>
+            ReadAsync(policy, path, cancellationToken);
+
+        return GuardedToolFactory.Create(read, ToolName, ToolDescription);
     }
 
     /// <summary>
@@ -129,12 +147,12 @@ public static class ImageReadTool
     ///     than handed a partial image.
     /// </remarks>
     /// <param name="policy">The access policy governing the read.</param>
-    /// <param name="path">The path the model requested.</param>
+    /// <param name="path">The path the model requested, or null when it supplied none.</param>
     /// <param name="cancellationToken">A token that cancels the read.</param>
     /// <returns>The file's content, or a refusal naming its reason.</returns>
     private static async Task<object> ReadAsync(
         PathPolicy policy,
-        string path,
+        string? path,
         CancellationToken cancellationToken)
     {
         // A malformed request is refused rather than thrown: the model supplied it, so the model

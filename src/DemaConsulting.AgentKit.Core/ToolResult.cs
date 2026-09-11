@@ -50,13 +50,13 @@ public enum DenialReason
 /// <remarks>
 ///     <para>
 ///     <b>Every member returns <see cref="object"/>, and that is not laziness.</b> A tool
-///     returns a union — a refusal, or text, or content — and <see cref="object"/> is the only
-///     type that expresses it. That is also precisely the declared return type the underlying
-///     function factory would serialize to JSON, which is why
-///     <see cref="GuardedToolFactory"/> exists and why it is the only supported way to build a
-///     tool from these results. A tool whose result is constructed here but that is not built
-///     through that factory will have its result flattened into JSON before the provider ever
-///     sees it.
+///     returns a union — a refusal, or text, or content, or structured data — and
+///     <see cref="object"/> is the only type that expresses it. That is also precisely the
+///     declared return type the underlying function factory would serialize to JSON, which is
+///     why <see cref="GuardedToolFactory"/> exists and why it is the only supported way to
+///     build a tool from these results. A tool whose result is constructed here but that is not
+///     built through that factory will have its text and its content flattened into JSON before
+///     the provider ever sees it.
 ///     </para>
 ///     <para>
 ///     <b>A refusal is a return value, not an exception.</b> An exception raised while a model
@@ -108,6 +108,42 @@ public static class ToolResult
         ArgumentNullException.ThrowIfNull(text);
 
         return text;
+    }
+
+    /// <summary>
+    ///     Constructs a structured-data result.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This member exists so that every kind of response a tool can give has one uniform
+    ///     expression. A tool returning a record, a list of values or any other shape that is
+    ///     not text and is not content would otherwise return it bare, and a reader would have
+    ///     no way to tell a deliberate structured result from a value somebody forgot to wrap.
+    ///     </para>
+    ///     <para>
+    ///     The value is returned as supplied. <see cref="GuardedToolFactory"/> serializes it to
+    ///     JSON on the way to the runtime — exactly as the underlying function factory would
+    ///     have done — because JSON is the form in which a provider can read structured data.
+    ///     That is the one result kind the guard does <em>not</em> preserve verbatim, and it is
+    ///     deliberate: a raw object reaching a provider is unreadable to it.
+    ///     </para>
+    /// </remarks>
+    /// <param name="value">
+    ///     The structured value to return. Must be non-null; a tool with nothing to say returns
+    ///     text or a refusal, so a null structured result is a defect in the tool rather than an
+    ///     outcome a model should be shown.
+    /// </param>
+    /// <returns>The supplied value.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="value"/> is <see langword="null"/>.
+    /// </exception>
+    public static object Structured(object value)
+    {
+        // A missing value is a programming error in the tool: there is no structured data to
+        // serialize, and a model shown "null" learns nothing it can act on.
+        ArgumentNullException.ThrowIfNull(value);
+
+        return value;
     }
 
     /// <summary>
