@@ -220,6 +220,52 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolResult.cs"            # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolResultTests.cs"  # unit tests
 
+  # AgentKitTools-Architecture Review (one per system)
+  - id: AgentKitTools-Architecture
+    title: Review that AgentKitTools Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-tools.yaml"                      # system requirements
+      - "docs/design/introduction.md"                                           # design introduction
+      - "docs/design/agent-kit-tools.md"                              # system design
+      - "docs/verification/introduction.md"                                    # verification introduction
+      - "docs/verification/agent-kit-tools.md"                       # system verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/AgentKitToolsTests.cs"  # integration tests
+
+  # AgentKitTools-Design Review (one per system)
+  - id: AgentKitTools-Design
+    title: Review that AgentKitTools Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                                       # design introduction
+      - "docs/design/agent-kit-tools.md"                          # system design
+      - "docs/design/agent-kit-tools/**/*.md"                     # all system design documents
+      - "docs/design/ots.md"                                                # OTS overview
+
+  # AgentKitTools-Verification Review (one per system)
+  - id: AgentKitTools-Verification
+    title: Review that AgentKitTools Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/verification/introduction.md"                                 # verification introduction
+      - "docs/verification/agent-kit-tools.md"                    # system verification
+      - "docs/verification/agent-kit-tools/**/*.md"              # all verification documents
+      - "docs/verification/ots.md"                                          # OTS overview
+
+  # AgentKitTools-AllRequirements Review (one per system)
+  - id: AgentKitTools-AllRequirements
+    title: Review that All AgentKitTools Requirements are Complete
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/**/*.yaml"                          # all Tools requirements files
+
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark
     title: Review that BuildMark Provides Required Functionality

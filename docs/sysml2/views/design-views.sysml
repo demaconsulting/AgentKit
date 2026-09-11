@@ -6,9 +6,16 @@
 package AgentKitCore {
     view SoftwareStructureView {
         expose AgentKitCore;
+        expose AgentKitTools;
     }
 
     view AgentKitCoreView {
         expose AgentKitCoreSystem;
+    }
+}
+
+package AgentKitTools {
+    view AgentKitToolsView {
+        expose AgentKitToolsSystem;
     }
 }

@@ -1,0 +1,24 @@
+---
+# Software System Requirements for AgentKit Tools
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+
+sections:
+  - title: AgentKitTools Requirements
+    requirements:
+      - id: AgentKitTools-Composition-BuiltOnCoreContract
+        title: >-
+          The library shall present the tool families it provides to an application through the
+          AgentKitCore tool-pack composition contract, composed into one policy-governed tool
+          list, and shall contribute no tools where no family has been attached.
+        tags: [system]
+        justification: |
+          AgentKitTools is a general-purpose collection of guarded tool families; an application
+          must attach them the same way it attaches any other AgentKit pack — one ToolPackBuilder,
+          one access policy — not through a composition path this package invents. Proving the
+          empty composition is well defined and yields no tools fixes the integration surface
+          before any family is added and keeps the package a peer of other capability packages
+          rather than a layer they depend on.
+        tests:
+          - AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools

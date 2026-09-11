@@ -40,6 +40,8 @@ constituent software items, specifically:
   capability-gated family, and the host capabilities a pack may require
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
+- **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
+  built on the AgentKitCore contract; its tool families are introduced in subsequent increments
 
 The following OTS items are also covered:
 
@@ -50,6 +52,7 @@ The following OTS items are also covered:
 - **ReviewMark** — file review enforcement tool
 - **SarifMark** — SARIF report conversion tool
 - **SonarMark** — SonarCloud quality report tool
+- **SysML2Tools** — architecture model lint and diagram rendering tool
 - **VersionMark** — tool-version documentation tool
 - **WeasyPrint** — HTML-to-PDF conversion tool
 - **xUnit** — unit-testing framework

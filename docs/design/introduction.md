@@ -41,6 +41,8 @@ software items, specifically:
   capability-gated family, and the host capabilities a pack may require
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
+- **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
+  built on the AgentKitCore contract; its tool families are introduced in subsequent increments
 
 The following OTS items are also covered:
 
@@ -82,6 +84,13 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
+The repository now contains two systems. `AgentKitTools` is a general-purpose capability package
+of guarded tool families built on the AgentKitCore contract, scaffolded ahead of its first family:
+it builds, tests, traces and reviews as an empty shell today, and its tool families — each its own
+subsystem — are introduced in subsequent increments. `AgentKitTools` is a peer of the other
+capability packages an application may attach, depending on `AgentKitCore` but never depended upon
+by another capability package. The `SoftwareStructureView.svg` above renders both systems.
+
 ## Folder Layout
 
 The source code folder structure mirrors the software structure organization, with file paths
@@ -103,6 +112,11 @@ src/DemaConsulting.AgentKit.Core/
 The folder is flat because the system is flat: each unit is one file directly under the project
 root, mirroring the software structure above. A future system organized into subsystems will
 mirror those subsystems as folders containing their respective units.
+
+`AgentKitTools` has its own source tree under `src/DemaConsulting.AgentKit.Tools/`, which contains
+no `.cs` files yet — the package is an empty shell scaffolded ahead of its first tool family, so no
+folder tree is shown here. Its source tree appears with its first family, when that family's units
+are added.
 
 ## Document Conventions
 

@@ -227,6 +227,8 @@ jobs:
           path: |
             src/DemaConsulting.AgentKit.Core/bin/Release/*.nupkg
             src/DemaConsulting.AgentKit.Core/bin/Release/*.snupkg
+            src/DemaConsulting.AgentKit.Tools/bin/Release/*.nupkg
+            src/DemaConsulting.AgentKit.Tools/bin/Release/*.snupkg
 
   # Runs CodeQL security and quality analysis, gathering results to include
   # in the code quality report.

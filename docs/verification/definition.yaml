@@ -15,6 +15,7 @@ input-files:
   - docs/verification/agent-kit-core/tool-pack-builder.md
   - docs/verification/agent-kit-core/tool-pack.md
   - docs/verification/agent-kit-core/tool-result.md
+  - docs/verification/agent-kit-tools.md
   - docs/verification/ots.md
   - docs/verification/ots/buildmark.md
   - docs/verification/ots/fileassert.md
