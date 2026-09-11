@@ -130,10 +130,11 @@ what limits apply. AgentKit's responsibility is that each tool, once chosen and 
 correctly and predictably within those controls. It does not decide which tools an application
 should offer, nor override the author's configuration with judgments of its own.
 
-What makes this safe rather than permissive is that the controls cannot be omitted. A tool cannot
-be constructed without its policy, so an author may deliberately widen a boundary but cannot
-accidentally forget one. AgentKit guarantees the mechanism; the author governs the settings. Every
-decision below is an application of this principle.
+What makes this safe rather than permissive is that the controls cannot be omitted from the
+tools AgentKit supplies. Such a tool cannot be constructed without its policy, so an author may
+deliberately widen a boundary but cannot accidentally forget one. AgentKit guarantees the
+mechanism; the author governs the settings. Every decision below is an application of this
+principle.
 
 **Build on Microsoft Agent Framework rather than beside it.** Agent Framework 1.0 GA already
 provides the agent abstraction, tool loop, compaction, approval, and orchestration. The
@@ -152,9 +153,17 @@ there is inherited by every consumer of every pack, and every change there churn
 widely depended-upon review surface in the repository. Core therefore holds only what packs must
 share. General-purpose tools live in a peer pack alongside the capability packs.
 
-**Guardrails are mandatory at construction.** A tool cannot be obtained without supplying a
-policy. An unguarded tool instance is unrepresentable, so safety cannot be forgotten, only
-deliberately widened.
+**Guardrails are mandatory at construction.** A tool AgentKit provides cannot be obtained
+without supplying a policy, so safety cannot be forgotten, only deliberately widened. The
+guarantee is about the tools this library ships: their construction paths admit no unguarded
+form, and a policy cannot itself be built without its rules.
+
+An application remains free to write and register functions of its own, governed however it
+sees fit. That is not a gap in the guarantee but the same division of responsibility applied
+consistently: the author decides which capabilities an agent receives, and AgentKit answers
+for the ones it supplies. A library that tried to police an application's own functions would
+be claiming an authority it does not have, and would offer false assurance about a tool set it
+never saw.
 
 **Path containment resolves reparse points at every path component.** `Path.GetFullPath`
 normalizes `..` but does not follow symbolic links or Windows directory junctions. A junction
