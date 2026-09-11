@@ -148,9 +148,54 @@ separator at all.
 Verifies that the system refuses to create a path access policy with either rule missing,
 confirming at the system boundary that an unguarded policy is unrepresentable.
 
+### Tool Limits: The Access Policy Carries the Published Ceilings
+
+**Test**: `AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues`
+
+Verifies that the ceilings a tool observes reach it through the access policy a host actually
+builds. Constructs a real policy from two rooted rules without configuring any ceilings, and
+asserts it exposes the four published values. Confirms that a host which states no budget still
+operates within a bounded one.
+
+### Guarded Tool: An Image Result Reaches the Runtime as Content
+
+**Test**: `AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent`
+
+Verifies the whole tool contract end to end. Composes a name through `ToolName`, builds a tool
+through the only supported construction path whose delegate is declared to return an object, and
+invokes it through the runtime's own entry point. Asserts the result is a two-element content
+list — caption then image — rather than serialized JSON. The declared return type is deliberate:
+a strongly-typed declaration would pass without the result-delivery guard and would prove
+nothing; see _GuardedToolFactory Unit Verification Design_.
+
+### Guarded Tool: A Denied Path Returns a Refusal Rather Than Throwing
+
+**Test**: `AgentKitCore_SystemGuardedTool_DeniedPath_ReturnsDenialResultNotException`
+
+Verifies the access policy, the result constructors and the guarded factory acting together.
+Builds a tool governed by a policy confined to one location, invokes it with a path outside that
+location, and asserts the call completes and returns refusal text naming the reason. Confirms a
+refusal is a recoverable step for an agent rather than the end of its turn.
+
+### Tool Naming: A Bare File Access Name Is Rejected
+
+**Test**: `AgentKitCore_SystemToolNaming_BareFileAccessName_IsRejected`
+
+Verifies at the system boundary that the only supported construction path will not issue a name
+that collides with the Agent Framework's bare file access tools, so an application combining both
+libraries cannot offer the model two tools with the same name.
+
+### Guarded Tool: A Constructed Tool Carries Its Validated Name and Description
+
+**Test**: `AgentKitCore_SystemGuardedTool_ConstructedTool_CarriesValidatedNameAndDescription`
+
+Verifies that a tool built the only supported way is selectable by a model rather than anonymous.
+Asserts the created tool carries the composed name and the supplied description.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all thirteen scenarios above pass without error or exception
+A system-level test run passes when all eighteen scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
-value, permitted path that should have been refused, or escaped file appearing in a listing
-constitutes a failure.
+value, permitted path that should have been refused, escaped file appearing in a listing, or tool
+result arriving as serialized JSON rather than as the content the tool produced constitutes a
+failure.

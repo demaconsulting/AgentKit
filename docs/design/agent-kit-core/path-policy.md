@@ -30,6 +30,7 @@ A policy is immutable after construction and is safe for concurrent use.
 |------------------------|----------------------|----------------------------------------------------------------------|
 | `ReadRule`             | `PathRule`           | The rule governing read access. Never null.                          |
 | `WriteRule`            | `PathRule`           | The rule governing write access. Never null.                         |
+| `Limits`               | `ToolLimits`         | Ceilings every tool governed by this policy observes. Never null.    |
 | `ReadLocationDenied`   | `const string`       | Message used when a read resolves outside the permitted location.    |
 | `WriteLocationDenied`  | `const string`       | Message used when a write resolves outside the permitted location.   |
 | `PatternDenied`        | `const string`       | Message used when a request matches a denied pattern.                |
@@ -40,18 +41,30 @@ Invariants:
 
 - Both rules are non-null for the lifetime of the policy; there is no way to construct an
   instance without them.
+- Limits are non-null for the lifetime of the policy.
 - Every denial message is a compile-time constant containing no path, no root and no host detail.
 
 ### Key Methods
 
 #### PathPolicy(PathRule readRule, PathRule writeRule)
 
-The only constructor. There is no default, no-argument or single-rule overload, because an
-unguarded policy must be unrepresentable: a policy that can exist without its rules invites a
-caller to create one and forget to restrict it, producing an agent with unbounded file access
-that nevertheless looks governed.
+There is no default, no-argument or single-rule overload, because an unguarded policy must be
+unrepresentable: a policy that can exist without its rules invites a caller to create one and
+forget to restrict it, producing an agent with unbounded file access that nevertheless looks
+governed.
+
+This overload delegates to the three-argument constructor with `ToolLimits.Default`, so a host
+that has no opinion about resource ceilings still receives bounded ones.
 
 **Throws:** `ArgumentNullException` when either rule is null.
+
+#### PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits)
+
+The same contract, with the resource ceilings stated explicitly. All three arguments are
+required; an absent set of ceilings is the same kind of programming error as an absent rule,
+because "unbounded" is not a sensible default.
+
+**Throws:** `ArgumentNullException` when any argument is null.
 
 #### TryResolveRead(string path, out string? realPath, out string? denialMessage)
 
@@ -115,6 +128,7 @@ what guarantees reads and writes differ only in which rule they consult.
 | Condition                                       | Handling                                                    |
 |-------------------------------------------------|-------------------------------------------------------------|
 | Null or empty rule at construction              | `ArgumentNullException` propagates                          |
+| Null limits at construction                     | `ArgumentNullException` propagates                          |
 | Null or empty `path` / `directory` / pattern    | `ArgumentNullException` / `ArgumentException` propagates    |
 | Real location cannot be determined              | Handled locally; denial with the unresolvable message       |
 | Location outside the permitted location         | Handled locally; denial with the read or write message      |
@@ -143,17 +157,21 @@ richer tool results arrive. Alternatives were rejected: a bespoke decision struc
 second result type that later code must map from; returning the real path or `null` loses the
 reason entirely, leaving the redaction requirement with nowhere to live.
 
-**Resource ceilings are attached in a later increment.** `ToolLimits` — the ceilings on bytes
-read, result size returned to the model and attachments per turn — is **not** part of this unit
-yet. It is added in a later step as a `Limits` property and an additional constructor overload,
-with the two-rule constructor retained. The deferral is recorded here so that a reviewer sees an
-intended sequence rather than an omission.
+**Resource ceilings ride with the policy.** `ToolLimits` — the ceilings on bytes read, characters
+returned to the model, bytes of binary content returned and attachments per turn — is carried as
+a `Limits` property rather than being passed per call. A tool therefore receives one object and
+cannot end up observing a different budget from its neighbor, which is what "every pack observes
+the same budget" means in practice. The three-argument constructor states the ceilings
+explicitly; the two-argument constructor delegates to it with `ToolLimits.Default`, so the change
+is additive and no existing call site is affected. See _ToolLimits Unit Design_ for the reasoning
+behind the values.
 
 ### Dependencies
 
 - **RealPathResolver** — used to resolve every requested path before a rule is consulted; see
   _RealPathResolver Unit Design_.
 - **PathRule** — holds the read and write decisions; see _PathRule Unit Design_.
+- **ToolLimits** — the resource ceilings carried with the policy; see _ToolLimits Unit Design_.
 
 ### Callers
 

@@ -1,0 +1,49 @@
+---
+# Software Unit Requirements for ToolLimits
+#
+# These requirements describe the design-level behavior of the ToolLimits unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolLimits Requirements
+        requirements:
+          - id: AgentKitCore-ToolLimits-Defaults
+            title: >-
+              Tool limits shall provide a documented default for every ceiling, so that a host
+              that configures nothing still operates within a bounded budget.
+            justification: |
+              A host that has not thought about ceilings is the common case, and it is exactly the
+              case in which an unbounded tool result exhausts the model's context window. Shipping
+              a published default for every ceiling means the safe configuration is the one a host
+              gets by doing nothing.
+            tests:
+              - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
+              - ToolLimits_Constructor_NoArguments_MatchesDefault
+
+          - id: AgentKitCore-ToolLimits-Customization
+            title: >-
+              Tool limits shall permit a host to replace any individual ceiling while retaining
+              the documented default for every other ceiling.
+            justification: |
+              A host normally has an opinion about one ceiling and none about the rest. Forcing it
+              to restate all four invites a transcription error that silently widens a ceiling
+              nobody intended to change.
+            tests:
+              - ToolLimits_Constructor_SingleCeilingOverridden_RetainsOtherDefaults
+              - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues
+
+          - id: AgentKitCore-ToolLimits-RejectNegative
+            title: >-
+              Tool limits shall reject a negative ceiling as a programming error, while
+              permitting a ceiling of zero as the means of disabling an operation.
+            justification: |
+              A negative ceiling has no meaning and would be interpreted differently by every tool
+              that consulted it. Zero, by contrast, is the expressible way for a host to turn an
+              operation off entirely, so the two must not be rejected together.
+            tests:
+              - ToolLimits_Constructor_NegativeMaxReadBytes_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxResultCharacters_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxBinaryBytes_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_ZeroCeiling_IsAccepted

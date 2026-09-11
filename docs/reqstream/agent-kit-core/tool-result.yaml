@@ -1,0 +1,99 @@
+---
+# Software Unit Requirements for ToolResult
+#
+# These requirements describe the design-level behavior of the ToolResult unit,
+# which also defines the DenialReason enumeration.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolResult Requirements
+        requirements:
+          - id: AgentKitCore-ToolResult-Text
+            title: >-
+              A tool result shall express text as a plain string value, and shall reject a
+              missing value as a programming error.
+            justification: |
+              A plain string is what every runtime already knows how to present to a model, so
+              wrapping it would add a layer nothing benefits from. An empty string remains valid
+              because an empty file is a legitimate read result, whereas a missing string is a
+              defect in the tool.
+            tests:
+              - ToolResult_Text_Content_ReturnsSuppliedString
+              - ToolResult_Text_NullText_ThrowsArgumentNullException
+
+          - id: AgentKitCore-ToolResult-Binary
+            title: >-
+              A tool result shall express binary content as content carrying its media type,
+              accompanied by a caption when one is supplied.
+            justification: |
+              A provider decides how to present an attachment from its media type, so content
+              without one cannot be interpreted. A caption returned as a separate part ahead of
+              the content tells the model what it is being handed while leaving the content a
+              pure attachment the provider can still recognize.
+            tests:
+              - ToolResult_Binary_NoCaption_ReturnsDataContentWithMediaType
+              - ToolResult_Binary_WithCaption_ReturnsCaptionThenContent
+              - ToolResult_Binary_EmptyMediaType_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolResult-Image
+            title: >-
+              A tool result shall express an image as a caption accompanied by the image
+              content, and shall reject a media type that does not denote an image.
+            justification: |
+              A caption attached to bytes that are not an image would tell the model it is looking
+              at a picture when it is not, and the model has no way to discover otherwise. The
+              mistake is therefore refused at construction rather than being handed to a provider.
+            tests:
+              - ToolResult_Image_WithCaption_ReturnsCaptionThenImageContent
+              - ToolResult_Image_NonImageMediaType_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolResult-Denied
+            title: >-
+              A tool result shall express a refusal as a returned result that names its reason,
+              for every reason the library defines, and shall never express a refusal by
+              throwing.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it. A returned refusal that names its reason lets the model understand what
+              happened and choose a permitted alternative, turning a refusal into a recoverable
+              step rather than a failed session.
+            tests:
+              - ToolResult_Denied_AnyReason_ProducesResultNotException
+              - ToolResult_Denied_Result_NamesTheReason
+
+          - id: AgentKitCore-ToolResult-DenialRedirect
+            title: >-
+              A refusal shall be able to direct the model to a more appropriate tool by name, and
+              shall reject a redirect that is not a valid tool name.
+            justification: |
+              An agent told only "no" will retry the same tool, while an agent told which tool to
+              use instead makes progress. A redirect to a name no tool could legally carry would
+              send the model after a tool that cannot exist, so it is caught at construction.
+            tests:
+              - ToolResult_Denied_WithRedirect_NamesTheRedirectTool
+              - ToolResult_Denied_InvalidRedirectToolName_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolResult-DenialReasonRequired
+            title: >-
+              A refusal shall require a defined reason and a non-empty explanation.
+            justification: |
+              A refusal with an unspecified reason or no explanation gives the model nothing to
+              act on, so it is a defect in the tool rather than something to show a model. The
+              reason enumeration has no zero member, which makes the unspecified case
+              unrepresentable rather than merely discouraged.
+            tests:
+              - ToolResult_Denied_UndefinedReason_ThrowsArgumentOutOfRangeException
+              - ToolResult_Denied_EmptyMessage_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolResult-DenialComposedOnlyOfSuppliedText
+            title: >-
+              A refusal shall consist only of its reason, the explanation supplied by the caller
+              and, where given, the name of the redirect tool, so that the library contributes no
+              host detail of its own.
+            justification: |
+              Refusal text is returned to the model and recorded in a transcript that leaves the
+              process. Anything the library added of its own accord would travel with it, so the
+              composition is fixed and the only free text is what the caller supplied.
+            tests:
+              - ToolResult_Denied_Message_ContainsOnlySuppliedTextAndReason

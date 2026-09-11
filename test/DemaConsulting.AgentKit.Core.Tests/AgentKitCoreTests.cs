@@ -1,5 +1,6 @@
 using AgentKitCore;
 using DemaConsulting.AgentKit.Core;
+using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
 
@@ -240,5 +241,132 @@ public class AgentKitCoreTests
             () => new PathPolicy(null!, PathRule.Unrestricted()));
         Assert.Throws<ArgumentNullException>(
             () => new PathPolicy(PathRule.Unrestricted(), null!));
+    }
+
+    /// <summary>
+    ///     Proves that the ceilings a tool observes reach it through the access policy a host
+    ///     actually builds, and are the published ones when the host configures nothing.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues()
+    {
+        // Arrange: a system configured for one location, with no opinion about ceilings
+        using var fixture = new ReparsePointFixture();
+
+        // Act: build the policy a host would build and read the ceilings it carries
+        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var limits = policy.Limits;
+
+        // Assert: every tool this policy governs observes the published budget
+        Assert.Equal(65536, limits.MaxReadBytes);
+        Assert.Equal(32000, limits.MaxResultCharacters);
+        Assert.Equal(8388608, limits.MaxBinaryBytes);
+        Assert.Equal(4, limits.MaxAttachmentsPerTurn);
+    }
+
+    /// <summary>
+    ///     Proves that an image a tool returns reaches the runtime as content rather than as
+    ///     serialized JSON.
+    /// </summary>
+    /// <remarks>
+    ///     The tool delegate is declared <c>Task&lt;object&gt;</c> deliberately: that is the
+    ///     declared return type a tool returning a result union necessarily has, and it is the
+    ///     case the underlying factory would serialize. A strongly-typed declaration would pass
+    ///     without the guard and would prove nothing.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent()
+    {
+        // Arrange: a tool built the only supported way, returning a captioned image
+        var bytes = new byte[] { 1, 2, 3 };
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(
+                ToolResult.Image(bytes, "image/png", "A screenshot of the failing dialog."))),
+            ToolName.Create("image_file", "read"),
+            "Reads an image file and returns it with a caption.");
+
+        // Act: invoke the tool through the runtime's own entry point
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: the caption and the image both survive as content the provider can recognize
+        var parts = Assert.IsAssignableFrom<IList<AIContent>>(result);
+        Assert.Equal(2, parts.Count);
+        Assert.IsType<TextContent>(parts[0]);
+        Assert.IsType<DataContent>(parts[1]);
+    }
+
+    /// <summary>
+    ///     Proves that a tool refused by the access policy returns a refusal to the model
+    ///     instead of throwing.
+    /// </summary>
+    /// <remarks>
+    ///     An exception raised at a tool call ends the agent's turn; a returned refusal lets
+    ///     the model read the reason and choose a permitted path. This exercises the access
+    ///     policy, the result constructors and the guarded factory together.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemGuardedTool_DeniedPath_ReturnsDenialResultNotException()
+    {
+        // Arrange: a tool governed by a policy confined to one location
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var function = GuardedToolFactory.Create(
+            (Func<string, Task<object>>)(path => Task.FromResult(
+                policy.TryResolveRead(path, out var realPath, out var denialMessage)
+                    ? ToolResult.Text(realPath)
+                    : ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage))),
+            ToolName.Create("text_file", "read"),
+            "Reads a text file within the permitted location.");
+        var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
+
+        // Act: ask the tool for a location outside the permitted one
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments { ["path"] = requested },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the call completes and the refusal arrives as text the model can act on
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("PathNotPermitted", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that the system refuses a tool name that would collide with the Agent
+    ///     Framework's bare file access names.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolNaming_BareFileAccessName_IsRejected()
+    {
+        // Act & Assert: the only supported construction path will not issue a colliding name
+        Assert.Throws<ArgumentException>(
+            () => GuardedToolFactory.Create(
+                (Func<object>)(() => ToolResult.Text("ok")),
+                "read",
+                "Reads a file."));
+    }
+
+    /// <summary>
+    ///     Proves that a tool built the only supported way carries the validated name and the
+    ///     description the model needs to choose it.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemGuardedTool_ConstructedTool_CarriesValidatedNameAndDescription()
+    {
+        // Arrange: the name and description a host would publish to the model
+        var name = ToolName.Create("text_file", "read");
+        const string description = "Reads a text file and returns its contents.";
+
+        // Act: construct the tool through the only supported path
+        var function = GuardedToolFactory.Create(
+            (Func<object>)(() => ToolResult.Text("ok")),
+            name,
+            description);
+
+        // Assert: both reach the model, so the tool is selectable rather than anonymous
+        Assert.Equal("text_file_read", function.Name);
+        Assert.Equal(description, function.Description);
     }
 }

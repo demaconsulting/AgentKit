@@ -1,0 +1,75 @@
+---
+# Software Unit Requirements for GuardedToolFactory
+#
+# These requirements describe the design-level behavior of the GuardedToolFactory unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: GuardedToolFactory Requirements
+        requirements:
+          - id: AgentKitCore-GuardedToolFactory-ResultPassthrough
+            title: >-
+              A tool created by the guarded factory shall deliver its result to the runtime in
+              the form the tool returned it, without serializing it, for a tool whose declared
+              return type is an object.
+            justification: |
+              The underlying function factory decides whether to serialize a result by the
+              delegate's declared return type, and a tool returning a union of a refusal, text or
+              content is necessarily declared to return an object. Without the guard a returned
+              image is flattened into a data URI inside JSON, the provider never recognizes an
+              attachment, and the model states that it can see the image and then fabricates a
+              description of it. The failure is silent and the output is confidently wrong.
+            tests:
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_BinaryResultIsNotJsonSerialized
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_CaptionedImageSurvivesAsContentList
+              - GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString
+
+          - id: AgentKitCore-GuardedToolFactory-GuardAlwaysApplied
+            title: >-
+              The guarded factory shall apply the result-delivery guard to every tool it creates,
+              irrespective of whether the tool is synchronous or asynchronous and irrespective of
+              its parameters.
+            justification: |
+              A guard a tool author can forget is a guard that will be forgotten. Constructing the
+              factory options internally, and applying them to every shape of delegate, is what
+              makes the guard impossible to omit rather than merely recommended.
+            tests:
+              - GuardedToolFactory_Create_SynchronousDelegate_ResultIsStillPassedThrough
+              - GuardedToolFactory_Create_ParameterizedDelegate_ResultIsStillPassedThrough
+
+          - id: AgentKitCore-GuardedToolFactory-NameValidated
+            title: >-
+              The guarded factory shall validate the tool name against the naming convention
+              before creating the tool, and the created tool shall carry that name.
+            justification: |
+              With no name supplied the underlying factory derives a compiler-generated identifier
+              from the delegate, which is meaningless to a model and unstable across
+              recompilation. Validating at the factory is also what makes the naming convention
+              unavoidable, because a tool built any other way is not a supported tool.
+            tests:
+              - GuardedToolFactory_Create_UnprefixedName_ThrowsArgumentException
+              - GuardedToolFactory_Create_ReservedName_ThrowsArgumentException
+              - GuardedToolFactory_Create_ValidName_IsCarriedByTheCreatedTool
+
+          - id: AgentKitCore-GuardedToolFactory-DescriptionRequired
+            title: >-
+              The guarded factory shall require a non-empty description, which the created tool
+              shall carry, so that the model is never offered a tool it cannot interpret.
+            justification: |
+              The name and the description are the model's only means of choosing between tools.
+              The underlying factory defaults an absent description to the empty string rather
+              than failing, so the requirement has to be enforced here or not at all.
+            tests:
+              - GuardedToolFactory_Create_EmptyDescription_ThrowsArgumentException
+              - GuardedToolFactory_Create_Description_IsCarriedByTheCreatedTool
+
+          - id: AgentKitCore-GuardedToolFactory-RejectMissingDelegate
+            title: >-
+              The guarded factory shall reject a missing tool implementation as a programming
+              error.
+            justification: |
+              There is nothing to guard and nothing for the model to invoke, so an absent
+              implementation is a defect in the tool author's code and is surfaced immediately.
+            tests:
+              - GuardedToolFactory_Create_NullDelegate_ThrowsArgumentNullException

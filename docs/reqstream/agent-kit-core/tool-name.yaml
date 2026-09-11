@@ -1,0 +1,79 @@
+---
+# Software Unit Requirements for ToolName
+#
+# These requirements describe the design-level behavior of the ToolName unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolName Requirements
+        requirements:
+          - id: AgentKitCore-ToolName-Compose
+            title: >-
+              A tool name shall be composable from a family and a verb, producing the family, an
+              underscore and the verb, and shall reject a missing family or verb.
+            justification: |
+              Composition puts the naming convention in one place rather than leaving every tool
+              author to spell it out, and validating the composed result means the name this
+              library produces and the name it accepts can never diverge.
+            tests:
+              - ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
+              - ToolName_Create_MultiWordFamily_ProducesUnderscoreSeparatedName
+              - ToolName_Create_EmptyFamily_ThrowsArgumentException
+              - ToolName_Create_EmptyVerb_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolName-FamilyPrefixRequired
+            title: >-
+              A tool name shall be rejected when it does not carry a non-empty family prefix
+              separated from a non-empty remainder by a single underscore.
+            justification: |
+              The family prefix is what keeps one library's tools from colliding with another's
+              when an application attaches several tool packs at once. A leading, trailing or
+              doubled underscore would satisfy the letter of the convention while naming an empty
+              family or an empty verb.
+            tests:
+              - ToolName_Validate_NameWithoutUnderscore_ThrowsArgumentException
+              - ToolName_Validate_LeadingUnderscore_ThrowsArgumentException
+              - ToolName_Validate_TrailingUnderscore_ThrowsArgumentException
+              - ToolName_Validate_ConsecutiveUnderscores_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolName-ReservedNamesRejected
+            title: >-
+              A tool name shall be rejected when it is one of the bare file access tool names
+              published by the Agent Framework, so that an application combining both libraries
+              cannot offer the model two tools with the same name.
+            justification: |
+              The Agent Framework's file access provider registers the bare names "read", "write"
+              and "delete". Which of two identically named tools a model invokes is undefined, so
+              the collision is refused by name with an explanation, rather than being left to the
+              generic family-prefix rule that happens to catch it today.
+            tests:
+              - ToolName_Validate_BareAgentFrameworkName_IsRejected
+
+          - id: AgentKitCore-ToolName-CharacterSet
+            title: >-
+              A tool name shall consist only of lowercase letters, digits and underscores, shall
+              begin with a lowercase letter, and shall not exceed the length the model providers
+              accept.
+            justification: |
+              Model providers treat tool names case-sensitively, so a mixed-case name is a
+              coin-flip on how a prompt refers to it. The length ceiling matches what the major
+              providers accept, so a name this library permits is a name a provider will accept
+              rather than an opaque failure at the far end of a call.
+            tests:
+              - ToolName_Validate_ValidName_DoesNotThrow
+              - ToolName_Validate_UppercaseCharacter_ThrowsArgumentException
+              - ToolName_Validate_UnsupportedCharacter_ThrowsArgumentException
+              - ToolName_Validate_LeadingDigit_ThrowsArgumentException
+              - ToolName_Validate_NameExceedingMaximumLength_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolName-RejectMissingName
+            title: >-
+              A tool name shall reject a null or empty value as a programming error.
+            justification: |
+              A tool with no name gives the model nothing to invoke. This is a mistake in the tool
+              author's code discovered at construction, not a runtime condition, so it is
+              surfaced as an exception rather than returned.
+            tests:
+              - ToolName_Validate_NullName_ThrowsArgumentNullException
+              - ToolName_Validate_EmptyName_ThrowsArgumentException

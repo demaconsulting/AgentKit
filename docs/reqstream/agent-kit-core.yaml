@@ -214,3 +214,100 @@ sections:
           - AgentKitCore-PathPolicy-RequiredRules
         tests:
           - AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected
+
+      - id: AgentKitCore-ToolLimits-BudgetCeilings
+        title: >-
+          The library shall define ceilings on the bytes a tool may read, the characters a tool
+          result may return to the model, the bytes of binary content a tool may return, and the
+          attachments a tool may add in one turn, and shall carry those ceilings with the access
+          policy so that every tool observes the same budget.
+        tags: [system]
+        justification: |
+          A tool that returns an unbounded amount of text exhausts the model's context window in
+          the middle of a task, and the failure presents as the agent forgetting its instructions
+          rather than as an error anyone can see. Carrying the ceilings with the access policy
+          means every pack a host attaches observes one budget rather than each inventing its own.
+        children:
+          - AgentKitCore-ToolLimits-Defaults
+          - AgentKitCore-ToolLimits-Customization
+          - AgentKitCore-ToolLimits-RejectNegative
+          - AgentKitCore-PathPolicy-CarriesLimits
+        tests:
+          - AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues
+
+      - id: AgentKitCore-ToolResult-ContentPreserved
+        title: >-
+          The library shall deliver a tool result to the runtime in the form the tool produced it
+          — text, binary content, or a caption accompanied by an image — rather than as
+          serialized JSON.
+        tags: [system, security]
+        justification: |
+          Without this, a returned image is flattened to a data URI string, the provider never
+          recognizes it as an image, and the model states that it can see the image and then
+          fabricates a description of it. The failure is silent and the output is confidently
+          wrong, which is worse than an error a caller could detect and handle.
+        children:
+          - AgentKitCore-ToolResult-Text
+          - AgentKitCore-ToolResult-Binary
+          - AgentKitCore-ToolResult-Image
+          - AgentKitCore-GuardedToolFactory-ResultPassthrough
+        tests:
+          - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
+
+      - id: AgentKitCore-ToolResult-RefusalIsAResult
+        title: >-
+          The library shall express a refused tool operation as a returned tool result that names
+          the reason and, where another tool is more appropriate, directs the model to it, and
+          shall add no host detail of its own to that result.
+        tags: [system]
+        justification: |
+          An exception raised at a tool call ends the agent's turn; a returned refusal lets the
+          model read the reason and choose a permitted alternative. The redirect exists because an
+          agent told only "no" will retry the same tool, while an agent told which tool to use
+          instead makes progress. Refusal text reaches a transcript that leaves the process, so
+          the library contributes nothing to it beyond a fixed reason and the caller's own words.
+        children:
+          - AgentKitCore-ToolResult-Denied
+          - AgentKitCore-ToolResult-DenialRedirect
+          - AgentKitCore-ToolResult-DenialReasonRequired
+          - AgentKitCore-ToolResult-DenialComposedOnlyOfSuppliedText
+        tests:
+          - AgentKitCore_SystemGuardedTool_DeniedPath_ReturnsDenialResultNotException
+
+      - id: AgentKitCore-ToolNaming-FamilyPrefix
+        title: >-
+          The library shall require every tool name to carry a family prefix separated from the
+          remainder by an underscore, and shall reject a name that would collide with the bare
+          file access tool names published by the Agent Framework.
+        tags: [system]
+        justification: |
+          The Agent Framework's own file access provider registers the bare names "read", "write"
+          and "delete". An application combining both libraries would present the model with two
+          tools of the same name, and which one is invoked is undefined. A family prefix makes
+          that collision impossible rather than merely unlikely.
+        children:
+          - AgentKitCore-ToolName-Compose
+          - AgentKitCore-ToolName-FamilyPrefixRequired
+          - AgentKitCore-ToolName-ReservedNamesRejected
+          - AgentKitCore-ToolName-CharacterSet
+          - AgentKitCore-ToolName-RejectMissingName
+          - AgentKitCore-GuardedToolFactory-NameValidated
+        tests:
+          - AgentKitCore_SystemToolNaming_BareFileAccessName_IsRejected
+
+      - id: AgentKitCore-GuardedConstruction-OnlySupportedPath
+        title: >-
+          The library shall provide a single supported way to construct a tool, which applies the
+          result-delivery guard and the naming rules to every tool without the tool author being
+          able to omit or replace them.
+        tags: [system, security]
+        justification: |
+          A guard a tool author can forget is a guard that will be forgotten, and the guard's
+          absence produces no error to notice. Making construction the only path means the safety
+          properties are widened deliberately or not at all.
+        children:
+          - AgentKitCore-GuardedToolFactory-GuardAlwaysApplied
+          - AgentKitCore-GuardedToolFactory-DescriptionRequired
+          - AgentKitCore-GuardedToolFactory-RejectMissingDelegate
+        tests:
+          - AgentKitCore_SystemGuardedTool_ConstructedTool_CarriesValidatedNameAndDescription

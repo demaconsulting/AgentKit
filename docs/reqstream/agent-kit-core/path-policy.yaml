@@ -99,3 +99,18 @@ sections:
               to whoever holds the transcript.
             tests:
               - PathPolicy_TryResolveRead_DeniedPath_DenialMessageOmitsRequestedPath
+
+          - id: AgentKitCore-PathPolicy-CarriesLimits
+            title: >-
+              A path policy shall carry the resource ceilings the tools it governs observe,
+              defaulting to the library's documented ceilings when none are supplied and
+              rejecting a missing set of ceilings.
+            justification: |
+              Ceilings that ride with the policy mean every tool a host attaches observes one
+              budget rather than each inventing its own. Defaulting rather than requiring them
+              keeps the existing two-rule construction working, while rejecting an explicitly
+              missing set prevents a caller from expressing "unbounded" by accident.
+            tests:
+              - PathPolicy_Constructor_NoLimits_UsesDefaultLimits
+              - PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits
+              - PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException

@@ -114,6 +114,19 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/Demo.cs"                  # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/DemoTests.cs"      # unit tests
 
+  # AgentKitCore-GuardedToolFactory Review (one per unit)
+  - id: AgentKitCore-GuardedToolFactory
+    title: Review that AgentKitCore GuardedToolFactory Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/guarded-tool-factory.yaml"   # unit requirements
+      - "docs/design/agent-kit-core/guarded-tool-factory.md"        # unit design
+      - "docs/verification/agent-kit-core/guarded-tool-factory.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/GuardedToolFactory.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/GuardedToolFactoryTests.cs"  # unit tests
+
   # AgentKitCore-PathPolicy Review (one per unit)
   - id: AgentKitCore-PathPolicy
     title: Review that AgentKitCore PathPolicy Implementation is Correct
@@ -153,6 +166,45 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/RealPathResolver.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/RealPathResolverTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Core.Tests/ReparsePointFixture.cs"    # reparse-point test fixture
+
+  # AgentKitCore-ToolLimits Review (one per unit)
+  - id: AgentKitCore-ToolLimits
+    title: Review that AgentKitCore ToolLimits Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-limits.yaml"           # unit requirements
+      - "docs/design/agent-kit-core/tool-limits.md"                # unit design
+      - "docs/verification/agent-kit-core/tool-limits.md"          # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolLimits.cs"            # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolLimitsTests.cs"  # unit tests
+
+  # AgentKitCore-ToolName Review (one per unit)
+  - id: AgentKitCore-ToolName
+    title: Review that AgentKitCore ToolName Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-name.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/tool-name.md"                  # unit design
+      - "docs/verification/agent-kit-core/tool-name.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolName.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolNameTests.cs"    # unit tests
+
+  # AgentKitCore-ToolResult Review (one per unit)
+  - id: AgentKitCore-ToolResult
+    title: Review that AgentKitCore ToolResult Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-result.yaml"           # unit requirements
+      - "docs/design/agent-kit-core/tool-result.md"                # unit design
+      - "docs/verification/agent-kit-core/tool-result.md"          # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolResult.cs"            # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolResultTests.cs"  # unit tests
 
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark

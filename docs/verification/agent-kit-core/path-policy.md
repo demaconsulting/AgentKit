@@ -37,7 +37,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond
+A unit test run passes when all eighteen scenarios below pass without error or exception beyond
 those explicitly asserted. Any escaping path that is permitted, any escaped file that appears in
 a listing, any denial message containing a host location, and any exception escaping a refusal
 constitutes a failure.
@@ -152,3 +152,24 @@ Asserts an unguarded policy is unrepresentable.
 **Test**: `PathPolicy_Constructor_NullWriteRule_ThrowsArgumentNullException`
 
 Asserts both rules are required, not merely the first.
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Created Without Ceilings Carries the Defaults
+
+**Test**: `PathPolicy_Constructor_NoLimits_UsesDefaultLimits`
+
+Asserts the two-rule constructor yields the **same shared instance** as `ToolLimits.Default`,
+rather than merely an equal one, so that the delegation cannot silently start allocating a fresh
+set of ceilings that happens to agree today.
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Exposes the Ceilings the Host Supplied
+
+**Test**: `PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits`
+
+Normal operation: the host's ceilings are the ceilings the governed tools observe.
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Cannot Be Created With Missing Ceilings
+
+**Test**: `PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException`
+
+Error path: "unbounded" is not a sensible default, so an explicitly absent set of ceilings is the
+same kind of programming error as an absent rule.

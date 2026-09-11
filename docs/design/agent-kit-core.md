@@ -16,6 +16,13 @@ best practices. The system consists of:
   denied patterns
 - **PathPolicy Unit**: Pairs an independent read rule and write rule, and provides the single
   containment decision used by both direct access and directory enumeration
+- **ToolLimits Unit**: Carries the ceilings a tool observes when reading, returning and
+  attaching content
+- **ToolResult Unit**: Constructs the results a guarded tool returns to the model, and defines
+  the reasons a tool may refuse an operation
+- **ToolName Unit**: Defines the tool naming convention and validates names against it
+- **GuardedToolFactory Unit**: The only supported way to construct a tool, applying the
+  result-delivery guard and the naming rules to every tool it creates
 
 There are no subsystems. The `Demo` unit is a self-contained leaf class exposed directly through
 the public API; see _Demo Unit Design_. The three path-safety units form one collaboration:
@@ -23,6 +30,15 @@ the public API; see _Demo Unit Design_. The three path-safety units form one col
 `PathRule`, which itself resolved its confined location through `RealPathResolver` when it was
 created. `RealPathResolver` depends on nothing within the system, so the collaboration is
 acyclic.
+
+The four tool-contract units form a second collaboration. A pack author composes a tool name
+through `ToolName` and hands it, with a delegate, to `GuardedToolFactory`, which validates the
+name through `ToolName` and applies the result-delivery guard to every tool it creates. The
+delegate returns a value built by `ToolResult` — text, content, or a refusal — and the guard is
+what delivers that value to the runtime in the form the tool produced it. The two collaborations
+meet at `PathPolicy`, which carries a `ToolLimits` so that every tool a host governs observes one
+budget. `ToolLimits` and `ToolName` depend on nothing within the system, so this collaboration is
+likewise acyclic.
 
 ## External Interfaces
 
@@ -58,9 +74,12 @@ The system additionally exposes the path-safety API:
   confined location (or none) and its denied patterns.
 - **PathRule.Allows(string realPath)**: Returns whether an already-resolved location is
   permitted.
-- **PathPolicy(PathRule readRule, PathRule writeRule)**: The only constructor. Throws
-  `ArgumentNullException` when either rule is null.
+- **PathPolicy(PathRule readRule, PathRule writeRule)**: Constructs a policy with the library's
+  documented resource ceilings. Throws `ArgumentNullException` when either rule is null.
+- **PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits)**: Constructs a policy
+  with explicit resource ceilings. Throws `ArgumentNullException` when any argument is null.
 - **PathPolicy.ReadRule**, **PathPolicy.WriteRule**: Read-only properties exposing the two rules.
+- **PathPolicy.Limits**: Read-only property exposing the ceilings every governed tool observes.
 - **PathPolicy.TryResolveRead / TryResolveWrite(string path, out string? realPath, out string?
   denialMessage)**: Returns whether the access is permitted, with the real location on success
   and a redacted reason on refusal.
@@ -78,9 +97,53 @@ The system additionally exposes the path-safety API:
 | `new PathPolicy(...)`        | Inbound          | Constructor call               | Both rules non-null           |
 | `PathPolicy.ReadRule`        | Outbound         | `PathRule` property read       | None; always succeeds         |
 | `PathPolicy.WriteRule`       | Outbound         | `PathRule` property read       | None; always succeeds         |
+| `PathPolicy.Limits`          | Outbound         | `ToolLimits` property read     | None; always succeeds         |
 | `PathPolicy.TryResolveRead`  | Inbound/Outbound | Method call / `bool` and `out` | `path` non-null, non-empty    |
 | `PathPolicy.TryResolveWrite` | Inbound/Outbound | Method call / `bool` and `out` | `path` non-null, non-empty    |
 | `PathPolicy.EnumerateFiles`  | Inbound/Outbound | Method call / `IEnumerable`    | Both args non-null, non-empty |
+
+The system additionally exposes the tool-contract API:
+
+- **new ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int
+  maxAttachmentsPerTurn)**: Creates a set of resource ceilings. Every parameter is optional and
+  defaults to the corresponding published constant. Throws `ArgumentOutOfRangeException` for a
+  negative ceiling; a ceiling of zero is accepted and disables the operation.
+- **ToolLimits.Default**: The shared set of ceilings a host receives when it configures nothing.
+- **ToolLimits.MaxReadBytes**, **MaxResultCharacters**, **MaxBinaryBytes**,
+  **MaxAttachmentsPerTurn**: Read-only properties exposing the configured ceilings.
+- **ToolResult.Text(string text)**: Returns the supplied text. Throws `ArgumentNullException`
+  for a null text; an empty text is permitted.
+- **ToolResult.Binary(ReadOnlyMemory&lt;byte&gt; data, string mediaType, string? caption)**:
+  Returns content carrying its media type, preceded by the caption when one is supplied. Throws
+  `ArgumentNullException` / `ArgumentException` for a missing or empty media type.
+- **ToolResult.Image(ReadOnlyMemory&lt;byte&gt; data, string mediaType, string? caption)**: As
+  `Binary`, and additionally throws `ArgumentException` when the media type does not denote an
+  image.
+- **ToolResult.Denied(DenialReason reason, string message, string? redirectToolName)**: Returns
+  the refusal text. Throws `ArgumentOutOfRangeException` for an undefined reason,
+  `ArgumentNullException` / `ArgumentException` for a missing or empty message, and
+  `ArgumentException` for an invalid redirect tool name.
+- **ToolName.Create(string family, string verb)**: Composes and validates `{family}_{verb}`.
+  Throws `ArgumentNullException` / `ArgumentException` for a missing or invalid part.
+- **ToolName.Validate(string name)**: Validates a tool name against the naming convention.
+  Throws `ArgumentNullException` for a null name and `ArgumentException` for any violation.
+- **GuardedToolFactory.Create(Delegate method, string name, string description,
+  JsonSerializerOptions? serializerOptions)**: Creates a tool whose result is delivered to the
+  runtime unchanged. Throws `ArgumentNullException` for a missing delegate or description, and
+  `ArgumentException` for an empty description or an invalid name.
+
+| Interface                   | Direction        | Format                        | Constraints                       |
+|-----------------------------|------------------|-------------------------------|-----------------------------------|
+| `new ToolLimits(...)`       | Inbound          | Constructor call              | Every ceiling zero or greater     |
+| `ToolLimits.Default`        | Outbound         | `ToolLimits` property read    | None; always succeeds             |
+| `ToolLimits.MaxReadBytes`   | Outbound         | `int` property read           | None; always succeeds             |
+| `ToolResult.Text`           | Inbound/Outbound | Method call / `object` return | `text` non-null                   |
+| `ToolResult.Binary`         | Inbound/Outbound | Method call / `object` return | `mediaType` non-null, non-empty   |
+| `ToolResult.Image`          | Inbound/Outbound | Method call / `object` return | `mediaType` denotes an image      |
+| `ToolResult.Denied`         | Inbound/Outbound | Method call / `object` return | Reason defined, message non-empty |
+| `ToolName.Create`           | Inbound/Outbound | Method call / `string` return | Family and verb non-empty         |
+| `ToolName.Validate`         | Inbound          | Method call                   | `name` satisfies the convention   |
+| `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction`    | Delegate, name, description valid |
 
 ## Dependencies
 
@@ -122,6 +185,18 @@ Two further properties are part of the control: a refused access is reported as 
 denial rather than an exception, so a refusal cannot terminate an agent's turn; and a policy
 cannot be constructed without both of its rules, so an unguarded policy is unrepresentable.
 
+Two properties of the tool contract are risk control measures in their own right. **Result
+passthrough** ensures a tool's output reaches the provider in the form the tool produced it: when
+it does not, a returned image is flattened into JSON, the provider never recognizes an
+attachment, and the model states that it can see an image and then fabricates a description of
+it — a silent failure producing confidently wrong output. **Family-prefixed naming** ensures an
+application combining this library with the Agent Framework cannot present the model with two
+identically named tools, a situation in which which tool is invoked is undefined. Both are
+enforced at the single supported construction path, `GuardedToolFactory`, so a tool author cannot
+omit either; see _GuardedToolFactory Unit Design_. Resource ceilings carried with the access
+policy are a liveness control rather than a safety control, and are described in _ToolLimits Unit
+Design_.
+
 The `Demo` unit carries no risk control responsibility.
 
 ## Data Flow
@@ -154,6 +229,21 @@ The `Demo` unit carries no risk control responsibility.
    reason that contains no host detail
 5. **Enumeration**: A directory listing routes the directory and every candidate file through the
    same read decision, so the listing and direct access always agree
+
+**Guarded tool construction and result path:**
+
+1. **Input**: A tool name composed from a family and a verb, a description, and a delegate
+   implementing the tool
+2. **Validation**: The name is checked against the naming convention — lowercase characters, a
+   family prefix, no reserved collision — and the description is required to be non-empty
+3. **Construction**: The tool is created through the single supported path, which supplies the
+   result-delivery guard internally so it cannot be omitted or replaced
+4. **Invocation**: The runtime calls the tool, which consults the access policy and its resource
+   ceilings and produces either text, binary content, a caption accompanied by an image, or a
+   refusal naming its reason
+5. **Output**: The guard delivers that value to the runtime unchanged rather than serializing it
+   to JSON, so content remains recognizable to the provider and a refusal remains readable text
+   the model can act on
 
 ## Design Constraints
 

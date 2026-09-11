@@ -74,12 +74,15 @@ public sealed class PathPolicy
     };
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="PathPolicy"/> class.
+    ///     Initializes a new instance of the <see cref="PathPolicy"/> class with the library's
+    ///     documented resource ceilings.
     /// </summary>
     /// <remarks>
     ///     There is no default, parameterless or single-rule constructor. Requiring both rules
     ///     makes an unguarded policy unrepresentable, so no code path can accidentally hand a
-    ///     tool a policy that permits everything.
+    ///     tool a policy that permits everything. This overload delegates to the three-argument
+    ///     constructor with <see cref="ToolLimits.Default"/>, so a host that has no opinion
+    ///     about ceilings still gets bounded ones.
     /// </remarks>
     /// <param name="readRule">The rule governing read access. Must not be null.</param>
     /// <param name="writeRule">The rule governing write access. Must not be null.</param>
@@ -88,14 +91,40 @@ public sealed class PathPolicy
     ///     <see langword="null"/>.
     /// </exception>
     public PathPolicy(PathRule readRule, PathRule writeRule)
+        : this(readRule, writeRule, ToolLimits.Default)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="PathPolicy"/> class with explicit
+    ///     resource ceilings.
+    /// </summary>
+    /// <remarks>
+    ///     The ceilings ride with the policy rather than being passed per call so that every
+    ///     tool a host governs observes the same budget. A tool receives one object and cannot
+    ///     end up observing a different budget from its neighbor.
+    /// </remarks>
+    /// <param name="readRule">The rule governing read access. Must not be null.</param>
+    /// <param name="writeRule">The rule governing write access. Must not be null.</param>
+    /// <param name="limits">
+    ///     The ceilings every tool governed by this policy observes. Must not be null.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="readRule"/>, <paramref name="writeRule"/> or
+    ///     <paramref name="limits"/> is <see langword="null"/>.
+    /// </exception>
+    public PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits)
     {
         // Reject missing rules at construction: an absent rule is a programming error, and
-        // defaulting it to anything would silently grant access nobody asked for.
+        // defaulting it to anything would silently grant access nobody asked for. An absent set
+        // of ceilings is the same kind of error — unbounded is not a sensible default.
         ArgumentNullException.ThrowIfNull(readRule);
         ArgumentNullException.ThrowIfNull(writeRule);
+        ArgumentNullException.ThrowIfNull(limits);
 
         ReadRule = readRule;
         WriteRule = writeRule;
+        Limits = limits;
     }
 
     /// <summary>
@@ -116,6 +145,15 @@ public sealed class PathPolicy
     ///     expressible.
     /// </remarks>
     public PathRule WriteRule { get; }
+
+    /// <summary>
+    ///     Gets the ceilings every tool governed by this policy observes.
+    /// </summary>
+    /// <remarks>
+    ///     Carried with the policy rather than supplied per call, so that every pack a host
+    ///     attaches observes one budget rather than each inventing its own. Never null.
+    /// </remarks>
+    public ToolLimits Limits { get; }
 
     /// <summary>
     ///     Attempts to resolve a path for reading and to confirm the read rule permits it.

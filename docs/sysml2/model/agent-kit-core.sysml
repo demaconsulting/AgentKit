@@ -18,5 +18,9 @@ package AgentKitCore {
         part realPathResolver : RealPathResolver;
         part pathRule : PathRule;
         part pathPolicy : PathPolicy;
+        part toolLimits : ToolLimits;
+        part toolResult : ToolResult;
+        part toolName : ToolName;
+        part guardedToolFactory : GuardedToolFactory;
     }
 }

@@ -345,6 +345,56 @@ public class PathPolicyTests
     }
 
     /// <summary>
+    ///     Proves that a policy created without explicit ceilings carries the library's
+    ///     documented ones.
+    /// </summary>
+    /// <remarks>
+    ///     The assertion is by reference rather than by value, so the two-rule constructor
+    ///     cannot silently start allocating a fresh set of ceilings that merely happens to
+    ///     agree with the default.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_Constructor_NoLimits_UsesDefaultLimits()
+    {
+        // Arrange & Act: construct a policy without stating any ceilings
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+
+        // Assert: the shared default instance, not a copy of it
+        Assert.Same(ToolLimits.Default, policy.Limits);
+    }
+
+    /// <summary>
+    ///     Proves that a policy exposes the ceilings the host supplied.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits()
+    {
+        // Arrange: a host that tightens the binary-content ceiling
+        var limits = new ToolLimits(maxBinaryBytes: 1024);
+
+        // Act: construct a policy carrying those ceilings
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted(), limits);
+
+        // Assert: the tools this policy governs observe the host's budget
+        Assert.Same(limits, policy.Limits);
+    }
+
+    /// <summary>
+    ///     Proves that a policy cannot be created with a missing set of ceilings.
+    /// </summary>
+    /// <remarks>
+    ///     Unbounded is not a sensible default, so an absent set of ceilings is the same kind
+    ///     of programming error as an absent rule.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException()
+    {
+        // Act & Assert: ceilings are required whenever they are stated explicitly
+        Assert.Throws<ArgumentNullException>(
+            () => new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted(), null!));
+    }
+
+    /// <summary>
     ///     Creates a policy whose read and write access are both confined to one location.
     /// </summary>
     /// <remarks>
