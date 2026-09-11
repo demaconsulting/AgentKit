@@ -58,11 +58,24 @@ software items, specifically:
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
+- **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
+  `IChatClient`, installing the image-promoting decorator on every agent unconditionally
+- **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
+  image-promoting decorator and builds a `ChatClientAgent`
+- **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
+  Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
+  allow-list from the supplied tools
+- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
+  default-safe permission handler, and builds the agent without taking ownership of the client
 
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **FileAssert** — document assertion tool
+- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
+  abstraction
+- **Microsoft.Agents.AI.GitHub.Copilot** — the GitHub Copilot SDK providing `CopilotClient`,
+  `SessionConfig`, and the permission RPC
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
 - **Pandoc** — Markdown-to-HTML conversion tool
@@ -101,14 +114,20 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
-The repository contains two systems. `AgentKitTools` is a general-purpose capability package of
+The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships two families today, each its
 own subsystem: `TextFile`, which reads, writes and lists text files within the policy, and
 `Image`, which reads images and PDF documents for a vision-capable agent. Both compose through
 the same guarded construction path and pack contract Core publishes. `AgentKitTools` is a peer of
 the other capability packages an application may attach, depending on `AgentKitCore` but never
-depended upon by another capability package. The `SoftwareStructureView.svg` above renders both
-systems.
+depended upon by another capability package.
+
+`AgentKitAgentsChatClient` and `AgentKitAgentsCopilot` are the two provider-adapter systems. Each
+turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
+justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
+`Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
+Each is flat — one factory class — and the two share no code and never reference each other. The
+`SoftwareStructureView.svg` above renders all four systems.
 
 ## Folder Layout
 
@@ -151,6 +170,16 @@ src/DemaConsulting.AgentKit.Tools/
 ```
 
 Each family folder mirrors the subsystem it represents in the software structure above.
+
+Each provider-adapter system is one factory class in its own source tree:
+
+```text
+src/DemaConsulting.AgentKit.Agents.ChatClient/
+└── ChatClientAgentFactory.cs   — builds an agent from an IChatClient, decorator always installed
+
+src/DemaConsulting.AgentKit.Agents.Copilot/
+└── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed
+```
 
 ## Document Conventions
 

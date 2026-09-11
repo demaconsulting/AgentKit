@@ -54,11 +54,24 @@ constituent software items, specifically:
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
+- **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
+  `IChatClient`, installing the image-promoting decorator on every agent unconditionally
+- **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
+  image-promoting decorator and builds a `ChatClientAgent`
+- **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
+  Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
+  allow-list from the supplied tools
+- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
+  default-safe permission handler, and builds the agent without taking ownership of the client
 
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **FileAssert** — document assertion tool
+- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
+  abstraction
+- **Microsoft.Agents.AI.GitHub.Copilot** — the GitHub Copilot SDK providing `CopilotClient`,
+  `SessionConfig`, and the permission RPC
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
 - **Pandoc** — Markdown-to-HTML conversion tool

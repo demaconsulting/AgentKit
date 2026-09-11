@@ -2,9 +2,13 @@
   <Folder Name="/src/">
     <Project Path="src/DemaConsulting.AgentKit.Core/DemaConsulting.AgentKit.Core.csproj" />
     <Project Path="src/DemaConsulting.AgentKit.Tools/DemaConsulting.AgentKit.Tools.csproj" />
+    <Project Path="src/DemaConsulting.AgentKit.Agents.ChatClient/DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
+    <Project Path="src/DemaConsulting.AgentKit.Agents.Copilot/DemaConsulting.AgentKit.Agents.Copilot.csproj" />
   </Folder>
   <Folder Name="/test/">
     <Project Path="test/DemaConsulting.AgentKit.Core.Tests/DemaConsulting.AgentKit.Core.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Tools.Tests/DemaConsulting.AgentKit.Tools.Tests.csproj" />
+    <Project Path="test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/DemaConsulting.AgentKit.Agents.ChatClient.Tests.csproj" />
+    <Project Path="test/DemaConsulting.AgentKit.Agents.Copilot.Tests/DemaConsulting.AgentKit.Agents.Copilot.Tests.csproj" />
   </Folder>
 </Solution>

@@ -5,9 +5,10 @@ This document describes the overall Off-The-Shelf (OTS) verification strategy fo
 ## Overview
 
 The OTS items this repository depends on fall into two groups, each verified in the way that suits
-it. `Microsoft.Extensions.AI.Abstractions` is a runtime library with no self-validation CLI; per
-`software-items.md` it is verified through AgentKit's own integration tests, which build and invoke
-real guarded tools and observe that the library's `AIFunction`, `MarshalResult`, and `AIContent`
+it. `Microsoft.Extensions.AI.Abstractions`, `Microsoft.Agents.AI`, and
+`Microsoft.Agents.AI.GitHub.Copilot` are runtime libraries with no self-validation CLI; per
+`software-items.md` each is verified through AgentKit's own integration tests, which build and invoke
+real agents, session configurations, and permission handlers and observe that the required
 functionality behaves as required. Every other OTS item is a build-and-verify pipeline tool,
 verified through a combination of self-validation CLI flags (where the tool provides a `--validate`
 or equivalent self-test mode) and pipeline-evidence-based verification (where a passing CI pipeline
@@ -21,6 +22,8 @@ tool executed correctly). Each item's individual verification document
 |--------------------------------------|-----------------------------------------------------------------------------|
 | BuildMark                            | Self-validation CLI suite plus pipeline evidence via build-notes document   |
 | FileAssert                           | Self-validation CLI suite plus transitive evidence from document assertions |
+| Microsoft.Agents.AI                  | AgentKit integration tests building an agent from an IChatClient            |
+| Microsoft.Agents.AI.GitHub.Copilot   | AgentKit integration tests building the session config and handler          |
 | Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools              |
 | Pandoc                               | Pipeline evidence: FileAssert assertions on each generated HTML document    |
 | ReqStream                            | Self-validation CLI suite plus pipeline evidence via --enforce traceability |

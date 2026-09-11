@@ -1,0 +1,62 @@
+---
+# Software Unit Requirements for ChatClientAgentFactory
+#
+# These requirements describe the design-level behavior of the ChatClientAgentFactory unit.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: ChatClientAgentFactory Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-BuildsAgent
+            title: >-
+              The factory shall build a ChatClientAgent from the supplied chat client and tools,
+              carrying the supplied instructions and name.
+            justification: |
+              An IChatClient provider has no tools of its own, so handing it the supplied tools is
+              the whole job of turning it into an agent. The factory forwards the instructions and
+              name a host supplies to the framework's own agent type rather than inventing an agent
+              of its own, keeping the adapter thin.
+            tests:
+              - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-DecoratorAlwaysInstalled
+            title: >-
+              The factory shall wrap the supplied chat client in the image-promoting decorator on
+              every agent it builds, and shall expose no way to omit the wrap.
+            justification: |
+              The decorator is the reason this package exists. A provider reached through an
+              IChatClient drops a tool-returned image at the wire, so an agent built without the
+              decorator describes an image it never received and reports no error. The wrap is
+              therefore unconditional and internal: there is no code path that yields an agent whose
+              chat client is not image-promoting, and no parameter a caller could set to disable it.
+              A testable seam exposes the wrapped client so the guarantee can be asserted rather than
+              assumed.
+            tests:
+              - ChatClientAgentFactory_WrapWithImagePromotion_ReturnsImagePromotingClient
+              - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-RejectsNullClient
+            title: >-
+              The factory shall reject a missing chat client as a programming error.
+            justification: |
+              An agent with no client to talk to cannot be built, so an absent client is a defect in
+              the composing application surfaced where the host wrote it rather than at the first
+              conversation.
+            tests:
+              - ChatClientAgentFactory_Create_NullClient_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientAgentFactory-RejectsInvalidToolList
+            title: >-
+              The factory shall reject a tool list that is missing, empty, contains a null entry, or
+              carries two tools of the same name.
+            justification: |
+              An agent that publishes no tools, or two tools a model cannot tell apart, is a defect
+              in the host rather than a valid configuration. Two tools sharing a name leave which one
+              a model invokes undefined, so the collision is refused where the application composed
+              its tools rather than discovered from a model's behavior later.
+            tests:
+              - ChatClientAgentFactory_Create_NullTools_Throws
+              - ChatClientAgentFactory_Create_EmptyTools_Throws
+              - ChatClientAgentFactory_Create_NullToolEntry_Throws
+              - ChatClientAgentFactory_Create_DuplicateToolNames_Throws

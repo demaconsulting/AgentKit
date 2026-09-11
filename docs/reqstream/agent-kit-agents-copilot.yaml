@@ -1,0 +1,87 @@
+---
+# Software System Requirements for AgentKit Copilot Agents
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    requirements:
+      - id: AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
+        title: >-
+          The library shall suppress the tools the Copilot runtime injects by deriving the session
+          allow-list from the same tool collection it publishes to the session, so the published
+          tools and the allow-list cannot diverge.
+        tags: [system, security]
+        justification: |
+          Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
+          reading and writing, and more. Supplying an application's own tools is not enough: unless
+          the built-ins are suppressed, a document assistant silently retains command execution. The
+          session's available-tools list is an allow-list, so the library derives it from the same
+          collection it assigns as the session's tools. Deriving both from one collection makes the
+          published tool set and the allow-list impossible to drift apart, which is the safety
+          property of the whole package. Deriving the allow-list also requires the session-config
+          construction path, which is the only one that carries an allow-list at all.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
+        tests:
+          - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+
+      - id: AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
+        title: >-
+          The library shall install, when the host supplies none, a permission handler that
+          approves exactly the supplied tools by name and rejects every other request, and shall
+          install a host-supplied handler verbatim when one is given.
+        tags: [system, security]
+        justification: |
+          The target user is not qualified to adjudicate a security prompt, so the default must be
+          safe without asking: it approves a request only when it names one of the supplied tools
+          and rejects everything else, including every built-in tool, none of which is one of the
+          supplied custom tools. A host that has its own policy may supply a handler, which the
+          library installs unchanged. Default-safe with host override keeps the untrained-user case
+          correct while leaving a capable host in control.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
+          - AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
+        tests:
+          - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
+          - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
+          - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+
+      - id: AgentKitAgentsCopilot-AgentConstruction-Validated
+        title: >-
+          The library shall build a Microsoft Agent Framework agent from a Copilot client and a
+          supplied tool list without taking ownership of the client, rejecting a missing client, a
+          malformed tool list, and carrying the supplied instructions.
+        tags: [system]
+        justification: |
+          The host constructs, starts, and disposes the Copilot client, so the library takes no
+          ownership of it and builds the agent with client ownership left to the host — whoever
+          created the client disposes it. A missing client or a malformed tool list is a defect in
+          the host, refused where the host wrote it. Supplied instructions are carried onto the
+          session so a confined agent is governed as the host intended.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
+          - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
+        tests:
+          - CopilotAgentFactory_Create_NullClient_Throws
+
+      - id: AgentKitAgentsCopilot-BuiltOnCopilotSdk
+        title: >-
+          The library shall present the agent it builds as a Microsoft.Agents.AI AIAgent
+          constructed from a GitHub Copilot CopilotClient through the SDK's session-config
+          agent-construction path and permission RPC.
+        tags: [system]
+        justification: |
+          The library does not implement an agent runtime; it adapts the GitHub Copilot SDK's
+          CopilotClient, SessionConfig, session-config agent-construction path, and permission RPC
+          into a Microsoft Agent Framework AIAgent. The requirement records the repository's reliance
+          on that off-the-shelf SDK and links its OTS requirements to the system root; see OTS
+          Integration Design (docs/design/ots.md).
+        children:
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
+        tests:
+          - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools

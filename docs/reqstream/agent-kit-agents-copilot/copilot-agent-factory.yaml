@@ -1,0 +1,90 @@
+---
+# Software Unit Requirements for CopilotAgentFactory
+#
+# These requirements describe the design-level behavior of the CopilotAgentFactory unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotAgentFactory Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
+            title: >-
+              The factory shall assign the supplied tools as the session's tools and derive the
+              session's allow-list from the same collection, using the session-config
+              agent-construction path, and shall not install the image-promoting decorator.
+            justification: |
+              The available-tools list is the allow-list that suppresses the runtime's built-in
+              tools. Deriving it and the published tool set from one collection, in one place, makes
+              the two impossible to drift apart. Only the session-config agent-construction path
+              carries an allow-list, so it is the path used; the tool-list path would publish tools
+              without suppressing anything. The image-promoting decorator is deliberately absent: the
+              Copilot runtime already delivers images from tool results to the model, so promoting
+              them onto a user message would duplicate content the model already received. A future
+              maintainer should not add it here.
+            tests:
+              - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
+            title: >-
+              The factory shall, when the host supplies no handler, install a permission handler
+              that approves a request only when it names one of the supplied tools and rejects every
+              other request.
+            justification: |
+              The untrained user cannot adjudicate a permission prompt, so the default is safe
+              without asking: a supplied custom tool requested by its exact name is approved, and
+              everything else — an unlisted custom tool, and every built-in request, none of which is
+              a supplied custom tool — is rejected. The allow-list is captured once, so the handler
+              cannot approve a name the session did not publish.
+            tests:
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
+            title: >-
+              The factory shall install a host-supplied permission handler unchanged in place of the
+              default.
+            justification: |
+              A host with its own permission policy must be able to govern the session itself. When
+              a handler is supplied it is the one installed on the session, so the host's policy
+              replaces the safe default rather than layering over it.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_HostHandler_IsInstalled
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
+            title: >-
+              The factory shall reject a missing Copilot client as a programming error.
+            justification: |
+              An agent with no client to run on cannot be built, so an absent client is a defect in
+              the composing application surfaced where the host wrote it rather than at the first
+              session.
+            tests:
+              - CopilotAgentFactory_Create_NullClient_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
+            title: >-
+              The factory shall reject a tool list that is missing, empty, contains a null entry, or
+              carries two tools of the same name.
+            justification: |
+              An empty tool list would produce an empty allow-list, and two tools sharing a name
+              would make both the published tool set and the derived allow-list ambiguous. Each is a
+              defect in the host, refused where the application composed its tools rather than
+              discovered from a model's behavior later.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_NullTools_Throws
+              - CopilotAgentFactory_BuildSessionConfig_EmptyTools_Throws
+              - CopilotAgentFactory_BuildSessionConfig_NullToolEntry_Throws
+              - CopilotAgentFactory_BuildSessionConfig_DuplicateToolNames_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
+            title: >-
+              The factory shall carry supplied instructions onto the session's system message, and
+              shall leave the session with no system message when no instructions are supplied.
+            justification: |
+              A confined agent is governed by the instructions its host gives it, so those
+              instructions are carried onto the session's system message. When a host supplies none,
+              the factory adds no system message of its own, leaving the session as the runtime would
+              default it.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_Instructions_CarriedOnSystemMessage

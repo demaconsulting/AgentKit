@@ -25,9 +25,15 @@ input-files:
   - docs/verification/agent-kit-tools/text-file/text-file-pack.md
   - docs/verification/agent-kit-tools/text-file/text-file-read-tool.md
   - docs/verification/agent-kit-tools/text-file/text-file-write-tool.md
+  - docs/verification/agent-kit-agents-chat-client.md
+  - docs/verification/agent-kit-agents-chat-client/chat-client-agent-factory.md
+  - docs/verification/agent-kit-agents-copilot.md
+  - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
   - docs/verification/ots.md
   - docs/verification/ots/buildmark.md
   - docs/verification/ots/fileassert.md
+  - docs/verification/ots/microsoft-agents-ai.md
+  - docs/verification/ots/microsoft-agents-ai-github-copilot.md
   - docs/verification/ots/microsoft-extensions-ai-abstractions.md
   - docs/verification/ots/pandoc.md
   - docs/verification/ots/reqstream.md

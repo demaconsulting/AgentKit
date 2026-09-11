@@ -16,9 +16,11 @@ permission-governed set of tools to the agent framework of its choice, bounded b
 application configures and a tool cannot omit.
 
 > **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
-> construction, tool results, and the tool pack contract — is implemented, and two guarded tool
-> families, text file and image, are built on it in `DemaConsulting.AgentKit.Tools`. Neither
-> package is published to NuGet yet, and the public API is not yet stable.
+> construction, tool results, and the tool pack contract — is implemented; two guarded tool
+> families, text file and image, are built on it in `DemaConsulting.AgentKit.Tools`; and two
+> provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
+> a GitHub Copilot `CopilotClient`. No package is published to NuGet yet, and the public API is not
+> yet stable.
 
 ## Capabilities
 
@@ -30,7 +32,11 @@ application configures and a tool cannot omit.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
 - **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
-  Agent Framework, the GitHub Copilot SDK, and any `IChatClient` implementation
+  Agent Framework, the GitHub Copilot SDK, and any `IChatClient` implementation. Two provider-adapter
+  packages turn a provider into a tool-using agent in one call: `DemaConsulting.AgentKit.Agents.ChatClient`
+  for any `IChatClient` (installing faithful image delivery automatically), and
+  `DemaConsulting.AgentKit.Agents.Copilot` for the GitHub Copilot SDK (suppressing the runtime's
+  built-in tools).
 
 AgentKit does not provide an agent runtime, context-window management, or provider
 abstraction. Microsoft Agent Framework supplies those.
@@ -41,6 +47,12 @@ abstraction. Microsoft Agent Framework supplies those.
   helpers, and the tool-pack contract.
 - **`DemaConsulting.AgentKit.Tools`** — ready-made guarded tool families (text file and image),
   each composed onto a policy through the pack contract.
+- **`DemaConsulting.AgentKit.Agents.ChatClient`** — builds a Microsoft Agent Framework agent from any
+  `IChatClient`, installing the image-promoting decorator on every agent so a tool-returned image
+  reaches the model even on a provider that would otherwise drop it.
+- **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
+  GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
+  allow-list from the supplied tools.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 

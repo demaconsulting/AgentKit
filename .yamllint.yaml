@@ -18,6 +18,8 @@ ignore: |
   **/.git/**
   **/node_modules/**
   **/.venv/**
+  **/bin/**
+  **/obj/**
   **/thirdparty/**
   **/third-party/**
   **/3rd-party/**

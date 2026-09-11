@@ -7,6 +7,8 @@ package AgentKitCore {
     view SoftwareStructureView {
         expose AgentKitCore;
         expose AgentKitTools;
+        expose AgentKitAgentsChatClient;
+        expose AgentKitAgentsCopilot;
     }
 
     view AgentKitCoreView {
@@ -25,5 +27,17 @@ package AgentKitTools {
 
     view ImageView {
         expose Image;
+    }
+}
+
+package AgentKitAgentsChatClient {
+    view AgentKitAgentsChatClientView {
+        expose AgentKitAgentsChatClientSystem;
+    }
+}
+
+package AgentKitAgentsCopilot {
+    view AgentKitAgentsCopilotView {
+        expose AgentKitAgentsCopilotSystem;
     }
 }

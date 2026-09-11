@@ -1,0 +1,61 @@
+---
+# Software System Requirements for AgentKit ChatClient Agents
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    requirements:
+      - id: AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
+        title: >-
+          The library shall build a Microsoft Agent Framework agent from any Microsoft.Extensions.AI
+          chat client and a supplied tool list, carrying the supplied instructions and name.
+        tags: [system]
+        justification: |
+          A provider reached through an IChatClient carries no tools of its own, so supplying an
+          application's tools is the whole of what an adapter must do to turn a chat client into a
+          usable agent. Naming the agent and giving it instructions are the two other things a host
+          expects to pass through, so the adapter accepts both and forwards them to the framework's
+          own agent type rather than reinventing an agent of its own.
+        children:
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-BuildsAgent
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-RejectsNullClient
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-RejectsInvalidToolList
+        tests:
+          - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+
+      - id: AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
+        title: >-
+          The library shall install the image-promoting decorator on every agent it builds, beneath
+          the function-invocation loop, and shall provide no option to omit it.
+        tags: [system, security]
+        justification: |
+          A provider reached through an IChatClient preserves an image a tool returns all the way
+          through the framework and then drops it at the wire, after which the model describes an
+          image it never received and nothing reports an error. Forgetting to install the decorator
+          therefore breaks images silently. This library exists to make that omission impossible: it
+          wraps the supplied client in the image-promoting decorator unconditionally, beneath the
+          loop where a tool-returned image exists to be promoted, and exposes no parameter to
+          disable it. A caller cannot forget what a caller cannot turn off.
+        children:
+          - AgentKitAgentsChatClient-ChatClientAgentFactory-DecoratorAlwaysInstalled
+        tests:
+          - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
+
+      - id: AgentKitAgentsChatClient-BuiltOnAgentFramework
+        title: >-
+          The library shall present the agent it builds as a Microsoft.Agents.AI AIAgent
+          constructed through the framework's ChatClientAgent.
+        tags: [system]
+        justification: |
+          The library does not implement an agent runtime; it adapts a chat client to the one
+          Microsoft Agent Framework supplies, so the agent it returns is the framework's own
+          AIAgent built through ChatClientAgent. The requirement records the repository's reliance
+          on that off-the-shelf abstraction and links its OTS requirements to the system root; see
+          OTS Integration Design (docs/design/ots.md).
+        children:
+          - AgentKit-OTS-MicrosoftAgentsAI-Agent
+          - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
+        tests:
+          - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName

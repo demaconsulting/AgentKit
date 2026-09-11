@@ -411,6 +411,127 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Image/ImagePack.cs"          # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImagePackTests.cs"  # unit tests
 
+  # AgentKitAgentsChatClient-Architecture Review (one per system)
+  - id: AgentKitAgentsChatClient-Architecture
+    title: Review that AgentKitAgentsChatClient Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"                      # system requirements
+      - "docs/design/introduction.md"                                           # design introduction
+      - "docs/design/agent-kit-agents-chat-client.md"                           # system design
+      - "docs/verification/introduction.md"                                     # verification introduction
+      - "docs/verification/agent-kit-agents-chat-client.md"                     # system verification
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/AgentKitAgentsChatClientTests.cs"  # integration tests
+
+  # AgentKitAgentsChatClient-Design Review (one per system)
+  - id: AgentKitAgentsChatClient-Design
+    title: Review that AgentKitAgentsChatClient Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                                       # design introduction
+      - "docs/design/agent-kit-agents-chat-client.md"                       # system design
+      - "docs/design/agent-kit-agents-chat-client/**/*.md"                  # all system design documents
+      - "docs/design/ots.md"                                                # OTS overview
+
+  # AgentKitAgentsChatClient-Verification Review (one per system)
+  - id: AgentKitAgentsChatClient-Verification
+    title: Review that AgentKitAgentsChatClient Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+    paths:
+      - "docs/verification/introduction.md"                                 # verification introduction
+      - "docs/verification/agent-kit-agents-chat-client.md"                 # system verification
+      - "docs/verification/agent-kit-agents-chat-client/**/*.md"            # all verification documents
+      - "docs/verification/ots.md"                                          # OTS overview
+
+  # AgentKitAgentsChatClient-AllRequirements Review (one per system)
+  - id: AgentKitAgentsChatClient-AllRequirements
+    title: Review that All AgentKitAgentsChatClient Requirements are Complete
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"                  # system requirements
+      - "docs/reqstream/agent-kit-agents-chat-client/**/*.yaml"             # all ChatClient requirements files
+
+  # AgentKitAgentsChatClient-ChatClientAgentFactory Review (one per unit)
+  - id: AgentKitAgentsChatClient-ChatClientAgentFactory
+    title: Review that AgentKitAgentsChatClient ChatClientAgentFactory Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/chat-client-agent-factory.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientAgentFactory.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientAgentFactoryTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ScriptedChatClient.cs"    # scripted chat client test fake
+
+  # AgentKitAgentsCopilot-Architecture Review (one per system)
+  - id: AgentKitAgentsCopilot-Architecture
+    title: Review that AgentKitAgentsCopilot Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"                      # system requirements
+      - "docs/design/introduction.md"                                           # design introduction
+      - "docs/design/agent-kit-agents-copilot.md"                           # system design
+      - "docs/verification/introduction.md"                                     # verification introduction
+      - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs"  # integration tests
+
+  # AgentKitAgentsCopilot-Design Review (one per system)
+  - id: AgentKitAgentsCopilot-Design
+    title: Review that AgentKitAgentsCopilot Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                                       # design introduction
+      - "docs/design/agent-kit-agents-copilot.md"                           # system design
+      - "docs/design/agent-kit-agents-copilot/**/*.md"                      # all system design documents
+      - "docs/design/ots.md"                                                # OTS overview
+
+  # AgentKitAgentsCopilot-Verification Review (one per system)
+  - id: AgentKitAgentsCopilot-Verification
+    title: Review that AgentKitAgentsCopilot Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+    paths:
+      - "docs/verification/introduction.md"                                 # verification introduction
+      - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
+      - "docs/verification/agent-kit-agents-copilot/**/*.md"                # all verification documents
+      - "docs/verification/ots.md"                                          # OTS overview
+
+  # AgentKitAgentsCopilot-AllRequirements Review (one per system)
+  - id: AgentKitAgentsCopilot-AllRequirements
+    title: Review that All AgentKitAgentsCopilot Requirements are Complete
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"                      # system requirements
+      - "docs/reqstream/agent-kit-agents-copilot/**/*.yaml"                 # all Copilot requirements files
+
+  # AgentKitAgentsCopilot-CopilotAgentFactory Review (one per unit)
+  - id: AgentKitAgentsCopilot-CopilotAgentFactory
+    title: Review that AgentKitAgentsCopilot CopilotAgentFactory Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-agent-factory.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
+
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark
     title: Review that BuildMark Provides Required Functionality
@@ -426,6 +547,22 @@ reviews:
       - "docs/reqstream/ots/fileassert.yaml"                               # OTS requirements
       - "docs/design/ots/fileassert.md"                                    # OTS integration design
       - "docs/verification/ots/fileassert.md"                              # OTS verification
+
+  # OTS-MicrosoftAgentsAI Review (one per OTS item)
+  - id: OTS-MicrosoftAgentsAI
+    title: Review that Microsoft.Agents.AI Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/microsoft-agents-ai.yaml"                        # OTS requirements
+      - "docs/design/ots/microsoft-agents-ai.md"                            # OTS integration design
+      - "docs/verification/ots/microsoft-agents-ai.md"                      # OTS verification
+
+  # OTS-MicrosoftAgentsAIGitHubCopilot Review (one per OTS item)
+  - id: OTS-MicrosoftAgentsAIGitHubCopilot
+    title: Review that Microsoft.Agents.AI.GitHub.Copilot Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/microsoft-agents-ai-github-copilot.yaml"         # OTS requirements
+      - "docs/design/ots/microsoft-agents-ai-github-copilot.md"             # OTS integration design
+      - "docs/verification/ots/microsoft-agents-ai-github-copilot.md"       # OTS verification
 
   # OTS-MicrosoftExtensionsAIAbstractions Review (one per OTS item)
   - id: OTS-MicrosoftExtensionsAIAbstractions

@@ -1,0 +1,38 @@
+---
+# Microsoft.Agents.AI OTS Software Requirements
+#
+# Requirements for the Microsoft.Agents.AI runtime library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: Microsoft.Agents.AI Requirements
+        requirements:
+          - id: AgentKit-OTS-MicrosoftAgentsAI-Agent
+            title: >-
+              Microsoft.Agents.AI shall provide the AIAgent abstraction an application runs a tool
+              set through.
+            justification: |
+              Microsoft.Agents.AI defines AIAgent, the provider-neutral agent abstraction the
+              ChatClient adapter returns to a host. AgentKit does not implement an agent runtime; it
+              adapts a chat client into this abstraction. AgentKit's own test that builds an agent
+              through the factory and observes it carries the supplied name proves the abstraction is
+              present and usable.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+          - id: AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
+            title: >-
+              Microsoft.Agents.AI shall provide ChatClientAgent, which builds an AIAgent from an
+              IChatClient and a tool list and runs the function-invocation loop above the client.
+            justification: |
+              Microsoft.Agents.AI defines ChatClientAgent, which turns an IChatClient and a tool
+              list into an AIAgent and runs the function-invocation loop above the client it was
+              given. The adapter installs the image-promoting decorator beneath that loop, which is
+              why a tool-returned image exists to be promoted when the client is called. AgentKit's
+              tests that build an agent and that observe a tool-returned image reach the client on a
+              user message prove ChatClientAgent behaves as required.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+              - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage

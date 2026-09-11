@@ -39,6 +39,13 @@ dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
 ```
 
+To build an agent from a provider, add the adapter for the provider you target:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
+dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
+```
+
 # What the Library Provides Today
 
 AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
@@ -193,6 +200,60 @@ also reads a path the same way, so a name `text_file_list` reported can be hande
 workspace root. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
+
+# Building an Agent
+
+A tool list is provider-neutral, but attaching it to a provider is not. Two adapter packages turn a
+provider into a tool-using Microsoft Agent Framework agent in one call, each absorbing the one thing
+that provider gets wrong.
+
+## Any IChatClient
+
+`DemaConsulting.AgentKit.Agents.ChatClient` builds an agent from any `IChatClient`:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.ChatClient;
+
+var agent = ChatClientAgentFactory.Create(
+    chatClient,          // any IChatClient provider
+    tools,               // the AIFunction list composed above
+    instructions: "You are a document assistant. Use the tools provided.",
+    name: "assistant");
+```
+
+The factory installs `ImagePromotingChatClient` on **every** agent it builds, beneath the
+function-invocation loop, and offers no option to disable it. A provider reached through an
+`IChatClient` preserves an image a tool returns and then drops it at the wire, after which the model
+describes a picture it never received. The adapter makes that mistake impossible: because the
+decorator cannot be turned off, it cannot be forgotten. You do not wrap the client yourself.
+
+## The GitHub Copilot SDK
+
+`DemaConsulting.AgentKit.Agents.Copilot` builds an agent from a GitHub Copilot `CopilotClient`:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Copilot;
+
+// The host constructs, starts, and disposes the client.
+await using var client = new CopilotClient(options);
+await client.StartAsync();
+
+var agent = CopilotAgentFactory.Create(
+    client,              // the host owns this client
+    tools,               // the AIFunction list composed above
+    instructions: "You are a document assistant. Use the tools provided.");
+```
+
+Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
+The adapter suppresses them by deriving the session allow-list from the same tools you supplied, so
+a confined agent is offered only the tools you gave it. By default it also installs a permission
+handler that approves exactly those tools and rejects everything else; supply your own handler to
+override that. The adapter does **not** install the image-promoting decorator, because the Copilot
+runtime already delivers a tool-returned image to the model.
+
+**Ownership**: the host owns the `CopilotClient` — whoever constructs and starts it disposes it. The
+factory builds the agent over the client without taking ownership of it and creates nothing
+disposable of its own.
 
 # References
 

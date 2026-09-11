@@ -19,6 +19,7 @@ words:
   - Dema
   - FileAssert
   - fileassert
+  - GHCP
   - xunit
   - mklink
   - Pandoc

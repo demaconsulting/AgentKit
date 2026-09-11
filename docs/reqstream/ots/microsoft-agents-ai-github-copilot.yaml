@@ -1,0 +1,57 @@
+---
+# Microsoft.Agents.AI.GitHub.Copilot OTS Software Requirements
+#
+# Requirements for the Microsoft.Agents.AI.GitHub.Copilot SDK functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: Microsoft.Agents.AI.GitHub.Copilot Requirements
+        requirements:
+          - id: AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
+            title: >-
+              Microsoft.Agents.AI.GitHub.Copilot shall provide a session configuration carrying the
+              session's tools and an available-tools allow-list.
+            justification: |
+              The SDK defines SessionConfig, whose tools collection publishes an agent's tools and
+              whose available-tools list is the allow-list that suppresses the runtime's built-in
+              tools. The Copilot adapter derives the allow-list from the same collection it assigns
+              as the tools. AgentKit's test that constructs the session configuration and observes
+              the allow-list is derived from the published tools proves SessionConfig carries both as
+              required.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+          - id: AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
+            title: >-
+              Microsoft.Agents.AI.GitHub.Copilot shall provide a session-config agent-construction
+              path that builds an AIAgent from a CopilotClient without taking ownership of the
+              client.
+            justification: |
+              The SDK exposes an agent-construction path that takes a session configuration and a
+              client-ownership flag, and is the only path that carries the available-tools allow-list
+              — the tool-list path would publish tools without suppressing the built-ins. The adapter
+              uses it with ownership left to the host. The construction call itself reaches an
+              authenticated Copilot CLI and so is out of automated scope; AgentKit's test that
+              constructs the session configuration this path consumes provides the offline evidence
+              that the allow-list-carrying configuration is built. See the Copilot adapter
+              verification for the honest scope boundary.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+          - id: AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
+            title: >-
+              Microsoft.Agents.AI.GitHub.Copilot shall provide the permission-request and
+              permission-decision RPC types a permission handler is expressed in.
+            justification: |
+              The SDK defines the permission-request hierarchy — including the custom-tool request
+              carrying a tool name — and the permission-decision type with its approve and reject
+              results. The adapter's default handler adjudicates a request by constructing a decision
+              from these types. AgentKit's tests that build permission requests and assert the
+              default handler approves a supplied tool while rejecting an unlisted or built-in request
+              prove the RPC types behave as required.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
