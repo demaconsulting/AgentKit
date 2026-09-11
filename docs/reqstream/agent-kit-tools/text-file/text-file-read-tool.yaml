@@ -112,6 +112,32 @@ sections:
                 tests:
                   - TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncatedText
 
+              - id: AgentKitTools-TextFile-ReadTool-BinaryRefused
+                title: >-
+                  The read tool shall refuse a file whose content is binary rather than text,
+                  reporting it as unsupported media and, where the file's type is one the image
+                  tool can read, directing the model to that tool.
+                justification: |
+                  Decoding a binary file as text injects a wall of replacement characters into
+                  the model's context: it wastes a large slice of the context window, tells the
+                  model nothing true, and invites it to reason confidently about content it never
+                  actually saw. Detection is content-based — a byte-order mark means text,
+                  otherwise a NUL byte or failed strict UTF-8 validation means binary — so a
+                  legitimately encoded UTF-16 or UTF-32 file, which carries NUL bytes yet decodes
+                  correctly, is not misclassified. The redirect is chosen from the extension by
+                  reusing the image family's own resolver, so an agent handed a picture is sent to
+                  the one tool that can read it rather than told only "no".
+                tests:
+                  - TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead
+                  - TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead
+                  - TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect
+                  - TextFileReadTool_Read_InvalidUtf8WithoutBom_ReturnsDenial
+                  - TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents
+                  - TextFileReadTool_Read_Utf16BigEndianBomTextFile_ReturnsTheFileContents
+                  - TextFileReadTool_Read_Utf32BomTextFile_ReturnsTheFileContents
+                  - TextFileReadTool_Read_Utf8TextFile_ReturnsTheFileContents
+                  - TextFileReadTool_Read_LargeValidUtf8_ReadsAcrossWindowBoundary
+
               - id: AgentKitTools-TextFile-ReadTool-RelativePath
                 title: >-
                   The read tool shall read a file named relative to the workspace root, and shall

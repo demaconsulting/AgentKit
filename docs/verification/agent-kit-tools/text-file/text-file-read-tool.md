@@ -31,9 +31,10 @@ Unit tests reside in `TextFile/TextFileReadToolTests.cs`, with the shared repars
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-two scenarios below pass without error or exception beyond
+A unit test run passes when all thirty-one scenarios below pass without error or exception beyond
 those explicitly asserted. A permitted file that does not read, a relative name that is not read
-from the workspace, a refused file whose content leaks, a
+from the workspace, a binary file returned as decoded text, a byte-order-marked UTF-16 or UTF-32
+file refused as binary, a refused file whose content leaks, a
 truncated result where a refusal was required, an exception or framework error raised at a
 malformed or omitted request, a refusal offering no way forward, and a
 refusal containing a host path each constitute a failure.
@@ -198,3 +199,72 @@ closes.
 
 Disclosure control: asserts the refusal contains neither the permitted location, the requested
 location, the requested file name, nor a directory separator.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Binary Image Redirects to the Image Read Tool
+
+**Test**: `TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead`
+
+Error path: a real PNG header — magic bytes plus a NUL-bearing header chunk — is refused as
+`UnsupportedMediaType`, the refusal names `image_read`, and none of the file's bytes appear in the
+result. This is the defect the change closes: without the guard the image would be decoded into
+garbled replacement characters.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Binary Image Named Relatively Redirects to the Image Read Tool
+
+**Test**: `TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead`
+
+Agent viewpoint: the same PNG is requested by the bare name `picture.png`, the form a model
+actually writes, and reaches the same refusal and redirect as the absolute form — the request an
+absolute-path-only fixture would miss.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Non-Image Binary Is Refused Without a Redirect
+
+**Test**: `TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect`
+
+Error path: bytes containing a NUL under an extension no image tool resolves are refused as
+`UnsupportedMediaType` with no redirect, because there is no honest tool to name.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: Invalid UTF-8 Without a Mark Is Refused
+
+**Test**: `TextFileReadTool_Read_InvalidUtf8WithoutBom_ReturnsDenial`
+
+Boundary condition on the detection: a mark-less sequence that is invalid UTF-8 yet carries no NUL
+is refused through the UTF-8-validation branch rather than the NUL branch, proving both signals are
+exercised.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A UTF-16 Marked Text File Still Reads
+
+**Test**: `TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents`
+
+Regression guard: a UTF-16 LE file with a byte-order mark contains NUL bytes yet must read
+correctly, which is exactly the case a naive "NUL means binary" heuristic would break. Proves the
+mark check precedes the NUL rule.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A UTF-16 Big-Endian Marked Text File Still Reads
+
+**Test**: `TextFileReadTool_Read_Utf16BigEndianBomTextFile_ReturnsTheFileContents`
+
+Regression guard for the big-endian mark path, decided as text and decoded to its content.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A UTF-32 Marked Text File Still Reads
+
+**Test**: `TextFileReadTool_Read_Utf32BomTextFile_ReturnsTheFileContents`
+
+Guards the mark ordering: the UTF-16 LE mark is a prefix of the UTF-32 LE mark, so a guard that
+tested the shorter mark first would misread this file and its trailing NUL bytes as binary. Pins the
+four-byte marks as tested first.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Mark-less UTF-8 Text File Still Reads
+
+**Test**: `TextFileReadTool_Read_Utf8TextFile_ReturnsTheFileContents`
+
+Normal operation: mark-less multi-line UTF-8 with a non-ASCII character validates as text and reads
+back unchanged, so the guard does not regress the ordinary case.
+
+##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Valid UTF-8 File Reads Across the Window Boundary
+
+**Test**: `TextFileReadTool_Read_LargeValidUtf8_ReadsAcrossWindowBoundary`
+
+Boundary condition on the sniff window: a file of three-byte characters larger than the window
+forces a character to straddle the window edge, and it must still read. Proves the decoder-flush
+mitigation buffers a split trailing sequence rather than rejecting it.

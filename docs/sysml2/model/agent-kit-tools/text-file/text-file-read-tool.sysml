@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def TextFileReadTool {
-        doc /* Publishes the text_file_read tool, returning the text of one file the access policy permits the agent to read and refusing an oversized, missing or non-permitted request. */
+        doc /* Publishes the text_file_read tool, returning the text of one file the access policy permits the agent to read and refusing an oversized, missing, non-permitted or binary (non-text) request. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/TextFile/TextFileReadTool.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileReadToolTests.cs */

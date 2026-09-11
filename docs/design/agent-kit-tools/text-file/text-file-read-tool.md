@@ -67,9 +67,21 @@ governed by the supplied policy for the rest of its life.
 5. A file larger than `MaxReadBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size is
    judged before the file is opened, so an oversized file is never loaded merely to discover it was
    oversized
-6. The text is read; text longer than `MaxResultCharacters` is refused as `ResourceTooLarge`,
+6. A file whose leading bytes indicate **binary content** is refused as `UnsupportedMediaType`
+   before any decode, so a binary file is never returned as garbled replacement characters.
+   Detection is content-based: a recognized byte-order mark (UTF-8, UTF-16 LE/BE, UTF-32 LE/BE)
+   means text; otherwise a NUL byte, or a failure of strict UTF-8 validation over a leading window,
+   means binary. The byte-order-mark check is first precisely so a legitimately encoded UTF-16 or
+   UTF-32 file — which carries NUL bytes yet decodes correctly — is not misclassified by the NUL
+   rule; the four-byte UTF-32 marks are tested before the two-byte UTF-16 marks because the UTF-16
+   LE mark is a prefix of the UTF-32 LE mark. The *redirect* a refusal offers is chosen from the
+   extension by reusing `ImageMediaTypes.TryResolveMediaType`: the file is offered to `image_read`
+   when it resolves, and refused without a redirect otherwise. This step sits after the size check
+   (the cheaper gate) and before the decode (so detection precedes any decode and therefore the
+   result-ceiling check)
+7. The text is read; text longer than `MaxResultCharacters` is refused as `ResourceTooLarge`,
    naming that ceiling
-7. Otherwise the text is returned
+8. Otherwise the text is returned
 
 The policy decision precedes every observation of the file system, so a refused path never
 discloses whether it exists.
@@ -93,6 +105,14 @@ expects.
 detect; it would then reason confidently about content it never saw. Refusing with the ceiling
 named lets it narrow the request instead.
 
+**A binary file is refused as `UnsupportedMediaType`, never decoded into garbled text.** The binary
+sniff opens the file for a leading window and is subject to the same explicit
+`IsAccessFailure` classification as the decode, so a read failure during the sniff becomes the
+ordinary unreadable-file refusal rather than a thrown exception. The strict UTF-8 validation flushes
+its decoder only when the window reached end of file, so a multi-byte character the window boundary
+split in half is buffered rather than rejected and a valid UTF-8 file is never misclassified because
+a character straddled the window edge.
+
 No refusal message contains a path, a permitted location or a directory separator. The messages are
 constants and the only interpolated values are integers naming a ceiling. **Each nevertheless
 states what the model should do instead** — the form a path takes, or the tool that would find the
@@ -104,8 +124,14 @@ for "contains no host location".
 
 `PathPolicy` and `ToolLimits` for the decision and the ceilings, `ToolResult` for every result it
 returns, `GuardedToolFactory` for construction, and `TextFileListTool.ToolName` for the two
-redirects. From the Base Class Library: `File`, `FileInfo` and `Directory`. `AIFunction`, from
-`Microsoft.Extensions.AI.Abstractions`, is the form the constructed tool takes.
+redirects. For the binary guard it reuses the sibling image family's `ImageMediaTypes.TryResolveMediaType`
+to choose the `image_read` redirect and `ImageReadTool.ToolName` to name it, so media-type knowledge
+lives in the one unit that owns it rather than being duplicated here; the reference is mutual with
+`ImageMediaTypes`, which already redirects an `.svg` back to this tool, and both directions are leaf
+references to published constants within one assembly. From the Base Class Library: `File`,
+`FileInfo`, `Directory` and `FileStream`, and `UTF8Encoding`/`Decoder` from `System.Text` for the
+strict UTF-8 validation. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the form the
+constructed tool takes.
 
 #### Callers
 

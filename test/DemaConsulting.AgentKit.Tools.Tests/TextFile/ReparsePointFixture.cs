@@ -101,6 +101,28 @@ internal sealed class ReparsePointFixture : IDisposable
     }
 
     /// <summary>
+    ///     Writes a file with known bytes into a directory of the temporary tree.
+    /// </summary>
+    /// <remarks>
+    ///     The string writer above always writes UTF-8 with no byte-order mark, so a scenario
+    ///     that needs raw binary content, a byte-order-marked encoding or a deliberately invalid
+    ///     byte sequence writes the exact bytes here instead. The tool under test does not parse
+    ///     the bytes, so any distinctive sequence proves the real file was reached.
+    /// </remarks>
+    /// <param name="directory">The directory to write into; created when it does not exist.</param>
+    /// <param name="fileName">The name of the file to write.</param>
+    /// <param name="content">The bytes to write.</param>
+    /// <returns>The full path of the written file.</returns>
+    public static string WriteBytes(string directory, string fileName, byte[] content)
+    {
+        Directory.CreateDirectory(directory);
+
+        var filePath = Path.Combine(directory, fileName);
+        File.WriteAllBytes(filePath, content);
+        return filePath;
+    }
+
+    /// <summary>
     ///     Creates a directory link beneath <see cref="Root"/> pointing at a target directory.
     /// </summary>
     /// <remarks>

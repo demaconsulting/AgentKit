@@ -83,8 +83,9 @@ for them. The policy filters every candidate through the same read decision dire
 which is the invariant that keeps a listing and a read from ever reaching different conclusions.
 
 **Refusals are results.** Every condition a model can provoke — an absent path, a path outside the
-permitted location, a missing file, a directory where a file was expected, an oversized file —
-produces a `ToolResult.Denied` naming its reason. Nothing is thrown at a model, because an
+permitted location, a missing file, a directory where a file was expected, an oversized file, a
+binary file where text was expected — produces a `ToolResult.Denied` naming its reason. Nothing is
+thrown at a model, because an
 exception raised during a tool call ends the agent's turn and strands it. Where a refusal has an
 obvious better tool, it names that tool: a read of a directory and a read of a missing file both
 redirect to `text_file_list`. Every refusal message is composed from compile-time constants, with

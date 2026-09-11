@@ -108,6 +108,7 @@ sections:
             children:
               - AgentKitTools-TextFile-ReadTool-MissingFileDenied
               - AgentKitTools-TextFile-ReadTool-DirectoryRefused
+              - AgentKitTools-TextFile-ReadTool-BinaryRefused
               - AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
               - AgentKitTools-TextFile-ReadTool-DenialRedaction
               - AgentKitTools-TextFile-WriteTool-MissingParentDenied

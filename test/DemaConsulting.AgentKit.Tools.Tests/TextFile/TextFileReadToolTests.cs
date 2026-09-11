@@ -1,5 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using Microsoft.Extensions.AI;
 
@@ -16,6 +18,19 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// </remarks>
 public class TextFileReadToolTests
 {
+    /// <summary>
+    ///     A real PNG file header: the eight-byte signature followed by a length field, a
+    ///     NUL-bearing chunk, and a distinctive ASCII marker. The NUL bytes and invalid UTF-8
+    ///     make it unambiguously binary, the marker would only surface if the bytes were decoded
+    ///     and returned, and its <c>.png</c> name resolves to a type the image tool reads.
+    /// </summary>
+    private static readonly byte[] PngHeaderBytes =
+    [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D,
+        0x70, 0x69, 0x78, 0x65, 0x6C, 0x2D, 0x6D, 0x61, 0x72, 0x6B, 0x65, 0x72
+    ];
+
     /// <summary>
     ///     Proves the published tool name is the family-qualified name the pack claims.
     /// </summary>
@@ -470,6 +485,229 @@ public class TextFileReadToolTests
             Path.DirectorySeparatorChar.ToString(),
             text,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a binary image file is refused as unsupported media, redirecting to the image
+    ///     read tool.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead()
+    {
+        // Arrange: a real PNG header — magic bytes plus a NUL-bearing chunk and a marker
+        using var fixture = new ReparsePointFixture();
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image as if it were text
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: refused as unsupported media, pointed at the tool that can read it, no bytes leaked
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("pixel-marker", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a binary image requested by a bare relative name — the form a model actually
+    ///     writes — is refused with the image redirect.
+    /// </summary>
+    /// <remarks>
+    ///     A model names a file relative to the workspace, so the guard must reach the same
+    ///     verdict for <c>picture.png</c> as for its absolute location; a fixture that only ever
+    ///     tested absolute paths would miss the very request a model makes.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead()
+    {
+        // Arrange: a workspace holding one PNG, addressed by name alone
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for it the way a model phrases it, with no location
+        var result = await InvokeAsync(tool, "picture.png");
+
+        // Assert: the same refusal and redirect the absolute form receives
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a binary file whose type no tool in the family can read is refused without a
+    ///     redirect.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect()
+    {
+        // Arrange: bytes containing a NUL under an extension no image tool resolves
+        using var fixture = new ReparsePointFixture();
+        var file = ReparsePointFixture.WriteBytes(
+            fixture.Root,
+            "data.bin",
+            [0x00, 0x01, 0x02, 0x03, 0x00, 0xFF]);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the binary file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: refused as unsupported media, but with no tool to honestly redirect to
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a mark-less file that is not valid UTF-8 yet contains no NUL is refused by the
+    ///     UTF-8 validation rather than the NUL rule.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_InvalidUtf8WithoutBom_ReturnsDenial()
+    {
+        // Arrange: 0xC0 is never a valid UTF-8 lead byte; the sequence carries no NUL
+        using var fixture = new ReparsePointFixture();
+        var file = ReparsePointFixture.WriteBytes(
+            fixture.Root,
+            "garbled.bin",
+            [0x41, 0x42, 0xC0, 0xC0, 0x43]);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the invalid-UTF-8 file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: refused as binary, reached through the UTF-8 branch rather than the NUL branch
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a UTF-16 little-endian text file with a byte-order mark still reads correctly.
+    /// </summary>
+    /// <remarks>
+    ///     This is the exact regression the naive "a NUL byte means binary" heuristic would
+    ///     cause: UTF-16 text legitimately contains NUL bytes yet decodes correctly today, so the
+    ///     byte-order-mark check must take precedence.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents()
+    {
+        // Arrange: UTF-16 LE content preceded by its byte-order mark
+        using var fixture = new ReparsePointFixture();
+        byte[] bytes = [.. Encoding.Unicode.GetPreamble(), .. Encoding.Unicode.GetBytes("utf16-le-content")];
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode.txt", bytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the encoded text file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the mark decides text, and the decode path returns the content
+        Assert.Equal("utf16-le-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a UTF-16 big-endian text file with a byte-order mark still reads correctly.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_Utf16BigEndianBomTextFile_ReturnsTheFileContents()
+    {
+        // Arrange: UTF-16 BE content preceded by its byte-order mark
+        using var fixture = new ReparsePointFixture();
+        byte[] bytes =
+        [
+            .. Encoding.BigEndianUnicode.GetPreamble(),
+            .. Encoding.BigEndianUnicode.GetBytes("utf16-be-content")
+        ];
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode-be.txt", bytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the encoded text file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the big-endian mark path also decides text
+        Assert.Equal("utf16-be-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a UTF-32 little-endian text file with a byte-order mark still reads correctly.
+    /// </summary>
+    /// <remarks>
+    ///     Guards the byte-order-mark ordering: the UTF-16 LE mark <c>FF FE</c> is a prefix of the
+    ///     UTF-32 LE mark <c>FF FE 00 00</c>, so a guard that tested the shorter mark first would
+    ///     misread this file and its trailing NUL bytes as binary.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_Utf32BomTextFile_ReturnsTheFileContents()
+    {
+        // Arrange: UTF-32 LE content preceded by its four-byte byte-order mark
+        using var fixture = new ReparsePointFixture();
+        byte[] bytes = [.. Encoding.UTF32.GetPreamble(), .. Encoding.UTF32.GetBytes("utf32-le-content")];
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode32.txt", bytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the encoded text file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the four-byte mark is recognized before the two-byte one, so the file is text
+        Assert.Equal("utf32-le-content", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a plain multi-line UTF-8 text file with no byte-order mark still reads
+    ///     correctly.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_Utf8TextFile_ReturnsTheFileContents()
+    {
+        // Arrange: mark-less UTF-8 with a non-ASCII character, the ordinary text case
+        using var fixture = new ReparsePointFixture();
+        const string content = "first line\nsecond line \u2248 approx\n";
+        byte[] bytes = Encoding.UTF8.GetBytes(content);
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "notes.txt", bytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the text file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: valid UTF-8 is text and reads back unchanged
+        Assert.Equal(content, Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a valid UTF-8 file whose multi-byte character straddles the sniff-window
+    ///     boundary is read rather than misclassified as binary.
+    /// </summary>
+    /// <remarks>
+    ///     The file is built from three-byte characters and made larger than the sniff window, so
+    ///     the window edge necessarily cuts one character in half. Reading it correctly proves the
+    ///     boundary mitigation that buffers, rather than rejects, a split trailing sequence.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_LargeValidUtf8_ReadsAcrossWindowBoundary()
+    {
+        // Arrange: 2000 three-byte characters (6000 bytes) — larger than the 4096-byte window,
+        // so the window boundary lands in the middle of a character
+        using var fixture = new ReparsePointFixture();
+        var content = new string('\u2248', 2000);
+        byte[] bytes = Encoding.UTF8.GetBytes(content);
+        var file = ReparsePointFixture.WriteBytes(fixture.Root, "wide-utf8.txt", bytes);
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file whose character is split by the window edge
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: a split character does not make a valid UTF-8 file look binary
+        Assert.Equal(content, Assert.IsType<string>(result));
     }
 
     /// <summary>
