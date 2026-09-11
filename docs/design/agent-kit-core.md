@@ -23,6 +23,10 @@ best practices. The system consists of:
 - **ToolName Unit**: Defines the tool naming convention and validates names against it
 - **GuardedToolFactory Unit**: The only supported way to construct a tool, applying the
   result-delivery guard and the naming rules to every tool it creates
+- **ToolPack Unit**: Defines the contract a package implements to publish its tools as one
+  capability-gated family, and the set of host capabilities a pack may require
+- **ToolPackBuilder Unit**: Composes tool packs into the tool list an application offers a model,
+  registering a pack only when the host provides every capability the pack requires
 
 There are no subsystems. The `Demo` unit is a self-contained leaf class exposed directly through
 the public API; see _Demo Unit Design_. The three path-safety units form one collaboration:
@@ -39,6 +43,15 @@ what delivers that value to the runtime in the form the tool produced it. The tw
 meet at `PathPolicy`, which carries a `ToolLimits` so that every tool a host governs observes one
 budget. `ToolLimits` and `ToolName` depend on nothing within the system, so this collaboration is
 likewise acyclic.
+
+The two pack-contract units form a third collaboration, which is where the first two meet an
+application. A package author implements `IToolPack` to publish its tools as one family; an
+application constructs a `ToolPackBuilder` with its `PathPolicy`, declares what its host supports,
+and adds a pack per capability it wishes to attach. The builder registers a pack only when the
+host provides every capability the pack declared, hands the registered packs the one policy it
+holds, and verifies that each tool a pack returns carries the family prefix that pack claimed.
+`IToolPack` depends only on `PathPolicy`, and `ToolPackBuilder` depends only on `IToolPack` and
+`PathPolicy`, so this collaboration is acyclic too.
 
 ## External Interfaces
 
@@ -145,6 +158,39 @@ The system additionally exposes the tool-contract API:
 | `ToolName.Validate`         | Inbound          | Method call                   | `name` satisfies the convention   |
 | `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction`    | Delegate, name, description valid |
 
+The system additionally exposes the pack composition API:
+
+- **IToolPack.FamilyPrefix**: Read-only property exposing the family prefix every tool in the pack
+  carries. Must be non-null and non-empty.
+- **IToolPack.RequiredCapabilities**: Read-only property exposing the capabilities the host must
+  provide for the pack's tools to operate. `HostCapabilities.None` means the pack is always
+  registered.
+- **IToolPack.CreateTools(PathPolicy policy)**: Creates the pack's tools, governed by the supplied
+  policy. Must return a non-null collection containing no null element, every tool of which
+  carries the declared family prefix. Not called at all when the host does not provide the
+  required capabilities.
+- **HostCapabilities**: Flags enumeration naming what a host can provide — `None` and `Vision`.
+- **new ToolPackBuilder(PathPolicy policy)**: Creates a composition governed by `policy`. Throws
+  `ArgumentNullException` when the policy is null.
+- **ToolPackBuilder.WithHostCapabilities(HostCapabilities capabilities)**: Declares what the host
+  provides, replacing any earlier declaration, and returns the builder.
+- **ToolPackBuilder.Add(IToolPack pack)**: Adds a pack and returns the builder. Throws
+  `ArgumentNullException` for a missing pack, and `ArgumentException` for an empty family prefix or
+  a prefix another added pack already claims.
+- **ToolPackBuilder.Build()**: Returns the tools of every pack the host can support, in pack-add
+  order. Throws `InvalidOperationException` when a pack returns no collection, a null tool, or a
+  tool outside its declared family.
+
+| Interface                              | Direction        | Format                        | Constraints           |
+|----------------------------------------|------------------|-------------------------------|-----------------------|
+| `IToolPack.FamilyPrefix`               | Outbound         | `string` property read        | Non-null, non-empty   |
+| `IToolPack.RequiredCapabilities`       | Outbound         | `HostCapabilities` read       | None; always succeeds |
+| `IToolPack.CreateTools`                | Inbound/Outbound | Method call / `IEnumerable`   | No null element       |
+| `new ToolPackBuilder(...)`             | Inbound          | Constructor call              | `policy` non-null     |
+| `ToolPackBuilder.WithHostCapabilities` | Inbound/Outbound | Method call / builder         | None; always succeeds |
+| `ToolPackBuilder.Add`                  | Inbound/Outbound | Method call / builder         | Prefix unclaimed      |
+| `ToolPackBuilder.Build`                | Inbound/Outbound | Method call / `IReadOnlyList` | Packs honor contracts |
+
 ## Dependencies
 
 The AgentKit Core has zero runtime NuGet dependencies — it is implemented exclusively
@@ -197,6 +243,15 @@ omit either; see _GuardedToolFactory Unit Design_. Resource ceilings carried wit
 policy are a liveness control rather than a safety control, and are described in _ToolLimits Unit
 Design_.
 
+**Capability-gated registration** is a risk control measure of the same kind. Where a host cannot
+support a tool, the tool is not offered at all rather than offered and refused: a model that can
+see a tool it cannot use will spend a turn on it, and a model told only that a tool refused will
+reason around the refusal rather than abandon the approach. Because an unsupported pack is never
+asked to create its tools, accidental registration is unrepresentable rather than merely unlikely;
+see _ToolPackBuilder Unit Design_. Family prefix ownership is part of the same measure: a pack
+claims a prefix no other pack claims, and every tool it publishes must carry that prefix, so an
+application cannot present the model with two tools it cannot tell apart.
+
 The `Demo` unit carries no risk control responsibility.
 
 ## Data Flow
@@ -244,6 +299,19 @@ The `Demo` unit carries no risk control responsibility.
 5. **Output**: The guard delivers that value to the runtime unchanged rather than serializing it
    to JSON, so content remains recognizable to the provider and a refusal remains readable text
    the model can act on
+
+**Pack composition path:**
+
+1. **Input**: An access policy at builder construction, a declaration of what the host supports,
+   and one pack per capability the application wishes to attach
+2. **Registration check**: Each pack is registered only when every capability it requires is one
+   the host declared; a pack requiring none is registered by every host
+3. **Creation**: Only a registered pack is asked for its tools, and it is handed the one policy
+   the builder holds — an unsupported pack's tools are never built at all
+4. **Agreement check**: Every tool a pack returns must carry the family prefix that pack declared,
+   so the prefix no other pack may claim is a promise that is verified rather than trusted
+5. **Output**: One ordered tool list — pack-add order, then the order each pack produced its tools
+   — which the application hands to the agent runtime
 
 ## Design Constraints
 

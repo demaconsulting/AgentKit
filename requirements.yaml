@@ -16,6 +16,8 @@ includes:
   - docs/reqstream/agent-kit-core/real-path-resolver.yaml
   - docs/reqstream/agent-kit-core/tool-limits.yaml
   - docs/reqstream/agent-kit-core/tool-name.yaml
+  - docs/reqstream/agent-kit-core/tool-pack-builder.yaml
+  - docs/reqstream/agent-kit-core/tool-pack.yaml
   - docs/reqstream/agent-kit-core/tool-result.yaml
   - docs/reqstream/agent-kit-core/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml

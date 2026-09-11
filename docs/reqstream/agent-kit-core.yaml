@@ -311,3 +311,60 @@ sections:
           - AgentKitCore-GuardedToolFactory-RejectMissingDelegate
         tests:
           - AgentKitCore_SystemGuardedTool_ConstructedTool_CarriesValidatedNameAndDescription
+
+      - id: AgentKitCore-ToolPacks-CapabilityGatedRegistration
+        title: >-
+          The library shall register a pack's tools only when the host provides every capability
+          the pack requires, and shall not create that pack's tools at all otherwise.
+        tags: [system, security]
+        justification: |
+          Where a host lacks a capability, a dependent tool that is registered and then refuses on
+          use has already cost the agent a turn, and a model told only that a tool refused will
+          reason its way around the refusal rather than abandoning the approach. Withholding
+          registration entirely means the model never sees a capability it cannot use, so there is
+          nothing to work around. Not creating the tools at all, rather than creating and
+          discarding them, is what makes that property impossible to get wrong.
+        children:
+          - AgentKitCore-ToolPack-NoCapabilityRequired
+          - AgentKitCore-ToolPack-CapabilitiesAreFlags
+          - AgentKitCore-ToolPackBuilder-CapabilityGating
+          - AgentKitCore-ToolPackBuilder-DefaultCapabilitiesNone
+          - AgentKitCore-ToolPackBuilder-CapabilityDeclarationReplaced
+        tests:
+          - AgentKitCore_SystemToolPacks_HostWithoutCapability_PackContributesNoTools
+
+      - id: AgentKitCore-ToolPacks-Composition
+        title: >-
+          The library shall compose the tools of several packs into one ordered tool list governed
+          by a single access policy, and shall not permit a composition to exist without that
+          policy.
+        tags: [system]
+        justification: |
+          An application attaches capabilities to an agent by attaching packs, and a pack that
+          costs one line is a pack an author will use correctly. Composition is also where the
+          single access policy is applied: every pack receives the same policy, so an author
+          cannot widen one pack's reach by configuring it separately.
+        children:
+          - AgentKitCore-ToolPack-Contract
+          - AgentKitCore-ToolPackBuilder-Composition
+          - AgentKitCore-ToolPackBuilder-RequiresPolicy
+          - AgentKitCore-ToolPackBuilder-RepeatableBuild
+          - AgentKitCore-ToolPackBuilder-MalformedPackRejected
+        tests:
+          - AgentKitCore_SystemToolPacks_CapableHost_ReceivesEveryAttachedTool
+
+      - id: AgentKitCore-ToolPacks-FamilyPrefixOwnership
+        title: >-
+          The library shall require each pack to own a family prefix no other pack claims, and
+          shall require every tool a pack publishes to carry that prefix.
+        tags: [system]
+        justification: |
+          Two packs publishing the same family prefix present the model with tools whose names do
+          not distinguish them, and which one is invoked is undefined. Detecting that where the
+          application composed its packs is far better than discovering it from a model's behavior
+          in production.
+        children:
+          - AgentKitCore-ToolPackBuilder-PrefixCollision
+          - AgentKitCore-ToolPackBuilder-PrefixAgreement
+        tests:
+          - AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected

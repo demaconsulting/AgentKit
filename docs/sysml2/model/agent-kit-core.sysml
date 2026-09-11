@@ -22,5 +22,7 @@ package AgentKitCore {
         part toolResult : ToolResult;
         part toolName : ToolName;
         part guardedToolFactory : GuardedToolFactory;
+        part toolPack : ToolPack;
+        part toolPackBuilder : ToolPackBuilder;
     }
 }

@@ -193,6 +193,33 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolName.cs"              # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolNameTests.cs"    # unit tests
 
+  # AgentKitCore-ToolPack Review (one per unit)
+  - id: AgentKitCore-ToolPack
+    title: Review that AgentKitCore ToolPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-pack.yaml"             # unit requirements
+      - "docs/design/agent-kit-core/tool-pack.md"                  # unit design
+      - "docs/verification/agent-kit-core/tool-pack.md"            # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolPack.cs"              # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolPackTests.cs"    # unit tests
+      - "test/DemaConsulting.AgentKit.Core.Tests/StubToolPack.cs"     # tool pack test stub
+
+  # AgentKitCore-ToolPackBuilder Review (one per unit)
+  - id: AgentKitCore-ToolPackBuilder
+    title: Review that AgentKitCore ToolPackBuilder Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-pack-builder.yaml"     # unit requirements
+      - "docs/design/agent-kit-core/tool-pack-builder.md"          # unit design
+      - "docs/verification/agent-kit-core/tool-pack-builder.md"    # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolPackBuilder.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolPackBuilderTests.cs"  # unit tests
+
   # AgentKitCore-ToolResult Review (one per unit)
   - id: AgentKitCore-ToolResult
     title: Review that AgentKitCore ToolResult Implementation is Correct

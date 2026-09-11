@@ -1,0 +1,52 @@
+---
+# Software Unit Requirements for ToolPack
+#
+# These requirements describe the design-level behavior of the ToolPack unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolPack Requirements
+        requirements:
+          - id: AgentKitCore-ToolPack-Contract
+            title: >-
+              A tool pack shall expose the family prefix its tools carry, the host capabilities its
+              tools require, and a method creating its tools from a supplied access policy.
+            justification: |
+              A package exposes its tools as a pack rather than as individual tools, so that
+              attaching a package to an application costs one line rather than one line per tool.
+              A pack declares what it needs rather than deciding for itself whether it can
+              operate, because a pack that decided for itself would have to refuse at call time,
+              by which point the model has already been offered the tool.
+            tests:
+              - ToolPack_FamilyPrefix_Implementation_ReportsItsDeclaredPrefix
+              - ToolPack_RequiredCapabilities_Implementation_ReportsItsDeclaredCapabilities
+              - ToolPack_CreateTools_SuppliedPolicy_IsHandedToThePack
+
+          - id: AgentKitCore-ToolPack-NoCapabilityRequired
+            title: >-
+              The host capability set shall define a zero-valued member meaning that no capability
+              is required, and that member shall be satisfied by every declaration a host makes.
+            justification: |
+              Most packs need nothing of their host, so "requires nothing" must be the natural,
+              special-case-free expression rather than a flag the gating rule has to test for
+              separately. A zero member is also what makes the default of the enumeration the
+              closed one, so a host that declares nothing is offered the fewest tools rather than
+              the most.
+            tests:
+              - ToolPack_HostCapabilities_None_IsZero
+              - ToolPack_HostCapabilities_NoneRequirement_IsSatisfiedByEveryDeclaration
+
+          - id: AgentKitCore-ToolPack-CapabilitiesAreFlags
+            title: >-
+              Host capabilities shall be independently combinable flags, each member zero or a
+              single bit, and shall include the capability to accept image content.
+            justification: |
+              A host provides some capabilities and not others, so the capabilities must combine
+              rather than exclude one another. Each member must be zero or a single bit because a
+              member overlapping another would silently satisfy a requirement the host never
+              declared, widening what the model is offered without anybody asking for it.
+            tests:
+              - ToolPack_HostCapabilities_Enum_IsDeclaredAsFlags
+              - ToolPack_HostCapabilities_EveryMember_IsZeroOrASingleBit
+              - ToolPack_HostCapabilities_Vision_IsDefinedAndDistinctFromNone

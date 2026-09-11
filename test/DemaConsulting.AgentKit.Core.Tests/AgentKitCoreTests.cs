@@ -369,4 +369,75 @@ public class AgentKitCoreTests
         Assert.Equal("text_file_read", function.Name);
         Assert.Equal(description, function.Description);
     }
+
+    /// <summary>
+    ///     Proves that a host lacking a capability is never offered the tools that need it.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolPacks_HostWithoutCapability_PackContributesNoTools()
+    {
+        // Arrange: a policy, a pack that needs nothing, and a pack that needs vision
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var textFile = new StubToolPack(
+            "text_file",
+            HostCapabilities.None,
+            [StubToolPack.Tool("text_file_read")]);
+        var image = new StubToolPack(
+            "image",
+            HostCapabilities.Vision,
+            [StubToolPack.Tool("image_read")]);
+
+        // Act: compose for a host that cannot accept image content
+        var tools = new ToolPackBuilder(policy).Add(textFile).Add(image).Build();
+
+        // Assert: the model never sees the tool, and the tool was never even built
+        Assert.Equal(["text_file_read"], tools.Select(tool => tool.Name));
+        Assert.Equal(0, image.CreateToolsCallCount);
+    }
+
+    /// <summary>
+    ///     Proves that a capable host receives every tool of every pack it attaches.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolPacks_CapableHost_ReceivesEveryAttachedTool()
+    {
+        // Arrange: a policy and two packs, one of which needs vision
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var textFile = new StubToolPack(
+            "text_file",
+            HostCapabilities.None,
+            [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_write")]);
+        var image = new StubToolPack(
+            "image",
+            HostCapabilities.Vision,
+            [StubToolPack.Tool("image_read")]);
+
+        // Act: compose for a host declaring vision
+        var tools = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(textFile)
+            .Add(image)
+            .Build();
+
+        // Assert: every tool, in the order the application attached its packs
+        Assert.Equal(
+            ["text_file_read", "text_file_write", "image_read"],
+            tools.Select(tool => tool.Name));
+        Assert.Same(policy, image.LastPolicy);
+    }
+
+    /// <summary>
+    ///     Proves that the system refuses two packs claiming one family prefix.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected()
+    {
+        // Arrange: an application attaching two packs that both claim one family
+        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var builder = new ToolPackBuilder(policy).Add(new StubToolPack("text_file", tools: []));
+
+        // Act & Assert: ambiguous tool names are refused where the application composed them
+        Assert.Throws<ArgumentException>(
+            () => builder.Add(new StubToolPack("text_file", tools: [])));
+    }
 }

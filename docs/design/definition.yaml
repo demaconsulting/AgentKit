@@ -13,6 +13,8 @@ input-files:
   - docs/design/agent-kit-core/real-path-resolver.md
   - docs/design/agent-kit-core/tool-limits.md
   - docs/design/agent-kit-core/tool-name.md
+  - docs/design/agent-kit-core/tool-pack-builder.md
+  - docs/design/agent-kit-core/tool-pack.md
   - docs/design/agent-kit-core/tool-result.md
   - docs/design/ots.md
   - docs/design/ots/buildmark.md

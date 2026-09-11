@@ -1,0 +1,139 @@
+---
+# Software Unit Requirements for ToolPackBuilder
+#
+# These requirements describe the design-level behavior of the ToolPackBuilder unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolPackBuilder Requirements
+        requirements:
+          - id: AgentKitCore-ToolPackBuilder-RequiresPolicy
+            title: >-
+              A composition shall not exist without an access policy, and that policy shall be the
+              one handed to every pack asked to create its tools.
+            justification: |
+              A composition that could be created without a policy invites a caller to build one
+              and forget to govern it, producing an agent whose tools look governed and are not.
+              Handing every pack the same policy means an author cannot widen one pack's reach by
+              configuring it separately.
+            tests:
+              - ToolPackBuilder_Constructor_NullPolicy_ThrowsArgumentNullException
+              - ToolPackBuilder_Build_ConstructedPolicy_IsHandedToEveryPack
+
+          - id: AgentKitCore-ToolPackBuilder-Composition
+            title: >-
+              A composition shall contain every tool of every registered pack, in the order the
+              packs were added and, within a pack, in the order it produced them; adding a pack
+              shall return the same builder so packs can be chained.
+            justification: |
+              The order a model sees is observable: it appears in transcripts and subtly influences
+              tool selection, so it is the caller's own stated order rather than an incidental one.
+              Returning the builder is what makes attaching a capability pack cost a consumer one
+              line.
+            tests:
+              - ToolPackBuilder_Build_SatisfiedPacks_ContributeEveryTool
+              - ToolPackBuilder_Build_MultiplePacks_PreservesAddOrderAndPackOrder
+              - ToolPackBuilder_Build_NoPacks_ReturnsEmptyList
+              - ToolPackBuilder_Add_ValidPack_ReturnsTheSameBuilder
+
+          - id: AgentKitCore-ToolPackBuilder-CapabilityGating
+            title: >-
+              A pack whose required capabilities are not all provided by the host shall contribute
+              no tools and shall not be asked to create any; a pack requiring none shall be
+              registered by every host.
+            justification: |
+              This is the whole purpose of the unit. A tool the model can see but cannot use costs
+              a turn at best and invites the model to reason around the refusal at worst. Not
+              asking an unsupported pack for its tools at all — rather than asking and then
+              discarding — is what makes accidental registration unrepresentable instead of merely
+              unlikely.
+            tests:
+              - ToolPackBuilder_Build_PackRequiringUndeclaredCapability_ContributesNoTools
+              - ToolPackBuilder_Build_PackRequiringUndeclaredCapability_IsNotAskedToCreateTools
+              - ToolPackBuilder_Build_PackRequiringDeclaredCapability_ContributesItsTools
+              - ToolPackBuilder_Build_PackRequiringNoCapability_IsRegisteredByEveryHost
+
+          - id: AgentKitCore-ToolPackBuilder-DefaultCapabilitiesNone
+            title: >-
+              A composition to which no capability has been declared shall register only packs that
+              require none.
+            justification: |
+              The default is deliberately the closed one. A host that forgets to declare what it
+              supports is offered fewer tools, never more, so the failure mode of forgetting is a
+              missing capability rather than a tool the host cannot honor.
+            tests:
+              - ToolPackBuilder_Build_NoCapabilitiesDeclared_RegistersOnlyPacksRequiringNone
+
+          - id: AgentKitCore-ToolPackBuilder-CapabilityDeclarationReplaced
+            title: >-
+              A later capability declaration shall replace an earlier one rather than combine with
+              it, and shall govern registration whether it is made before or after a pack is added.
+            justification: |
+              A declaration states what the host is, and a host has one answer. Combining successive
+              calls would make the declaration a one-way ratchet no caller could narrow, and
+              widening what a model is offered is the safety-relevant direction. Evaluating the
+              declaration when the composition is built means a builder's result never depends on
+              the order of two calls that each look complete on their own.
+            tests:
+              - ToolPackBuilder_WithHostCapabilities_CalledTwice_LastDeclarationReplacesTheFirst
+              - ToolPackBuilder_WithHostCapabilities_DeclaredAfterAdd_StillGovernsRegistration
+
+          - id: AgentKitCore-ToolPackBuilder-PrefixCollision
+            title: >-
+              Adding a pack whose family prefix another added pack already claims shall be rejected
+              as a programming error, including when the same pack is added twice; prefixes shall be
+              compared exactly.
+            justification: |
+              Two packs publishing the same family prefix present the model with tools whose names
+              do not distinguish them, and which one is invoked is undefined. Rejecting the
+              collision at the call that caused it names the pack responsible, and keeps the
+              builder's state valid at every instant. Comparison is exact because tool names are
+              lowercase by convention and every model provider compares them exactly, so a prefix
+              differing only in case is a malformed prefix rather than a collision.
+            tests:
+              - ToolPackBuilder_Add_SecondPackWithSameFamilyPrefix_ThrowsArgumentException
+              - ToolPackBuilder_Add_SamePackInstanceTwice_ThrowsArgumentException
+              - ToolPackBuilder_Add_PrefixDifferingOnlyByCase_IsNotACollision
+
+          - id: AgentKitCore-ToolPackBuilder-PrefixAgreement
+            title: >-
+              A pack that publishes a tool whose name does not carry the family prefix the pack
+              declared shall be rejected as a programming error.
+            justification: |
+              The collision check is a check on a declaration, and a declaration nobody verifies is
+              a comment. The guarded construction path validates that a tool name is well formed; it
+              has no notion of packs and so cannot validate that a name belongs to the pack
+              publishing it. Without this check, a pack that published outside its declared family
+              would defeat the collision check silently.
+            tests:
+              - ToolPackBuilder_Build_ToolNameOutsideDeclaredFamily_ThrowsInvalidOperationException
+              - ToolPackBuilder_Build_ToolNameCarryingDeclaredPrefix_IsAccepted
+
+          - id: AgentKitCore-ToolPackBuilder-MalformedPackRejected
+            title: >-
+              A missing pack, a pack with no family prefix, a pack returning no tool collection, and
+              a pack returning a missing tool shall each be rejected as a programming error.
+            justification: |
+              A pack may come from a package compiled without nullable annotations, so the contract
+              is enforced rather than assumed. A missing tool reaching the runtime's tool list fails
+              far from the pack that produced it, with an error naming nothing a developer could act
+              on, and a pack owning no prefix could not own any of its tool names.
+            tests:
+              - ToolPackBuilder_Add_NullPack_ThrowsArgumentNullException
+              - ToolPackBuilder_Add_EmptyFamilyPrefix_ThrowsArgumentException
+              - ToolPackBuilder_Build_PackReturningNullCollection_ThrowsInvalidOperationException
+              - ToolPackBuilder_Build_PackReturningNullTool_ThrowsInvalidOperationException
+
+          - id: AgentKitCore-ToolPackBuilder-RepeatableBuild
+            title: >-
+              Composing shall neither empty nor freeze the builder: repeating it shall report the
+              builder's state as it is at that call.
+            justification: |
+              A builder that emptied itself would return an empty list on a second call, which is a
+              trap rather than a discipline, and a builder that cached its first answer would
+              silently ignore a pack added afterwards. Reporting the state at each call is the only
+              behavior a caller can predict without reading the implementation.
+            tests:
+              - ToolPackBuilder_Build_CalledTwice_ReturnsTheSameComposition
+              - ToolPackBuilder_Build_PackAddedAfterAnEarlierBuild_AppearsInTheNextBuild

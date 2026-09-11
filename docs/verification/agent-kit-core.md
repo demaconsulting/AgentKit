@@ -192,10 +192,37 @@ libraries cannot offer the model two tools with the same name.
 Verifies that a tool built the only supported way is selectable by a model rather than anonymous.
 Asserts the created tool carries the composed name and the supplied description.
 
+### Tool Packs: A Host Without a Capability Is Offered No Tools From the Dependent Pack
+
+**Test**: `AgentKitCore_SystemToolPacks_HostWithoutCapability_PackContributesNoTools`
+
+Verifies capability-gated registration end to end. Composes a real access policy, a pack that
+requires nothing and a pack that requires vision, and builds for a host that declares nothing.
+Asserts the composed list contains only the undemanding pack's tool **and** that the vision pack
+was never asked to create its tools — the assertion that distinguishes "not registered" from
+"registered then filtered", and the reason the model can never see a tool it cannot use.
+
+### Tool Packs: A Capable Host Receives Every Attached Tool
+
+**Test**: `AgentKitCore_SystemToolPacks_CapableHost_ReceivesEveryAttachedTool`
+
+Verifies that gating withholds nothing a host can support. Declares vision, attaches both packs,
+and asserts the exact composed sequence — pack-add order, then each pack's own order — and that
+the policy the application constructed is the one the pack was handed.
+
+### Tool Packs: Colliding Family Prefixes Are Rejected
+
+**Test**: `AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected`
+
+Verifies at the system boundary that an application cannot attach two packs claiming one family
+prefix, a situation in which which of two identically prefixed tools a model invokes is undefined.
+Asserts the refusal occurs where the application composed its packs rather than in a model's
+behavior later.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all eighteen scenarios above pass without error or exception
+A system-level test run passes when all twenty-one scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
-value, permitted path that should have been refused, escaped file appearing in a listing, or tool
-result arriving as serialized JSON rather than as the content the tool produced constitutes a
-failure.
+value, permitted path that should have been refused, escaped file appearing in a listing, tool
+result arriving as serialized JSON rather than as the content the tool produced, or tool offered
+to a host that cannot support it constitutes a failure.
