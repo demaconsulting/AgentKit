@@ -27,11 +27,11 @@ software items, specifically:
 - **AgentKitCore (System)** — The contract package every other AgentKit package depends upon
 - **RealPathResolver (Unit)** — Reports the real file system location a path reaches, resolving
   symbolic links and directory junctions at every path component
-- **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
-  denied patterns
-- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, carries the workspace
-  location relative paths are interpreted against, and makes the single containment decision used
-  by both direct access and directory enumeration
+- **PathRule (Unit)** — One access grant, unrestricted or confined to a location, carrying an
+  access level and its own denied patterns
+- **PathPolicy (Unit)** — Holds the one working directory relative paths are anchored to and the
+  zero-or-more access grants that permit locations, keeping addressing and permission orthogonal,
+  and makes the single containment decision used by both direct access and directory enumeration
 - **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
   attaching content
 - **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals
@@ -138,9 +138,10 @@ and descriptions as follows:
 src/DemaConsulting.AgentKit.Core/
 ├── GuardedToolFactory.cs       — the only supported way to construct a tool
 ├── ImagePromotingChatClient.cs — promotes a tool-returned image onto a user message
-├── PathPolicy.cs               — the workspace base, the single containment decision, and the
-│                                 limits it carries
-├── PathRule.cs                 — one access rule: unrestricted or rooted
+├── PathPolicy.cs               — the working-directory anchor, access grants, the single
+│                                 containment decision, and the limits it carries
+├── PathRule.cs                 — one access grant: unrestricted or rooted, read-only or
+│                                 read-write
 ├── RealPathResolver.cs         — the real location a path reaches
 ├── ToolLimits.cs               — the ceilings every governed tool observes
 ├── ToolName.cs                 — the family-prefix naming convention

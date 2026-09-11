@@ -94,9 +94,10 @@ document for details:
 ## Risk Control Measures
 
 This system defines no risk control measures of its own at this stage. Every path-containment
-control an agent relies on — real-location path resolution, independent read and write rules, the
-single containment decision, the redacted returned denial, and the unrepresentable unguarded
-policy — lives in AgentKitCore, which this package composes through unchanged. Each tool family
+control an agent relies on — real-location path resolution, the one required working directory
+paired with zero-or-more read-only or read-write access grants, the single containment decision,
+the disclosing returned denial that echoes the request and enumerates the permitted locations, and
+the unrepresentable unguarded policy — lives in AgentKitCore, which this package composes through unchanged. Each tool family
 this package adds will inherit those controls by constructing its tools through Core's single
 guarded construction path and governing them with the one access policy the composing application
 supplies; the risk controls specific to a family are described in that family's design when the

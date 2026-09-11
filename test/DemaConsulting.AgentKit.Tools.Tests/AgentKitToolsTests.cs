@@ -17,7 +17,7 @@ public class AgentKitToolsTests
     public void AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools()
     {
         // Arrange: a policy governing an otherwise empty composition
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: build the tool list before any family has been attached
         var tools = new ToolPackBuilder(policy).Build();
@@ -34,7 +34,7 @@ public class AgentKitToolsTests
     public void AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily()
     {
         // Arrange: a policy governing a composition with the text file family attached
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
 
         // Act: build the tool list
@@ -54,7 +54,7 @@ public class AgentKitToolsTests
     public void AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily()
     {
         // Arrange: a vision host governing a composition with the image family attached
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack());
@@ -78,7 +78,7 @@ public class AgentKitToolsTests
     {
         // Arrange: a host that declares no capability, governing a composition with the image
         // family attached
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy).Add(new ImagePack());
 
         // Act: build the tool list

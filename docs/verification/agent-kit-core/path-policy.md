@@ -5,25 +5,31 @@ This document describes the unit-level verification strategy for the `PathPolicy
 ### Verification Approach
 
 `PathPolicy` is verified through unit tests that exercise the policy against a **real file system
-containing a real reparse point**. `RealPathResolver` and `PathRule` are used as real
-dependencies rather than substitutes — both are documented dependencies in _PathPolicy Unit
-Design_, and substituting either would remove exactly the behavior the tests exist to confirm.
+containing a real reparse point**. `RealPathResolver` and `PathRule` are used as real dependencies
+rather than substitutes — both are documented dependencies in _PathPolicy Unit Design_, and
+substituting either would remove exactly the behavior the tests exist to confirm.
 
-**The suite exercises paths as a model writes them, not only as a host composes them.** One group
-of scenarios builds request paths from the rule's resolved `Root`, matching what a caller holds
-once a policy has been constructed; those are the containment scenarios, and the absolute form is
-the right one for them. A second group states paths the way a model states them — a bare file
-name, a leading current-directory token, a nested relative name, and no path at all. That second
-group exists because its absence was the reason a defect in relative-path resolution survived a
-full suite and four formal reviews: every scenario passed a fixture-absolute path, and not one
-passed the spelling a model actually produces.
+The suite verifies the current path model from an agent's viewpoint. A policy has one required
+`WorkingDirectory`, resolved to a real location and used only as the anchor for relative requests,
+and zero or more `Grants`, each a `PathRule` carrying an `AccessLevel`. The working directory and
+grants are deliberately orthogonal: the anchor may be granted read-write, granted read-only, or
+granted nothing at all. An empty grant set is valid and permits nothing.
 
-Two scenarios are written as contrasts rather than as plain assertions, so that they cannot
-quietly become vacuous: the naive-prefix scenario asserts that a text-based check _would_ accept
-the request before asserting the policy refuses it, and the enumeration scenario asserts that a
-raw recursive listing _does_ surface the escaped file before asserting the policy's listing does
-not. The relative-path scenario is written the same way, asserting that the resolved location is
-beneath the base and is _not_ the location the process directory would have produced.
+The tests state paths the way a model states them — a bare file name, a leading current-directory
+token, a nested relative name, a placeholder, and no path at all — because those spellings are how a
+request actually arrives. Relative requests are measured from the working directory, not from the
+process directory, while absolute requests remain accepted and are judged by the same containment
+decision. A separate group covers dialect mirroring for emitted names: relative input yields
+relative output only when the working directory is granted and the result lies within it; otherwise
+the emitted name is absolute.
+
+Two scenarios are written as contrasts rather than as plain assertions, so that they cannot quietly
+become vacuous: the naive-prefix scenario asserts that a text-based check _would_ accept the request
+before asserting the policy refuses it, and the enumeration scenario asserts that a raw recursive
+listing _does_ surface the escaped file before asserting the policy's listing does not. Denial
+scenarios verify the new disclosure behavior: the request is echoed, a relative interpretation is
+reported only when one occurred, and the permitted locations are enumerated with access levels or
+reported as empty.
 
 Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Core.Tests` project.
 
@@ -32,7 +38,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **File system**: A temporary directory tree created per test through `ReparsePointFixture`,
-  with real files written into both the permitted location and the location outside it
+  with real files written into both granted locations and locations outside them
 - **Reparse points**: A directory junction created by `cmd.exe /c mklink /J` on Windows, and a
   directory symbolic link on Linux and macOS. A Windows symbolic link is deliberately not used;
   see _RealPathResolver Unit Verification Design_ for why
@@ -44,149 +50,45 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirty-nine scenarios below pass without error or exception beyond
-those explicitly asserted. Any escaping path that is permitted, any escaped file that appears in
-a listing, any denial message containing a host location or a directory separator, any relative
-request resolved against the process working directory, and any exception escaping a refusal
-constitutes a failure.
+A unit test run passes when all forty-three scenarios below pass without error or exception beyond
+those explicitly asserted. Any escaping path that is permitted, any escaped file that appears in a
+listing, any relative request resolved against the process working directory, any missing working
+directory accepted, any null grant accepted, any empty grant set permitting access, any read-only
+grant authorizing a write, any denial that fails to echo and enumerate as specified, or any
+exception escaping a refusal constitutes a failure.
 
 ### Test Scenarios
-
-#### AgentKitCore-PathPolicy-ForWorkspace: Naming a Workspace Sets the Base and Both Rules
-
-**Test**: `PathPolicy_ForWorkspace_Root_SetsBaseAndBothRules`
-
-Normal operation for the construction path the documentation recommends. Asserts the base, the
-read rule's location and the write rule's location are all the workspace, resolved to their real
-location.
-
-#### AgentKitCore-PathPolicy-ForWorkspace: A Workspace Policy Requires a Workspace
-
-**Test**: `PathPolicy_ForWorkspace_NullRoot_ThrowsArgumentException`
-
-Error path: a missing and an empty workspace are both refused, because there is no safe location
-to assume in place of one.
-
-#### AgentKitCore-PathPolicy-ForWorkspace: A Workspace Policy Carries the Host's Ceilings
-
-**Test**: `PathPolicy_ForWorkspace_CustomLimits_ExposesSuppliedLimits`
-
-Asserts the shorthand does not quietly substitute the defaults for the budget the host stated.
-
-#### AgentKitCore-PathPolicy-BaseDirectory: A Policy Without a Stated Base Uses the Read Rule's Location
-
-**Test**: `PathPolicy_Constructor_NoBaseDirectory_UsesTheReadRuleRoot`
-
-Asserts that a policy built the ordinary rooted way measures a relative path from the location it
-was confined to, rather than silently preserving the process-directory behavior.
-
-#### AgentKitCore-PathPolicy-BaseDirectory: A Workspace Reached Through a Link Is Reported at Its Real Location
-
-**Test**: `PathPolicy_BaseDirectory_RootReachedThroughLink_IsReportedAsItsRealLocation`
-
-Boundary condition: the workspace is named through a genuine reparse point. Asserts the policy
-holds the link's target rather than the link, so that every later comparison is real location
-against real location.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: A Bare File Name Resolves Beneath the Workspace
-
-**Test**: `PathPolicy_TryResolveRead_BareFileName_ResolvesBeneathTheBase`
-
-The scenario the workspace base exists for. Asserts the request a model actually writes is
-permitted and reads back the expected content.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: A Current-Directory Prefix Resolves Beneath the Workspace
-
-**Test**: `PathPolicy_TryResolveRead_DotSlashFileName_ResolvesBeneathTheBase`
-
-Asserts the leading token a model often adds reaches the same file the bare name reaches.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: A Nested Relative Path Resolves Beneath the Workspace
-
-**Test**: `PathPolicy_TryResolveRead_NestedRelativePath_ResolvesBeneathTheBase`
-
-Uses a forward slash deliberately, because that is the separator a model writes regardless of the
-host platform.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: A Relative Path Is Not Measured From the Process Directory
-
-**Test**: `PathPolicy_TryResolveRead_RelativePath_IsNotResolvedAgainstTheProcessDirectory`
-
-The regression scenario for the defect. Asserts the resolved location lies beneath the base
-**and** is not the location the process working directory would have produced, so the scenario
-names the failure being prevented rather than merely describing the success.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: An Absolute Path Inside the Workspace Is Permitted
-
-**Test**: `PathPolicy_TryResolveRead_AbsolutePathInsideRoot_ReturnsRealPath`
-
-Asserts that naming a workspace narrows how a bare name is read without withdrawing the absolute
-form a host composing paths itself relies on.
-
-#### AgentKitCore-PathPolicy-RelativePathAgainstBase: A Bare File Name Resolves for Writing Too
-
-**Test**: `PathPolicy_TryResolveWrite_BareFileName_ResolvesBeneathTheBase`
-
-Asserts reads and writes interpret one name identically, which is what lets an agent write back
-under the name it read.
-
-#### AgentKitCore-PathPolicy-OmittedPathMeansBase: An Omitted Path Denotes the Workspace
-
-**Test**: `PathPolicy_TryResolveRead_OmittedPath_ResolvesToTheBase`
-
-A theory over a missing, an empty and a whitespace request. Asserts each is answered with the
-workspace rather than raising, which is the promise that no caller-supplied path is an exception.
-
-#### AgentKitCore-PathPolicy-OmittedPathMeansBase: A Placeholder Word Denotes the Workspace
-
-**Test**: `PathPolicy_TryResolveRead_PlaceholderPath_ResolvesToTheBase`
-
-A theory over the literal words a model's own runtime prints for absence, in two capitalizations.
-Asserts each is treated exactly as an omitted argument is.
-
-#### AgentKitCore-PathPolicy-OmittedPathMeansBase: An Omitted Write Path Does Not Throw
-
-**Test**: `PathPolicy_TryResolveWrite_OmittedPath_DoesNotThrow`
-
-Asserts the non-throwing promise holds on the write path as well as the read path.
 
 #### AgentKitCore-PathPolicy-DenyEscapedPath: A File Beneath a Link Outside the Root Is Refused
 
 **Test**: `PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial`
 
-The enumeration-independent escape scenario. A secret is written outside the permitted location
-and a directory link is created inside it. Asserts the request is refused, that no location is
-handed back, and that a reason is supplied.
+The enumeration-independent escape scenario. A secret is written outside the permitted location and
+a directory link is created inside it. The request text appears contained, but its real location is
+outside every grant, so the policy refuses it and hands back no location.
 
 #### AgentKitCore-PathPolicy-DenyEscapedPath: A Request Passing a Naive Prefix Check Is Still Refused
 
 **Test**: `PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied`
 
 The naive-prefix-check scenario. Asserts first that the requested path text genuinely begins with
-the permitted location followed by a separator — so a string comparison would accept it — and
-then that the policy refuses it anyway. Pins the reason containment cannot be decided on the
-requested text.
+the granted location followed by a separator — so a string comparison would accept it — and then
+that the policy refuses it anyway. Pins the reason containment cannot be decided on requested text.
 
-#### AgentKitCore-PathPolicy-DenyEscapedPath: A Relative Path Climbing Out of the Workspace Is Refused
+#### AgentKitCore-PathPolicy-DenyEscapedPath: A Relative Path Climbing Out of the Working Directory Is Refused
 
 **Test**: `PathPolicy_TryResolveRead_RelativeParentTraversal_ReturnsDenial`
 
-Asserts that accepting relative requests does not weaken containment: the escape is judged on the
-resolved location exactly as an absolute escape is.
+Asserts that accepting relative requests does not weaken containment: the escape is made absolute
+against the working directory, resolved to its real location, and refused.
 
 #### AgentKitCore-PathPolicy-DenyEscapedPath: A Relative Path Beneath a Link Outside the Root Is Refused
 
 **Test**: `PathPolicy_TryResolveRead_RelativePathBeneathLinkOutsideRoot_ReturnsDenial`
 
-The scenario that pins the resolution order. The per-component reparse-point walk runs on the
-path only after it has been made absolute against the workspace, so a relative escape and the
-absolute spelling of the same request reach the same decision.
-
-#### AgentKitCore-PathPolicy-DenyEscapedPath: An Absolute Path Outside the Workspace Is Refused
-
-**Test**: `PathPolicy_TryResolveRead_AbsolutePathOutsideRoot_ReturnsDenial`
-
-Asserts containment is unchanged by the introduction of the workspace base.
+The scenario that pins the resolution order. The per-component reparse-point walk runs only after
+the relative request has been made absolute against the working directory, so a relative escape and
+the absolute spelling of the same request reach the same decision.
 
 #### AgentKitCore-PathPolicy-RealPathReported: A Permitted Read Returns Its Real Location
 
@@ -199,74 +101,261 @@ reads back the expected content.
 
 **Test**: `PathPolicy_TryResolveRead_DeniedPath_ReturnsFalseWithoutThrowing`
 
-Error path: a location outside the permitted one is refused by return value, with a non-empty
-reason and no location.
-
-#### AgentKitCore-PathPolicy-DenialMessageRedacted: A Denial Message Omits the Requested Path
-
-**Test**: `PathPolicy_TryResolveRead_DeniedPath_DenialMessageOmitsRequestedPath`
-
-Asserts the denial message contains neither the requested path nor the permitted location, and
-contains no directory separator at all — so no host location can be present in any form.
-
-#### AgentKitCore-PathPolicy-DenialMessageRedacted: A Denial Message Contains No Directory Separator
-
-**Test**: `PathPolicy_TryResolveRead_DeniedPath_DenialMessageContainsNoDirectorySeparator`
-
-Asserts the property directly, for both the platform separator and the alternative one, so that
-the recovery guidance cannot silently retire the check by adopting an example containing a slash.
-
-#### AgentKitCore-PathPolicy-DenialGuidance: A Denial Message States the Expected Path Form
-
-**Test**: `PathPolicy_TryResolveRead_DeniedPath_DenialMessageStatesTheExpectedPathForm`
-
-Asserts the message names the workspace-relative form and gives a bare file name as its example,
-so that a refused agent has something to act on rather than a bare "no" to retry against.
+Error path: a location outside the permitted one is refused by return value, with a non-empty reason
+and no location.
 
 #### AgentKitCore-PathPolicy-UnresolvablePathDenied: A Malformed Path Is Refused
 
 **Test**: `PathPolicy_TryResolveRead_MalformedPath_ReturnsDenial`
 
 Boundary condition: a path containing an embedded null character cannot be interpreted by any
-platform. Asserts it is refused with a reason rather than allowed to throw, confirming the
-fail-safe reading for input a model controls.
+platform. It is refused with a reason rather than allowed to throw, confirming the fail-safe reading
+for input a model controls.
 
-#### AgentKitCore-PathPolicy-IndependentRules: The Write Rule Grants Nothing to a Read
+#### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: A Read-Write Working Directory Handles Relative Work
 
-**Test**: `PathPolicy_TryResolveRead_WriteRootOnly_DeniesReadOutsideReadRoot`
+**Test**: `PathPolicy_WorkingDirectoryGrantedReadWrite_RelativeRequestsSucceed`
 
-Constructs a policy whose read and write rules are rooted at different locations, and asserts that
-a location only the write rule permits is refused for reading while remaining permitted for
-writing.
+Agent viewpoint for the common shape: the working directory is also a read-write grant. A bare read
+succeeds, a bare write resolves beneath the anchor, and `EmitRelative` confirms the result should be
+reported in the relative dialect.
 
-#### AgentKitCore-PathPolicy-RealPathReported: A Permitted Write Returns Its Real Location
+#### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: A Read-Only Working Directory Refuses a Write
 
-**Test**: `PathPolicy_TryResolveWrite_PermittedPath_ReturnsRealPath`
+**Test**: `PathPolicy_WorkingDirectoryGrantedReadOnly_RelativeWriteDenied`
 
-Normal operation for a file that does not exist yet: the write is permitted and the real location
-the caller may create is returned.
+Agent viewpoint for a read-only anchor. A bare read succeeds because read-only grants authorize
+reads, but a bare write is refused and the denial enumerates the working directory as
+`(read-only)`.
 
-#### AgentKitCore-PathPolicy-DenialResult: A Refused Write Returns Without Throwing
+#### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: An Ungranted Working Directory Permits Nothing
 
-**Test**: `PathPolicy_TryResolveWrite_DeniedPath_ReturnsFalseWithoutThrowing`
+**Test**: `PathPolicy_WorkingDirectoryGrantedNothing_RelativeReadDenied_NamesNoLocations`
 
-Error path for writes, mirroring the read case.
+The app-folder anchor case: a bare name resolves under the working directory even when no grant
+covers it, and is then correctly denied. The denial states `No locations are permitted.` rather than
+implying the anchor itself carries permission.
 
-#### AgentKitCore-PathPolicy-IndependentRules: A Readable Location Is Not Thereby Writable
+#### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: An Ungranted Anchor Enumerates Grants Elsewhere
+
+**Test**: `PathPolicy_UngrantedWorkingDirectory_RelativeReadDenied_EnumeratesElsewhere`
+
+A policy anchored at one directory grants a different directory read-only. A bare request resolves
+under the ungranted anchor, is refused, and the denial names the location that is actually permitted
+with its read-only level.
+
+#### AgentKitCore-PathPolicy-GrantPermissionModel: Multiple Grants Support a Cross-Location Task
+
+**Test**: `PathPolicy_TwoGrants_CrossLocationTask_ReadOnlyReadsAndReadWriteWrites`
+
+Constructs a policy anchored at a read-only work folder with a separate read-write session folder.
+The scenario proves the agent can read the work input, write the session output, and still cannot
+write back into the read-only work location.
+
+#### AgentKitCore-PathPolicy-GrantPermissionModel: A Readable Location Is Not Thereby Writable
 
 **Test**: `PathPolicy_TryResolveWrite_ReadableButNotWritablePath_ReturnsDenial`
 
-Constructs the read-wide, write-narrow configuration and asserts the same location is permitted
-for reading and refused for writing.
+Constructs wide read access plus a narrower read-write grant. The outside location is readable but
+not writable, proving read permission never implies write permission.
+
+#### AgentKitCore-PathPolicy-WorkingDirectoryRequired: Missing Working Directory Throws
+
+**Test**: `PathPolicy_Constructor_MissingWorkingDirectory_ThrowsArgumentException`
+
+A theory over null and empty working-directory values. A policy has no safe process-directory
+fallback, so a missing anchor is a programming error rejected at construction.
+
+#### AgentKitCore-PathPolicy-GrantsValidated: Null Grants Throw
+
+**Test**: `PathPolicy_Constructor_NullGrants_ThrowsArgumentNullException`
+
+Asserts a null grant collection is rejected at construction rather than producing a half-built
+policy.
+
+#### AgentKitCore-PathPolicy-GrantsValidated: A Null Grant Entry Throws
+
+**Test**: `PathPolicy_Constructor_NullGrantEntry_ThrowsArgumentNullException`
+
+Asserts a null entry inside the grant collection is rejected, so every grant the policy exposes is a
+real `PathRule`.
+
+#### AgentKitCore-PathPolicy-GrantsValidated: Empty Grants Are Valid and Permit Nothing
+
+**Test**: `PathPolicy_Constructor_EmptyGrants_IsValidAndPermitsNothing`
+
+Constructs a policy with an empty grant set. It exposes no grants and refuses even its own working
+directory, proving "valid" is not the same as "permissive."
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Created Without Ceilings Carries the Defaults
+
+**Test**: `PathPolicy_Constructor_NoLimits_UsesDefaultLimits`
+
+Asserts the two-argument constructor yields the **same shared instance** as `ToolLimits.Default`,
+rather than merely an equal one, so the delegation cannot silently allocate a fresh set of ceilings.
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Exposes the Ceilings the Host Supplied
+
+**Test**: `PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits`
+
+Normal operation: the host's ceilings are the ceilings the governed tools observe.
+
+#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Cannot Be Created With Missing Ceilings
+
+**Test**: `PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException`
+
+Error path: "unbounded" is not a sensible default, so an explicitly absent set of ceilings is the
+same kind of programming error as an absent grant collection.
+
+#### AgentKitCore-PathPolicy-WorkingDirectoryRequired: A Linked Working Directory Is Reported at Its Real Location
+
+**Test**: `PathPolicy_WorkingDirectory_ReachedThroughLink_IsReportedAsItsRealLocation`
+
+Boundary condition: the working directory is named through a genuine reparse point. The policy holds
+the link's target rather than the link, so every later comparison is real location against real
+location.
+
+#### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Current-Directory Prefix Resolves Beneath the Anchor
+
+**Test**: `PathPolicy_TryResolveRead_DotSlashFileName_ResolvesBeneathTheAnchor`
+
+Asserts the leading token a model often adds reaches the same file the bare name reaches.
+
+#### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Nested Relative Path Resolves Beneath the Anchor
+
+**Test**: `PathPolicy_TryResolveRead_NestedRelativePath_ResolvesBeneathTheAnchor`
+
+Uses a forward slash deliberately, because that is the separator a model writes regardless of the
+host platform and the separator the list tool reports in names.
+
+#### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Relative Paths Ignore the Process Directory
+
+**Test**: `PathPolicy_TryResolveRead_RelativePath_IsNotResolvedAgainstTheProcessDirectory`
+
+The regression scenario for the observed defect. The resolved location lies beneath the working
+directory **and** is not the location the process working directory would have produced.
+
+#### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Absolute Path Inside Anchor Is Permitted
+
+**Test**: `PathPolicy_TryResolveRead_AbsolutePathInsideRoot_ReturnsRealPath`
+
+Asserts that anchoring bare names at the working directory does not withdraw the absolute form a
+host composing paths itself relies on.
+
+#### AgentKitCore-PathPolicy-DenyEscapedPath: Absolute Path Outside the Working Directory Is Refused
+
+**Test**: `PathPolicy_TryResolveRead_AbsolutePathOutsideRoot_ReturnsDenial`
+
+Asserts containment is unchanged by the introduction of the working-directory anchor.
+
+#### AgentKitCore-PathPolicy-OmittedPathMeansWorkingDirectory: Omitted Path Denotes the Working Directory
+
+**Test**: `PathPolicy_TryResolveRead_OmittedPath_ResolvesToTheAnchor`
+
+A theory over a missing, empty and whitespace request. Each resolves to the working directory rather
+than raising, which is the promise that no caller-supplied path is an exception.
+
+#### AgentKitCore-PathPolicy-OmittedPathMeansWorkingDirectory: Placeholder Word Denotes the Working Directory
+
+**Test**: `PathPolicy_TryResolveRead_PlaceholderPath_ResolvesToTheAnchor`
+
+A theory over the literal words a model runtime may print for absence. Each is treated exactly as an
+omitted argument is.
+
+#### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Bare File Name Resolves for Writing Too
+
+**Test**: `PathPolicy_TryResolveWrite_BareFileName_ResolvesBeneathTheAnchor`
+
+Asserts reads and writes interpret one name identically, which is what lets an agent write back under
+the name it read.
+
+#### AgentKitCore-PathPolicy-DialectMirroring: EmitRelative Mirrors Caller Dialect and Result Location
+
+**Test**: `PathPolicy_EmitRelative_MirrorsTheCallerAndTheResultLocation`
+
+Pins the dialect rule: relative input and a result inside the granted working directory emit a
+relative name; absolute input emits an absolute name; discovery establishes the dialect; and a result
+outside the anchor is emitted absolutely.
+
+#### AgentKitCore-PathPolicy-DialectMirroring: Ungranted Anchors Emit Absolute Names
+
+**Test**: `PathPolicy_EmitRelative_UngrantedAnchor_IsAlwaysAbsolute`
+
+A discovery request does not make names relative when the working directory is not granted. The
+policy exposes that the anchor is ungranted and reports absolute output instead.
+
+#### AgentKitCore-PathPolicy-DiscoveryLocations: Discovery Lists One Location Per Grant
+
+**Test**: `PathPolicy_DiscoveryRoots_ListOneLocationPerGrant`
+
+A rooted grant contributes its resolved location, and an unrestricted grant contributes the working
+directory as the walkable discovery location. The set is deduplicated for grouped listings.
+
+#### AgentKitCore-PathPolicy-LastSegmentAlias: A Unique Final Folder Name Resolves to Its Grant
+
+**Test**: `PathPolicy_TryResolveRead_LastSegmentAlias_ResolvesToTheGrant`
+
+A bare segment equal to exactly one grant's final folder name resolves to that grant rather than to a
+child of the ungranted working directory, because nothing by that name exists under the working
+directory so the alias fires as the fallback. This lets a model use the final name it saw under an
+absolute listing header.
+
+#### AgentKitCore-PathPolicy-LastSegmentAlias: Ambiguous Final Folder Names Are Not Aliased
+
+**Test**: `PathPolicy_TryResolveRead_AmbiguousAlias_IsNotAliased_EnumeratesBoth`
+
+Two grants have the same final folder name, and nothing by that name exists under the working
+directory so the alias is considered. The bare segment is denied rather than guessed, and the
+denial enumerates both real locations so the model can choose an absolute one.
+
+#### AgentKitCore-PathPolicy-AliasIsFallback: A Working-Directory Subfolder Shadows a Same-Named Grant
+
+**Test**: `PathPolicy_TryResolveRead_WorkingDirectorySubfolderShadowsSameNamedGrant`
+
+The working directory contains a real subfolder whose name also matches a different granted
+location's final folder name. The bare segment resolves to the working-directory subfolder — the
+documented interpretation wins — rather than silently returning the other grant's contents. The
+alias is confined to a fallback that fires only when the working-directory interpretation does not
+name an existing path, eliminating the silent wrong-target case.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Relative Denial Echoes, Interprets, and Enumerates
+
+**Test**: `PathPolicy_TryResolveRead_RelativeDenial_EchoesInterpretsAndEnumerates`
+
+Asserts the new denial order for a relative escape: `Requested: "..."` echoes the input verbatim,
+`Interpreted as:` states the absolute location produced by the working directory, and permitted
+locations are listed with access levels.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Absolute Denial Has No Interpretation Clause
+
+**Test**: `PathPolicy_TryResolveRead_AbsoluteDenial_HasNoInterpretationClause`
+
+Asserts an absolute refusal still echoes the requested location and enumerates grants, but does not
+claim an interpretation occurred.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Bare Segment Under Empty Grants Produces the Worked Example
+
+**Test**: `PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample`
+
+Pins the app-folder anchor example. A `file_list("work")`-style request under an ungranted anchor
+echoes `work`, interprets it beneath the working directory, and states that no locations are
+permitted.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Omitted Denial Echoes a Stand-In
+
+**Test**: `PathPolicy_TryResolveRead_OmittedDenial_EchoesAStandIn`
+
+When no path was supplied and the working directory itself is not granted, the denial echoes
+`(no path — the working directory)` rather than an empty quotation and does not include an
+interpretation clause.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: Enumeration Across a Link Excludes the Escaped File
 
 **Test**: `PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile`
 
-The enumeration-escape scenario. Asserts first that a raw recursive listing of the permitted
-location **does** surface the file that lies outside it — confirming the operating system follows
-the link, so the scenario cannot become vacuous — and then that the policy's listing excludes it
-while still including a legitimately contained file.
+The enumeration-escape scenario. Raw recursive listing proves the operating system follows the link
+and surfaces the outside file; policy enumeration excludes it while still including a legitimately
+contained file.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: Permitted Files Are Listed
 
@@ -280,52 +369,18 @@ the filtering is not over-broad.
 **Test**: `PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty`
 
 Error path: listing a populated directory outside the permitted location yields an empty result
-rather than an exception or a disclosure.
+rather than an exception.
 
-#### AgentKitCore-PathPolicy-EnumerationFiltered: An Omitted Directory Lists the Workspace
+#### AgentKitCore-PathPolicy-EnumerationFiltered: An Omitted Directory Lists the Working Directory
 
-**Test**: `PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheBase`
+**Test**: `PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheAnchor`
 
-Asserts the first question an agent asks about a workspace it has not seen is answered rather
-than refused, and that the answer is the workspace itself.
+Asserts the first question an agent asks about a workspace it has not seen is answered with the
+working directory when that directory is granted.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: A Relative Directory Lists That Directory
 
 **Test**: `PathPolicy_EnumerateFiles_RelativeDirectory_ListsThatDirectory`
 
-Asserts a relative directory name narrows the listing to that subdirectory rather than widening
-it to the whole workspace, confirming the base resolution applies to enumeration as it does to
-direct access.
-
-#### AgentKitCore-PathPolicy-RequiredRules: A Policy Cannot Be Created Without a Read Rule
-
-**Test**: `PathPolicy_Constructor_NullReadRule_ThrowsArgumentNullException`
-
-Asserts an unguarded policy is unrepresentable.
-
-#### AgentKitCore-PathPolicy-RequiredRules: A Policy Cannot Be Created Without a Write Rule
-
-**Test**: `PathPolicy_Constructor_NullWriteRule_ThrowsArgumentNullException`
-
-Asserts both rules are required, not merely the first.
-
-#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Created Without Ceilings Carries the Defaults
-
-**Test**: `PathPolicy_Constructor_NoLimits_UsesDefaultLimits`
-
-Asserts the two-rule constructor yields the **same shared instance** as `ToolLimits.Default`,
-rather than merely an equal one, so that the delegation cannot silently start allocating a fresh
-set of ceilings that happens to agree today.
-
-#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Exposes the Ceilings the Host Supplied
-
-**Test**: `PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits`
-
-Normal operation: the host's ceilings are the ceilings the governed tools observe.
-
-#### AgentKitCore-PathPolicy-CarriesLimits: A Policy Cannot Be Created With Missing Ceilings
-
-**Test**: `PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException`
-
-Error path: "unbounded" is not a sensible default, so an explicitly absent set of ceilings is the
-same kind of programming error as an absent rule.
+Asserts a relative directory name narrows enumeration to that subdirectory rather than widening it to
+the whole working directory.

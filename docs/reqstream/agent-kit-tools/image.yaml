@@ -105,29 +105,28 @@ sections:
           - id: AgentKitTools-Image-DenialsAreResults
             title: >-
               The image family shall report every refusal as a returned result that names its
-              reason, carries no host location, and directs the model to a better tool where one
-              exists.
-            tags: [security]
+              reason, discloses the permitted locations, and directs the model to a better tool
+              where one exists.
             justification: |
               An exception raised while a model is calling a tool ends the agent's turn and
               strands it with no way forward, whereas a returned refusal lets it read the reason
-              and choose a permitted alternative. The refusal is handed to a model and the
-              resulting transcript leaves this process, so it must disclose nothing about the
-              host's layout. A refusal that also names a better tool — a text tool for an .svg —
-              turns a dead end into the agent's next step, while one that has no honest
-              alternative says so rather than sending the model to a tool that would also fail.
+              and choose a permitted alternative. A policy refusal now discloses the permitted
+              locations so a confined model learns where it may look instead of guessing. A refusal
+              that also names a better tool — a text tool for an .svg — turns a dead end into the
+              agent's next step, while one that has no honest alternative says so rather than
+              sending the model to a tool that would also fail.
             children:
               - AgentKitTools-Image-ReadTool-UnsupportedTypeDenied
               - AgentKitTools-Image-ReadTool-DirectoryRefused
               - AgentKitTools-Image-ReadTool-MissingFileDenied
               - AgentKitTools-Image-ReadTool-MalformedRequestDenied
-              - AgentKitTools-Image-ReadTool-DenialRedaction
+              - AgentKitTools-Image-ReadTool-DenialDisclosure
               - AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
               - AgentKitTools-Image-MediaTypes-RefusesSvgzNoTool
               - AgentKitTools-Image-MediaTypes-RefusesUnknownType
             tests:
               - Image_Family_DeniedRequest_ReturnsAResultWithoutThrowing
-              - Image_Family_DenialText_ContainsNoHostPath
+              - Image_Family_DenialText_DisclosesPermittedLocation
               - Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful
 
           - id: AgentKitTools-Image-ObservesPolicyLimits

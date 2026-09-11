@@ -48,7 +48,7 @@ public class ImageReadToolTests
     public void ImageReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
     {
         // Arrange: a policy governing an otherwise irrelevant location
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: construct the tool
         var tool = ImageReadTool.Create(policy);
@@ -158,7 +158,7 @@ public class ImageReadToolTests
     [Fact]
     public async Task ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
     {
-        // Arrange: an image in a sibling directory the read rule does not permit
+        // Arrange: an image in a sibling directory no grant permits reading
         using var fixture = new ReparsePointFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
@@ -311,7 +311,7 @@ public class ImageReadToolTests
     {
         // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
         var tool = ImageReadTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
 
         // Act: invoke with an empty path, as a confused model would
         var result = await InvokeAsync(tool, string.Empty);
@@ -330,7 +330,7 @@ public class ImageReadToolTests
     {
         // Arrange: a tool governed by an unrestricted policy
         var tool = ImageReadTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
 
         // Act: invoke with a path consisting only of whitespace
         var result = await InvokeAsync(tool, "   ");
@@ -386,29 +386,27 @@ public class ImageReadToolTests
     }
 
     /// <summary>
-    ///     Proves a refusal discloses no host location.
+    ///     Proves a policy refusal discloses the permitted location so a confined model learns
+    ///     where it may look.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail()
+    public async Task ImageReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation()
     {
-        // Arrange: a file outside the permitted location, so the refusal has something to leak
+        // Arrange: a file outside the permitted location
         using var fixture = new ReparsePointFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
-        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = ImageReadTool.Create(policy);
 
         // Act: request the refused file
         var result = await InvokeAsync(tool, outsideFile);
 
-        // Assert: neither the requested path, the permitted location nor a separator appears
+        // Assert: the request is echoed and the permitted location is named with its level
         var text = Assert.IsType<string>(result);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("secret.png", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            text,
-            StringComparison.Ordinal);
+        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -424,7 +422,7 @@ public class ImageReadToolTests
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
+        return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
     }
 
     /// <summary>

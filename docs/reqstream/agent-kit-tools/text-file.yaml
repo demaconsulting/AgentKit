@@ -77,10 +77,10 @@ sections:
               - AgentKitTools-TextFile-WriteTool-WritePermittedFile
               - AgentKitTools-TextFile-WriteTool-RelativePath
               - AgentKitTools-TextFile-WriteTool-ReplacesExistingContent
-              - AgentKitTools-TextFile-WriteTool-IndependentWriteRule
+              - AgentKitTools-TextFile-WriteTool-WriteDecisionAlone
               - AgentKitTools-TextFile-WriteTool-DenyOutsideRoot
               - AgentKitTools-TextFile-ListTool-PolicyEnumeration
-              - AgentKitTools-TextFile-ListTool-RelativeNames
+              - AgentKitTools-TextFile-ListTool-GroupedListing
               - AgentKitTools-TextFile-ListTool-RelativeDirectory
               - AgentKitTools-TextFile-ListTool-OmittedDirectory
               - AgentKitTools-TextFile-ListTool-DeterministicOrder
@@ -94,32 +94,31 @@ sections:
           - id: AgentKitTools-TextFile-DenialsAreResults
             title: >-
               The text file family shall report every refusal as a returned result that names its
-              reason, states how to phrase a request that could succeed, carries no host location,
-              and directs the model to a better tool where one exists.
-            tags: [security]
+              reason, discloses the permitted locations, and directs the model to a better tool
+              where one exists.
             justification: |
               An exception raised while a model is calling a tool ends the agent's turn and
               strands it with no way forward, whereas a returned refusal lets it read the reason
               and choose a permitted alternative. A refusal that names no alternative is barely
               better: an agent told only "no" retries the same request until it abandons the
-              task. The refusal is handed to a model and the
-              resulting transcript leaves this process, so it must disclose nothing about the
-              host's layout — the very thing containment exists to protect.
+              task. A policy refusal now discloses the permitted locations so a confined model
+              learns the truthful map of where it may work instead of guessing — the
+              host-path-disclosure rule that once redacted these refusals is deliberately dropped.
             children:
               - AgentKitTools-TextFile-ReadTool-MissingFileDenied
               - AgentKitTools-TextFile-ReadTool-DirectoryRefused
               - AgentKitTools-TextFile-ReadTool-BinaryRefused
               - AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
-              - AgentKitTools-TextFile-ReadTool-DenialRedaction
+              - AgentKitTools-TextFile-ReadTool-DenialDisclosure
               - AgentKitTools-TextFile-WriteTool-MissingParentDenied
               - AgentKitTools-TextFile-WriteTool-DirectoryRefused
               - AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
-              - AgentKitTools-TextFile-WriteTool-DenialRedaction
+              - AgentKitTools-TextFile-WriteTool-DenialDisclosure
               - AgentKitTools-TextFile-ListTool-DeniedDirectory
-              - AgentKitTools-TextFile-ListTool-DenialRedaction
+              - AgentKitTools-TextFile-ListTool-DenialDisclosure
             tests:
               - TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing
-              - TextFile_Family_DenialText_ContainsNoHostPath
+              - TextFile_Family_DenialText_DisclosesPermittedLocation
 
           - id: AgentKitTools-TextFile-ObservesPolicyLimits
             title: >-

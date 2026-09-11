@@ -17,8 +17,11 @@ listing, so a fixture that failed to create the link fails the test rather than 
 vacuously.
 
 The remaining scenarios assert the properties that determine whether a listing is usable rather than
-merely safe: relative platform-neutral names, a deterministic order, pattern narrowing, an empty
-listing reported as a fact, and an oversized listing refused rather than truncated.
+merely safe: grouped output under absolute location headers, bare names relative to each header,
+dialect mirroring for relative and absolute requests, deterministic order, pattern narrowing, an
+empty listing reported as a fact, a discovery listing that covers every grant, and an oversized
+listing refused rather than truncated. Policy denials are passed through with the current disclosure
+behavior, so the refused request and permitted locations are visible to the model.
 
 Unit tests reside in `TextFile/TextFileListToolTests.cs`, with the shared reparse-point fixture in
 `TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -28,20 +31,20 @@ Unit tests reside in `TextFile/TextFileListToolTests.cs`, with the shared repars
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: No external services or network access required
-- **File system**: Each scenario creates and deletes its own temporary tree containing a permitted
-  root and a sibling directory outside it
+- **File system**: Each scenario creates and deletes its own temporary tree containing a working
+  directory, any additional granted locations, and a sibling directory outside them
 - **Reparse points**: A directory junction on Windows, a symbolic link elsewhere; a failure to
   create one fails the test rather than skipping it
 - **Isolation**: Each test constructs its own policy, tool and tree; no state is shared
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty scenarios below pass without error or exception beyond those
-explicitly asserted. An escaped file appearing in a listing, an absolute name in a listing, a
-non-deterministic order, a truncated listing where a refusal was required, an empty listing reported
-as a refusal, a request naming no directory refused or raising rather than listing the workspace,
-an exception raised at a malformed request, and a refusal containing a host path each
-constitute a failure.
+A unit test run passes when all nineteen scenarios below pass without error or exception beyond
+those explicitly asserted. An escaped file appearing in a listing, a missing absolute header, names
+reported relative to the wrong header, a non-deterministic order, a truncated listing where a refusal
+was required, an empty listing reported as a refusal, a request naming no directory refused or
+raising rather than discovering permitted locations, an exception raised at a malformed request, or a
+policy refusal that does not disclose the permitted locations constitutes a failure.
 
 #### Test Scenarios
 
@@ -72,12 +75,12 @@ Error path at construction: a listing tool governed by nothing would advertise t
 Asserts both the positive and the negative type. This unit's delegate is synchronous, so the
 scenario also confirms the guard applies to a synchronous tool exactly as to an asynchronous one.
 
-##### AgentKitTools-TextFile-ListTool-PolicyEnumeration: A Permitted Directory Lists Its Files
+##### AgentKitTools-TextFile-ListTool-PolicyEnumeration: Discovery Lists Relative Names Under the Anchor Header
 
-**Test**: `TextFileListTool_List_PermittedDirectory_ListsThePermittedFiles`
+**Test**: `TextFileListTool_List_Discovery_ListsRelativeNamesUnderTheAnchorHeader`
 
-Normal operation: the exact listing is asserted, so an extra or missing entry fails rather than
-being absorbed by a looser check.
+Normal operation for the first listing an agent makes. With the working directory granted, omitting
+the directory produces one absolute working-directory header and bare names beneath it.
 
 ##### AgentKitTools-TextFile-ListTool-PolicyEnumeration: A Link Out of the Root Does Not List the Escaped File
 
@@ -87,12 +90,12 @@ The unit's security control. A real reparse point inside the permitted root poin
 directory holding a file; the escaped file is read through the link on disk to prove the link works,
 and the listing is then asserted to contain the permitted file and not the escaped one.
 
-##### AgentKitTools-TextFile-ListTool-RelativeNames: Names Are Relative to the Requested Directory
+##### AgentKitTools-TextFile-ListTool-GroupedListing: An Absolute Request Lists Under the Absolute Header
 
-**Test**: `TextFileListTool_List_PermittedDirectory_NamesAreRelativeToTheRequestedDirectory`
+**Test**: `TextFileListTool_List_AbsoluteDirectory_ListsUnderTheAbsoluteHeader`
 
-Disclosure control and usability: a file one level down is reported as `sub/child.txt`, and the
-permitted location does not appear anywhere in the result.
+Dialect mirroring for an absolute caller: the root is requested by absolute path, and the listing is
+grouped under that absolute location with names relative to it.
 
 ##### AgentKitTools-TextFile-ListTool-DeterministicOrder: Files Are Listed in a Deterministic Order
 
@@ -119,8 +122,8 @@ model exploring a directory it does not know.
 
 **Test**: `TextFileListTool_List_NoMatches_ReturnsAnEmptyListingNotADenial`
 
-Boundary condition: asserts both the reported text and the absence of a denial, because refusing
-here would tell the model to correct a request that is already correct.
+Boundary condition: asserts both the reported text, `No files matched.`, and the absence of a
+denial, because refusing here would tell the model to correct a request that is already correct.
 
 ##### AgentKitTools-TextFile-ListTool-ResultCeiling: A Listing Beyond the Result Ceiling Is Refused
 
@@ -129,26 +132,24 @@ here would tell the model to correct a request that is already correct.
 Boundary condition: the ceiling is named in the refusal and no file name appears in the result,
 which is what distinguishes a refusal from a truncation.
 
-##### AgentKitTools-TextFile-ListTool-DeniedDirectory: A Directory Outside the Read Root Is Refused
+##### AgentKitTools-TextFile-ListTool-DeniedDirectory: A Directory Outside the Read Grant Is Refused
 
 **Test**: `TextFileListTool_List_DirectoryOutsideTheReadRoot_ReturnsDenial`
 
 Error path: a refusal rather than an empty listing, so the agent learns it may not look there rather
 than concluding the location is empty.
 
-##### AgentKitTools-TextFile-ListTool-OmittedDirectory: An Omitted Directory Lists the Workspace Root
+##### AgentKitTools-TextFile-ListTool-OmittedDirectory: An Omitted Directory Lists the Anchor
 
-**Test**: `TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot`
+**Test**: `TextFileListTool_List_OmittedDirectory_ListsTheAnchor`
 
-A theory over a missing, an empty and a whitespace directory argument. Asserts each produces the
-listing of the workspace root rather than a refusal. This scenario **replaces** an earlier one
-that asserted the opposite: an agent exploring a workspace for the first time has no directory
-name to give, so refusing the only request it can make sent it guessing at locations it has no
-business exploring.
+A theory over a missing, an empty and a whitespace directory argument. With the working directory
+granted, each spelling discovers the permitted anchor under its absolute header and lists bare names
+beneath it.
 
-##### AgentKitTools-TextFile-ListTool-OmittedDirectory: A Placeholder Directory Lists the Workspace Root
+##### AgentKitTools-TextFile-ListTool-OmittedDirectory: A Placeholder Directory Lists the Anchor
 
-**Test**: `TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot`
+**Test**: `TextFileListTool_List_PlaceholderDirectory_ListsTheAnchor`
 
 A theory over the literal words a model's own runtime prints for absence. Asserts each is treated
 exactly as an omitted argument is, because a model whose schema marks an argument optional
@@ -160,21 +161,28 @@ frequently sends the word rather than omitting the argument.
 
 The scenario that pins the parameter as optional. A parameter with no default fails inside the
 function factory before the tool body is reached, and the model then receives an opaque framework
-error rather than anything it can act on — the observed failure this scenario exists to prevent.
-Invokes the tool with no arguments at all and asserts an ordinary listing comes back.
+error rather than anything it can act on. Invokes the tool with no arguments at all and asserts an
+ordinary discovery listing comes back.
 
-##### AgentKitTools-TextFile-ListTool-RelativeDirectory: A Bare Relative Directory Lists That Directory
+##### AgentKitTools-TextFile-ListTool-RelativeDirectory: A Bare Relative Directory Lists Under the Anchor
 
-**Test**: `TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory`
+**Test**: `TextFileListTool_List_BareRelativeDirectory_ListsUnderTheAnchor`
 
 Normal operation for the way a model names a subdirectory. Places a file in a subdirectory and
-another elsewhere in the workspace, and asserts only the named subdirectory is listed — so the
-relative name narrows the listing rather than being ignored.
+another elsewhere in the working directory, then asserts only the named subdirectory is listed under
+the working-directory header with a name relative to the anchor.
 
-##### AgentKitTools-TextFile-ListTool-DenialRedaction: A Refusal Contains No Host Detail
+##### AgentKitTools-TextFile-ListTool-GroupedListing: Two Grants Discover Under Separate Absolute Headers
 
-**Test**: `TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail`
+**Test**: `TextFileListTool_List_TwoGrants_Discovery_ListsEachUnderItsAbsoluteHeader`
 
-Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, nor a directory separator. The absence of a separator is also what keeps the recovery
-guidance the refusal now carries from reintroducing host layout.
+Discovery over multiple grants lists every granted location under its own absolute header. The
+working directory entry teaches bare names within the anchor, while the non-anchor entry teaches the
+absolute location the model must use to address that grant.
+
+##### AgentKitTools-TextFile-ListTool-DenialDisclosure: A Refusal Discloses the Permitted Location
+
+**Test**: `TextFileListTool_List_DeniedDirectory_DenialDisclosesPermittedLocation`
+
+Disclosure behavior: the refused request is echoed, and the permitted working directory is named
+with its `(read-write)` access level so a confined model learns where it may list instead.

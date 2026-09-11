@@ -52,7 +52,7 @@ public class TextFileReadToolTests
     public void TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
     {
         // Arrange: a policy governing an otherwise irrelevant location
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: construct the tool
         var tool = TextFileReadTool.Create(policy);
@@ -137,18 +137,18 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
     {
-        // Arrange: a file in a sibling directory the read rule does not permit
+        // Arrange: a file in a sibling directory no grant permits reading
         using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
+        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "classified-body");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         // Act: request the file outside the permitted location
         var result = await InvokeAsync(tool, outsideFile);
 
-        // Assert: refused, and the content never reaches the model
+        // Assert: refused, and the file content never reaches the model
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("secret", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("classified-body", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -295,7 +295,7 @@ public class TextFileReadToolTests
     {
         // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
         var tool = TextFileReadTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
 
         // Act: invoke with an empty path, as a confused model would
         var result = await InvokeAsync(tool, string.Empty);
@@ -314,7 +314,7 @@ public class TextFileReadToolTests
     {
         // Arrange: a tool governed by an unrestricted policy
         var tool = TextFileReadTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
 
         // Act: invoke with a path consisting only of whitespace
         var result = await InvokeAsync(tool, "   ");
@@ -438,7 +438,7 @@ public class TextFileReadToolTests
     }
 
     /// <summary>
-    ///     Proves a refusal tells the model what form a path should take.
+    ///     Proves a policy refusal echoes the request and names the permitted location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -447,44 +447,44 @@ public class TextFileReadToolTests
         // Arrange: a file outside the workspace
         using var fixture = new ReparsePointFixture();
         var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileReadTool.Create(policy);
 
         // Act: request the refused file
         var result = await InvokeAsync(tool, outsideFile);
 
-        // Assert: guidance the model can act on, without any host location in it
+        // Assert: the request is echoed and the permitted location is enumerated with its level
         var text = Assert.IsType<string>(result);
-        Assert.Contains("workspace root", text, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            text,
-            StringComparison.Ordinal);
+        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a refusal discloses no host location.
+    ///     Proves a policy refusal discloses the permitted location so a confined model learns
+    ///     where it may read.
     /// </summary>
+    /// <remarks>
+    ///     The earlier host-path-disclosure rule has been deliberately dropped: naming where the
+    ///     model may work is worth more than concealing paths it is already confined to.
+    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail()
+    public async Task TextFileReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation()
     {
-        // Arrange: a file outside the permitted location, so the refusal has something to leak
+        // Arrange: a file outside the permitted location
         using var fixture = new ReparsePointFixture();
         var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileReadTool.Create(policy);
 
         // Act: request the refused file
         var result = await InvokeAsync(tool, outsideFile);
 
-        // Assert: neither the requested path, the permitted location nor a separator appears
+        // Assert: the permitted location and the echoed request both appear
         var text = Assert.IsType<string>(result);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("secret.txt", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            text,
-            StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
+        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -723,7 +723,7 @@ public class TextFileReadToolTests
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
+        return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
     }
 
     /// <summary>

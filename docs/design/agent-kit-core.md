@@ -17,11 +17,12 @@ The system consists of:
 
 - **RealPathResolver Unit**: Reports the real file system location of a path, following
   symbolic links and directory junctions at every path component
-- **PathRule Unit**: One access rule — unrestricted or confined to a location — carrying its own
-  denied patterns
-- **PathPolicy Unit**: Pairs an independent read rule and write rule, carries the workspace
-  location relative paths are interpreted against, and provides the single containment decision
-  used by both direct access and directory enumeration
+- **PathRule Unit**: One access grant — unrestricted or confined to a location — carrying an
+  access level and its own denied patterns
+- **PathPolicy Unit**: Holds the one working directory relative paths are anchored to and the
+  zero-or-more access grants that permit locations, keeping addressing and permission orthogonal,
+  and provides the single containment decision used by both direct access and directory
+  enumeration
 - **ToolLimits Unit**: Carries the ceilings a tool observes when reading, returning and
   attaching content
 - **ToolResult Unit**: Constructs the results a guarded tool returns to the model, and defines
@@ -37,11 +38,11 @@ The system consists of:
   tool-result channel cannot carry one, by promoting it onto a following user message
 
 There are no subsystems. The three path-safety units form one collaboration:
-`PathPolicy` makes a relative request absolute against the workspace location it carries, resolves
-the result through `RealPathResolver`, and then consults exactly one
-`PathRule`, which itself resolved its confined location through `RealPathResolver` when it was
-created. `RealPathResolver` depends on nothing within the system, so the collaboration is
-acyclic.
+`PathPolicy` makes a relative request absolute against its `WorkingDirectory`, resolves the
+result through `RealPathResolver`, and then consults the applicable `PathRule` grants. Each
+rooted grant resolved its confined location through `RealPathResolver` when it was created, and
+each grant carries the access level that decides whether it can authorize a write as well as a
+read. `RealPathResolver` depends on nothing within the system, so the collaboration is acyclic.
 
 The four tool-contract units form a second collaboration. A pack author composes a tool name
 through `ToolName` and hands it, with a delegate, to `GuardedToolFactory`, which validates the
@@ -81,56 +82,78 @@ The path-safety API:
 - **RealPathResolver.Resolve(string path)**: Returns the real, absolute, normalized location of
   `path`. Throws `ArgumentNullException` for a null path, `ArgumentException` for an empty or
   invalid path, and `IOException` for a cyclic or over-deep link chain.
-- **PathRule.Unrestricted(IEnumerable&lt;string&gt;? denyPatterns)**: Creates a rule with no
-  location constraint. Throws `ArgumentException` for a null or empty pattern.
-- **PathRule.Rooted(string root, IEnumerable&lt;string&gt;? denyPatterns)**: Creates a rule
-  confined to `root`, resolved to its real location. Throws `ArgumentNullException` for a null
-  location and `ArgumentException` for an empty or invalid location or pattern.
-- **PathRule.Root**, **PathRule.DenyPatterns**: Read-only properties exposing the rule's real
-  confined location (or none) and its denied patterns.
+- **AccessLevel.ReadOnly**, **AccessLevel.ReadWrite**: Permission levels a grant can carry.
+  `ReadWrite` implies read; there is no write-only level.
+- **PathRule.Unrestricted(AccessLevel access, IEnumerable&lt;string&gt;? denyPatterns)**: Creates a
+  grant with no location constraint and the supplied access level. Throws `ArgumentException` for
+  a null or empty pattern.
+- **PathRule.ReadOnly(string root, IEnumerable&lt;string&gt;? denyPatterns)**: Creates a read-only
+  grant confined to `root`, resolved to its real location. Throws `ArgumentNullException` for a
+  null location and `ArgumentException` for an empty or invalid location or pattern.
+- **PathRule.ReadWrite(string root, IEnumerable&lt;string&gt;? denyPatterns)**: Creates a read-write
+  grant confined to `root`, resolved to its real location. Throws `ArgumentNullException` for a
+  null location and `ArgumentException` for an empty or invalid location or pattern.
+- **PathRule.Access**, **PathRule.Root**, **PathRule.DenyPatterns**: Read-only properties
+  exposing the grant's access level, real confined location (or none), and denied patterns.
 - **PathRule.Allows(string realPath)**: Returns whether an already-resolved location is
   permitted.
-- **PathPolicy(PathRule readRule, PathRule writeRule)**: Constructs a policy with the library's
-  documented resource ceilings. Throws `ArgumentNullException` when either rule is null.
-- **PathPolicy(PathRule readRule, PathRule writeRule, ToolLimits limits, string? baseDirectory)**:
-  Constructs a policy with explicit resource ceilings and, optionally, the location relative
-  requests are interpreted against. When no base is given it defaults to the read rule's location,
-  failing that the write rule's, failing that the process working directory. Throws
-  `ArgumentNullException` when any of the first three arguments is null, and `ArgumentException`
-  for an invalid base.
-- **PathPolicy.ForWorkspace(string root)** and **PathPolicy.ForWorkspace(string root, ToolLimits
-  limits)**: Creates a policy whose read rule, write rule and base are all `root`. Throws
-  `ArgumentNullException` / `ArgumentException` for a missing or empty workspace.
-- **PathPolicy.ReadRule**, **PathPolicy.WriteRule**: Read-only properties exposing the two rules.
+- **PathPolicy(string workingDirectory, IEnumerable&lt;PathRule&gt; grants)**: Constructs a policy
+  with the library's documented resource ceilings. The working directory is required, is resolved
+  to its real location, and grants no permission by itself. Throws `ArgumentException` for a
+  missing or empty working directory and `ArgumentNullException` for a null grant collection or
+  entry.
+- **PathPolicy(string workingDirectory, IEnumerable&lt;PathRule&gt; grants, ToolLimits limits)**:
+  Constructs a policy with explicit resource ceilings. Grants may be empty, producing a valid
+  policy that permits nothing. Throws `ArgumentException` for a missing or empty working
+  directory and `ArgumentNullException` for a null grant collection, null grant entry, or null
+  limits.
+- **PathPolicy.WorkingDirectory**, **PathPolicy.Grants**: Read-only properties exposing the real
+  anchor for relative paths and the permitted locations. The two are orthogonal; a working
+  directory is only permitted when the application also grants it.
 - **PathPolicy.Limits**: Read-only property exposing the ceilings every governed tool observes.
-- **PathPolicy.BaseDirectory**: Read-only property exposing the real location relative requests
-  are interpreted against.
+- **PathPolicy.WorkingDirectoryIsGranted**: Read-only property exposing whether the working
+  directory is itself permitted for reading, which helps decide whether tool output may be
+  emitted relative to it.
 - **PathPolicy.TryResolveRead / TryResolveWrite(string? path, out string? realPath, out string?
   denialMessage)**: Returns whether the access is permitted, with the real location on success
-  and a redacted reason carrying recovery guidance on refusal. A relative path is interpreted
-  against `BaseDirectory`; an omitted, empty, whitespace or placeholder path denotes
-  `BaseDirectory` itself.
+  and a denial on refusal. A read consults any grant; a write consults only read-write grants. A
+  relative path is interpreted against `WorkingDirectory`; an omitted, empty, whitespace or
+  placeholder path denotes `WorkingDirectory` itself. A denial echoes the request, states the
+  absolute interpretation only when a relative request was joined to the working directory, and
+  enumerates the permitted locations with their access levels.
 - **PathPolicy.EnumerateFiles(string? directory, string searchPattern)**: Returns the real
-  locations of the permitted files beneath a directory, which is `BaseDirectory` when no
+  locations of the permitted files beneath a directory, which is `WorkingDirectory` when no
   directory is named.
+- **PathPolicy.DiscoveryRoots()**: Returns the distinct locations a discovery listing should
+  enumerate, one per grant.
+- **PathPolicy.EmitRelative(string resultRealPath, string? callerInput)**: Returns whether a tool
+  should report a result relative to the working directory, mirroring the caller's dialect only
+  when doing so names the correct location.
+- **PathPolicy.IsDiscoveryRequest(string? directory)**: Returns whether a directory argument
+  denotes the discovery case that establishes the relative-eligible dialect.
 
-| Interface                    | Direction        | Format                         | Constraints                   |
-|------------------------------|------------------|--------------------------------|-------------------------------|
-| `RealPathResolver.Resolve`   | Inbound/Outbound | Method call / `string` return  | `path` non-null, non-empty    |
-| `PathRule.Unrestricted`      | Inbound/Outbound | Factory call / `PathRule`      | Patterns non-null, non-empty  |
-| `PathRule.Rooted`            | Inbound/Outbound | Factory call / `PathRule`      | `root`, patterns non-empty    |
-| `PathRule.Root`              | Outbound         | `string?` property read        | None; always succeeds         |
-| `PathRule.DenyPatterns`      | Outbound         | `IReadOnlyList<string>` read   | None; always succeeds         |
-| `PathRule.Allows`            | Inbound/Outbound | Method call / `bool` return    | Resolved, non-null, non-empty |
-| `new PathPolicy(...)`        | Inbound          | Constructor call               | Both rules non-null           |
-| `PathPolicy.ForWorkspace`    | Inbound/Outbound | Factory call / `PathPolicy`    | `root` non-null, non-empty    |
-| `PathPolicy.ReadRule`        | Outbound         | `PathRule` property read       | None; always succeeds         |
-| `PathPolicy.WriteRule`       | Outbound         | `PathRule` property read       | None; always succeeds         |
-| `PathPolicy.Limits`          | Outbound         | `ToolLimits` property read     | None; always succeeds         |
-| `PathPolicy.BaseDirectory`   | Outbound         | `string` property read         | None; always succeeds         |
-| `PathPolicy.TryResolveRead`  | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered    |
-| `PathPolicy.TryResolveWrite` | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered    |
-| `PathPolicy.EnumerateFiles`  | Inbound/Outbound | Method call / `IEnumerable`    | Pattern non-null, non-empty   |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `RealPathResolver.Resolve` | Inbound/Outbound | Method call / `string` return | `path` non-null, non-empty |
+| `AccessLevel` | Outbound | Enum values | Read-only or read-write |
+| `PathRule.Unrestricted` | Inbound/Outbound | Factory call / `PathRule` | Access defined, patterns valid |
+| `PathRule.ReadOnly` | Inbound/Outbound | Factory call / `PathRule` | `root`, patterns non-empty |
+| `PathRule.ReadWrite` | Inbound/Outbound | Factory call / `PathRule` | `root`, patterns non-empty |
+| `PathRule.Access` | Outbound | `AccessLevel` property read | None; always succeeds |
+| `PathRule.Root` | Outbound | `string?` property read | None; always succeeds |
+| `PathRule.DenyPatterns` | Outbound | `IReadOnlyList<string>` read | None; always succeeds |
+| `PathRule.Allows` | Inbound/Outbound | Method call / `bool` return | Resolved, non-null, non-empty |
+| `new PathPolicy(...)` | Inbound | Constructor call | Anchor, grants, limits valid |
+| `PathPolicy.WorkingDirectory` | Outbound | `string` property read | None; always succeeds |
+| `PathPolicy.Grants` | Outbound | `IReadOnlyList<PathRule>` read | None; always succeeds |
+| `PathPolicy.Limits` | Outbound | `ToolLimits` property read | None; always succeeds |
+| `PathPolicy.WorkingDirectoryIsGranted` | Outbound | `bool` property read | None; always succeeds |
+| `PathPolicy.TryResolveRead` | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered |
+| `PathPolicy.TryResolveWrite` | Inbound/Outbound | Method call / `bool` and `out` | None; any path is answered |
+| `PathPolicy.EnumerateFiles` | Inbound/Outbound | Method call / `IEnumerable` | Pattern non-null, non-empty |
+| `PathPolicy.DiscoveryRoots` | Inbound/Outbound | Method call / list return | None; always succeeds |
+| `PathPolicy.EmitRelative` | Inbound/Outbound | Method call / `bool` return | Result non-null |
+| `PathPolicy.IsDiscoveryRequest` | Inbound/Outbound | Method call / `bool` return | None; always succeeds |
 
 The system additionally exposes the tool-contract API:
 
@@ -266,20 +289,22 @@ The measure is segregated into three units whose responsibilities do not overlap
 - **RealPathResolver** establishes _where a path actually leads_, resolving symbolic links and
   directory junctions at every path component. Isolating this makes the one algorithm whose
   correctness the whole control depends on separately reviewable and separately testable.
-- **PathRule** establishes _what a location grants_, with read access and write access expressed
-  as independent rules so that neither can silently widen the other.
+- **PathRule** establishes _what a location grants_, carrying an access level that is permission
+  only: read-only or read-write. It has no addressing meaning and cannot silently change where a
+  relative path resolves.
 - **PathPolicy** makes _the single decision_, and both direct access and directory enumeration
   are routed through it so that a listing can never advertise a file that access would refuse. It
-  also holds _the location a relative request means_, so that a bare file name a model states is
-  made absolute against the workspace before the link resolution and the containment test are
-  applied. Placing the base on the policy rather than on a rule is what keeps reads and writes
-  interpreting one name the same way when one direction is unrestricted and the other confined.
+  also holds _the one location a relative request means_, so that a bare file name a model states
+  is made absolute against the working directory before the link resolution and the containment
+  test are applied. That anchor grants no permission; the application grants it, or does not
+  grant it, exactly as it grants any other location.
 
 Three further properties are part of the control: a refused access is reported as a returned
 denial rather than an exception, so a refusal cannot terminate an agent's turn; that denial
-states the form a permitted request takes, without naming any host location, so a refusal is a
-step the agent can recover from rather than a dead end it retries; and a policy
-cannot be constructed without both of its rules, so an unguarded policy is unrepresentable.
+echoes the request, states how a relative request was interpreted, and enumerates the permitted
+locations with access levels, so a refusal is a step the agent can recover from rather than a
+dead end it retries; and a policy cannot be constructed without an explicit working directory and
+grant collection, so an accidental process-global anchor is unrepresentable.
 
 Two properties of the tool contract are risk control measures in their own right. **Selective
 result marshalling** ensures a tool's output reaches the provider in the form the provider can
@@ -310,20 +335,22 @@ application cannot present the model with two tools it cannot tell apart.
 
 **Path containment path:**
 
-1. **Input**: A read rule, a write rule and a workspace location at policy construction, then a
-   requested path per access
+1. **Input**: A working directory, zero or more access grants and resource ceilings at policy
+   construction, then a requested path per access
 2. **Interpretation**: An omitted, empty, whitespace or placeholder request is read as denoting
-   the workspace itself, and a relative request is made absolute against the workspace — never
-   against the location the host process happens to be running from
+   the working directory itself. Every relative request is made absolute against the working
+   directory first — never against the location the host process happens to be running from — and
+   that interpretation wins whenever it names an existing path; a unique bare segment matching one
+   grant's last path segment is read as that grant's location only as a fallback, when the
+   working-directory interpretation does not resolve to an existing path
 3. **Resolution**: Every component of the now-absolute path is examined, so that symbolic links
    and directory junctions are replaced by their real targets. This happens after step 2 so that
    a relative escape and an absolute one reach the same decision
-4. **Decision**: The real location is offered to exactly one rule — the read rule for a read, the
-   write rule for a write — which applies its denied patterns first and then its location
+4. **Decision**: The real location is offered to every grant for a read, or only to read-write
+   grants for a write. Each grant applies its denied patterns first and then its location
    constraint
-5. **Output**: Either the real location the caller may act on, or a denial carrying a fixed
-   reason and a fixed statement of the form a permitted request takes, neither of which contains
-   any host detail
+5. **Output**: Either the real location the caller may act on, or a denial carrying the request,
+   any working-directory interpretation, and the permitted locations with access levels
 6. **Enumeration**: A directory listing routes the directory and every candidate file through the
    same read decision, so the listing and direct access always agree
 

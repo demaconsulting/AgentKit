@@ -68,7 +68,7 @@ public class TextFilePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -88,7 +88,7 @@ public class TextFilePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -106,7 +106,7 @@ public class TextFilePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -144,7 +144,7 @@ public class TextFilePackTests
         using var fixture = new ReparsePointFixture();
         var permitted = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "permitted");
         var refused = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
         var readTool = new TextFilePack().CreateTools(policy).First();
 
         // Act: read one path the policy permits and one it does not

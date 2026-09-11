@@ -33,7 +33,7 @@ public class ImageTests
     public void Image_Family_ComposedThroughBuilder_PublishesTheReadTool()
     {
         // Arrange: a vision host with the family attached under one policy
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack());
@@ -52,7 +52,7 @@ public class ImageTests
     public void Image_Family_HostDeclaringVision_ReceivesTheFamily()
     {
         // Arrange: a host that declares the vision capability the family requires
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack());
@@ -71,7 +71,7 @@ public class ImageTests
     public void Image_Family_HostWithoutVision_ReceivesNoTools()
     {
         // Arrange: a host that declares nothing, so the vision requirement is unmet
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy).Add(new ImagePack());
 
         // Act: compose the tool list
@@ -96,7 +96,7 @@ public class ImageTests
     {
         // Arrange: the real pack wrapped so its consultation can be observed, on a host that
         // declares no capability
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var probe = new RecordingToolPack(new ImagePack());
         var builder = new ToolPackBuilder(policy).Add(probe);
 
@@ -115,7 +115,7 @@ public class ImageTests
     public void Image_Family_EveryTool_CarriesAValidatedNameAndDescription()
     {
         // Arrange: the family composed under one policy on a vision host
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack())
@@ -236,16 +236,17 @@ public class ImageTests
     }
 
     /// <summary>
-    ///     Proves no refusal the family produces discloses a host path.
+    ///     Proves every refusal the family produces discloses the permitted location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task Image_Family_DenialText_ContainsNoHostPath()
+    public async Task Image_Family_DenialText_DisclosesPermittedLocation()
     {
         // Arrange: the family composed over a permitted location, and a path outside it
         using var fixture = new ReparsePointFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tools = Compose(fixture.Root);
+        var permitted = RealPathResolver.Resolve(fixture.Root);
 
         // Act: request the refused file
         var result = await InvokeAsync(
@@ -253,15 +254,10 @@ public class ImageTests
             ImageReadTool.ToolName,
             new AIFunctionArguments { ["path"] = outsideFile });
 
-        // Assert: the transcript leaves this process, so it carries no host layout at all
+        // Assert: the refusal names the permitted location so the model can re-address
         var text = Assert.IsType<string>(result);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("secret.png", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            text,
-            StringComparison.Ordinal);
+        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
+        Assert.Contains(permitted, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -299,8 +295,8 @@ public class ImageTests
         using var fixture = new ReparsePointFixture();
         var file = WriteBytes(fixture.Root, "big.png", new byte[128]);
         var policy = new PathPolicy(
-            PathRule.Rooted(fixture.Root),
-            PathRule.Rooted(fixture.Root),
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root)],
             new ToolLimits(maxBinaryBytes: 16));
         var tools = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
@@ -354,7 +350,7 @@ public class ImageTests
     /// <returns>The composed tool list.</returns>
     private static IReadOnlyList<AIFunction> Compose(string root)
     {
-        var policy = PathPolicy.ForWorkspace(root);
+        var policy = new PathPolicy(root, [PathRule.ReadWrite(root)]);
         return new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Vision)
             .Add(new ImagePack())

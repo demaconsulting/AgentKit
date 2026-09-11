@@ -88,9 +88,11 @@ binary file where text was expected — produces a `ToolResult.Denied` naming it
 thrown at a model, because an
 exception raised during a tool call ends the agent's turn and strands it. Where a refusal has an
 obvious better tool, it names that tool: a read of a directory and a read of a missing file both
-redirect to `text_file_list`. Every refusal message is composed from compile-time constants, with
-the only interpolated values being integers naming a ceiling, so no path, permitted location or
-directory separator ever reaches the transcript.
+redirect to `text_file_list`. A refusal a tool composes itself — a malformed request, a ceiling
+overrun, a directory where a file was expected — is fixed text carrying at most an integer naming a
+ceiling. A refusal the policy composes — a path outside a permitted location — deliberately
+discloses the request, its interpretation and the permitted locations, so a confined model learns
+where it may work.
 
 **Ceilings refuse, they do not truncate.** `MaxReadBytes` bounds what may be read and
 `MaxResultCharacters` bounds what may be returned; the read tool checks both and the list tool

@@ -16,7 +16,9 @@ registered marshals its result.
 The scenario covering a link that escapes the permitted location uses a genuine reparse point,
 reusing the fixture defined in the TextFile tests — an internal type in the same assembly — rather
 than a copy, because containment is a security control and a simulation would prove only that the
-simulation was written consistently.
+simulation was written consistently. The relative-path and denial scenarios verify the current
+policy model as this tool observes it: the working directory anchors bare names, grants carry the
+read permission, and policy refusals disclose the refused request and permitted locations.
 
 Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared reparse-point fixture from
 `TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -35,12 +37,12 @@ Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared reparse-p
 #### Acceptance Criteria
 
 A unit test run passes when all eighteen scenarios below pass without error or exception beyond
-those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does
-not read, a relative name that is not read from the workspace,
-a refused file whose content leaks, a PDF routed through the image result path, a truncated result
-where a refusal was required, an exception or framework error raised at a malformed or omitted
-request, a refusal offering no way forward, and a refusal containing a
-host path each constitute a failure.
+those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does not
+read, a relative name that is not read from the working directory, a refused file whose content
+leaks, a PDF routed through the image result path, a truncated result where a refusal was required,
+an exception or framework error raised at a malformed or omitted request, a refusal offering no way
+forward, or a policy refusal that omits the request, permitted location, or access level constitutes
+a failure.
 
 #### Test Scenarios
 
@@ -92,11 +94,11 @@ Normal operation on the other result path: a PDF is returned as data content car
 the image result path — which would otherwise throw — while preserving the caption-plus-content
 shape.
 
-##### AgentKitTools-Image-ReadTool-DenyOutsideRoot: A Path Outside the Read Root Is Refused
+##### AgentKitTools-Image-ReadTool-DenyOutsideRoot: A Path Outside the Read Grant Is Refused
 
 **Test**: `ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial`
 
-Error path: a file in a sibling directory the read rule does not permit is refused as
+Error path: a file in a sibling directory no read-capable grant permits is refused as
 `PathNotPermitted`, before anything is learned about the file.
 
 ##### AgentKitTools-Image-ReadTool-DenyOutsideRoot: A File Beneath a Link Outside the Root Is Refused
@@ -155,15 +157,16 @@ must be a returned refusal rather than an exception that would end the agent's t
 
 **Test**: `ImageReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing`
 
-Error path: a whitespace-only path would otherwise reach the policy, which raises rather than
-refuses for a malformed argument.
+Error path: a whitespace-only path would otherwise reach the policy as malformed input. The tool
+returns a refusal rather than letting an exception end the turn.
 
-##### AgentKitTools-Image-ReadTool-RelativePath: A Bare File Name Is Read From the Workspace
+##### AgentKitTools-Image-ReadTool-RelativePath: A Bare File Name Is Read From the Working Directory
 
 **Test**: `ImageReadTool_Read_BareFileName_ReturnsTheImageContent`
 
-Normal operation for the request a model actually makes. Asserts the real bytes come back for a
-name stated with no location at all, so a name a text file listing reported is usable here.
+Normal operation for the request a model actually makes. Asserts the caption and real bytes come
+back for a name stated with no location at all, so a name a text file listing reported is usable
+here.
 
 ##### AgentKitTools-Image-ReadTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
 
@@ -174,10 +177,9 @@ function factory before the tool body is reached, and the model then receives an
 error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
 path should take.
 
-##### AgentKitTools-Image-ReadTool-DenialRedaction: A Refusal Contains No Host Detail
+##### AgentKitTools-Image-ReadTool-DenialDisclosure: A Refusal Discloses the Permitted Location
 
-**Test**: `ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail`
+**Test**: `ImageReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation`
 
-Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator. The absence of a separator is also
-what keeps the recovery guidance the refusal now carries from reintroducing host layout.
+Disclosure behavior: the refused request is echoed, and the permitted working directory is named
+with its `(read-write)` access level so a confined model learns where it may look instead.

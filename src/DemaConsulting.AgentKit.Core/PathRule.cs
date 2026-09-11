@@ -3,21 +3,65 @@ using System.IO.Enumeration;
 namespace DemaConsulting.AgentKit.Core;
 
 /// <summary>
-///     One path access rule: either unrestricted or confined to a single location, and in both
-///     cases carrying its own set of denied patterns.
+///     The permission an access grant carries: whether it may be read only, or read and written.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     A rule exists so that read access and write access can be described independently of one
-///     another. A development assistant that may read widely across a machine but write only
-///     into one working directory is expressed as two rules, not as one combined setting, and
-///     each rule keeps its own denied patterns so that, for example, credential files can be
-///     excluded from reads without affecting what may be written.
+///     An access level is <b>permission only</b>. It says what may be done at a location; it says
+///     nothing about addressing — nothing about how a relative path is resolved, nor about which
+///     location a bare name refers to. Addressing is the sole concern of
+///     <see cref="PathPolicy.WorkingDirectory"/>, and the two ideas are deliberately orthogonal:
+///     a location may be granted read-write yet never be an addressing anchor, and the anchor may
+///     be granted nothing at all.
 ///     </para>
 ///     <para>
-///     A rule is constructed only through <see cref="Unrestricted"/> or <see cref="Rooted"/>,
-///     so a partially-configured rule cannot exist. Instances are immutable after construction
-///     and are safe for concurrent use.
+///     There are exactly two levels and no more. A grant is either <see cref="ReadOnly"/> or
+///     <see cref="ReadWrite"/>; there is no append-only or create-only level, because a tool set
+///     that can express "read" and "read and write" can express every access an agent file tool
+///     needs, and a third level would add a state to reason about at every decision point without
+///     enabling a capability the two do not already cover.
+///     </para>
+/// </remarks>
+public enum AccessLevel
+{
+    /// <summary>
+    ///     The location and its contents may be read but never written.
+    /// </summary>
+    ReadOnly,
+
+    /// <summary>
+    ///     The location and its contents may be both read and written.
+    /// </summary>
+    ReadWrite
+}
+
+/// <summary>
+///     One access grant: a location an agent is permitted to reach, carrying the
+///     <see cref="AccessLevel"/> that permission grants and its own set of denied patterns. A
+///     grant may instead be unrestricted, permitting every location its access level allows
+///     except those its patterns exclude.
+/// </summary>
+/// <remarks>
+///     <para>
+///     A grant expresses <b>permission only</b>. It answers "may this location be read, or read
+///     and written?" and nothing else. In particular it carries no addressing meaning: granting a
+///     location does not make it the anchor a bare relative name resolves against, and being that
+///     anchor grants nothing. That anchor is <see cref="PathPolicy.WorkingDirectory"/>, and the
+///     separation is deliberate — a policy may grant several locations while anchoring relative
+///     paths at exactly one, or anchor at a location it grants nothing.
+///     </para>
+///     <para>
+///     Grants are independent of one another. A policy may hold a read-only grant over one
+///     location and a read-write grant over another; a read is permitted when any grant permits
+///     it, and a write only when a <see cref="AccessLevel.ReadWrite"/> grant permits it, so
+///     reading widely while writing narrowly is expressed as two grants rather than one combined
+///     setting. Each grant keeps its own denied patterns, so credential material can be excluded
+///     from a wide read grant without affecting what a separate write grant permits.
+///     </para>
+///     <para>
+///     A grant is constructed only through <see cref="ReadOnly"/>, <see cref="ReadWrite"/> or
+///     <see cref="Unrestricted"/>, so a partially-configured grant cannot exist. Instances are
+///     immutable after construction and are safe for concurrent use.
 ///     </para>
 /// </remarks>
 public sealed class PathRule
@@ -79,15 +123,18 @@ public sealed class PathRule
     ///     Initializes a new instance of the <see cref="PathRule"/> class.
     /// </summary>
     /// <remarks>
-    ///     Private so that <see cref="Unrestricted"/> and <see cref="Rooted"/> are the only
-    ///     construction paths; this keeps the "unrestricted or rooted" choice explicit at every
-    ///     call site instead of hiding it behind a nullable constructor argument.
+    ///     Private so that <see cref="ReadOnly"/>, <see cref="ReadWrite"/> and
+    ///     <see cref="Unrestricted"/> are the only construction paths; this keeps the access
+    ///     level and the "rooted or unrestricted" choice explicit at every call site instead of
+    ///     hiding either behind a nullable or defaulted constructor argument.
     /// </remarks>
     /// <param name="root">The already-resolved real root, or <see langword="null"/> when unrestricted.</param>
+    /// <param name="access">The permission this grant carries.</param>
     /// <param name="denyPatterns">The validated denied patterns.</param>
-    private PathRule(string? root, string[] denyPatterns)
+    private PathRule(string? root, AccessLevel access, string[] denyPatterns)
     {
         Root = root;
+        Access = access;
         _denyPatterns = denyPatterns;
 
         // Precompute the containment prefix so that Allows performs no string arithmetic, and
@@ -130,6 +177,18 @@ public sealed class PathRule
     public string? Root { get; }
 
     /// <summary>
+    ///     Gets the permission this grant carries.
+    /// </summary>
+    /// <remarks>
+    ///     The access level is permission only and carries no addressing meaning. It decides
+    ///     whether a permitted location may be written as well as read; it never decides how a
+    ///     relative path is resolved or which location a bare name refers to. A read is permitted
+    ///     by a grant of either level, while a write is permitted only by a
+    ///     <see cref="AccessLevel.ReadWrite"/> grant.
+    /// </remarks>
+    public AccessLevel Access { get; }
+
+    /// <summary>
     ///     Gets the patterns whose match denies a path regardless of the rule's location.
     /// </summary>
     /// <remarks>
@@ -139,13 +198,19 @@ public sealed class PathRule
     public IReadOnlyList<string> DenyPatterns => _denyPatterns;
 
     /// <summary>
-    ///     Creates a rule that permits any location except those matching its denied patterns.
+    ///     Creates an unrestricted grant of the given access level, permitting any location
+    ///     except those matching its denied patterns.
     /// </summary>
     /// <remarks>
-    ///     An unrestricted rule is how "may read anything on this machine" is expressed. It is
-    ///     deliberately still able to carry denied patterns, because the common case for wide
-    ///     read access is nevertheless to exclude credential material.
+    ///     An unrestricted grant is how "may read anything on this machine" — or, less commonly,
+    ///     "may read and write anything" — is expressed. The access level is explicit because an
+    ///     unrestricted grant carries the same permission-only meaning as a rooted one: an
+    ///     unrestricted <see cref="AccessLevel.ReadOnly"/> grant permits reads everywhere and
+    ///     writes nowhere. An unrestricted grant is deliberately still able to carry denied
+    ///     patterns, because the common case for wide read access is nevertheless to exclude
+    ///     credential material.
     /// </remarks>
+    /// <param name="access">The permission the grant carries.</param>
     /// <param name="denyPatterns">
     ///     Patterns denying any path whose file name or enclosing directory name matches.
     ///     May be <see langword="null"/> or empty; individual entries must be non-null and non-empty.
@@ -154,13 +219,43 @@ public sealed class PathRule
     /// <exception cref="ArgumentException">
     ///     Thrown when any entry of <paramref name="denyPatterns"/> is <see langword="null"/> or empty.
     /// </exception>
-    public static PathRule Unrestricted(IEnumerable<string>? denyPatterns = null)
+    public static PathRule Unrestricted(AccessLevel access, IEnumerable<string>? denyPatterns = null)
     {
-        return new PathRule(null, ValidatePatterns(denyPatterns));
+        return new PathRule(null, access, ValidatePatterns(denyPatterns));
     }
 
     /// <summary>
-    ///     Creates a rule that permits only the given location and its contents, except those
+    ///     Creates a read-only grant over the given location and its contents, except those
+    ///     matching its denied patterns.
+    /// </summary>
+    /// <remarks>
+    ///     The location is resolved to its real location at construction time, exactly as
+    ///     <see cref="ReadWrite"/> resolves it. Granting read only says the location may be read
+    ///     but never written; pairing a read-only grant over one location with a read-write grant
+    ///     over another is how "read here, write there" is expressed.
+    /// </remarks>
+    /// <param name="root">
+    ///     The location to grant read access to. Must be non-null and non-empty. Need not exist.
+    /// </param>
+    /// <param name="denyPatterns">
+    ///     Patterns denying any path whose file name or enclosing directory name matches.
+    ///     May be <see langword="null"/> or empty; individual entries must be non-null and non-empty.
+    /// </param>
+    /// <returns>A new read-only <see cref="PathRule"/>.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="root"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="root"/> is empty or is not a valid path, or when any
+    ///     entry of <paramref name="denyPatterns"/> is <see langword="null"/> or empty.
+    /// </exception>
+    public static PathRule ReadOnly(string root, IEnumerable<string>? denyPatterns = null)
+    {
+        return Rooted(root, AccessLevel.ReadOnly, denyPatterns);
+    }
+
+    /// <summary>
+    ///     Creates a read-write grant over the given location and its contents, except those
     ///     matching its denied patterns.
     /// </summary>
     /// <remarks>
@@ -170,13 +265,13 @@ public sealed class PathRule
     ///     of the candidate path.
     /// </remarks>
     /// <param name="root">
-    ///     The location to confine access to. Must be non-null and non-empty. Need not exist.
+    ///     The location to grant read-write access to. Must be non-null and non-empty. Need not exist.
     /// </param>
     /// <param name="denyPatterns">
     ///     Patterns denying any path whose file name or enclosing directory name matches.
     ///     May be <see langword="null"/> or empty; individual entries must be non-null and non-empty.
     /// </param>
-    /// <returns>A new rooted <see cref="PathRule"/>.</returns>
+    /// <returns>A new read-write <see cref="PathRule"/>.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="root"/> is <see langword="null"/>.
     /// </exception>
@@ -184,15 +279,36 @@ public sealed class PathRule
     ///     Thrown when <paramref name="root"/> is empty or is not a valid path, or when any
     ///     entry of <paramref name="denyPatterns"/> is <see langword="null"/> or empty.
     /// </exception>
-    public static PathRule Rooted(string root, IEnumerable<string>? denyPatterns = null)
+    public static PathRule ReadWrite(string root, IEnumerable<string>? denyPatterns = null)
     {
-        // Reject a missing root before doing any work: a rule with no location is a
+        return Rooted(root, AccessLevel.ReadWrite, denyPatterns);
+    }
+
+    /// <summary>
+    ///     Creates a grant confined to the given location, carrying the supplied access level.
+    /// </summary>
+    /// <remarks>
+    ///     Shared by <see cref="ReadOnly"/> and <see cref="ReadWrite"/> so that resolving the
+    ///     location and validating the patterns exists in exactly one place, with the two public
+    ///     factories differing only in the access level they name.
+    /// </remarks>
+    /// <param name="root">The location to confine access to. Must be non-null and non-empty.</param>
+    /// <param name="access">The permission the grant carries.</param>
+    /// <param name="denyPatterns">The caller-supplied denied patterns; may be null.</param>
+    /// <returns>A new rooted <see cref="PathRule"/>.</returns>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="root"/> is null or empty, or when any entry of
+    ///     <paramref name="denyPatterns"/> is <see langword="null"/> or empty.
+    /// </exception>
+    private static PathRule Rooted(string root, AccessLevel access, IEnumerable<string>? denyPatterns)
+    {
+        // Reject a missing root before doing any work: a grant with no location is a
         // programming error, and silently treating it as unrestricted would widen access.
         ArgumentException.ThrowIfNullOrEmpty(root);
 
         // Resolve the root now so that every later containment test compares real location
         // against real location rather than string against string.
-        return new PathRule(RealPathResolver.Resolve(root), ValidatePatterns(denyPatterns));
+        return new PathRule(RealPathResolver.Resolve(root), access, ValidatePatterns(denyPatterns));
     }
 
     /// <summary>
@@ -282,6 +398,26 @@ public sealed class PathRule
 
         return segments.Any(segment => _denyPatterns.Any(
             pattern => FileSystemName.MatchesSimpleExpression(pattern, segment, IgnoreCase)));
+    }
+
+    /// <summary>
+    ///     Produces a short human- and model-readable description of this grant, naming its
+    ///     location and access level, for enumeration in a denial message.
+    /// </summary>
+    /// <remarks>
+    ///     Used only to build the "permitted locations" list a denial enumerates, so that a
+    ///     refused request is answered with the complete, truthful map of what is actually
+    ///     permitted. The location is the resolved real root, or the word <c>anywhere</c> for an
+    ///     unrestricted grant, followed by the access level. Deny patterns are omitted because
+    ///     they narrow a location rather than name one, and listing them would make the map
+    ///     harder to read without telling the model where it may go instead.
+    /// </remarks>
+    /// <returns>A description such as <c>C:\work (read-only)</c> or <c>anywhere (read-write)</c>.</returns>
+    internal string Describe()
+    {
+        var level = Access == AccessLevel.ReadWrite ? "read-write" : "read-only";
+        var location = Root ?? "anywhere";
+        return $"{location} ({level})";
     }
 
     /// <summary>

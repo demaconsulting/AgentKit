@@ -84,9 +84,11 @@ dotnet add package DemaConsulting.AgentKit.Tools
 `DemaConsulting.AgentKit.Core` currently provides the contract that other AgentKit packages — and
 an application's own tools — are built against:
 
-- **Path policy**: an independent read rule and write rule, each unrestricted or confined to a
-  location, each with its own denied patterns, and all containment decisions resolving symbolic
-  links and directory junctions at every path component
+- **Path policy**: one required working directory that a relative path is anchored to (and nothing
+  else — it carries no permission), plus zero or more access grants, each unrestricted or confined
+  to a location and each carrying an access level (read-only or read-write) and its own denied
+  patterns, with all containment decisions resolving symbolic links and directory junctions at
+  every path component
 - **Tool limits**: ceilings on bytes read, result size returned to the model, and attachments per
   turn, carried with the policy so every tool observes the same budget
 - **Guarded tool construction**: the only supported way to build a tool, so the safety conventions
@@ -106,7 +108,7 @@ using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
-var policy = PathPolicy.ForWorkspace("/workspace");
+var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
 
 IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .WithHostCapabilities(HostCapabilities.Vision)
@@ -117,13 +119,21 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 // Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
 ```
 
-`ForWorkspace` names the workspace once: it becomes the permitted read location, the permitted
-write location, and the location a relative path is interpreted against. That last part matters
-because a model asks for `notes.txt`, not for its absolute location — a policy that measured that
-name from wherever the host process was started would refuse every legitimate request. Absolute
-paths remain expressible and remain subject to the same containment decision, and a request naming
-no path at all means the workspace itself. Use a `PathPolicy` constructor directly when reads and
-writes need different locations.
+A `PathPolicy` separates two orthogonal ideas. The **working directory** is the single location a
+relative path is anchored to, and nothing else — it carries no permission of its own. A **grant**
+is a permitted location carrying an access level, and nothing else — it says a location may be read,
+or read and written, but says nothing about addressing. Here one folder plays both roles: it is the
+anchor, and it is granted read-write. The anchor matters because a model asks for `notes.txt`, not
+for its absolute location — a policy that measured that name from wherever the host process was
+started would refuse every legitimate request. Absolute paths remain expressible and remain subject
+to the same containment decision, and a request naming no path at all means the working directory
+itself. Add more grants (each read-only or read-write) when an agent needs several locations, and
+grant the working directory whatever access it should have — it receives none implicitly.
+
+> **Transition hazard.** With a single granted working directory, tool output uses the relative
+> dialect: a listing reports bare relative names and the model imitates them. Adding a second granted
+> location moves paths under it to the absolute dialect (they are reported under an absolute header),
+> and nothing else warns you the switch happened.
 
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
 but AgentKit does not replace OS-level isolation for untrusted code. Because the image family

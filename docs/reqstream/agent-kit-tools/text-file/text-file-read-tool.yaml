@@ -171,19 +171,20 @@ sections:
                   - TextFileReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
                   - TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing
 
-              - id: AgentKitTools-TextFile-ReadTool-DenialRedaction
+              - id: AgentKitTools-TextFile-ReadTool-DenialDisclosure
                 title: >-
-                  A refusal from the read tool shall state how to phrase a request that could
-                  succeed, and shall contain no host location — no requested path, no permitted
-                  location and no directory separator.
-                tags: [security]
+                  A refusal from the read tool shall carry the disclosure the access policy
+                  produces: it shall echo the request, state any interpretation, and enumerate the
+                  permitted locations, while a refusal the tool composes itself shall name only a
+                  ceiling or a sibling tool.
                 justification: |
-                  The refusal text is handed to a model and the resulting transcript leaves this
-                  process. Naming the path or the permitted location in a refusal would disclose
-                  to a third party exactly the host layout that containment exists to protect. A
-                  refusal that names nothing at all is equally useless to the agent, which
-                  retries the same request until it gives up, so the guidance is phrased without
-                  a separator rather than omitted.
+                  The host-path-disclosure rule that once redacted these refusals is deliberately
+                  dropped. A policy refusal now discloses the permitted locations so a confined
+                  model learns where it may read instead of guessing, and the tool passes that
+                  refusal through unchanged. The tool's own refusals — a binary file redirected to
+                  another tool, or an oversized file naming its ceiling — still interpolate only an
+                  integer or a sibling tool name, because they concern the file's shape rather than
+                  its location.
                 tests:
-                  - TextFileReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail
+                  - TextFileReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation
                   - TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm

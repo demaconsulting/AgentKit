@@ -156,9 +156,10 @@ policy outcomes are returned.**
 name of the `DenialReason` member, the caller's `message`, and — when a redirect is given — a
 fixed sentence naming it. Nothing about the host is added here. The refusal text is handed to a
 model and the resulting transcript leaves the process, so the only route by which host layout can
-reach it is the caller's `message`. That discipline is enforced at the call sites: `PathPolicy`'s
-four denial messages are compile-time constants with no interpolation, and any pack composing a
-refusal is expected to do the same.
+reach it is the caller's `message`. What a caller places there is the caller's decision:
+`PathPolicy` now deliberately supplies host paths in its denial — echoing the request, the
+interpretation of a relative path, and the permitted locations — while a pack composing its own
+refusal remains free to disclose nothing. `ToolResult` adds nothing of its own either way.
 
 A defensive check rejecting directory separators in `message` was considered and **rejected**:
 legitimate messages contain `/` — for example, "unsupported media type image/svg+xml" — so the

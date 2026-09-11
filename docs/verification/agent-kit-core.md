@@ -81,13 +81,14 @@ Verifies that a refusal reaches the caller as a return value carrying a reason, 
 exception. Requests a location outside the permitted one and asserts the call returns a refusal
 with no location and a non-empty reason.
 
-### Path Policy: A Denial Message Contains No Host Paths
+### Path Policy: A Denial Message Discloses the Permitted Locations
 
-**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_ContainsNoHostPaths`
+**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations`
 
-Verifies that nothing about the host's layout leaves the system in a denial message. Asserts the
-message contains neither the requested path nor the permitted location, and contains no directory
-separator at all.
+Verifies that a denial tells a confined model the truthful map of where it may work. Requests a
+path outside the permitted location and asserts the message echoes the requested path, names the
+permitted location, and marks its access level — the host-path-disclosure rule the earlier
+redaction requirement enforced having been deliberately dropped.
 
 ### Path Policy: A Relative Path From a Model Resolves Against the Workspace
 
@@ -103,10 +104,10 @@ host process happened to be running from.
 
 **Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover`
 
-Verifies that a refusal is a step an agent can act on rather than a dead end it retries. Asserts
-the message names the workspace-relative form a request should take, while still containing
-neither the permitted location nor any directory separator — so the guidance was added without
-reopening the disclosure the redaction requirement closes.
+Verifies that a relative request escaping the working directory is refused with a denial an agent
+can act on. Asserts the message echoes the caller's input verbatim, states how the relative path
+was interpreted against the working directory, and names the permitted location — the three
+ordered parts of a disclosing denial.
 
 ### Image Delivery: A Tool-Returned Image Reaches the Provider on a User Message
 

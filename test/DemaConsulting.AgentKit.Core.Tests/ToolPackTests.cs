@@ -48,7 +48,7 @@ public class ToolPackTests
     {
         // Arrange: a pack and the policy its tools must observe
         var pack = new StubToolPack("text_file", tools: []);
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: ask the pack for its tools
         pack.CreateTools(policy);

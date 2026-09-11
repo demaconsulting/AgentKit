@@ -161,18 +161,18 @@ sections:
                   - ImageReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
                   - ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing
 
-              - id: AgentKitTools-Image-ReadTool-DenialRedaction
+              - id: AgentKitTools-Image-ReadTool-DenialDisclosure
                 title: >-
-                  A refusal from the read tool shall state how to phrase a request that could
-                  succeed, and shall contain no host location — no requested path, no permitted
-                  location and no directory separator.
-                tags: [security]
+                  A refusal from the read tool shall carry the disclosure the access policy
+                  produces: it shall echo the request, state any interpretation, and enumerate the
+                  permitted locations, while a refusal the tool composes itself shall name only a
+                  ceiling or the resolved media type.
                 justification: |
-                  The refusal text is handed to a model and the resulting transcript leaves this
-                  process. Naming the path or the permitted location in a refusal would disclose
-                  to a third party exactly the host layout that containment exists to protect. A
-                  refusal that names nothing at all is equally useless to the agent, which
-                  retries the same request until it gives up, so the guidance is phrased without
-                  a separator rather than omitted.
+                  The host-path-disclosure rule that once redacted these refusals is deliberately
+                  dropped. A policy refusal now discloses the permitted locations so a confined
+                  model learns where it may look instead of guessing, and the tool passes that
+                  refusal through unchanged. The tool's own refusals — an unsupported media type,
+                  or an oversized image naming its ceiling — still interpolate only an integer or
+                  the resolved media type.
                 tests:
-                  - ImageReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail
+                  - ImageReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation

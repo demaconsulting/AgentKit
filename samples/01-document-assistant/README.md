@@ -31,9 +31,11 @@ result as they happen, so you can watch the guarantees hold rather than take the
 The safety does not come from asking the model to behave. It comes from what the model is able to
 express:
 
-- `PathPolicy.ForWorkspace(workspace)` makes the workspace the read root, the write root, and the base
-  directory a relative path is resolved against. A model asks for `notes.txt`, and that name resolves
-  inside the workspace; an absolute or `..`-escaping path resolves to a location the policy refuses.
+- `new PathPolicy(workspace, [PathRule.ReadWrite(workspace)])` anchors relative paths at the
+  workspace and grants that same folder read-write. The working directory (the relative anchor) and
+  the grant (the permission) are separate ideas; here one folder plays both roles. A model asks for
+  `notes.txt`, and that name resolves inside the workspace; an absolute or `..`-escaping path resolves
+  to a location the policy refuses.
 - Containment resolves symbolic links and junctions at every path component, so a path that merely
   looks contained cannot reach outside the folder you granted.
 - A refusal is a returned value with useful guidance, not a crash: the agent's turn continues and the

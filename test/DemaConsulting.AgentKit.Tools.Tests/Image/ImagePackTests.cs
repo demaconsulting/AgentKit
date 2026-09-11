@@ -73,7 +73,7 @@ public class ImagePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -91,7 +91,7 @@ public class ImagePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -109,7 +109,7 @@ public class ImagePackTests
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
@@ -147,7 +147,7 @@ public class ImagePackTests
         using var fixture = new ReparsePointFixture();
         var permitted = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var refused = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
         var readTool = new ImagePack().CreateTools(policy).First();
 
         // Act: read one path the policy permits and one it does not

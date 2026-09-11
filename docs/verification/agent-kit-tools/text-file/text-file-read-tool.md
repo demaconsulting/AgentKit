@@ -7,13 +7,20 @@ This document describes the unit-level verification strategy for the `TextFileRe
 Nothing is mocked or stubbed. The unit's whole purpose is to behave correctly against a real access
 policy and a real file system, and a substituted policy would verify only the substitute. Each
 scenario constructs a real `PathPolicy` over a temporary directory tree it creates, builds the tool
-through its own internal factory, and invokes it the way a runtime does — through `InvokeAsync`
-with a named argument dictionary — so that the delivery of the result through the guarded factory is
+through its own internal factory, and invokes it the way a runtime does — through `InvokeAsync` with
+a named argument dictionary — so that the delivery of the result through the guarded factory is
 exercised rather than bypassed.
 
 The scenario covering a link that escapes the permitted location uses a genuine reparse point rather
 than a simulated one, because containment is a security control and a simulation would prove only
-that the simulation was written consistently.
+that the simulation was written consistently. Relative-path scenarios use the current policy model:
+the working directory anchors names a model writes, and grants carry the read or read-write
+permission that decides whether the target may be reached.
+
+Policy denials are expected to disclose useful addressing information. The refusal from the access
+policy is passed through unchanged, so tests assert that the refused request is echoed, the permitted
+location is named with its access level, and tool-composed refusals still limit themselves to the
+file-shape detail they own, such as a resource ceiling or sibling tool redirect.
 
 Unit tests reside in `TextFile/TextFileReadToolTests.cs`, with the shared reparse-point fixture in
 `TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -33,11 +40,11 @@ Unit tests reside in `TextFile/TextFileReadToolTests.cs`, with the shared repars
 
 A unit test run passes when all thirty-one scenarios below pass without error or exception beyond
 those explicitly asserted. A permitted file that does not read, a relative name that is not read
-from the workspace, a binary file returned as decoded text, a byte-order-marked UTF-16 or UTF-32
-file refused as binary, a refused file whose content leaks, a
-truncated result where a refusal was required, an exception or framework error raised at a
-malformed or omitted request, a refusal offering no way forward, and a
-refusal containing a host path each constitute a failure.
+from the working directory, a binary file returned as decoded text, a byte-order-marked UTF-16 or
+UTF-32 file refused as binary, a refused file whose content leaks, a truncated result where a refusal
+was required, an exception or framework error raised at a malformed or omitted request, a missing
+redirect where a sibling tool should be named, or a policy refusal that omits the request or
+permitted location constitutes a failure.
 
 #### Test Scenarios
 
@@ -52,17 +59,16 @@ name a redirect points at is the name the pack publishes.
 
 **Test**: `TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription`
 
-Normal operation: the tool a model is offered carries the published name and a non-empty
-description it can choose by.
+Normal operation: the tool a model is offered carries the published name and a non-empty description
+it can choose by.
 
 ##### AgentKitTools-TextFile-ReadTool-GuardedConstruction: A Null Policy Throws
 
 **Test**: `TextFileReadTool_Create_NullPolicy_ThrowsArgumentNullException`
 
 Error path at construction: a tool governed by no policy cannot be built. This is an exception
-rather than a
-denial because it is a programming error in the composing application, not something a model can
-provoke.
+rather than a denial because it is a programming error in the composing application, not something a
+model can provoke.
 
 ##### AgentKitTools-TextFile-ReadTool-GuardedConstruction: The Result Is Plain Text, Not a JsonElement
 
@@ -85,11 +91,12 @@ proves the real file was reached rather than a plausible-looking substitute.
 Boundary condition: an empty file is a legitimate result, so reporting a refusal would tell the
 model something untrue about the host.
 
-##### AgentKitTools-TextFile-ReadTool-DenyOutsideRoot: A Path Outside the Read Root Is Refused
+##### AgentKitTools-TextFile-ReadTool-DenyOutsideRoot: A Path Outside the Read Grant Is Refused
 
 **Test**: `TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial`
 
 Error path: asserts the refusal reason and that the file's content does not appear in the result.
+The refusal comes from the policy, so it also carries the current request-and-grants disclosure.
 
 ##### AgentKitTools-TextFile-ReadTool-DenyOutsideRoot: A File Beneath a Link Outside the Root Is Refused
 
@@ -145,36 +152,35 @@ must be a returned refusal rather than an exception that would end the agent's t
 
 **Test**: `TextFileReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing`
 
-Error path: a whitespace-only path would otherwise reach the policy, which raises rather than
-refuses for a malformed argument.
+Error path: a whitespace-only path would otherwise reach the policy as malformed input. The tool
+returns a refusal rather than letting an exception end the turn.
 
-##### AgentKitTools-TextFile-ReadTool-RelativePath: A Bare File Name Is Read From the Workspace
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Bare File Name Is Read From the Working Directory
 
 **Test**: `TextFileReadTool_Read_BareFileName_ReturnsTheFileContents`
 
 Normal operation for the request a model actually makes. Asserts the file's text comes back for a
 name stated with no location at all.
 
-##### AgentKitTools-TextFile-ReadTool-RelativePath: A Current-Directory Prefix Is Read From the Workspace
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Current-Directory Prefix Is Read From the Working Directory
 
 **Test**: `TextFileReadTool_Read_DotSlashFileName_ReturnsTheFileContents`
 
 Asserts the leading token a model often adds reaches the same file the bare name reaches.
 
-##### AgentKitTools-TextFile-ReadTool-RelativePath: A Nested Relative Path Is Read From the Workspace
+##### AgentKitTools-TextFile-ReadTool-RelativePath: A Nested Relative Path Is Read From the Working Directory
 
 **Test**: `TextFileReadTool_Read_NestedRelativePath_ReturnsTheFileContents`
 
 Uses a forward slash deliberately: it is the separator a model writes on any platform, and the
-separator the list tool reports names with, so this is the exact form an agent holds after a
-listing.
+separator the list tool reports names with, so this is the exact form an agent holds after a listing.
 
-##### AgentKitTools-TextFile-ReadTool-RelativePath: An Absolute Path Inside the Workspace Is Read
+##### AgentKitTools-TextFile-ReadTool-RelativePath: An Absolute Path Inside the Working Directory Is Read
 
 **Test**: `TextFileReadTool_Read_AbsolutePathInsideRoot_ReturnsTheFileContents`
 
-Asserts that reading a bare name from the workspace does not withdraw the absolute form a host
-composing paths itself relies on.
+Asserts that reading a bare name from the working directory does not withdraw the absolute form a
+host composing paths itself relies on.
 
 ##### AgentKitTools-TextFile-ReadTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
 
@@ -185,36 +191,35 @@ function factory before the tool body is reached, and the model then receives an
 error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
 path should take.
 
-##### AgentKitTools-TextFile-ReadTool-DenialRedaction: A Refusal States the Expected Path Form
+##### AgentKitTools-TextFile-ReadTool-DenialDisclosure: A Policy Refusal Echoes and Enumerates
 
 **Test**: `TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm`
 
-Asserts the refusal names the workspace-relative form while still containing no directory
-separator, so the guidance was added without reopening the disclosure the redaction scenario
-closes.
+The current assertion pins the disclosure behavior: the refused absolute request is echoed, the
+permitted working directory is enumerated, and the grant's `(read-write)` level is shown.
 
-##### AgentKitTools-TextFile-ReadTool-DenialRedaction: A Refusal Contains No Host Detail
+##### AgentKitTools-TextFile-ReadTool-DenialDisclosure: A Refusal Discloses the Permitted Location
 
-**Test**: `TextFileReadTool_Read_DeniedPath_DenialTextContainsNoHostDetail`
+**Test**: `TextFileReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation`
 
-Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator.
+Disclosure behavior: asserts the refusal contains both the request that was refused and the working
+directory the model may read instead.
 
 ##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Binary Image Redirects to the Image Read Tool
 
 **Test**: `TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead`
 
 Error path: a real PNG header — magic bytes plus a NUL-bearing header chunk — is refused as
-`UnsupportedMediaType`, the refusal names `image_read`, and none of the file's bytes appear in the
-result. This is the defect the change closes: without the guard the image would be decoded into
-garbled replacement characters.
+`UnsupportedMediaType`, the refusal names `image_read`, and none of the file's marker text appears
+in the result. This closes the defect where an image could be decoded into garbled replacement
+characters.
 
 ##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Binary Image Named Relatively Redirects to the Image Read Tool
 
 **Test**: `TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead`
 
-Agent viewpoint: the same PNG is requested by the bare name `picture.png`, the form a model
-actually writes, and reaches the same refusal and redirect as the absolute form — the request an
+Agent viewpoint: the same PNG is requested by the bare name `picture.png`, the form a model actually
+writes, and reaches the same refusal and redirect as the absolute form — the request an
 absolute-path-only fixture would miss.
 
 ##### AgentKitTools-TextFile-ReadTool-BinaryRefused: A Non-Image Binary Is Refused Without a Redirect

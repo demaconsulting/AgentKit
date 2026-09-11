@@ -15,7 +15,7 @@ test double would prove only that the double behaves.
 
 The scenarios here assert what belongs to the family as a whole: one family prefix, one policy
 governing the tool, content delivered unserialized, refusals that are returned rather than thrown,
-refusal text carrying no host location, and the capability gate withholding the family without
+policy refusals that disclose the permitted location, and the capability gate withholding the family without
 consulting the pack. The algorithm of any single tool is verified in that unit's own document.
 
 Two scenarios carry the weight of the increment. The first proves the guarded construction path is
@@ -51,8 +51,8 @@ Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate record
 A subsystem test run passes when all thirteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool published outside the family prefix, image content arriving as a
 `JsonElement`, a family registered for a non-vision host, a pack consulted despite an unmet
-capability, a refusal raised as an exception rather than returned, a refusal containing a host path
-or separator, a relative name that is not resolved against the workspace, a permitted read that
+capability, a refusal raised as an exception rather than returned, a policy refusal that fails to
+disclose the permitted location, a relative name that is not resolved against the workspace, a permitted read that
 fails, and a truncated result where a refusal was required each
 constitute a failure.
 
@@ -135,13 +135,13 @@ make a discovered name unusable.
 Error path: a request for a location outside the permitted one returns text naming a denial reason
 rather than raising an exception, confirming a refused agent is told why rather than stranded.
 
-#### AgentKitTools-Image-DenialsAreResults: No Refusal Discloses a Host Path
+#### AgentKitTools-Image-DenialsAreResults: A Refusal Discloses the Permitted Location
 
-**Test**: `Image_Family_DenialText_ContainsNoHostPath`
+**Test**: `Image_Family_DenialText_DisclosesPermittedLocation`
 
-Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator. The transcript leaves the process, so
-this is a disclosure control rather than a cosmetic one.
+Disclosure behavior: asserts the refusal names the permitted location so a confined model learns
+where it may work. The transcript leaves the process, so this disclosure is a deliberate control —
+the rule that once redacted these refusals is dropped.
 
 #### AgentKitTools-Image-DenialsAreResults: An Unsupported Type Is Refused With a Redirect Where Useful
 

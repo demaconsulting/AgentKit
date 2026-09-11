@@ -24,7 +24,7 @@ public class TextFileTests
     public void TextFile_Family_ComposedThroughBuilder_PublishesReadWriteAndList()
     {
         // Arrange: a composition governed by one policy, with the family attached
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
 
         // Act: compose the tool list
@@ -44,7 +44,7 @@ public class TextFileTests
     public void TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily()
     {
         // Arrange: a host that declares nothing at all
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var builder = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.None)
             .Add(new TextFilePack());
@@ -63,7 +63,7 @@ public class TextFileTests
     public void TextFile_Family_EveryTool_CarriesAValidatedNameAndDescription()
     {
         // Arrange: the family composed under one policy
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
         // Act / Assert: every name survives the convention's own validation, and no tool is
@@ -115,8 +115,8 @@ public class TextFileTests
         using var fixture = new ReparsePointFixture();
         var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "original");
         var policy = new PathPolicy(
-            PathRule.Rooted(fixture.Root),
-            PathRule.Rooted(fixture.Outside));
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
         // Act: read and then attempt to write the same path
@@ -215,16 +215,17 @@ public class TextFileTests
     }
 
     /// <summary>
-    ///     Proves no refusal the family produces discloses a host path.
+    ///     Proves every refusal the family produces discloses the permitted location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFile_Family_DenialText_ContainsNoHostPath()
+    public async Task TextFile_Family_DenialText_DisclosesPermittedLocation()
     {
         // Arrange: the family composed over a permitted location, and a path outside it
         using var fixture = new ReparsePointFixture();
         var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tools = Compose(fixture.Root);
+        var permitted = RealPathResolver.Resolve(fixture.Root);
 
         // Act: collect the refusals of all three tools for locations outside the root
         var refusals = new[]
@@ -247,17 +248,9 @@ public class TextFileTests
                 }))
         };
 
-        // Assert: the transcript leaves this process, so it carries no host layout at all
+        // Assert: every refusal names the permitted location so the model can re-address
         Assert.All(refusals, text =>
-        {
-            Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("secret.txt", text, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(
-                Path.DirectorySeparatorChar.ToString(),
-                text,
-                StringComparison.Ordinal);
-        });
+            Assert.Contains(permitted, text, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -271,8 +264,8 @@ public class TextFileTests
         using var fixture = new ReparsePointFixture();
         var file = ReparsePointFixture.WriteFile(fixture.Root, "big.txt", new string('a', 128));
         var policy = new PathPolicy(
-            PathRule.Rooted(fixture.Root),
-            PathRule.Rooted(fixture.Root),
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root)],
             new ToolLimits(maxReadBytes: 16));
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
@@ -317,8 +310,10 @@ public class TextFileTests
             TextFileReadTool.ToolName,
             new AIFunctionArguments { ["path"] = "notes.txt" });
 
-        // Assert: the listing names the file relatively and the read accepts that name as given
-        Assert.Equal("notes.txt", Assert.IsType<string>(listing));
+        // Assert: the listing reports the file as a bare relative name (beneath its location
+        // header) and the read accepts that same name as given
+        var listingText = Assert.IsType<string>(listing);
+        Assert.EndsWith("notes.txt", listingText, StringComparison.Ordinal);
         Assert.Equal("inside-content", Assert.IsType<string>(read));
     }
 
@@ -329,7 +324,7 @@ public class TextFileTests
     /// <returns>The composed tool list.</returns>
     private static IReadOnlyList<AIFunction> Compose(string root)
     {
-        var policy = PathPolicy.ForWorkspace(root);
+        var policy = new PathPolicy(root, [PathRule.ReadWrite(root)]);
         return new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
     }
 

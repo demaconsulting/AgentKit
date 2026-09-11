@@ -20,11 +20,11 @@ something a model can use.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                    |
-|-------------------|----------|--------------------------------------------------------------|
-| `ToolName`        | `string` | `text_file_read`; public constant; carries the family prefix |
-| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool      |
-| Denial messages   | `string` | Compile-time constants; contain no host location             |
+| Member            | Type     | Invariant                                                      |
+| ----------------- | -------- | -------------------------------------------------------------- |
+| `ToolName`        | `string` | `text_file_read`; public constant; carries the family prefix   |
+| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool        |
+| Denial messages   | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
 
 Two ceilings from `PathPolicy.Limits` bound the operation: `MaxReadBytes`, the greatest size that
 may be read from one source, and `MaxResultCharacters`, the deliberately tighter budget for what
@@ -113,12 +113,14 @@ its decoder only when the window reached end of file, so a multi-byte character 
 split in half is buffered rather than rejected and a valid UTF-8 file is never misclassified because
 a character straddled the window edge.
 
-No refusal message contains a path, a permitted location or a directory separator. The messages are
-constants and the only interpolated values are integers naming a ceiling. **Each nevertheless
-states what the model should do instead** — the form a path takes, or the tool that would find the
-right name — because an agent told only "no" retries the same request until it abandons the task.
-The guidance is phrased without a separator, so that "contains no separator" remains a usable test
-for "contains no host location".
+Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
+`PathPolicy` message unchanged: it states what was requested, how a relative request was
+interpreted, and the permitted locations with their access levels, so a confined model learns where
+it may read instead of guessing. Refusals this unit composes itself — including the binary-file
+redirect, the directory and missing-file redirects, and the oversized-file ceilings — are constants
+or interpolate only an integer ceiling or a sibling tool name. **Each nevertheless states what the
+model should do instead** — the form a path takes, or the tool that would find the right name —
+because an agent told only "no" retries the same request until it abandons the task.
 
 #### Dependencies
 

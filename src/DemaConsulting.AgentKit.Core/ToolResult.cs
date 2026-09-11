@@ -250,8 +250,11 @@ public static class ToolResult
     ///     <paramref name="message"/> the caller supplied, and — when a redirect is given — a
     ///     fixed sentence naming it. Nothing about the host is added here. The refusal text is
     ///     handed to a model and the resulting transcript leaves this process, so the only way
-    ///     host layout can reach it is through <paramref name="message"/>; callers keep that
-    ///     discipline by composing messages from constants, as <see cref="PathPolicy"/> does.
+    ///     host layout can reach it is through <paramref name="message"/>. What a caller places
+    ///     there is the caller's decision: some packs compose fixed text that names nothing, while
+    ///     <see cref="PathPolicy"/> deliberately supplies host paths in its denial — echoing the
+    ///     caller's request, the interpretation of a relative path, and the permitted locations —
+    ///     so a confined model learns where it may work.
     ///     </para>
     ///     <para>
     ///     The redirect exists because an agent told only "no" will retry the same tool, while
@@ -263,8 +266,9 @@ public static class ToolResult
     ///     <c>default</c> is not one.
     /// </param>
     /// <param name="message">
-    ///     The explanation handed to the model. Must be non-null and non-empty, and must carry
-    ///     no host detail.
+    ///     The explanation handed to the model. Must be non-null and non-empty. Its content is the
+    ///     caller's decision and is delivered verbatim; whatever it holds — including any host paths
+    ///     the caller chooses to disclose — reaches the transcript.
     /// </param>
     /// <param name="redirectToolName">
     ///     The name of a tool better suited to the request, or <see langword="null"/> when

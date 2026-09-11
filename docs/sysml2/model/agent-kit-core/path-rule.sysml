@@ -1,6 +1,6 @@
 package AgentKitCore {
     part def PathRule {
-        doc /* One path access rule, either unrestricted or confined to a single location, carrying its own denied patterns so that read and write access can be expressed independently. */
+        doc /* One access grant, either unrestricted or confined to a single location, carrying an access level (read-only or read-write) that is permission only and its own denied patterns, so that permitted locations and their access can be expressed independently of addressing. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Core/PathRule.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Core.Tests/PathRuleTests.cs */

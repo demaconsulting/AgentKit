@@ -12,7 +12,7 @@ public class ToolPackBuilderTests
     /// </summary>
     /// <returns>The policy.</returns>
     private static PathPolicy AnyPolicy() =>
-        new(PathRule.Unrestricted(), PathRule.Unrestricted());
+        new(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
     /// <summary>
     ///     Proves that a builder cannot exist without an access policy.

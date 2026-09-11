@@ -277,7 +277,7 @@ public class ToolResultTests
     /// <remarks>
     ///     The refusal text is handed to a model and the resulting transcript leaves this
     ///     process. This is the <see cref="ToolResult"/>-level counterpart of the path policy's
-    ///     redaction scenario: the library must contribute no host detail of its own, so the
+    ///     disclosure scenario: the library must contribute no host detail of its own, so the
     ///     only way host layout can appear is if a caller puts it in the message.
     /// </remarks>
     [Fact]

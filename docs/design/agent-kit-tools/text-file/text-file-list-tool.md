@@ -25,10 +25,12 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | `DefaultSearchPattern` | `string` | `*`; used when the request supplies no pattern               |
 | `NameSeparator`        | `string` | A newline; a comma would be ambiguous within a file name     |
 | `ReportedSeparator`    | `char`   | `/` on every platform                                        |
+| `BlockSeparator`       | `string` | A blank line between discovery listing blocks                |
 | `NoMatches`            | `string` | The result reported when nothing matched                     |
 
-The listing returned is a newline-separated sequence of names, in ordinal order, relative to the
-requested directory, bounded by `PathPolicy.Limits.MaxResultCharacters`.
+The listing returned is one or more newline-separated blocks, bounded by
+`PathPolicy.Limits.MaxResultCharacters`. Each block starts with an absolute location header, written
+once for that location, followed by the matching names in ordinal order relative to that header.
 
 #### Key Methods
 
@@ -58,34 +60,53 @@ governed by the supplied policy for the rest of its life.
 
 1. An absent or empty `searchPattern` becomes `*` — "everything here" is the least surprising
    reading for a model exploring a directory it does not know
-2. `policy.TryResolveRead(directory, …)` — a refusal is returned as `PathNotPermitted`. Resolving
-   first is what produces a refusal rather than the empty sequence enumeration alone would return,
-   and the resolved location is what every reported name is made relative to. **The directory is
-   passed to the policy exactly as the model supplied it**: the policy interprets a relative
-   directory against the workspace and an omitted, empty, whitespace or placeholder directory as
-   the workspace itself, so this unit invents no reading of its own
-3. **`policy.EnumerateFiles(directory, pattern)` performs the enumeration.** This is the unit's
-   central invariant, stated here because it is the thing a future change is most likely to get
-   wrong
-4. Each real path is relativized against the resolved directory, its separators normalized to `/`,
-   and the names sorted in ordinal order
-5. No matches returns the text `No files matched.` — an empty listing is a fact, not a refusal
-6. A joined listing longer than `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the
+2. An omitted, empty, whitespace or placeholder directory is a discovery request. It enumerates
+   every `policy.DiscoveryRoots()` location, rendering each location once as an absolute header and
+   rendering its matching names beneath it. A single granted working directory therefore establishes
+   the relative dialect — bare names beneath the working-directory header — while an ungranted
+   working directory can only be addressed by absolute headers
+3. Otherwise `policy.TryResolveRead(directory, …)` resolves the requested directory; a refusal is
+   returned as `PathNotPermitted`. Resolving first is what produces a refusal rather than the empty
+   sequence enumeration alone would return, and the resolved location participates in the output
+   dialect decision. **The directory is passed to the policy exactly as the model supplied it**:
+   the policy interprets a relative directory against the working directory, accepts an absolute
+   directory unchanged, and this unit invents no reading of its own
+4. **`policy.EnumerateFiles(…, pattern)` performs the enumeration**, using each discovery root or
+   the requested directory as appropriate. This is the unit's central invariant, stated here because
+   it is the thing a future change is most likely to get wrong
+5. The output anchor is chosen to mirror the caller's path dialect. A relative request within the
+   granted working directory uses the working directory as the header, so names beneath it are bare
+   working-directory-relative names the model can hand straight back to `text_file_read`. An
+   absolute request, or a location outside the working directory, uses the requested location's own
+   absolute header because a relative name could not truthfully address it
+6. Each real path is relativized against the chosen header, its separators normalized to `/`, and
+   the names sorted in ordinal order
+7. No matches returns the text `No files matched.` — an empty listing is a fact, not a refusal
+8. A joined listing longer than `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the
    ceiling and telling the model to narrow its pattern
-7. Otherwise the listing is returned
+9. Otherwise the listing is returned
 
 **Preconditions:** none beyond a constructed tool; no caller-supplied directory can raise an
 exception, and none is refused for being absent.
 
-**Postconditions:** every name in the listing denotes a file the read decision permits; no name is
-absolute; the same tree always produces the same listing.
+**Postconditions:** every name beneath a location header denotes a file the read decision permits;
+the header states the anchor for those names; the same tree always produces the same listing.
+
+**The location-header shape.** A full absolute path repeated for every listed file would spend
+roughly ninety characters per file on the same prefix and trip the result ceiling before the model
+learned much. The header pays that absolute-location cost once per listed location, and the short
+names beneath it demonstrate the form the model should imitate. When that header is the granted
+working directory, the names are bare working-directory-relative paths that can be passed directly
+to `text_file_read`; when the header is another location, the absolute header is the truthful way
+to address it.
 
 **The omitted-directory reading.** An omitted, empty, whitespace or placeholder directory lists
-the workspace root. The previous behavior — a refusal — was wrong in both directions: it told a
-model its request was malformed when the request was the only one the model could make, and it
-sent the model guessing at locations it has no business exploring. The reading lives in
-`PathPolicy` rather than here, so a listing and a read agree about what "no path" means; see
-_PathPolicy Unit Design_.
+every permitted location, each under its own absolute header. The previous behavior — a refusal —
+was wrong in both directions: it told a model its request was malformed when the request was the
+only one the model could make, and it sent the model guessing at locations it has no business
+exploring. Discovery now establishes the path dialect up front: a single granted working directory
+establishes bare relative names, while an ungranted working directory produces only absolute
+headers because relative names would not address a granted location.
 
 **The enumeration invariant.** Enumeration goes through `PathPolicy.EnumerateFiles` and never
 through `Directory.EnumerateFiles` or `Directory.GetFiles`. Recursive enumeration performed by the
@@ -113,8 +134,10 @@ rather than as an empty listing an agent would misread.
 model would then never ask for, with no way to detect the omission.
 
 **Every refusal states what to do instead**, because an agent told only "no" retries the same
-request until it abandons the task. No refusal message contains a path, a permitted location or a
-directory separator, and no successful listing contains an absolute path.
+request until it abandons the task. A refusal produced by `PathPolicy` is returned unchanged: it
+states what was requested, how a relative request was interpreted, and the permitted locations with
+their access levels. The oversized-listing refusal this unit composes names only the
+`MaxResultCharacters` ceiling and tells the model to narrow its pattern.
 
 #### Dependencies
 

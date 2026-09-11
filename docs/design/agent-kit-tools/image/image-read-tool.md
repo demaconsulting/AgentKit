@@ -21,12 +21,12 @@ success, delivers that content through the guarded path so it reaches the provid
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                     |
-|-------------------|----------|---------------------------------------------------------------|
-| `ToolName`        | `string` | `image_read`; public constant; carries the family prefix      |
-| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool       |
-| Caption prefix    | `string` | Constant; names the media type, never the word "image" alone  |
-| Denial messages   | `string` | Compile-time constants; contain no host location              |
+| Member            | Type     | Invariant                                                      |
+| ----------------- | -------- | -------------------------------------------------------------- |
+| `ToolName`        | `string` | `image_read`; public constant; carries the family prefix       |
+| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool        |
+| Caption prefix    | `string` | Constant; names the media type, never the word "image" alone   |
+| Denial messages   | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
 
 One ceiling from `PathPolicy.Limits` bounds the operation: `MaxBinaryBytes`, the greatest size of
 content that may be returned. It is inclusive — a file exactly at the ceiling is returned.
@@ -107,12 +107,15 @@ expects.
 detect; it would then reason confidently about a picture it never wholly saw. Refusing with the
 ceiling named lets it narrow the request instead.
 
-No refusal message contains a path, a permitted location or a directory separator. The messages are
-constants and the only interpolated values are an integer naming a ceiling and, in a success
-caption, the resolved media type. **Each refusal nevertheless states what the model should do
-instead** — the form a path takes, or the tool better suited to the file — because an agent told
-only "no" retries the same request until it abandons the task. The guidance is phrased without a
-separator, so that "contains no separator" remains a usable test for "contains no host location".
+Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
+`PathPolicy` message unchanged: it states what was requested, how a relative request was
+interpreted, and the permitted locations with their access levels, so a confined model learns where
+it may read instead of guessing. Refusals this unit composes itself — including unsupported media
+types, directory requests, missing or unreadable files, and the oversized-image ceiling — are
+constants or interpolate only a media type, a sibling tool name, or an integer ceiling. **Each
+refusal nevertheless states what the model should do instead** — the form a path takes, or the tool
+better suited to the file — because an agent told only "no" retries the same request until it
+abandons the task.
 
 #### Dependencies
 

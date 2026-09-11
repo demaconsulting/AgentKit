@@ -41,7 +41,7 @@ Subsystem tests reside in `TextFile/TextFileTests.cs`, with the shared reparse-p
 
 A subsystem test run passes when all ten scenarios below pass without error or exception beyond
 those explicitly asserted. A tool published outside the family prefix, a refusal raised as an
-exception rather than returned, a refusal containing a host path or separator, a relative name
+exception rather than returned, a policy refusal that fails to disclose the permitted location, a relative name
 that is not resolved against the workspace, an escaped file
 appearing in a listing, a permitted read that fails, a refused write that succeeds, and a truncated
 result where a refusal was required each constitute a failure.
@@ -83,7 +83,8 @@ into JSON and the failure would be silent.
 
 Composes a policy permitting reads beneath the root and writes only outside it, then reads one path
 successfully and is refused the write of that same path. The successful read is what makes the
-refusal meaningful: the path is reachable, and only the write rule refused it.
+refusal meaningful: the path is reachable through a read-only grant, and only the absence of a
+read-write grant there refused the write.
 
 #### AgentKitTools-TextFile-PolicyGoverned: A Path Beneath a Link Outside the Root Is Refused by Every Tool
 
@@ -111,13 +112,14 @@ list a name it then could not read.
 Error path: a request for a location outside the permitted one returns text naming a denial reason
 rather than raising an exception, confirming a refused agent is told why rather than stranded.
 
-#### AgentKitTools-TextFile-DenialsAreResults: No Refusal Discloses a Host Path
+#### AgentKitTools-TextFile-DenialsAreResults: Every Refusal Discloses the Permitted Location
 
-**Test**: `TextFile_Family_DenialText_ContainsNoHostPath`
+**Test**: `TextFile_Family_DenialText_DisclosesPermittedLocation`
 
-Collects the refusals of all three tools and asserts none contains the permitted location, the
-requested location, the requested file name, or a directory separator. The transcript leaves the
-process, so this is a disclosure control rather than a cosmetic one.
+Collects the refusals of all three tools for a location outside the permitted one and asserts each
+names the permitted location so a confined model learns where it may work. The transcript leaves
+the process, so this disclosure is a deliberate control — the rule that once redacted these
+refusals is dropped.
 
 #### AgentKitTools-TextFile-ObservesPolicyLimits: A File Beyond the Read Ceiling Is Refused, Not Truncated
 

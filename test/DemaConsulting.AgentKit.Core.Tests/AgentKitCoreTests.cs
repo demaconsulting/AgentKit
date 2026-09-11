@@ -19,8 +19,8 @@ public class AgentKitCoreTests
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
-        var requested = Path.Combine(policy.ReadRule.Root!, "junction", "secret.txt");
+        var policy = CreateRootedPolicy(fixture.Root);
+        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
 
         // Act: request the escaping path through the public API
         var permitted = policy.TryResolveRead(requested, out var realPath, out var denialMessage);
@@ -43,11 +43,11 @@ public class AgentKitCoreTests
         ReparsePointFixture.WriteFile(fixture.Root, "inside.txt", "inside-content");
         ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: list the permitted location through the public API
         var listed = policy
-            .EnumerateFiles(policy.ReadRule.Root!, "*")
+            .EnumerateFiles(policy.WorkingDirectory, "*")
             .Select(Path.GetFileName)
             .ToArray();
 
@@ -62,16 +62,18 @@ public class AgentKitCoreTests
     [Fact]
     public void AgentKitCore_SystemPathPolicy_ReadWideWriteNarrow_AllowsReadDeniesWrite()
     {
-        // Arrange: unrestricted reads paired with writes confined to one location
+        // Arrange: an unrestricted read grant paired with a read-write grant confined to one place
         using var fixture = new ReparsePointFixture();
         var target = ReparsePointFixture.WriteFile(fixture.Outside, "reference.txt", "content");
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Rooted(fixture.Root));
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.Unrestricted(AccessLevel.ReadOnly), PathRule.ReadWrite(fixture.Root)]);
 
         // Act: read and then attempt to write the same location
         var readPermitted = policy.TryResolveRead(target, out _, out _);
         var writePermitted = policy.TryResolveWrite(target, out _, out _);
 
-        // Assert: the two rules act independently of one another
+        // Assert: the grants act independently of one another
         Assert.True(readPermitted);
         Assert.False(writePermitted);
     }
@@ -80,16 +82,12 @@ public class AgentKitCoreTests
     ///     Proves that the system reports a refused path as a returned denial rather than by
     ///     throwing.
     /// </summary>
-    /// <remarks>
-    ///     An exception at a tool call would end the agent's turn; a returned denial lets the
-    ///     agent adapt and try a permitted path instead.
-    /// </remarks>
     [Fact]
     public void AgentKitCore_SystemPathPolicy_DeniedPath_ReturnsDenialWithoutThrowing()
     {
         // Arrange: a system confined to one location
         using var fixture = new ReparsePointFixture();
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
 
         // Act: request a path outside the permitted location
@@ -102,94 +100,78 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
-    ///     Proves that a denial message the system produces carries no host locations.
+    ///     Proves that a denial message the system produces discloses the permitted location so a
+    ///     confined model learns where it may work.
     /// </summary>
+    /// <remarks>
+    ///     The host-path-disclosure rule the earlier redaction tests enforced has been deliberately
+    ///     dropped: telling a confined model the map of where it may go is worth more than concealing
+    ///     paths it is already confined to.
+    /// </remarks>
     [Fact]
-    public void AgentKitCore_SystemPathPolicy_DenialMessage_ContainsNoHostPaths()
+    public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations()
     {
         // Arrange: a system confined to one location
         using var fixture = new ReparsePointFixture();
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
 
         // Act: request a path outside the permitted location
         policy.TryResolveRead(requested, out _, out var denialMessage);
 
-        // Assert: neither the request, the permitted location, nor any path fragment appears
+        // Assert: the request is echoed and the permitted location is enumerated with its level
         Assert.NotNull(denialMessage);
-        Assert.DoesNotContain(requested, denialMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(policy.ReadRule.Root!, denialMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            denialMessage,
-            StringComparison.Ordinal);
+        Assert.Contains(requested, denialMessage, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", denialMessage, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves that a path stated the way a model states it is resolved against the workspace
-    ///     the host configured.
+    ///     Proves that a path stated the way a model states it is resolved against the working
+    ///     directory the host configured.
     /// </summary>
-    /// <remarks>
-    ///     A model asks for <c>notes.txt</c>, not for its absolute location. Resolving that
-    ///     anywhere other than the workspace refuses every legitimate request while looking, from
-    ///     the outside, like a containment decision.
-    /// </remarks>
     [Fact]
-    public void AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkspaceRoot()
+    public void AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkingDirectory()
     {
-        // Arrange: a system configured for one workspace, holding one file
+        // Arrange: a system configured for one working directory, holding one file
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
-        var policy = PathPolicy.ForWorkspace(fixture.Root);
+        var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: request the file the way a model would name it
         var permitted = policy.TryResolveRead("notes.txt", out var realPath, out var denialMessage);
 
-        // Assert: the real file inside the workspace, not a refusal
+        // Assert: the real file inside the working directory, not a refusal
         Assert.True(permitted);
         Assert.Null(denialMessage);
         Assert.Equal("inside-content", File.ReadAllText(realPath!));
     }
 
     /// <summary>
-    ///     Proves that a denial the system produces tells the model how to recover.
+    ///     Proves that a denial the system produces tells the model how to recover, by naming what is
+    ///     permitted and, when the request was relative, how it was interpreted.
     /// </summary>
-    /// <remarks>
-    ///     An agent told only "no" re-submits variations of the same path until it abandons the
-    ///     task. Stating the expected form is what makes a refusal a recoverable step, and it is
-    ///     done without reintroducing any host detail.
-    /// </remarks>
     [Fact]
     public void AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover()
     {
-        // Arrange: a system confined to one workspace
+        // Arrange: a system confined to one working directory
         using var fixture = new ReparsePointFixture();
-        var policy = PathPolicy.ForWorkspace(fixture.Root);
-        var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
+        var policy = CreateRootedPolicy(fixture.Root);
 
-        // Act: request a path outside the workspace
-        policy.TryResolveRead(requested, out _, out var denialMessage);
+        // Act: request a relative path that escapes the working directory
+        policy.TryResolveRead("../outside/elsewhere.txt", out _, out var denialMessage);
 
-        // Assert: guidance the model can act on, still carrying no host location
+        // Assert: the denial echoes the input, states the interpretation, and names the location
         Assert.NotNull(denialMessage);
-        Assert.Contains("workspace root", denialMessage, StringComparison.Ordinal);
-        Assert.DoesNotContain(policy.BaseDirectory, denialMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            denialMessage,
-            StringComparison.Ordinal);
+        Assert.Contains("Requested: \"../outside/elsewhere.txt\"", denialMessage, StringComparison.Ordinal);
+        Assert.Contains("Interpreted as:", denialMessage, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
     }
 
     /// <summary>
     ///     Proves that an image a tool returns reaches the provider on a channel it honors, even
     ///     when the provider would drop it from a tool response.
     /// </summary>
-    /// <remarks>
-    ///     The asymmetry is observed rather than theoretical: one provider delivers images from
-    ///     tool results and another silently discards them, after which the model describes an
-    ///     image it never received. Promoting the content onto a user message is what makes the
-    ///     delivery independent of which provider a host chose.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage()
@@ -219,16 +201,18 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
-    ///     Proves that the system refuses to create a path access policy without both rules.
+    ///     Proves that the system refuses to create a path access policy without a working directory,
+    ///     and rejects a null grant.
     /// </summary>
     [Fact]
-    public void AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected()
+    public void AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected()
     {
-        // Act & Assert: neither rule may be omitted, so an unguarded policy cannot exist
+        // Act & Assert: the anchor is required, and a null grant entry is a programming error
+        using var fixture = new ReparsePointFixture();
+        Assert.ThrowsAny<ArgumentException>(
+            () => new PathPolicy(null!, [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
         Assert.Throws<ArgumentNullException>(
-            () => new PathPolicy(null!, PathRule.Unrestricted()));
-        Assert.Throws<ArgumentNullException>(
-            () => new PathPolicy(PathRule.Unrestricted(), null!));
+            () => new PathPolicy(fixture.Root, [null!]));
     }
 
     /// <summary>
@@ -242,7 +226,7 @@ public class AgentKitCoreTests
         using var fixture = new ReparsePointFixture();
 
         // Act: build the policy a host would build and read the ceilings it carries
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = CreateRootedPolicy(fixture.Root);
         var limits = policy.Limits;
 
         // Assert: every tool this policy governs observes the published budget
@@ -256,12 +240,6 @@ public class AgentKitCoreTests
     ///     Proves that an image a tool returns reaches the runtime as content rather than as
     ///     serialized JSON.
     /// </summary>
-    /// <remarks>
-    ///     The tool delegate is declared <c>Task&lt;object&gt;</c> deliberately: that is the
-    ///     declared return type a tool returning a result union necessarily has, and it is the
-    ///     case the underlying factory would serialize. A strongly-typed declaration would pass
-    ///     without the guard and would prove nothing.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent()
@@ -290,18 +268,13 @@ public class AgentKitCoreTests
     ///     Proves that a tool refused by the access policy returns a refusal to the model
     ///     instead of throwing.
     /// </summary>
-    /// <remarks>
-    ///     An exception raised at a tool call ends the agent's turn; a returned refusal lets
-    ///     the model read the reason and choose a permitted path. This exercises the access
-    ///     policy, the result constructors and the guarded factory together.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task AgentKitCore_SystemGuardedTool_DeniedPath_ReturnsDenialResultNotException()
     {
         // Arrange: a tool governed by a policy confined to one location
         using var fixture = new ReparsePointFixture();
-        var policy = new PathPolicy(PathRule.Rooted(fixture.Root), PathRule.Rooted(fixture.Root));
+        var policy = CreateRootedPolicy(fixture.Root);
         var function = GuardedToolFactory.Create(
             (Func<string, Task<object>>)(path => Task.FromResult(
                 policy.TryResolveRead(path, out var realPath, out var denialMessage)
@@ -365,7 +338,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemToolPacks_HostWithoutCapability_PackContributesNoTools()
     {
         // Arrange: a policy, a pack that needs nothing, and a pack that needs vision
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = CreateUnrestrictedPolicy();
         var textFile = new StubToolPack(
             "text_file",
             HostCapabilities.None,
@@ -390,7 +363,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemToolPacks_CapableHost_ReceivesEveryAttachedTool()
     {
         // Arrange: a policy and two packs, one of which needs vision
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = CreateUnrestrictedPolicy();
         var textFile = new StubToolPack(
             "text_file",
             HostCapabilities.None,
@@ -421,11 +394,31 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected()
     {
         // Arrange: an application attaching two packs that both claim one family
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = CreateUnrestrictedPolicy();
         var builder = new ToolPackBuilder(policy).Add(new StubToolPack("text_file", tools: []));
 
         // Act & Assert: ambiguous tool names are refused where the application composed them
         Assert.Throws<ArgumentException>(
             () => builder.Add(new StubToolPack("text_file", tools: [])));
+    }
+
+    /// <summary>
+    ///     Creates a policy whose working directory is also its single read-write grant.
+    /// </summary>
+    /// <param name="root">The location that is both the anchor and the grant.</param>
+    /// <returns>A policy anchored at and granting <paramref name="root"/>.</returns>
+    private static PathPolicy CreateRootedPolicy(string root)
+    {
+        return new PathPolicy(root, [PathRule.ReadWrite(root)]);
+    }
+
+    /// <summary>
+    ///     Creates a policy that grants read-write access everywhere, for tests concerned only with
+    ///     tool composition rather than containment.
+    /// </summary>
+    /// <returns>An unrestricted read-write policy anchored at the temporary directory.</returns>
+    private static PathPolicy CreateUnrestrictedPolicy()
+    {
+        return new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
     }
 }

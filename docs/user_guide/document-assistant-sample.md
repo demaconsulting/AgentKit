@@ -76,8 +76,9 @@ dotnet run --project samples/01-document-assistant -- \
   --prompt "Call text_file_read with the path ../outside-workspace.txt and show me exactly what it returns."
 ```
 
-The `text_file_read` tool returns a `Denied (PathNotPermitted)` result whose message states that paths
-are interpreted relative to the workspace root and suggests a permitted request. The agent's turn
-continues normally — a refusal is a value, not an error — so the model can act on the guidance rather
-than simply failing. Asking the text tool to read the image instead produces a
-`Denied (UnsupportedMediaType)` result that redirects the model to `image_read`.
+The `text_file_read` tool returns a `Denied (PathNotPermitted)` result whose message echoes the
+requested path, states the location it was interpreted as, and names the permitted location — the
+workspace folder — with its access level. The agent's turn continues normally — a refusal is a
+value, not an error — so the model can act on the guidance rather than simply failing. Asking the
+text tool to read the image instead produces a `Denied (UnsupportedMediaType)` result that redirects
+the model to `image_read`.

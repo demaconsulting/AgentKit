@@ -66,12 +66,13 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     layering violation.
 ///     </para>
 ///     <para>
-///     Every refusal is returned rather than thrown, and carries no host detail: no absolute
-///     path, no permitted location, no directory separator. Each nevertheless states what the
-///     model should do instead, because an agent told only "no" retries the same request. The
-///     refusal text reaches a model and the resulting transcript leaves this process, so the
-///     messages here are constants, and the only interpolated values are integers naming a
-///     ceiling.
+///     Every refusal is returned rather than thrown. A refusal this tool composes itself — a
+///     binary file redirected to another tool, or an oversized file naming the ceiling — is built
+///     from constants and interpolates only an integer or a sibling tool name. A refusal the access
+///     policy produces, by contrast, now states what was requested, how a relative request was
+///     interpreted, and which locations are permitted, so a confined model is told where it may read
+///     instead of being left to guess. Each refusal states what the model should do next, because an
+///     agent told only "no" retries the same request.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;

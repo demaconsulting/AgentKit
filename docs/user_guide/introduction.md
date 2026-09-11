@@ -56,43 +56,60 @@ its own tools against this contract.
 
 ## Path Policy
 
-Read access and write access are expressed as two independent rules. A rule is either unrestricted
-or confined to one location, and each rule carries its own denied patterns. Rules are created
-through `PathRule.Unrestricted` and `PathRule.Rooted`, and paired into a `PathPolicy`.
+A path policy separates two orthogonal ideas. The **working directory** is the single location a
+relative path is anchored to, and nothing else — it carries no permission of its own. A **grant**
+is a permitted location carrying an access level, and nothing else — it says a location may be read
+(`PathRule.ReadOnly`) or read and written (`PathRule.ReadWrite`), or is unrestricted at a stated
+level (`PathRule.Unrestricted`), and it carries its own denied patterns. A policy holds one working
+directory and zero or more grants.
 
-Most applications want one workspace for both directions, and `PathPolicy.ForWorkspace` names it
-once:
+Most applications want one folder that is both the anchor and the permitted location, written
+explicitly as a single read-write grant over the working directory:
 
 ```csharp
-var policy = PathPolicy.ForWorkspace("/workspace");
+var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
 ```
 
-That single argument becomes the permitted read location, the permitted write location, and the
-**base directory** — the location a relative path is interpreted against. Use a `PathPolicy`
-constructor directly when reads and writes need different locations; the constructor takes an
-optional base directory, and defaults it to the read rule's location.
+The working directory and the grants are independent. The working directory may be granted
+read-write, granted read-only, or granted nothing at all: an application folder can anchor relative
+paths while granting nothing, and a bare name then resolves under it correctly and is then correctly
+denied — coherent, not a special case. The application decides what access the working directory
+should have by granting it, exactly as it grants any other location; it receives none implicitly.
+Add more grants when an agent needs several locations, for example a read-only source folder and a
+read-write output folder.
 
-**A path a model supplies is read relative to the base directory.** A model asks for `notes.txt`,
-not for its absolute location, so that is the request the policy answers. A path resolved against
-the location the host process happened to be started from would refuse every legitimate request
-while looking, from the outside, like a containment decision. Absolute paths remain expressible and
-remain subject to the same containment decision. A request naming no path at all — an omitted,
-empty or whitespace argument, or the literal word a model's runtime prints for absence — means the
-base directory itself.
+**A path a model supplies is read relative to the working directory.** A model asks for `notes.txt`,
+not for its absolute location, so that is the request the policy answers. A path resolved against the
+location the host process happened to be started from would refuse every legitimate request while
+looking, from the outside, like a containment decision — so the working directory is required, not
+defaulted, and a missing one is a programming error the constructor rejects. Absolute paths remain
+expressible and remain subject to the same containment decision. A request naming no path at all —
+an omitted, empty or whitespace argument, or the literal word a model's runtime prints for absence —
+means the working directory itself. A bare segment resolves against the working directory first, and
+falls back to a same-named grant only when nothing by that name exists in the working directory: a
+segment equal to the final folder name of exactly one grant then resolves to that grant, while a
+segment matching two or more is left un-aliased and denied with both locations named.
 
-A policy cannot be constructed without both of its rules, so an unguarded policy cannot exist.
-Access is requested through `PathPolicy.TryResolveRead` and `PathPolicy.TryResolveWrite`, which
-return whether the access is permitted, the real location on success, and a redacted reason on
-refusal. Directory listings are obtained through `PathPolicy.EnumerateFiles`, which applies the
-same decision, so a listing can never advertise a file that access would refuse; a listing that
-names no directory lists the base directory.
+A read is permitted when any grant permits it, and a write only when a read-write grant permits it,
+so a read-only grant never authorizes a write. Access is requested through
+`PathPolicy.TryResolveRead` and `PathPolicy.TryResolveWrite`, which return whether the access is
+permitted, the real location on success, and a reason on refusal. Directory listings are obtained
+through `PathPolicy.EnumerateFiles`, which applies the same decision, so a listing can never
+advertise a file that access would refuse; a listing that names no directory lists the working
+directory.
 
 Every containment decision resolves symbolic links and directory junctions at every path component,
 so a path that merely looks contained cannot reach outside the location the operator granted.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
-states the form a permitted request takes while still naming no host location, so a refused agent
-has something to act on rather than a bare "no" to retry against.
+states what was requested, how a relative request was interpreted, and which locations are permitted
+with their access levels, so a confined agent learns where it may work instead of retrying against a
+bare "no".
+
+> **Transition hazard.** With a single granted working directory, tool output uses the relative
+> dialect — a listing reports bare relative names and the model imitates them. Adding a second
+> granted location moves paths under it to the absolute dialect (reported under an absolute header),
+> and nothing else warns you the switch happened.
 
 ## Tool Limits
 
@@ -173,7 +190,7 @@ cannot use.
 
 ## Composing a Tool List
 
-An application names its workspace, adds the packs it wants to a
+An application names its working directory, adds the packs it wants to a
 `ToolPackBuilder`, declares the capabilities its host supports, and builds the tool list:
 
 ```csharp
@@ -182,7 +199,7 @@ using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
-var policy = PathPolicy.ForWorkspace("/workspace");
+var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
 
 IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .WithHostCapabilities(HostCapabilities.Vision)
@@ -194,10 +211,10 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 ```
 
 Every tool returned observes the same policy and limits: a `text_file_read` that steps outside the
-rooted location, or exceeds the byte ceiling, returns a refusal rather than the file. Every tool
+granted location, or exceeds the byte ceiling, returns a refusal rather than the file. Every tool
 also reads a path the same way, so a name `text_file_list` reported can be handed straight back to
-`text_file_read` or `image_read`, and `text_file_list` called with no directory lists the
-workspace root. The tool
+`text_file_read` or `image_read`, and `text_file_list` called with no directory lists every
+permitted location. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
 

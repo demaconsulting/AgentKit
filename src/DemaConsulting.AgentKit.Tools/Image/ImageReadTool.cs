@@ -41,12 +41,13 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     that names the ceiling lets the model narrow its request instead.
 ///     </para>
 ///     <para>
-///     Every refusal is returned rather than thrown, and carries no host detail: no absolute
-///     path, no permitted location, no directory separator. Each nevertheless states what the
-///     model should do instead, because an agent told only "no" retries the same request. The
-///     refusal text reaches a model and the resulting transcript leaves this process, so the
-///     messages here are constants, and the only interpolated values are an integer naming a
-///     ceiling and the resolved media type.
+///     Every refusal is returned rather than thrown. A refusal this tool composes itself — an
+///     unsupported media type, or an oversized image naming the ceiling — interpolates only an
+///     integer or the resolved media type. A refusal the access policy produces, by contrast, states
+///     what was requested, how a relative request was interpreted, and which locations are permitted,
+///     so a confined model is told where it may look instead of being left to guess. Each refusal
+///     states what the model should do next, because an agent told only "no" retries the same
+///     request.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;

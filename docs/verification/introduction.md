@@ -28,8 +28,10 @@ constituent software items, specifically:
   symbolic links and directory junctions at every path component
 - **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
   denied patterns
-- **PathPolicy (Unit)** — Pairs an independent read rule and write rule, and makes the single
-  containment decision used by both direct access and directory enumeration
+- **PathPolicy (Unit)** — Anchors relative paths to one required working directory and permits
+  locations through zero-or-more read-only or read-write access grants, keeping addressing and
+  permission orthogonal, and makes the single containment decision used by both direct access and
+  directory enumeration
 - **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
   attaching content
 - **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals

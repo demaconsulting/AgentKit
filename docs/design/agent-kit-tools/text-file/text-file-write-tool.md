@@ -7,22 +7,22 @@ The `TextFileWriteTool` class publishes the `text_file_write` tool.
 #### Purpose
 
 To replace the text of one file the access policy permits the agent to write, and to refuse
-everything else. This is the unit that makes the library's independent read and write rules
+everything else. This is the unit that makes the read-only/read-write grant distinction
 observable: it consults the write decision alone, so a path the agent may read is refused for
-writing unless the write rule permits it too. An operator who grants wide reading and narrow
+writing unless a read-write grant permits it too. An operator who grants wide reading and narrow
 writing has expressed exactly that expectation, and it is only real because this unit ignores what
-the read rule would have allowed.
+read-only grants would have allowed for reading.
 
 #### Data Model
 
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                     |
-|-------------------|----------|---------------------------------------------------------------|
-| `ToolName`        | `string` | `text_file_write`; public constant; carries the family prefix |
-| `ToolDescription` | `string` | Non-empty; states that existing content is replaced           |
-| Denial messages   | `string` | Compile-time constants; contain no host location              |
+| Member            | Type     | Invariant                                                      |
+| ----------------- | -------- | -------------------------------------------------------------- |
+| `ToolName`        | `string` | `text_file_write`; public constant; carries the family prefix  |
+| `ToolDescription` | `string` | Non-empty; states that existing content is replaced            |
+| Denial messages   | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
 
 **No write ceiling exists, and that is a decision rather than an omission.** `ToolLimits` publishes
 a read budget and a result budget; neither describes a write, and repurposing one would give a host
@@ -73,7 +73,7 @@ governed by the supplied policy for the rest of its life.
 **Preconditions:** none beyond a constructed tool; every argument is validated into a refusal.
 
 **Postconditions:** on success the file's entire content is the supplied text, and the confirmation
-discloses no host location. On any refusal the file system is unchanged.
+reports the character count. On any refusal the file system is unchanged.
 
 #### Error Handling
 
@@ -94,11 +94,15 @@ are real. Refusing is the fail-safe reading and tells the model precisely what i
 result — would build its next step on a file that no longer says what it believes. The replacement
 semantics are stated in the tool's description so the model is never surprised by them.
 
-No refusal message contains a path, a permitted location or a directory separator. **Each
-nevertheless states what the model should do instead** — the form a path takes, or the content to
-supply — because an agent told only "no" retries the same request until it abandons the task. The
-guidance is phrased without a separator, so that "contains no separator" remains a usable test for
-"contains no host location".
+Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
+`PathPolicy` message unchanged: it states what was requested, how a relative request was
+interpreted, and all permitted locations with their access levels. For a write denial, a readable
+but read-only location therefore appears as `(read-only)`, explaining why the write is refused
+there. Refusals this unit composes itself — including the missing-path, missing-content,
+path-is-directory, missing-parent and write-failure cases — are constants; the success
+confirmation interpolates only the character count. **Each refusal nevertheless states what the
+model should do instead** — the form a path takes, or the content to supply — because an agent told
+only "no" retries the same request until it abandons the task.
 
 #### Dependencies
 

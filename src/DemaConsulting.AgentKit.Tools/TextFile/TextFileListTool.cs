@@ -15,7 +15,7 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <see cref="Directory.EnumerateFiles(string, string, SearchOption)"/> or
 ///     <see cref="Directory.GetFiles(string, string)"/>.</b> Recursive enumeration performed by
 ///     the operating system follows directory junctions and symbolic links, so an implementation
-///     that enumerated directly would advertise files lying outside the permitted location even
+///     that enumerated directly would advertise files lying outside every permitted location even
 ///     though reading them is refused. Disclosing that such a file exists — and inviting the
 ///     agent to ask for it — is itself the leak. The policy filters every candidate through the
 ///     same read decision direct access uses, which is why enumeration and access can never
@@ -23,10 +23,23 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     the call must remain a policy call.
 ///     </para>
 ///     <para>
-///     <b>Names are reported relative to the requested directory.</b> An absolute listing would
-///     disclose exactly the host layout every denial withholds, and the transcript leaves this
-///     process. A relative name is also directly usable: the model can hand it back to
-///     <see cref="TextFileReadTool"/> against the directory it just asked about.
+///     <b>A listing is grouped under an absolute location header, and names appear beneath it.</b>
+///     Each permitted location the listing covers is emitted as an absolute header line followed by
+///     the matching names given relative to that header. The header is written once per location —
+///     an O(1) cost — rather than repeating a full absolute path on every file, which would be some
+///     ninety characters each and would quickly trip the result ceiling. A discovery listing (one
+///     made with no directory argument) covers every granted location, so the model learns that
+///     locations other than the working directory are addressed by their absolute header.
+///     </para>
+///     <para>
+///     <b>A listing mirrors the caller's dialect.</b> The output is a demonstration the model
+///     imitates. When the working directory is granted and the requested subtree lies within it, a
+///     relative request lists bare working-directory-relative names — the form the model can hand
+///     straight back to <see cref="TextFileReadTool"/>. An absolute request, or a location outside
+///     the working directory, lists under its absolute header instead, because a relative name could
+///     not truthfully address it. A discovery request establishes the dialect: a single granted
+///     working directory establishes the relative form, while an ungranted working directory can only
+///     be addressed absolutely.
 ///     </para>
 ///     <para>
 ///     <b>An empty listing is a fact, not a refusal.</b> A directory that matches nothing is
@@ -35,12 +48,12 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     rather than truncated, for the same reason a partial file is refused.
 ///     </para>
 ///     <para>
-///     <b>An omitted directory means the workspace root.</b> A model that has not yet seen the
-///     workspace has no directory name to give, and what it sends instead — no argument, an
-///     empty one, or its own runtime's word for absence — is a question this tool can answer.
-///     Both parameters therefore carry a default, so a missing argument reaches the tool body
-///     rather than failing inside the function factory as a framework error the model cannot
-///     interpret. No caller-supplied directory causes this tool to raise an exception.
+///     <b>An omitted directory means every permitted location.</b> A model that has not yet seen the
+///     workspace has no directory name to give, and what it sends instead — no argument, an empty
+///     one, or its own runtime's word for absence — is a question this tool can answer by listing
+///     what it may read. Both parameters therefore carry a default, so a missing argument reaches the
+///     tool body rather than failing inside the function factory as a framework error the model
+///     cannot interpret. No caller-supplied directory causes this tool to raise an exception.
 ///     </para>
 ///     <para>
 ///     The delegate is synchronous and declared to return <see cref="object"/> deliberately —
@@ -68,9 +81,10 @@ public static class TextFileListTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     private const string ToolDescription =
-        "Lists the files beneath a directory the agent is permitted to read, as names relative "
-        + "to that directory. Paths are relative to the workspace root. Returns the listing, or "
-        + "a denial explaining why the request was refused.";
+        "Lists the files the agent is permitted to read. Each permitted location appears as an "
+        + "absolute header line followed by the matching file names beneath it. Omit the directory "
+        + "to list every permitted location. Returns the listing, or a denial explaining why the "
+        + "request was refused.";
 
     /// <summary>
     ///     The search pattern used when the request supplies none.
@@ -94,11 +108,16 @@ public static class TextFileListTool
     ///     The directory separator used in reported names.
     /// </summary>
     /// <remarks>
-    ///     Normalized to a forward slash on every platform. A backslash would disclose the host
-    ///     platform to a transcript that leaves the process, and would make an otherwise
-    ///     identical listing differ between a developer machine and a build agent.
+    ///     Normalized to a forward slash on every platform. A backslash would make an otherwise
+    ///     identical listing differ between a developer machine and a build agent, and a forward
+    ///     slash is the form a model most readily hands back as a relative path.
     /// </remarks>
     private const char ReportedSeparator = '/';
+
+    /// <summary>
+    ///     The blank line separating one location's block from the next in a discovery listing.
+    /// </summary>
+    private const string BlockSeparator = "\n\n";
 
     /// <summary>
     ///     The result reported when nothing matched.
@@ -129,8 +148,8 @@ public static class TextFileListTool
         // tool answers, rather than one the function factory rejects before the body is reached.
         var list = (
                 [Description(
-                    "The directory to list, relative to the workspace root. Optional: omit it "
-                    + "to list the workspace root itself.")]
+                    "The directory to list, relative to the workspace or an absolute path. "
+                    + "Optional: omit it to list every location the agent may read.")]
                 string? directory = null,
                 [Description(
                     "The file-name search pattern to match, for example '*.txt'. "
@@ -142,27 +161,26 @@ public static class TextFileListTool
     }
 
     /// <summary>
-    ///     Lists the permitted files beneath a directory, refusing rather than throwing whenever
-    ///     the request cannot be honored.
+    ///     Lists the permitted files, refusing rather than throwing whenever the request cannot be
+    ///     honored.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     The directory is resolved before it is enumerated, for two reasons: a refused
-    ///     directory then produces a denial rather than the empty sequence enumeration alone
-    ///     would return, and the resolved location is what every reported name is made relative
-    ///     to.
+    ///     A request naming a directory resolves it first, for two reasons: a refused directory then
+    ///     produces a denial rather than the empty sequence enumeration alone would return, and the
+    ///     resolved location decides the header and the anchor every name is made relative to.
     ///     </para>
     ///     <para>
-    ///     <b>An omitted directory means the workspace root.</b> A model exploring a workspace
-    ///     for the first time has no directory name to supply, and the request it makes instead
-    ///     — no argument, an empty one, or its runtime's own word for absence — is a question
-    ///     this tool can answer. Refusing it merely sends the model guessing at locations it has
-    ///     no business exploring. The reading is not invented here: the access policy applies it
-    ///     to every path, so listing and reading agree.
+    ///     <b>A request naming no directory lists every permitted location.</b> A model exploring a
+    ///     workspace for the first time has no directory name to supply, and the request it makes
+    ///     instead — no argument, an empty one, or its runtime's own word for absence — is answered by
+    ///     listing what it may read, each location under its own absolute header. This establishes the
+    ///     dialect: a single granted working directory yields bare relative names, while an ungranted
+    ///     working directory yields absolute headers the model must address by.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy governing the listing.</param>
-    /// <param name="directory">The directory the model requested, or null for the workspace root.</param>
+    /// <param name="directory">The directory the model requested, or null for every permitted location.</param>
     /// <param name="searchPattern">The pattern the model requested, or null for everything.</param>
     /// <returns>The listing, or a refusal naming its reason.</returns>
     private static object List(PathPolicy policy, string? directory, string? searchPattern)
@@ -172,32 +190,32 @@ public static class TextFileListTool
             ? DefaultSearchPattern
             : searchPattern;
 
-        // Resolve the directory itself so that a refusal is reported, and so that reported names
-        // can be made relative to the real location.
-        if (!policy.TryResolveRead(directory, out var realDirectory, out var denialMessage))
+        string text;
+        if (PathPolicy.IsDiscoveryRequest(directory))
         {
-            return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
+            text = ListEveryLocation(policy, pattern);
+        }
+        else
+        {
+            // Resolve the named directory itself so that a refusal is reported, and so the resolved
+            // location decides the header and anchor.
+            if (!policy.TryResolveRead(directory, out var realDirectory, out var denialMessage))
+            {
+                return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
+            }
+
+            text = ListOneDirectory(policy, directory, realDirectory, pattern);
         }
 
-        // The policy enumeration, never a direct one. See the type remarks: a direct enumeration
-        // would surface files reachable only by following a junction out of the permitted
-        // location.
-        var names = policy.EnumerateFiles(directory, pattern)
-            .Select(file => ToReportedName(realDirectory, file))
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToList();
-
         // Nothing matched is an answer, not a refusal.
-        if (names.Count == 0)
+        if (text.Length == 0)
         {
             return ToolResult.Text(NoMatches);
         }
 
-        var listing = string.Join(NameSeparator, names);
-
         // The return budget applies to a listing exactly as it applies to a file's text: a
         // truncated listing would silently hide files the model would then never ask for.
-        if (listing.Length > policy.Limits.MaxResultCharacters)
+        if (text.Length > policy.Limits.MaxResultCharacters)
         {
             return ToolResult.Denied(
                 DenialReason.ResourceTooLarge,
@@ -206,24 +224,113 @@ public static class TextFileListTool
                 + "-character result limit. Narrow the search pattern.");
         }
 
-        return ToolResult.Text(listing);
+        return ToolResult.Text(text);
     }
 
     /// <summary>
-    ///     Converts a real file location into the relative, platform-neutral name reported to
-    ///     the model.
+    ///     Builds the discovery listing: one block per permitted location, each an absolute header
+    ///     followed by its matching names.
     /// </summary>
     /// <remarks>
-    ///     Making a name relative is the redaction step: it removes the permitted location, the drive or
-    ///     mount point and every directory above the one the model asked about, leaving a name
-    ///     that is both useful and free of host layout.
+    ///     The header is written once per location — an O(1) cost — and names are given relative to
+    ///     it rather than as full absolute paths, so a location with a long path does not spend the
+    ///     result budget on repetition. A location with no match contributes no block, so an empty
+    ///     result is an empty string the caller reports as "no files matched".
     /// </remarks>
-    /// <param name="realDirectory">The resolved location of the requested directory.</param>
+    /// <param name="policy">The access policy governing the listing.</param>
+    /// <param name="pattern">The resolved search pattern.</param>
+    /// <returns>The joined discovery listing, empty when nothing matched anywhere.</returns>
+    private static string ListEveryLocation(PathPolicy policy, string pattern)
+    {
+        var blocks = new List<string>();
+
+        foreach (var root in policy.DiscoveryRoots().OrderBy(root => root, StringComparer.Ordinal))
+        {
+            var names = policy.EnumerateFiles(root, pattern)
+                .Select(file => ToReportedName(root, file))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+
+            if (names.Count > 0)
+            {
+                blocks.Add(RenderBlock(root, names));
+            }
+        }
+
+        return string.Join(BlockSeparator, blocks);
+    }
+
+    /// <summary>
+    ///     Builds the listing for a single named directory, mirroring the caller's dialect.
+    /// </summary>
+    /// <remarks>
+    ///     When the working directory is granted and the resolved directory lies within it, a
+    ///     relative request lists bare working-directory-relative names beneath the working-directory
+    ///     header — the form the model handed in and can hand straight back. An absolute request, or a
+    ///     directory outside the working directory, lists beneath its own absolute header instead,
+    ///     because a relative name could not truthfully address it.
+    /// </remarks>
+    /// <param name="policy">The access policy governing the listing.</param>
+    /// <param name="directory">The directory the model requested.</param>
+    /// <param name="realDirectory">The resolved real location of the requested directory.</param>
+    /// <param name="pattern">The resolved search pattern.</param>
+    /// <returns>The listing block, empty when nothing matched.</returns>
+    private static string ListOneDirectory(
+        PathPolicy policy,
+        string? directory,
+        string realDirectory,
+        string pattern)
+    {
+        // Mirror the caller: a relative request within the granted working directory lists under
+        // the working directory; any other request lists under the resolved directory's own header.
+        var anchor = policy.EmitRelative(realDirectory, directory)
+            ? policy.WorkingDirectory
+            : realDirectory;
+
+        var names = policy.EnumerateFiles(directory, pattern)
+            .Select(file => ToReportedName(anchor, file))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        return names.Count == 0 ? string.Empty : RenderBlock(anchor, names);
+    }
+
+    /// <summary>
+    ///     Renders one location block: the absolute header line followed by its names.
+    /// </summary>
+    /// <param name="header">The absolute location the names are given relative to.</param>
+    /// <param name="names">The already-relative, already-sorted names beneath the header.</param>
+    /// <returns>The rendered block.</returns>
+    private static string RenderBlock(string header, IEnumerable<string> names)
+    {
+        return ToForwardSlash(header) + NameSeparator + string.Join(NameSeparator, names);
+    }
+
+    /// <summary>
+    ///     Converts a real file location into the relative, platform-neutral name reported beneath a
+    ///     location header.
+    /// </summary>
+    /// <remarks>
+    ///     Names are reported relative to their location header so that a listing never repeats a full
+    ///     absolute path per file. The header discloses the location once; the names beneath it stay
+    ///     short and, for the working-directory header, are directly usable as relative inputs.
+    /// </remarks>
+    /// <param name="anchor">The location the reported name is made relative to.</param>
     /// <param name="file">The real location of one permitted file.</param>
     /// <returns>The name reported to the model.</returns>
-    private static string ToReportedName(string realDirectory, string file)
+    private static string ToReportedName(string anchor, string file)
     {
-        return Path.GetRelativePath(realDirectory, file)
+        return ToForwardSlash(Path.GetRelativePath(anchor, file));
+    }
+
+    /// <summary>
+    ///     Normalizes a path's separators to a forward slash on every platform.
+    /// </summary>
+    /// <param name="path">The path to normalize.</param>
+    /// <returns>The path with every separator rendered as a forward slash.</returns>
+    private static string ToForwardSlash(string path)
+    {
+        return path
             .Replace(Path.DirectorySeparatorChar, ReportedSeparator)
             .Replace(Path.AltDirectorySeparatorChar, ReportedSeparator);
     }

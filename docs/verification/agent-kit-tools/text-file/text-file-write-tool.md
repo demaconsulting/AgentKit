@@ -5,15 +5,17 @@ This document describes the unit-level verification strategy for the `TextFileWr
 #### Verification Approach
 
 Nothing is mocked or stubbed. A write tool that behaved correctly against a substituted policy and
-a substituted file system would prove nothing about the one property that matters — that it refuses
-a destination the write rule does not permit and leaves the host unchanged when it does. Each
-scenario therefore constructs a real `PathPolicy` over a temporary directory tree it creates,
-builds the tool through its internal factory, and invokes it as a runtime does.
+a substituted file system would prove nothing about the property that matters — that it refuses a
+destination no read-write grant permits and leaves the host unchanged when it does. Each scenario
+therefore constructs a real `PathPolicy` over a temporary directory tree it creates, builds the tool
+through its internal factory, and invokes it as a runtime does.
 
 Two scenarios assert the state of the file system after a refusal, not merely the text of the
 refusal: a refused write that nevertheless wrote would be a refusal in name only. The scenario
 proving a readable path is not thereby writable first reads the path successfully through the read
-tool, so the refusal cannot be explained away as the path being unreachable.
+tool, so the refusal cannot be explained away as the path being unreachable. The disclosure
+scenarios verify the policy's current denial text: the request is echoed and the permitted locations
+are enumerated with access levels, including read-only when a write is attempted there.
 
 Unit tests reside in `TextFile/TextFileWriteToolTests.cs`, with the shared reparse-point fixture in
 `TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -32,12 +34,12 @@ Unit tests reside in `TextFile/TextFileWriteToolTests.cs`, with the shared repar
 
 #### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or exception beyond
+A unit test run passes when all eighteen scenarios below pass without error or exception beyond
 those explicitly asserted. A permitted write that does not reach the file, a relative name that is
-not written beneath the workspace, a refused write that does reach the file, a
-directory created by the tool, an exception or framework error raised at a malformed or omitted
-request, a refusal offering no way forward, and a refusal containing
-a host path each constitute a failure.
+not written beneath the working directory, a read-only grant authorizing a write, a refused write
+that does reach the file, a directory created by the tool, an exception or framework error raised at
+a malformed or omitted request, a refusal offering no way forward, or a policy refusal that omits
+the request, permitted location, or access level constitutes a failure.
 
 #### Test Scenarios
 
@@ -80,14 +82,15 @@ reads the file back to confirm the content actually arrived.
 
 Boundary condition: an empty string is not an absent one. The file is created and is empty.
 
-##### AgentKitTools-TextFile-WriteTool-IndependentWriteRule: A Readable Path Is Not Thereby Writable
+##### AgentKitTools-TextFile-WriteTool-GrantPermissionModel: A Readable Path Is Not Thereby Writable
 
 **Test**: `TextFileWriteTool_Write_ReadableButNotWritablePath_ReturnsDenial`
 
-The scenario that makes the independent read and write rules observable. The path is read
-successfully first, then refused for writing, and the file on disk is confirmed unchanged.
+The scenario that makes the grant permission model observable. The path is read successfully
+through a read-only grant, then refused for writing because no read-write grant permits it, and the
+file on disk is confirmed unchanged.
 
-##### AgentKitTools-TextFile-WriteTool-DenyOutsideRoot: A Path Outside the Write Root Is Refused
+##### AgentKitTools-TextFile-WriteTool-DenyOutsideRoot: A Path Outside the Write Grant Is Refused
 
 **Test**: `TextFileWriteTool_Write_PathOutsideTheWriteRoot_ReturnsDenial`
 
@@ -104,8 +107,8 @@ write through it is refused and no file appears at the link's target.
 
 **Test**: `TextFileWriteTool_Write_ExistingFile_ReplacesItsContent`
 
-Normal operation: the file afterwards holds exactly the new content, proving replacement rather
-than concatenation.
+Normal operation: the file afterwards holds exactly the new content, proving replacement rather than
+concatenation.
 
 ##### AgentKitTools-TextFile-WriteTool-MissingParentDenied: A Missing Parent Is Refused and Nothing Is Created
 
@@ -134,12 +137,12 @@ must be a returned refusal rather than an exception.
 Error path: the request omits its content entirely. The refusal is returned and no file is created,
 distinguishing absent content from the legitimate empty-content case above.
 
-##### AgentKitTools-TextFile-WriteTool-RelativePath: A Bare File Name Is Written Beneath the Workspace
+##### AgentKitTools-TextFile-WriteTool-RelativePath: A Bare File Name Is Written Beneath the Working Directory
 
 **Test**: `TextFileWriteTool_Write_BareFileName_WritesBeneathTheWorkspaceRoot`
 
-Normal operation for the request a model actually makes. Asserts the file appears inside the
-workspace holding what was written, so that an agent can write back under the name it read.
+Normal operation for the request a model actually makes. Asserts the file appears beneath the
+working directory holding what was written, so that an agent can write back under the name it read.
 
 ##### AgentKitTools-TextFile-WriteTool-MalformedRequestDenied: Omitting the Path Argument Is Refused
 
@@ -150,10 +153,17 @@ function factory before the tool body is reached, and the model then receives an
 error rather than a refusal. Asserts the outcome is an `InvalidRequest` refusal naming the form a
 path should take.
 
-##### AgentKitTools-TextFile-WriteTool-DenialRedaction: A Refusal Contains No Host Detail
+##### AgentKitTools-TextFile-WriteTool-DenialDisclosure: A Refusal Discloses the Permitted Location
 
-**Test**: `TextFileWriteTool_Write_DeniedPath_DenialTextContainsNoHostDetail`
+**Test**: `TextFileWriteTool_Write_DeniedPath_DenialDisclosesPermittedLocation`
 
-Disclosure control: asserts the refusal contains neither the permitted location, the requested
-location, the requested file name, nor a directory separator. The absence of a separator is also
-what keeps the recovery guidance the refusal now carries from reintroducing host layout.
+Disclosure behavior: the refused destination is echoed, and the permitted working directory is named
+with its `(read-write)` access level so a confined model learns where it may write instead.
+
+##### AgentKitTools-TextFile-WriteTool-DenialDisclosure: A Read-Only Location Is Shown as Read-Only
+
+**Test**: `TextFileWriteTool_Write_ReadOnlyLocation_DenialShowsReadOnly`
+
+Agent viewpoint for a read-only working directory. The write of a bare name is refused, and the
+denial enumerates the location as `(read-only)`, explaining why a path that may be read may not be
+written.

@@ -8,69 +8,99 @@ sections:
     sections:
       - title: PathRule Requirements
         requirements:
+          - id: AgentKitCore-PathRule-AccessLevel
+            title: >-
+              A path rule shall carry an access level of read-only or read-write, being permission
+              only, and shall expose no third level.
+            justification: |
+              A grant answers whether a location may be written as well as read, and nothing more:
+              the access level carries no addressing meaning. Two levels express every access an
+              agent file tool needs — "read" and "read and write" — so a third level such as
+              append-only would add a state to reason about at every decision point without enabling
+              a capability the two do not already cover.
+            tests:
+              - PathRule_Unrestricted_CarriesRequestedAccessLevel
+              - PathRule_RootedFactories_CarryTheirAccessLevel
+
           - id: AgentKitCore-PathRule-Unrestricted
             title: >-
-              A path rule shall be expressible as unrestricted, permitting any location not
-              matched by its denied patterns.
+              A path rule shall be expressible as unrestricted at a stated access level, permitting
+              any location not matched by its denied patterns.
             justification: |
               Reading widely is a legitimate configuration for a development assistant that must
-              consult documentation and dependencies outside its working directory. Keeping denied
-              patterns available on an unrestricted rule means wide access does not have to mean
-              unconditional access.
+              consult documentation and dependencies outside its working directory. The access level
+              is explicit because an unrestricted grant carries the same permission-only meaning as a
+              rooted one. Keeping denied patterns available on an unrestricted grant means wide access
+              does not have to mean unconditional access.
             tests:
-              - PathRule_Allows_UnrestrictedRule_AnyPath_ReturnsTrue
-              - PathRule_Allows_UnrestrictedRuleWithDenyPattern_MatchingPath_ReturnsFalse
+              - PathRule_Allows_UnrestrictedGrant_AnyPath_ReturnsTrue
+              - PathRule_Allows_UnrestrictedGrantWithDenyPattern_MatchingPath_ReturnsFalse
 
           - id: AgentKitCore-PathRule-Rooted
             title: >-
-              A path rule shall be expressible as confined to one location, permitting that
-              location and its contents and nothing else.
+              A path rule shall be expressible as confined to one location at a stated access level,
+              permitting that location and its contents and nothing else.
             justification: |
-              Confining an agent to a working directory is the most common way operators bound
-              its blast radius. The location itself must be permitted so that it can be listed,
-              and a neighboring location whose name merely begins with the same text must not be,
-              because such a neighbor is trivially created by an attacker.
+              Confining an agent to a location is the most common way operators bound its blast
+              radius, and the read-only and read-write factories name the access level at the call
+              site so a grant cannot be half-configured. The location itself must be permitted so that
+              it can be listed, and a neighboring location whose name merely begins with the same text
+              must not be, because such a neighbor is trivially created by an attacker.
             tests:
-              - PathRule_Allows_RootedRule_PathInsideRoot_ReturnsTrue
-              - PathRule_Allows_RootedRule_RootItself_ReturnsTrue
-              - PathRule_Allows_RootedRule_PathOutsideRoot_ReturnsFalse
-              - PathRule_Allows_RootedRule_SiblingWithSharedPrefix_ReturnsFalse
+              - PathRule_RootedFactories_CarryTheirAccessLevel
+              - PathRule_Allows_RootedGrant_PathInsideRoot_ReturnsTrue
+              - PathRule_Allows_RootedGrant_RootItself_ReturnsTrue
+              - PathRule_Allows_RootedGrant_PathOutsideRoot_ReturnsFalse
+              - PathRule_Allows_RootedGrant_SiblingWithSharedPrefix_ReturnsFalse
 
           - id: AgentKitCore-PathRule-DenyPatterns
             title: >-
               A path rule shall deny a path whose name, or the name of any enclosing directory,
-              matches one of its denied patterns, irrespective of whether the location is
-              otherwise permitted.
+              matches one of its denied patterns, irrespective of whether the location is otherwise
+              permitted.
             justification: |
-              Credential files and repository metadata commonly live inside the very location an
-              agent is allowed to work in. Excluding them by name, at any depth, is the only way
-              to grant a working directory without also granting its secrets.
+              Credential files and repository metadata commonly live inside the very location an agent
+              is allowed to work in. Excluding them by name, at any depth, is the only way to grant a
+              location without also granting its secrets.
             tests:
               - PathRule_Allows_DenyPatternMatchingFileName_ReturnsFalse
               - PathRule_Allows_DenyPatternMatchingDirectorySegment_ReturnsFalse
 
           - id: AgentKitCore-PathRule-RootResolvedAtConstruction
             title: >-
-              A path rule confined to a location shall judge containment against the real location
-              of that location, so a permitted location that is itself reached through a link
-              still permits its own contents.
+              A path rule confined to a location shall judge containment against the real location of
+              that location, so a permitted location that is itself reached through a link still
+              permits its own contents.
             justification: |
-              Operators routinely point an agent at a working directory that is itself a link, for
-              example a checkout reached through a convenience alias. Comparing a resolved
-              candidate against an unresolved permitted location would refuse everything and make
-              such a configuration unusable.
+              Operators routinely point an agent at a location that is itself a link, for example a
+              checkout reached through a convenience alias. Comparing a resolved candidate against an
+              unresolved permitted location would refuse everything and make such a configuration
+              unusable.
             tests:
               - PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath
 
+          - id: AgentKitCore-PathRule-Describe
+            title: >-
+              A path rule shall describe itself by its location and access level for enumeration in a
+              denial.
+            justification: |
+              A denial enumerates the permitted locations so a confined model learns the truthful map
+              of where it may work. Each grant contributes a short description naming its resolved
+              location — or the word "anywhere" when unrestricted — and its access level, so the model
+              can tell a read-only location from a read-write one.
+            tests:
+              - PathRule_Describe_RootedGrant_NamesLocationAndLevel
+              - PathRule_Describe_UnrestrictedGrant_SaysAnywhere
+
           - id: AgentKitCore-PathRule-RejectInvalidRule
             title: >-
-              A path rule shall reject a null or empty location, and a null or empty denied
-              pattern, as a programming error.
+              A path rule shall reject a null or empty location, and a null or empty denied pattern,
+              as a programming error.
             justification: |
-              A malformed rule is a defect in the calling code. Accepting one would produce an
-              access rule that looks configured while permitting more than the operator intended,
-              which is precisely the failure mode this library exists to prevent.
+              A malformed grant is a defect in the calling code. Accepting one would produce an access
+              grant that looks configured while permitting more than the operator intended, which is
+              precisely the failure mode this library exists to prevent.
             tests:
-              - PathRule_Rooted_NullRoot_ThrowsArgumentNullException
-              - PathRule_Rooted_EmptyRoot_ThrowsArgumentException
-              - PathRule_Rooted_NullDenyPattern_ThrowsArgumentException
+              - PathRule_ReadOnly_NullRoot_ThrowsArgumentNullException
+              - PathRule_ReadWrite_EmptyRoot_ThrowsArgumentException
+              - PathRule_ReadOnly_NullDenyPattern_ThrowsArgumentException

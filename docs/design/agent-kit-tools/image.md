@@ -86,7 +86,7 @@ relative name is measured against. An absolute path remains expressible and rema
 same containment decision.
 
 **One decision per read.** The read tool consults `TryResolveRead`, and nothing in the subsystem
-consults the write rule, combines the two, or re-implements either. The decision is made on the
+consults the write decision, combines the two, or re-implements either. The decision is made on the
 path's real location, so a link that reaches outside the permitted location is refused without the
 tool having to know links exist, and it is made before anything is learned about the file, so a
 refused path never discloses whether it exists.
@@ -108,10 +108,11 @@ because the image constructor's guard would otherwise throw.
 **Refusals are results.** Every condition a model can provoke — an absent path, a path outside the
 permitted location, a directory, an unsupported type, a missing file, an oversized file — produces a
 `ToolResult.Denied` naming its reason. Nothing is thrown at a model, because an exception raised
-during a tool call ends the agent's turn and strands it. Every refusal message is composed from
-compile-time constants, with the only interpolated values being an integer naming a ceiling and the
-resolved media type in a caption, so no path, permitted location or directory separator ever reaches
-the transcript.
+during a tool call ends the agent's turn and strands it. A refusal the tool composes itself — an
+absent path, a directory, an unsupported type, a ceiling overrun — is fixed text carrying at most an
+integer naming a ceiling and the resolved media type in a caption. A refusal the policy composes — a
+path outside a permitted location — deliberately discloses the request, its interpretation and the
+permitted locations, so a confined model learns where it may work.
 
 **The ceiling refuses, it does not truncate.** `MaxBinaryBytes` bounds what the tool may return;
 the tool judges the file's size before opening it and refuses an overrun with the ceiling named,

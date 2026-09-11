@@ -12,9 +12,9 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>This is the tool that makes the independent read and write rules observable.</b> It
-///     consults <see cref="PathPolicy.TryResolveWrite"/> and nothing else, so a path the agent
-///     may read is refused for writing unless the write rule permits it too. That is what makes
+///     <b>This is the tool that makes the read-only/read-write grant distinction observable.</b>
+///     It consults <see cref="PathPolicy.TryResolveWrite"/> and nothing else, so a path the agent
+///     may read is refused for writing unless a read-write grant permits it too. That is what makes
 ///     a read-wide, write-narrow configuration meaningful rather than decorative, and it is
 ///     covered by a dedicated scenario.
 ///     </para>
@@ -40,9 +40,11 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the
 ///     remarks on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than
-///     thrown, composed from constants so that no host location reaches the transcript. Each
-///     refusal states what the model should do instead, because an agent told only "no" retries
-///     the same request.
+///     thrown. The tool's own confirmation and its guard messages name only a character count or a
+///     ceiling, while a refusal the access policy produces states what was requested, how a relative
+///     request was interpreted, and which locations are permitted — including any read-only location,
+///     shown as such, so the model learns why a write is refused there. Each refusal states what the
+///     model should do next, because an agent told only "no" retries the same request.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -171,8 +173,8 @@ public static class TextFileWriteTool
             return ToolResult.Denied(DenialReason.InvalidRequest, ContentRequired);
         }
 
-        // The write decision alone. A path the read rule permits is not thereby writable, which
-        // is the whole point of keeping the two rules independent.
+        // The write decision alone. A path a read-only grant permits is not thereby writable, which
+        // is the whole point of letting each grant's access level decide.
         if (!policy.TryResolveWrite(path, out var realPath, out var denialMessage))
         {
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
@@ -195,8 +197,8 @@ public static class TextFileWriteTool
     /// <remarks>
     ///     The parent directory is checked rather than created; see the type remarks for why
     ///     creating one would be a side effect nobody asked for. The confirmation names a
-    ///     character count rather than a location, so a transcript that leaves the process
-    ///     carries no host layout.
+    ///     character count rather than a location, because the count is what the model needs to
+    ///     confirm the write and the location it just named adds nothing.
     /// </remarks>
     /// <param name="realPath">The real location the policy permitted.</param>
     /// <param name="content">The text to write.</param>

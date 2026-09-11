@@ -37,8 +37,9 @@ public sealed record AgentSetup(AIAgent Agent, IAsyncDisposable Cleanup);
 ///     tool display, the REPL — never asks which provider it got.
 ///     </para>
 ///     <para>
-///     The tools themselves are the safety story. <see cref="PathPolicy.ForWorkspace(string)"/> confines
-///     every read, write, and listing to the workspace folder; the image pack is gated behind the
+///     The tools themselves are the safety story. A single <see cref="PathPolicy"/> anchors relative
+///     paths at the workspace folder and grants that same folder read-write, so every read, write,
+///     and listing is confined to it; the image pack is gated behind the
 ///     <see cref="HostCapabilities.Vision"/> declaration, so with vision off <c>image_read</c> is
 ///     never even created; and each adapter suppresses or repairs its provider's own quirk (Copilot's
 ///     built-in shell/fetch tools, an <see cref="IChatClient"/> dropping tool-returned images). None
@@ -88,9 +89,11 @@ public static class AgentComposition
     /// <returns>The tool list to hand to a provider factory.</returns>
     public static IList<AIFunction> BuildTools(string workspaceRoot, bool visionEnabled)
     {
-        // One policy governs the whole tool set: the workspace is the read root, the write root,
-        // and the base directory a relative path a model supplies is resolved against.
-        var policy = PathPolicy.ForWorkspace(workspaceRoot);
+        // One policy governs the whole tool set. The workspace is the working directory relative
+        // paths anchor to, and it is granted read-write so reads, writes, and listings are all
+        // confined to it. Granting the anchor explicitly is the model: the working directory carries
+        // no permission on its own.
+        var policy = new PathPolicy(workspaceRoot, [PathRule.ReadWrite(workspaceRoot)]);
 
         var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
 

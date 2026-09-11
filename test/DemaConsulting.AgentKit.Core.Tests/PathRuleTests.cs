@@ -5,20 +5,25 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 /// </summary>
 /// <remarks>
 ///     <see cref="PathRule.Allows"/> is documented to take a location that has already been
-///     resolved, so these tests build candidate locations from the rule's own
+///     resolved, so these tests build candidate locations from the grant's own
 ///     <see cref="PathRule.Root"/>. That keeps the tests independent of whether the temporary
 ///     directory itself happens to sit beneath a link on the host platform.
+///     <para>
+///     A grant carries an <see cref="AccessLevel"/> that is permission only: it decides whether a
+///     location may be written as well as read, and never affects containment, which
+///     <see cref="PathRule.Allows"/> judges identically at either level.
+///     </para>
 /// </remarks>
 public class PathRuleTests
 {
     /// <summary>
-    ///     Proves that an unrestricted rule permits an arbitrary location.
+    ///     Proves that an unrestricted grant permits an arbitrary location.
     /// </summary>
     [Fact]
-    public void PathRule_Allows_UnrestrictedRule_AnyPath_ReturnsTrue()
+    public void PathRule_Allows_UnrestrictedGrant_AnyPath_ReturnsTrue()
     {
-        // Arrange: a rule with no location constraint and no denied patterns
-        var rule = PathRule.Unrestricted();
+        // Arrange: a grant with no location constraint and no denied patterns
+        var rule = PathRule.Unrestricted(AccessLevel.ReadOnly);
         var candidate = RealPathResolver.Resolve(Path.Combine(Path.GetTempPath(), "anywhere.txt"));
 
         // Act: test an arbitrary location
@@ -30,17 +35,33 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that an unrestricted rule still refuses a location matching a denied pattern.
+    ///     Proves that an unrestricted grant carries the access level it was created with.
+    /// </summary>
+    [Theory]
+    [InlineData(AccessLevel.ReadOnly)]
+    [InlineData(AccessLevel.ReadWrite)]
+    public void PathRule_Unrestricted_CarriesRequestedAccessLevel(AccessLevel access)
+    {
+        // Arrange & Act: an unrestricted grant of the requested level
+        var rule = PathRule.Unrestricted(access);
+
+        // Assert: the level is carried, and permission never implies a location
+        Assert.Equal(access, rule.Access);
+        Assert.Null(rule.Root);
+    }
+
+    /// <summary>
+    ///     Proves that an unrestricted grant still refuses a location matching a denied pattern.
     /// </summary>
     /// <remarks>
     ///     Wide read access is only safe if credential material can still be excluded, so an
-    ///     unrestricted rule must remain able to carry denied patterns.
+    ///     unrestricted grant must remain able to carry denied patterns.
     /// </remarks>
     [Fact]
-    public void PathRule_Allows_UnrestrictedRuleWithDenyPattern_MatchingPath_ReturnsFalse()
+    public void PathRule_Allows_UnrestrictedGrantWithDenyPattern_MatchingPath_ReturnsFalse()
     {
-        // Arrange: an unrestricted rule that nonetheless excludes key material
-        var rule = PathRule.Unrestricted(["*.key"]);
+        // Arrange: an unrestricted grant that nonetheless excludes key material
+        var rule = PathRule.Unrestricted(AccessLevel.ReadOnly, ["*.key"]);
         var candidate = RealPathResolver.Resolve(Path.Combine(Path.GetTempPath(), "server.key"));
 
         // Act: test a location matching the denied pattern
@@ -52,14 +73,33 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that a rooted rule permits a location inside its root.
+    ///     Proves that <see cref="PathRule.ReadOnly"/> grants read-only access and
+    ///     <see cref="PathRule.ReadWrite"/> grants read-write access.
     /// </summary>
     [Fact]
-    public void PathRule_Allows_RootedRule_PathInsideRoot_ReturnsTrue()
+    public void PathRule_RootedFactories_CarryTheirAccessLevel()
     {
-        // Arrange: a rule confined to a temporary root
+        // Arrange: one grant from each rooted factory over the same location
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root);
+
+        // Act: create a read-only and a read-write grant
+        var readOnly = PathRule.ReadOnly(fixture.Root);
+        var readWrite = PathRule.ReadWrite(fixture.Root);
+
+        // Assert: each carries the level named by the factory that made it
+        Assert.Equal(AccessLevel.ReadOnly, readOnly.Access);
+        Assert.Equal(AccessLevel.ReadWrite, readWrite.Access);
+    }
+
+    /// <summary>
+    ///     Proves that a rooted grant permits a location inside its root, at either access level.
+    /// </summary>
+    [Fact]
+    public void PathRule_Allows_RootedGrant_PathInsideRoot_ReturnsTrue()
+    {
+        // Arrange: a grant confined to a temporary root
+        using var fixture = new ReparsePointFixture();
+        var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = Path.Combine(rule.Root!, "nested", "file.txt");
 
         // Act: test a location beneath the root
@@ -70,14 +110,14 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that a rooted rule permits the root location itself.
+    ///     Proves that a rooted grant permits the root location itself.
     /// </summary>
     [Fact]
-    public void PathRule_Allows_RootedRule_RootItself_ReturnsTrue()
+    public void PathRule_Allows_RootedGrant_RootItself_ReturnsTrue()
     {
-        // Arrange: a rule confined to a temporary root
+        // Arrange: a grant confined to a temporary root
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root);
+        var rule = PathRule.ReadWrite(fixture.Root);
 
         // Act: test the root itself, which a listing operation needs to reach
         var allowed = rule.Allows(rule.Root!);
@@ -87,14 +127,14 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that a rooted rule refuses a location outside its root.
+    ///     Proves that a rooted grant refuses a location outside its root.
     /// </summary>
     [Fact]
-    public void PathRule_Allows_RootedRule_PathOutsideRoot_ReturnsFalse()
+    public void PathRule_Allows_RootedGrant_PathOutsideRoot_ReturnsFalse()
     {
-        // Arrange: a rule confined to the root, and a location in the sibling directory
+        // Arrange: a grant confined to the root, and a location in the sibling directory
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root);
+        var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = RealPathResolver.Resolve(Path.Combine(fixture.Outside, "file.txt"));
 
         // Act: test a location outside the root
@@ -113,11 +153,11 @@ public class PathRuleTests
     ///     <c>allowed-root</c> would wrongly contain <c>allowed-root-evil</c>.
     /// </remarks>
     [Fact]
-    public void PathRule_Allows_RootedRule_SiblingWithSharedPrefix_ReturnsFalse()
+    public void PathRule_Allows_RootedGrant_SiblingWithSharedPrefix_ReturnsFalse()
     {
-        // Arrange: a rule confined to the root, and a sibling sharing the root's name prefix
+        // Arrange: a grant confined to the root, and a sibling sharing the root's name prefix
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root);
+        var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = rule.Root + "-evil" + Path.DirectorySeparatorChar + "file.txt";
 
         // Act: test the sibling location
@@ -134,9 +174,9 @@ public class PathRuleTests
     [Fact]
     public void PathRule_Allows_DenyPatternMatchingDirectorySegment_ReturnsFalse()
     {
-        // Arrange: a rooted rule that excludes a repository metadata directory
+        // Arrange: a rooted grant that excludes a repository metadata directory
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root, [".git"]);
+        var rule = PathRule.ReadOnly(fixture.Root, [".git"]);
         var candidate = Path.Combine(rule.Root!, ".git", "config");
 
         // Act: test a location inside the excluded directory
@@ -153,9 +193,9 @@ public class PathRuleTests
     [Fact]
     public void PathRule_Allows_DenyPatternMatchingFileName_ReturnsFalse()
     {
-        // Arrange: a rooted rule that excludes key material by name
+        // Arrange: a rooted grant that excludes key material by name
         using var fixture = new ReparsePointFixture();
-        var rule = PathRule.Rooted(fixture.Root, ["*.key"]);
+        var rule = PathRule.ReadWrite(fixture.Root, ["*.key"]);
         var candidate = Path.Combine(rule.Root!, "nested", "server.key");
 
         // Act: test a contained location that matches the denied pattern
@@ -170,22 +210,22 @@ public class PathRuleTests
     ///     contents.
     /// </summary>
     /// <remarks>
-    ///     Containment is judged on real locations, so the root must be resolved when the rule
+    ///     Containment is judged on real locations, so the root must be resolved when the grant
     ///     is created; otherwise a legitimately linked working directory would permit nothing.
     /// </remarks>
     [Fact]
     public void PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath()
     {
-        // Arrange: a rule whose configured root is a link pointing at the outside directory
+        // Arrange: a grant whose configured root is a link pointing at the outside directory
         using var fixture = new ReparsePointFixture();
         var link = fixture.CreateDirectoryLink("linked-root", fixture.Outside);
-        var rule = PathRule.Rooted(link);
+        var rule = PathRule.ReadOnly(link);
         var candidate = RealPathResolver.Resolve(Path.Combine(fixture.Outside, "file.txt"));
 
         // Act: test a location inside the link's real target
         var allowed = rule.Allows(candidate);
 
-        // Assert: the rule resolved its root and permits the target's real contents
+        // Assert: the grant resolved its root and permits the target's real contents
         Assert.NotEqual(Path.GetFullPath(link), rule.Root);
         Assert.True(allowed);
     }
@@ -194,20 +234,20 @@ public class PathRuleTests
     ///     Proves that a null root is rejected as a programming error.
     /// </summary>
     [Fact]
-    public void PathRule_Rooted_NullRoot_ThrowsArgumentNullException()
+    public void PathRule_ReadOnly_NullRoot_ThrowsArgumentNullException()
     {
-        // Act & Assert: a rule with no location cannot be silently treated as unrestricted
-        Assert.Throws<ArgumentNullException>(() => PathRule.Rooted(null!));
+        // Act & Assert: a grant with no location cannot be silently treated as unrestricted
+        Assert.Throws<ArgumentNullException>(() => PathRule.ReadOnly(null!));
     }
 
     /// <summary>
     ///     Proves that an empty root is rejected as a programming error.
     /// </summary>
     [Fact]
-    public void PathRule_Rooted_EmptyRoot_ThrowsArgumentException()
+    public void PathRule_ReadWrite_EmptyRoot_ThrowsArgumentException()
     {
         // Act & Assert: the empty-string boundary is distinct from the null case
-        Assert.Throws<ArgumentException>(() => PathRule.Rooted(string.Empty));
+        Assert.Throws<ArgumentException>(() => PathRule.ReadWrite(string.Empty));
     }
 
     /// <summary>
@@ -215,15 +255,49 @@ public class PathRuleTests
     /// </summary>
     /// <remarks>
     ///     An empty or missing pattern cannot express a meaningful exclusion, so accepting one
-    ///     would quietly weaken a rule the caller believed was tightened.
+    ///     would quietly weaken a grant the caller believed was tightened.
     /// </remarks>
     [Fact]
-    public void PathRule_Rooted_NullDenyPattern_ThrowsArgumentException()
+    public void PathRule_ReadOnly_NullDenyPattern_ThrowsArgumentException()
     {
         // Arrange: a valid root with an invalid pattern list
         using var fixture = new ReparsePointFixture();
 
-        // Act & Assert: the malformed rule is refused at construction
-        Assert.Throws<ArgumentException>(() => PathRule.Rooted(fixture.Root, [null!]));
+        // Act & Assert: the malformed grant is refused at construction
+        Assert.Throws<ArgumentException>(() => PathRule.ReadOnly(fixture.Root, [null!]));
+    }
+
+    /// <summary>
+    ///     Proves that a rooted grant describes its location and access level for a denial.
+    /// </summary>
+    [Fact]
+    public void PathRule_Describe_RootedGrant_NamesLocationAndLevel()
+    {
+        // Arrange: a read-only grant over a temporary root
+        using var fixture = new ReparsePointFixture();
+        var rule = PathRule.ReadOnly(fixture.Root);
+
+        // Act: describe the grant as a denial would
+        var description = rule.Describe();
+
+        // Assert: both the resolved location and the access level appear
+        Assert.Contains(rule.Root!, description, StringComparison.Ordinal);
+        Assert.Contains("(read-only)", description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that an unrestricted grant describes itself as "anywhere" with its level.
+    /// </summary>
+    [Fact]
+    public void PathRule_Describe_UnrestrictedGrant_SaysAnywhere()
+    {
+        // Arrange: an unrestricted read-write grant
+        var rule = PathRule.Unrestricted(AccessLevel.ReadWrite);
+
+        // Act: describe the grant as a denial would
+        var description = rule.Describe();
+
+        // Assert: an unrestricted grant names no location and states its level
+        Assert.Equal("anywhere (read-write)", description);
     }
 }

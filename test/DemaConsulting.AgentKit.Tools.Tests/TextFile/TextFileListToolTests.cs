@@ -9,10 +9,18 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 ///     Unit tests for the <see cref="TextFileListTool"/> class.
 /// </summary>
 /// <remarks>
+///     <para>
+///     A listing is grouped under an absolute location header, with the matching names given
+///     beneath it relative to that header — an O(1) header rather than a full absolute path on
+///     every file. When the working directory is granted and the request lies within it, the names
+///     are bare working-directory-relative names the model can hand straight back; an absolute
+///     request, or a location outside the working directory, is addressed by its absolute header.
+///     </para>
+///     <para>
 ///     The scenario proving an escaped file is not listed is a security control rather than a
-///     convenience check: it is the subsystem-level equivalent of the enumeration filtering the
-///     access policy already proves, and it fails loudly rather than skipping when the platform
-///     cannot create a reparse point.
+///     convenience check: it fails loudly rather than skipping when the platform cannot create a
+///     reparse point.
+///     </para>
 /// </remarks>
 public class TextFileListToolTests
 {
@@ -37,7 +45,7 @@ public class TextFileListToolTests
     public void TextFileListTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
     {
         // Arrange: a policy governing an otherwise irrelevant location
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: construct the tool
         var tool = TextFileListTool.Create(policy);
@@ -60,10 +68,6 @@ public class TextFileListToolTests
     /// <summary>
     ///     Proves the listing reaches the caller as plain text rather than as serialized JSON.
     /// </summary>
-    /// <remarks>
-    ///     The delegate behind this tool is synchronous, so the scenario also confirms the guard
-    ///     applies to a synchronous tool exactly as it does to an asynchronous one.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileListTool_List_PermittedDirectory_ResultIsPlainTextNotJsonElement()
@@ -74,7 +78,7 @@ public class TextFileListToolTests
         var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list the directory
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        var result = await InvokeAsync(tool, null, null);
 
         // Assert: the guard delivered the result unserialized
         Assert.IsType<string>(result);
@@ -82,36 +86,31 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves the permitted files beneath a directory are listed.
+    ///     Proves a discovery listing of a single granted working directory reports bare relative
+    ///     names beneath the absolute working-directory header.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileListTool_List_PermittedDirectory_ListsThePermittedFiles()
+    public async Task TextFileListTool_List_Discovery_ListsRelativeNamesUnderTheAnchorHeader()
     {
-        // Arrange: two files in a permitted directory
+        // Arrange: two files in the granted working directory
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "one.txt", "1");
         ReparsePointFixture.WriteFile(fixture.Root, "two.txt", "2");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
-        // Act: list the directory
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        // Act: discover, the way a model with no directory name would
+        var result = await InvokeAsync(tool, null, null);
 
-        // Assert: both files appear
-        var text = Assert.IsType<string>(result);
-        Assert.Equal("one.txt\ntwo.txt", text);
+        // Assert: the absolute header, then bare relative names beneath it
+        Assert.Equal(Block(policy.WorkingDirectory, "one.txt", "two.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
     ///     Proves a file reachable only by following a link out of the permitted location is not
     ///     listed.
     /// </summary>
-    /// <remarks>
-    ///     Recursive enumeration by the operating system follows the link, so an implementation
-    ///     calling the file system directly would advertise the escaped file even though reading
-    ///     it is refused. The escaped file is first read through the link on disk, so a fixture
-    ///     that failed to create the link cannot turn this scenario into a vacuous pass.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileListTool_List_LinkToOutsideRoot_DoesNotListEscapedFile()
@@ -127,7 +126,7 @@ public class TextFileListToolTests
         var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list the permitted root, which the operating system will walk through the link
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        var result = await InvokeAsync(tool, null, null);
 
         // Assert: the escaped file is absent while the permitted one is present
         var text = Assert.IsType<string>(result);
@@ -136,24 +135,24 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves listed names are relative to the requested directory.
+    ///     Proves an absolute directory request lists names beneath that directory's absolute header
+    ///     — the absolute dialect mirrors an absolute caller.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileListTool_List_PermittedDirectory_NamesAreRelativeToTheRequestedDirectory()
+    public async Task TextFileListTool_List_AbsoluteDirectory_ListsUnderTheAbsoluteHeader()
     {
         // Arrange: a file one level below the requested directory
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "child");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
-        // Act: list the root
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        // Act: list the root by its absolute path
+        var result = await InvokeAsync(tool, policy.WorkingDirectory, null);
 
-        // Assert: a relative, platform-neutral name that discloses no host layout
-        var text = Assert.IsType<string>(result);
-        Assert.Equal("sub/child.txt", text);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
+        // Assert: the absolute header, then the name relative to it
+        Assert.Equal(Block(policy.WorkingDirectory, "sub/child.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
@@ -168,13 +167,16 @@ public class TextFileListToolTests
         ReparsePointFixture.WriteFile(fixture.Root, "c.txt", "c");
         ReparsePointFixture.WriteFile(fixture.Root, "a.txt", "a");
         ReparsePointFixture.WriteFile(fixture.Root, "b.txt", "b");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: list the directory
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        var result = await InvokeAsync(tool, null, null);
 
         // Assert: ordinal order, so the same tree always produces the same listing
-        Assert.Equal("a.txt\nb.txt\nc.txt", Assert.IsType<string>(result));
+        Assert.Equal(
+            Block(policy.WorkingDirectory, "a.txt", "b.txt", "c.txt"),
+            Assert.IsType<string>(result));
     }
 
     /// <summary>
@@ -188,13 +190,14 @@ public class TextFileListToolTests
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "text");
         ReparsePointFixture.WriteFile(fixture.Root, "data.json", "{}");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: list only the text files
-        var result = await InvokeAsync(tool, fixture.Root, "*.txt");
+        var result = await InvokeAsync(tool, null, "*.txt");
 
         // Assert: the pattern is honored
-        Assert.Equal("note.txt", Assert.IsType<string>(result));
+        Assert.Equal(Block(policy.WorkingDirectory, "note.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
@@ -208,13 +211,16 @@ public class TextFileListToolTests
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "text");
         ReparsePointFixture.WriteFile(fixture.Root, "data.json", "{}");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: list with no pattern supplied at all
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        var result = await InvokeAsync(tool, null, null);
 
         // Assert: "everything here" is the least surprising reading of an absent pattern
-        Assert.Equal("data.json\nnote.txt", Assert.IsType<string>(result));
+        Assert.Equal(
+            Block(policy.WorkingDirectory, "data.json", "note.txt"),
+            Assert.IsType<string>(result));
     }
 
     /// <summary>
@@ -230,7 +236,7 @@ public class TextFileListToolTests
         var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list with a pattern nothing matches
-        var result = await InvokeAsync(tool, fixture.Root, "*.absent");
+        var result = await InvokeAsync(tool, null, "*.absent");
 
         // Assert: an answer, not a refusal — nothing about the request was wrong
         var text = Assert.IsType<string>(result);
@@ -253,7 +259,7 @@ public class TextFileListToolTests
         var tool = TextFileListTool.Create(RootedPolicy(fixture.Root, limits));
 
         // Act: list the directory
-        var result = await InvokeAsync(tool, fixture.Root, null);
+        var result = await InvokeAsync(tool, null, null);
 
         // Assert: a refusal naming the ceiling, never a truncated listing
         var text = Assert.IsType<string>(result);
@@ -263,13 +269,13 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves a directory outside the permitted read location is refused.
+    ///     Proves a directory outside every permitted location is refused.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileListTool_List_DirectoryOutsideTheReadRoot_ReturnsDenial()
     {
-        // Arrange: a sibling directory the read rule does not permit
+        // Arrange: a sibling directory no grant permits
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
@@ -284,76 +290,64 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves an omitted directory lists the workspace root rather than being refused.
+    ///     Proves an omitted directory lists every permitted location rather than being refused.
     /// </summary>
-    /// <remarks>
-    ///     A model exploring a workspace for the first time has no directory name to supply, and
-    ///     what it sends instead is a question this tool can answer. Refusing it merely sends the
-    ///     model guessing at locations it has no business exploring.
-    /// </remarks>
     /// <param name="directory">The spelling of "no directory" the model supplied.</param>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot(string? directory)
+    public async Task TextFileListTool_List_OmittedDirectory_ListsTheAnchor(string? directory)
     {
-        // Arrange: a workspace holding one file
+        // Arrange: a granted working directory holding one file
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: list with no directory named
         var result = await InvokeAsync(tool, directory, null);
 
-        // Assert: the workspace itself is what "no directory" means
-        Assert.Equal("note.txt", Assert.IsType<string>(result));
+        // Assert: the granted working directory, reported as an absolute header and a bare name
+        Assert.Equal(Block(policy.WorkingDirectory, "note.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
-    ///     Proves the literal words a model sends for "no directory" list the workspace root.
+    ///     Proves the literal words a model sends for "no directory" list every permitted location.
     /// </summary>
-    /// <remarks>
-    ///     A model whose schema marks an argument optional frequently sends the word its own
-    ///     runtime prints for absence rather than omitting the argument. Reading that as a
-    ///     directory name refuses a well-formed request.
-    /// </remarks>
     /// <param name="directory">The placeholder spelling the model supplied.</param>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Theory]
     [InlineData("None")]
     [InlineData("null")]
-    public async Task TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot(string directory)
+    public async Task TextFileListTool_List_PlaceholderDirectory_ListsTheAnchor(string directory)
     {
-        // Arrange: a workspace holding one file
+        // Arrange: a granted working directory holding one file
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: list with the placeholder a model sends in place of an argument
         var result = await InvokeAsync(tool, directory, null);
 
         // Assert: treated exactly as an omitted argument is
-        Assert.Equal("note.txt", Assert.IsType<string>(result));
+        Assert.Equal(Block(policy.WorkingDirectory, "note.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
     ///     Proves that omitting the directory argument entirely does not raise an error.
     /// </summary>
-    /// <remarks>
-    ///     A parameter with no default fails inside the function factory before the tool body is
-    ///     reached, and the model sees an opaque framework error rather than anything it can act
-    ///     on. This scenario pins the argument as optional, which is where that failure lived.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileListTool_List_MissingDirectoryArgument_DoesNotThrow()
     {
-        // Arrange: a workspace holding one file
+        // Arrange: a granted working directory holding one file
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: invoke with no arguments at all, as a model omitting them would
         var result = await tool.InvokeAsync(
@@ -361,67 +355,115 @@ public class TextFileListToolTests
             TestContext.Current.CancellationToken);
 
         // Assert: an answer, produced by the tool rather than refused by the framework
-        Assert.Equal("note.txt", Assert.IsType<string>(result));
+        Assert.Equal(Block(policy.WorkingDirectory, "note.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
-    ///     Proves a bare relative directory name lists that directory beneath the workspace.
+    ///     Proves a bare relative directory lists that directory under the working directory, with
+    ///     names given relative to the working directory — the relative dialect mirrors the caller.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory()
+    public async Task TextFileListTool_List_BareRelativeDirectory_ListsUnderTheAnchor()
     {
         // Arrange: one file in a subdirectory and one elsewhere in the workspace
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "child");
         ReparsePointFixture.WriteFile(fixture.Root, "top.txt", "top");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
         // Act: name the subdirectory the way a model names it
         var result = await InvokeAsync(tool, "sub", null);
 
-        // Assert: the named subdirectory, not the whole workspace
-        Assert.Equal("child.txt", Assert.IsType<string>(result));
+        // Assert: the named subdirectory only, its name relative to the working directory
+        Assert.Equal(Block(policy.WorkingDirectory, "sub/child.txt"), Assert.IsType<string>(result));
     }
 
     /// <summary>
-    ///     Proves a refusal discloses no host location.
+    ///     Proves a discovery listing over two grants reports each location under its own absolute
+    ///     header — teaching the model to address the non-anchor location absolutely.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail()
+    public async Task TextFileListTool_List_TwoGrants_Discovery_ListsEachUnderItsAbsoluteHeader()
     {
-        // Arrange: a directory outside the permitted read location
+        // Arrange: the anchor is granted, and a second location is granted elsewhere
         using var fixture = new ReparsePointFixture();
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        ReparsePointFixture.WriteFile(fixture.Root, "here.txt", "1");
+        ReparsePointFixture.WriteFile(fixture.Outside, "there.txt", "2");
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root), PathRule.ReadOnly(fixture.Outside)]);
+        var tool = TextFileListTool.Create(policy);
 
-        // Act: request the refused listing
-        var result = await InvokeAsync(tool, fixture.Outside, null);
+        // Act: discover across both grants
+        var result = await InvokeAsync(tool, null, null);
 
-        // Assert: neither the requested path, the permitted location nor a separator appears
+        // Assert: both locations appear, each under its own absolute header
         var text = Assert.IsType<string>(result);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
+        Assert.Contains(Block(policy.WorkingDirectory, "here.txt"), text, StringComparison.Ordinal);
+        Assert.Contains(
+            Block(RealPathResolver.Resolve(fixture.Outside), "there.txt"),
             text,
             StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one workspace, and
-    ///     interpreting relative requests against it.
+    ///     Proves a refusal discloses the permitted location so a confined model learns where it may
+    ///     read.
     /// </summary>
-    /// <remarks>
-    ///     Built through the workspace shorthand deliberately: it is the configuration the
-    ///     documentation recommends, so the tests exercise what a host actually builds.
-    /// </remarks>
-    /// <param name="root">The permitted location.</param>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_DeniedDirectory_DenialDisclosesPermittedLocation()
+    {
+        // Arrange: a directory outside the permitted read location
+        using var fixture = new ReparsePointFixture();
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: request the refused listing
+        var result = await InvokeAsync(tool, fixture.Outside, null);
+
+        // Assert: the request is echoed and the permitted location is named with its level
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Creates a policy whose working directory is also its single read-write grant.
+    /// </summary>
+    /// <param name="root">The location that is both the anchor and the grant.</param>
     /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return PathPolicy.ForWorkspace(root, limits ?? ToolLimits.Default);
+        return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
+    }
+
+    /// <summary>
+    ///     Builds the expected listing block: the absolute header, forward-slashed, then its names.
+    /// </summary>
+    /// <param name="header">The absolute location header.</param>
+    /// <param name="names">The names expected beneath the header, in order.</param>
+    /// <returns>The expected block text.</returns>
+    private static string Block(string header, params string[] names)
+    {
+        return ToForwardSlash(header) + "\n" + string.Join("\n", names);
+    }
+
+    /// <summary>
+    ///     Normalizes a path's separators to a forward slash, as the tool reports them.
+    /// </summary>
+    /// <param name="path">The path to normalize.</param>
+    /// <returns>The forward-slashed path.</returns>
+    private static string ToForwardSlash(string path)
+    {
+        return path
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
     }
 
     /// <summary>
@@ -445,4 +487,3 @@ public class TextFileListToolTests
             TestContext.Current.CancellationToken);
     }
 }
-

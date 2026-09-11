@@ -51,21 +51,29 @@ sections:
                   refused. Disclosing that such a file exists, and inviting the agent to ask for
                   it, is itself the leak this control prevents.
                 tests:
-                  - TextFileListTool_List_PermittedDirectory_ListsThePermittedFiles
+                  - TextFileListTool_List_Discovery_ListsRelativeNamesUnderTheAnchorHeader
                   - TextFileListTool_List_LinkToOutsideRoot_DoesNotListEscapedFile
 
-              - id: AgentKitTools-TextFile-ListTool-RelativeNames
+              - id: AgentKitTools-TextFile-ListTool-GroupedListing
                 title: >-
-                  The list tool shall report each file as a name relative to the requested
-                  directory, using a forward slash as the separator.
-                tags: [security]
+                  The list tool shall group each listed location under an absolute header with the
+                  matching names given beneath it relative to that header, and shall mirror the
+                  caller's path dialect — bare working-directory-relative names for a relative
+                  request within the granted working directory, and an absolute header otherwise.
                 justification: |
-                  An absolute listing would disclose exactly the host layout every refusal
-                  withholds, into a transcript that leaves this process. A relative name is also
-                  the more useful one: the model can hand it straight back to the read tool
-                  against the directory it just asked about, on any platform.
+                  A tool's output is a demonstration the model imitates. Reporting an absolute header
+                  once, with names relative to it, keeps a listing short — a full absolute path on
+                  every file would be some ninety characters each and would quickly trip the result
+                  ceiling — while still teaching the model to address a non-anchor location by its
+                  absolute header. Mirroring the caller's dialect makes the reported names the exact
+                  form the model can hand straight back: relative in, relative out; absolute in,
+                  absolute out. A discovery request establishes the dialect by listing every
+                  permitted location.
                 tests:
-                  - TextFileListTool_List_PermittedDirectory_NamesAreRelativeToTheRequestedDirectory
+                  - TextFileListTool_List_Discovery_ListsRelativeNamesUnderTheAnchorHeader
+                  - TextFileListTool_List_AbsoluteDirectory_ListsUnderTheAbsoluteHeader
+                  - TextFileListTool_List_BareRelativeDirectory_ListsUnderTheAnchor
+                  - TextFileListTool_List_TwoGrants_Discovery_ListsEachUnderItsAbsoluteHeader
 
               - id: AgentKitTools-TextFile-ListTool-DeterministicOrder
                 title: >-
@@ -129,45 +137,44 @@ sections:
 
               - id: AgentKitTools-TextFile-ListTool-OmittedDirectory
                 title: >-
-                  The list tool shall list the workspace root when the requested directory is
+                  The list tool shall list every permitted location when the requested directory is
                   omitted, empty, whitespace or one of the placeholder words a model sends in
                   place of an argument, and shall raise no exception for any directory a caller
                   supplies.
                 justification: |
                   A model exploring a workspace for the first time has no directory name to give,
-                  and what it sends instead is a question this tool can answer. Refusing it sends
-                  the model guessing at locations it has no business exploring. A directory
-                  argument that is required rather than defaulted fails inside the function
-                  factory before the tool is reached, so the model receives an opaque framework
-                  error instead of anything it can act on — which is why the argument being
+                  and what it sends instead is a question this tool can answer by listing what it
+                  may read. Refusing it sends the model guessing at locations it has no business
+                  exploring. A directory argument that is required rather than defaulted fails inside
+                  the function factory before the tool is reached, so the model receives an opaque
+                  framework error instead of anything it can act on — which is why the argument being
                   optional is part of the requirement rather than an implementation choice.
                 tests:
-                  - TextFileListTool_List_OmittedDirectory_ListsTheWorkspaceRoot
-                  - TextFileListTool_List_PlaceholderDirectory_ListsTheWorkspaceRoot
+                  - TextFileListTool_List_OmittedDirectory_ListsTheAnchor
+                  - TextFileListTool_List_PlaceholderDirectory_ListsTheAnchor
                   - TextFileListTool_List_MissingDirectoryArgument_DoesNotThrow
 
               - id: AgentKitTools-TextFile-ListTool-RelativeDirectory
                 title: >-
-                  The list tool shall list a directory named relative to the workspace root.
+                  The list tool shall list a directory named relative to the working directory,
+                  reporting its names relative to the working directory.
                 justification: |
-                  The names this tool reports are relative, so the names an agent hands back to
-                  it are relative too. A tool that reported relative names but accepted only
-                  absolute ones would make its own output unusable as input.
+                  A relative request within the granted working directory lists under the working
+                  directory, so the names an agent hands back to the tool are the same relative form
+                  it received. A tool that reported relative names but accepted only absolute ones
+                  would make its own output unusable as input.
                 tests:
-                  - TextFileListTool_List_BareRelativeDirectory_ListsThatDirectory
+                  - TextFileListTool_List_BareRelativeDirectory_ListsUnderTheAnchor
 
-              - id: AgentKitTools-TextFile-ListTool-DenialRedaction
+              - id: AgentKitTools-TextFile-ListTool-DenialDisclosure
                 title: >-
-                  A refusal from the list tool shall state how to phrase a request that could
-                  succeed, and shall contain no host location — no requested path, no permitted
-                  location and no directory separator.
-                tags: [security]
+                  A refusal from the list tool shall carry the disclosure the access policy
+                  produces: it shall echo the request and enumerate the permitted locations with
+                  their access levels.
                 justification: |
-                  The refusal text is handed to a model and the resulting transcript leaves this
-                  process. A refusal naming the requested directory would disclose the very host
-                  layout the listing itself is careful to relativize away. A refusal that names
-                  nothing at all is equally useless to the agent, which retries the same request
-                  until it gives up, so the guidance is phrased without a separator rather than
-                  omitted.
+                  The host-path-disclosure rule that once redacted these refusals is deliberately
+                  dropped. A policy refusal now names the permitted locations so a confined model
+                  learns where it may list instead of guessing, and the tool passes that refusal
+                  through unchanged.
                 tests:
-                  - TextFileListTool_List_DeniedDirectory_DenialTextContainsNoHostDetail
+                  - TextFileListTool_List_DeniedDirectory_DenialDisclosesPermittedLocation

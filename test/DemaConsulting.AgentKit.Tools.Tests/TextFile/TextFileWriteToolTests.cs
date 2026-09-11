@@ -12,8 +12,8 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 ///     Every scenario invokes the constructed tool through <see cref="AIFunction.InvokeAsync"/>
 ///     rather than calling an internal method directly, because delivery of the result through
 ///     the guarded factory is part of what is under verification. The scenario proving a
-///     readable path is not thereby writable is the one that makes the independent read and
-///     write rules observable at the tool level.
+///     readable path is not thereby writable is the one that makes the read-only/read-write grant
+///     distinction observable at the tool level.
 /// </remarks>
 public class TextFileWriteToolTests
 {
@@ -38,7 +38,7 @@ public class TextFileWriteToolTests
     public void TextFileWriteTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
     {
         // Arrange: a policy governing an otherwise irrelevant location
-        var policy = new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted());
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Act: construct the tool
         var tool = TextFileWriteTool.Create(policy);
@@ -124,11 +124,11 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
-    ///     Proves a path the read rule permits is refused for writing when the write rule does
-    ///     not permit it.
+    ///     Proves a path a read-only grant permits is refused for writing when no read-write grant
+    ///     permits it.
     /// </summary>
     /// <remarks>
-    ///     This is the scenario that makes the independent read and write rules observable. The
+    ///     This is the scenario that makes the read-only/read-write grant distinction observable. The
     ///     file is first read successfully through the read tool, so the refusal cannot be
     ///     explained away as the path being unreachable.
     /// </remarks>
@@ -140,8 +140,8 @@ public class TextFileWriteToolTests
         using var fixture = new ReparsePointFixture();
         var target = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "original");
         var policy = new PathPolicy(
-            PathRule.Rooted(fixture.Root),
-            PathRule.Rooted(fixture.Outside));
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
         var readTool = TextFileReadTool.Create(policy);
         var writeTool = TextFileWriteTool.Create(policy);
         var readResult = await readTool.InvokeAsync(
@@ -167,7 +167,7 @@ public class TextFileWriteToolTests
     [Fact]
     public async Task TextFileWriteTool_Write_PathOutsideTheWriteRoot_ReturnsDenial()
     {
-        // Arrange: a destination in a sibling directory the write rule does not permit
+        // Arrange: a destination in a sibling directory no read-write grant permits
         using var fixture = new ReparsePointFixture();
         var target = Path.Combine(fixture.Outside, "intruder.txt");
         var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root));
@@ -278,7 +278,7 @@ public class TextFileWriteToolTests
     {
         // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
         var tool = TextFileWriteTool.Create(
-            new PathPolicy(PathRule.Unrestricted(), PathRule.Unrestricted()));
+            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
 
         // Act: invoke with an empty path, as a confused model would
         var result = await InvokeAsync(tool, string.Empty, "content");
@@ -361,29 +361,49 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
-    ///     Proves a refusal discloses no host location.
+    ///     Proves a policy refusal discloses the permitted location, and shows a read-only location
+    ///     as such when the write is refused there.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileWriteTool_Write_DeniedPath_DenialTextContainsNoHostDetail()
+    public async Task TextFileWriteTool_Write_DeniedPath_DenialDisclosesPermittedLocation()
     {
         // Arrange: a destination outside the permitted write location
         using var fixture = new ReparsePointFixture();
         var target = Path.Combine(fixture.Outside, "intruder.txt");
-        var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileWriteTool.Create(policy);
 
         // Act: attempt the refused write
         var result = await InvokeAsync(tool, target, "content");
 
-        // Assert: neither the requested path, the permitted location nor a separator appears
+        // Assert: the request is echoed and the permitted location is named with its level
         var text = Assert.IsType<string>(result);
-        Assert.DoesNotContain(fixture.Root, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(fixture.Outside, text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("intruder.txt", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar.ToString(),
-            text,
-            StringComparison.Ordinal);
+        Assert.Contains(target, text, StringComparison.Ordinal);
+        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a write refused at a read-only location enumerates that location as read-only, so
+    ///     the model learns why the write is refused there.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileWriteTool_Write_ReadOnlyLocation_DenialShowsReadOnly()
+    {
+        // Arrange: the working directory is granted, but read-only
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        var tool = TextFileWriteTool.Create(policy);
+
+        // Act: attempt to write a bare name into the read-only location
+        var result = await InvokeAsync(tool, "notes.txt", "content");
+
+        // Assert: refused, with the location shown as read-only
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("(read-only)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -398,7 +418,7 @@ public class TextFileWriteToolTests
     /// <returns>The constructed policy.</returns>
     private static PathPolicy RootedPolicy(string root)
     {
-        return PathPolicy.ForWorkspace(root);
+        return new PathPolicy(root, [PathRule.ReadWrite(root)]);
     }
 
     /// <summary>
