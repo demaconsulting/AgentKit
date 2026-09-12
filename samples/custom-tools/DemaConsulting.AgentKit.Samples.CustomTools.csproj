@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>custom-tools</AssemblyName>
+    <RootNamespace>DemaConsulting.AgentKit.Samples.CustomTools</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- This is a demonstration application, not a shipped library: it is never packed,
+         published, or given an SBOM. Keeping it out of the package pipeline is what lets CI
+         build it (as part of the solution) without ever attempting to run or distribute it. -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Code Quality Configuration -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- The Microsoft Agent Framework and GitHub Copilot SDK mark parts of their agent surface
+         with "evaluation only" diagnostics (MAAI001 for the Agent Framework, GHCP001 for the
+         Copilot permission-decision RPC surface). This sample necessarily consumes that surface to
+         build and run an agent, so both diagnostics are suppressed here — the same approach the
+         Copilot adapter project takes for GHCP001. -->
+    <NoWarn>$(NoWarn);GHCP001;MAAI001</NoWarn>
+  </PropertyGroup>
+
+  <!-- Project References: the sample composes the shipped Core + Tools packages and both agent
+       adapters. The GitHub Copilot SDK is NOT referenced directly; it flows in transitively at the
+       version pinned by Microsoft.Agents.AI.GitHub.Copilot (1.0.5), which is the version whose
+       bundled runtime asset works. A direct reference risks resolving a newer, broken SDK. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.ChatClient\DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
+  </ItemGroup>
+
+  <!-- Package References: OllamaSharp supplies the IChatClient implementation the sample points at
+       an Ollama host. It is the only provider dependency the adapters do not already pull in. -->
+  <ItemGroup>
+    <PackageReference Include="OllamaSharp" Version="5.4.30" />
+  </ItemGroup>
+
+  <!-- Code Analysis Dependencies: matched to the library projects so the sample is held to the
+       same static-analysis bar as the code it demonstrates. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.33.0.1635">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

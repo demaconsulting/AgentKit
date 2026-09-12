@@ -1,6 +1,6 @@
 # Sample: Document Assistant
 
-The repository ships a runnable sample under `samples/01-document-assistant` that puts the pieces
+The repository ships a runnable sample under `samples/document-assistant` that puts the pieces
 described earlier in this guide together into a working console application. It grants an agent two
 locations — a workspace folder of documents and a separate session folder for the artifacts the agent
 produces — hands it the text-file and image tool packs, and runs the same conversation against either
@@ -70,8 +70,8 @@ Run the sample from the repository root. To run against the GitHub Copilot runti
 logged-in Copilot CLI on the machine:
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --provider copilot \
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
@@ -79,8 +79,8 @@ dotnet run --project samples/01-document-assistant -- \
 To run against an Ollama server, naming the host and a tool-and-vision capable model:
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --provider ollama --host http://your-ollama-host:11434 --model qwen3.5:9b \
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
@@ -95,8 +95,8 @@ The `--no-vision` flag omits both the image pack and the `Vision` host capabilit
 list its tools with and without the flag to see the difference:
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --provider ollama --no-vision \
   --prompt "List every tool you have available by name."
 ```
@@ -110,8 +110,8 @@ tools whose required capability the host has not declared.
 Point the agent at a path outside the workspace and watch the tool refuse it:
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --provider copilot \
   --prompt "Call text_file_read with the path ../outside-workspace.txt and show me exactly what it returns."
 ```
@@ -130,8 +130,8 @@ workspace is still the working directory, so relative paths still resolve agains
 inside it are still reported as relative names; what changes is that no write there is permitted.
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --read-only-workspace \
   --provider copilot \
   --prompt "Summarize welcome.txt into summary.md next to it, and show me exactly what each tool returns."
@@ -149,8 +149,8 @@ Reading from one location and writing to another is the ordinary shape of real w
 the two path dialects become visible in a single exchange:
 
 ```bash
-dotnet run --project samples/01-document-assistant -- \
-  --workspace samples/01-document-assistant/workspace \
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
   --provider copilot \
   --prompt "List every location you can reach, read welcome.txt, then save a summary into the session folder."
 ```

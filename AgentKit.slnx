@@ -6,7 +6,8 @@
     <Project Path="src/DemaConsulting.AgentKit.Agents.Copilot/DemaConsulting.AgentKit.Agents.Copilot.csproj" />
   </Folder>
   <Folder Name="/samples/">
-    <Project Path="samples/01-document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj" />
+    <Project Path="samples/document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj" />
+    <Project Path="samples/custom-tools/DemaConsulting.AgentKit.Samples.CustomTools.csproj" />
   </Folder>
   <Folder Name="/test/">
     <Project Path="test/DemaConsulting.AgentKit.Core.Tests/DemaConsulting.AgentKit.Core.Tests.csproj" />
@@ -14,5 +15,6 @@
     <Project Path="test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/DemaConsulting.AgentKit.Agents.ChatClient.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Agents.Copilot.Tests/DemaConsulting.AgentKit.Agents.Copilot.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests.csproj" />
+    <Project Path="test/DemaConsulting.AgentKit.Samples.CustomTools.Tests/DemaConsulting.AgentKit.Samples.CustomTools.Tests.csproj" />
   </Folder>
 </Solution>

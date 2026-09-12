@@ -60,7 +60,7 @@
 
   <!-- Project References -->
   <ItemGroup>
-    <ProjectReference Include="..\..\samples\document-assistant\DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj" />
+    <ProjectReference Include="..\..\samples\custom-tools\DemaConsulting.AgentKit.Samples.CustomTools.csproj" />
   </ItemGroup>
 
 </Project>

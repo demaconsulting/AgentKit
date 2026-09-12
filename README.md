@@ -19,8 +19,11 @@ application configures and a tool cannot omit.
 > construction, tool results, and the tool pack contract — is implemented; two guarded tool
 > families, text file and image, are built on it in `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
-> a GitHub Copilot `CopilotClient`. No package is published to NuGet yet, and the public API is not
-> yet stable.
+> a GitHub Copilot `CopilotClient`.
+
+Two runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
+end to end: **document-assistant** demonstrates consuming the shipped tools, and **custom-tools**
+demonstrates writing your own guarded tools. See the [Samples](#samples) section below.
 
 ## Capabilities
 
@@ -172,15 +175,25 @@ Generated documentation includes:
 
 ## Samples
 
-Runnable samples live under [`samples/`](https://github.com/demaconsulting/AgentKit/tree/main/samples):
+Runnable samples live under [`samples/`](https://github.com/demaconsulting/AgentKit/tree/main/samples).
+See [`samples/README.md`](https://github.com/demaconsulting/AgentKit/blob/main/samples/README.md) for an index
+of what each demonstrates and when to read it.
 
-- **[01 — Document Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/01-document-assistant)**:
-  A console chat application that grants an agent two locations — a workspace folder to read and a
-  separate session folder to write artifacts into — and gives it the shipped text-file and image tool
-  packs. A `--read-only-workspace` switch makes the grants asymmetric, so a refused write enumerates
-  the writable location and the agent recovers. It runs unchanged against the GitHub Copilot runtime
-  and any Ollama model, and prints every tool call so the containment, capability gating, and built-in
-  suppression are visible as they happen. See the sample's README for how to run it and what to try.
+- **[Document Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/document-assistant)**
+  — *the consumption path.* A console chat application that grants an agent two locations — a
+  workspace folder to read and a separate session folder to write artifacts into — and gives it the
+  shipped text-file and image tool packs. A `--read-only-workspace` switch makes the grants
+  asymmetric, so a refused write enumerates the writable location and the agent recovers. It runs
+  unchanged against the GitHub Copilot runtime and any Ollama model, and prints every tool call so
+  the containment, capability gating, and built-in suppression are visible as they happen.
+- **[Custom Tools](https://github.com/demaconsulting/AgentKit/tree/main/samples/custom-tools)**
+  — *the extension path.* A console chat application that shows how an application author writes
+  their own guarded tools with `GuardedToolFactory` and publishes them as packs, composed alongside
+  a shipped pack. It ships a path-taking `markdown_sections` tool (going through `PathPolicy` for
+  containment and returning a structured result) and a no-path `clock_now` tool (the deliberate
+  contrast — every tool is built through the guarded factory, not only path-based ones).
+
+Each sample has its own README explaining how to run it and what to try.
 
 ## Contributing
 

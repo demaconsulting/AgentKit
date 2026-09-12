@@ -61,6 +61,45 @@ namespace DemaConsulting.AgentKit.Core;
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Building tools with the guarded factory — the only supported construction path. A tool
+///     returns a union (a refusal, or text, or structured data), so its delegate is declared to
+///     return <see cref="object"/>; a no-path tool is built exactly the same way as a path-taking
+///     one.
+///     </para>
+///     <code>
+///     // A no-path tool: it takes no arguments and consults no policy, yet it is still built
+///     // through the guarded factory, which validates the name and requires a description.
+///     var now = () => ToolResult.Structured(new { utcTime = DateTimeOffset.UtcNow.ToString("O") });
+///     var clock = GuardedToolFactory.Create(
+///         now,
+///         name: "clock_now",
+///         description: "Reports the current UTC time. Takes no arguments.");
+///
+///     // A path-taking tool returns a refusal or a result, so its delegate returns object too.
+///     // An omitted path is a discovery request, not an error; a path outside every granted
+///     // location is refused with ToolResult.Denied rather than thrown.
+///     var root = Path.GetFullPath("workspace");
+///     var policy = new PathPolicy(root, [PathRule.ReadOnly(root)]);
+///
+///     var sections = (string? path) =>
+///     {
+///         if (PathPolicy.IsDiscoveryRequest(path))
+///             return ToolResult.Structured(new { searchableLocations = policy.DiscoveryRoots() });
+///
+///         if (!policy.TryResolveRead(path!, out var realPath, out var denialMessage))
+///             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
+///
+///         return ToolResult.Structured(new { path = policy.EmitRelative(realPath, path) });
+///     };
+///
+///     var markdown = GuardedToolFactory.Create(
+///         sections,
+///         name: "markdown_sections",
+///         description: "Lists the headings of a Markdown file. Omit the path to list searchable locations.");
+///     </code>
+/// </example>
 public static class GuardedToolFactory
 {
     /// <summary>

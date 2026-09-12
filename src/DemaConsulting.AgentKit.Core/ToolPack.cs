@@ -56,6 +56,31 @@ public enum HostCapabilities
 ///     <see cref="CreateTools"/> receives everything it needs as an argument.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Implementing a pack an application can attach. It declares a family prefix — the leading
+///     portion of every tool name it publishes, which <see cref="ToolPackBuilder.Build"/> verifies
+///     — and the host capabilities its tools require. This pack's single tool takes no path, so it
+///     requires nothing of the host and does not consult the policy it is handed.
+///     </para>
+///     <code>
+///     public sealed class ClockToolPack : IToolPack
+///     {
+///         public string FamilyPrefix => "clock";
+///
+///         public HostCapabilities RequiredCapabilities => HostCapabilities.None;
+///
+///         public IEnumerable&lt;AIFunction&gt; CreateTools(PathPolicy policy)
+///         {
+///             // This pack's tool needs no policy, so it is accepted and ignored.
+///             _ = policy;
+///
+///             var now = () => ToolResult.Structured(new { utcTime = DateTimeOffset.UtcNow.ToString("O") });
+///             return [GuardedToolFactory.Create(now, "clock_now", "Reports the current UTC time.")];
+///         }
+///     }
+///     </code>
+/// </example>
 public interface IToolPack
 {
     /// <summary>

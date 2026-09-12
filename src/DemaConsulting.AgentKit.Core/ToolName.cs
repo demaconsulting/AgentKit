@@ -21,6 +21,32 @@ namespace DemaConsulting.AgentKit.Core;
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Composing and validating a conforming tool name. <see cref="Create"/> assembles a
+///     <c>{family}_{verb}</c> name and validates it in one step; <see cref="Validate"/> checks a
+///     name assembled some other way, throwing when the convention is not met.
+///     </para>
+///     <code>
+///     // Compose a conforming name from a family prefix and a verb: "markdown_sections".
+///     string name = ToolName.Create("markdown", "sections");
+///
+///     // Validate a name you assembled yourself; it throws when the convention is not met.
+///     ToolName.Validate(name);
+///
+///     // A bare, family-less name is rejected — every tool name must carry a family prefix.
+///     bool accepted;
+///     try
+///     {
+///         ToolName.Validate("sections");
+///         accepted = true;
+///     }
+///     catch (ArgumentException)
+///     {
+///         accepted = false;
+///     }
+///     </code>
+/// </example>
 public static class ToolName
 {
     /// <summary>

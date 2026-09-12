@@ -69,6 +69,31 @@ public enum DenialReason
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     The three result shapes a guarded tool commonly returns. Every member returns
+///     <see cref="object"/>, the union type a tool's delegate is declared with; a refusal is a
+///     returned value, not a thrown exception, and may name a better tool to redirect the model to.
+///     </para>
+///     <code>
+///     // Text: returned as the plain string a runtime already knows how to present.
+///     object text = ToolResult.Text("Read 3 sections.");
+///
+///     // Structured: a machine-readable shape, serialized to JSON on the way to the model.
+///     object structured = ToolResult.Structured(new { sectionCount = 3, path = "notes.md" });
+///
+///     // Denied: a refusal naming its reason, so the model can choose a permitted alternative.
+///     object refusal = ToolResult.Denied(
+///         DenialReason.PathNotPermitted,
+///         "The path lies outside the permitted workspace.");
+///
+///     // Denied with a redirect: name the tool the model should use instead.
+///     object redirect = ToolResult.Denied(
+///         DenialReason.UnsupportedMediaType,
+///         "The file is an image, not text.",
+///         redirectToolName: "image_read");
+///     </code>
+/// </example>
 public static class ToolResult
 {
     /// <summary>

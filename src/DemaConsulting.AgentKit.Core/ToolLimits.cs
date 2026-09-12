@@ -47,6 +47,24 @@ namespace DemaConsulting.AgentKit.Core;
 ///     Instances are immutable after construction and are safe for concurrent use.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     A tool bounds its own output against the policy's result ceiling, refusing rather than
+///     returning something that would crowd out the conversation that follows it. The ceilings are
+///     carried on the <see cref="PathPolicy"/> a tool is given, so a tool reads
+///     <see cref="MaxResultCharacters"/> from there rather than inventing a limit of its own.
+///     </para>
+///     <code>
+///     var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
+///
+///     // A structured result a tool has assembled and is about to return.
+///     var listing = string.Join("\n", Enumerable.Range(1, 5000).Select(n => "section " + n));
+///
+///     object result = listing.Length > policy.Limits.MaxResultCharacters
+///         ? ToolResult.Denied(DenialReason.ResourceTooLarge, "The listing exceeds the result limit.")
+///         : ToolResult.Structured(new { listing });
+///     </code>
+/// </example>
 public sealed class ToolLimits
 {
     /// <summary>

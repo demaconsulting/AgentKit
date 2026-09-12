@@ -131,8 +131,8 @@ and an image. The session folder is created for you.
 Against GitHub Copilot (uses your logged-in Copilot CLI; no host or model flags needed):
 
 ```pwsh
-dotnet run --project samples/01-document-assistant -- `
-  --workspace samples/01-document-assistant/workspace `
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
   --provider copilot `
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
@@ -140,8 +140,8 @@ dotnet run --project samples/01-document-assistant -- `
 Against an Ollama server (any tool-and-vision capable model):
 
 ```pwsh
-dotnet run --project samples/01-document-assistant -- `
-  --workspace samples/01-document-assistant/workspace `
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
   --provider ollama --host http://your-ollama-host:11434 --model qwen3.5:9b `
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
@@ -211,8 +211,8 @@ into a similar-looking but different string.
 For the verbatim check, use a larger model:
 
 ```pwsh
-dotnet run --project samples/01-document-assistant -- `
-  --workspace samples/01-document-assistant/workspace `
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
   --provider ollama --host http://your-ollama-host:11434 --model qwen3.8:27b `
   --prompt "Look at diagram.png and tell me the shapes, their colors, and every line of text printed on it exactly as written."
 ```
