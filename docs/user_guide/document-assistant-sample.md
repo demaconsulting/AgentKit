@@ -32,17 +32,16 @@ they are reported as absolute paths. That is the transition hazard described ear
 happening live: an application that adds a second location moves from the relative dialect to the
 absolute one for that location, and nothing else announces it.
 
-A no-argument `text_file_list` is a discovery request — it reports each location it found files in as
-an absolute header with those files beneath — and the sample's system instructions still direct the
-model to list before it writes, because that listing is what establishes the two dialects. The
-instructions also **name both locations outright**, with the workspace's access level and the session
-folder's absolute path, and are built per run rather than held as a constant for that reason. That is
-deliberate rather than redundant: a permitted location holding no matching file contributes no block
-to a discovery listing, so a freshly created, still-empty session folder does not appear in one at
-all. An application knows its own locations, and stating them is the robust thing to do; relying on
-discovery alone leaves the agent guessing a relative name that would be interpreted against the
-workspace. The omission is recorded as a known limitation of `TextFileListTool` in the design
-documentation.
+A no-argument `text_file_list` is a discovery request — it reports every permitted location as an
+absolute header, with any files beneath it, and an empty location shown under its header with a
+marker naming its access level — and the sample's system instructions still direct the model to list
+before it writes, because that listing is what establishes the two dialects. The instructions also
+**name both locations outright**, with the workspace's access level and the session folder's absolute
+path, and are built per run rather than held as a constant for that reason. That is deliberate rather
+than redundant: an application knows its own locations, and stating them up front is the robust design
+— it removes a discovery round-trip and puts the session folder's absolute path in the agent's hands
+on its very first turn, before it has listed anything. Discovery would report the empty session folder
+too, so the two are complementary; naming it outright is simply the simpler path.
 
 ## What the Sample Shows
 
@@ -156,10 +155,12 @@ dotnet run --project samples/01-document-assistant -- \
   --prompt "List every location you can reach, read welcome.txt, then save a summary into the session folder."
 ```
 
-The no-argument listing reports each location that contains files as an absolute header. The read of
+The no-argument listing reports every permitted location as an absolute header, with any files
+beneath it and an empty location shown under its header with an access-level marker. The read of
 `welcome.txt` comes back as a relative name, because the result lies inside the granted working
 directory. The write comes back as an absolute path, because the session folder lies outside the
 anchor and no relative name could truthfully identify it. Both answers are correct; the change of
 dialect is the tool telling the truth about where the file actually is. The agent addresses the
-session folder by the absolute path its instructions named, which is what makes this work on a first
-run when the session folder is still empty and so absent from the listing.
+session folder by the absolute path its instructions named, which works on a first run even when the
+session folder is still empty — discovery reports it either way, but naming it outright saves the
+round-trip.

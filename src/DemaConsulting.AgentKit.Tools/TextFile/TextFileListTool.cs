@@ -28,8 +28,10 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     the matching names given relative to that header. The header is written once per location —
 ///     an O(1) cost — rather than repeating a full absolute path on every file, which would be some
 ///     ninety characters each and would quickly trip the result ceiling. A discovery listing (one
-///     made with no directory argument) covers every granted location, so the model learns that
-///     locations other than the working directory are addressed by their absolute header.
+///     made with no directory argument) covers every granted location — including one that
+///     currently holds no matching file, rendered as its absolute header followed by a marker line
+///     naming its access level — so the model learns that locations other than the working
+///     directory exist and are addressed by their absolute header.
 ///     </para>
 ///     <para>
 ///     <b>A listing mirrors the caller's dialect.</b> The output is a demonstration the model
@@ -123,6 +125,31 @@ public static class TextFileListTool
     ///     The result reported when nothing matched.
     /// </summary>
     private const string NoMatches = "No files matched.";
+
+    /// <summary>
+    ///     The marker line placed beneath the header of a read-write location that a discovery
+    ///     listing covers but that currently holds no matching file.
+    /// </summary>
+    /// <remarks>
+    ///     A discovery listing reports every permitted location, including an empty one, so a model
+    ///     learns the location exists and may address it. The header renders exactly as a populated
+    ///     block's header; the marker line states existence and access level only where there is
+    ///     otherwise nothing to state, and cannot be read as a file name, an error, or the next
+    ///     location's header (which is always an absolute path on its own line).
+    /// </remarks>
+    private const string EmptyReadWriteMarker = "(no files - read-write)";
+
+    /// <summary>
+    ///     The marker line placed beneath the header of a read-only location that a discovery
+    ///     listing covers but that currently holds no matching file.
+    /// </summary>
+    /// <remarks>
+    ///     The read-only counterpart of <see cref="EmptyReadWriteMarker"/>. The access level is the
+    ///     conservative, truthful answer from <see cref="PathPolicy.TryResolveWrite"/>: a location no
+    ///     read-write grant covers is named read-only so the model does not attempt a write it would
+    ///     be refused.
+    /// </remarks>
+    private const string EmptyReadOnlyMarker = "(no files - read-only)";
 
     /// <summary>
     ///     Creates the <c>text_file_list</c> tool governed by an access policy.
@@ -229,17 +256,20 @@ public static class TextFileListTool
 
     /// <summary>
     ///     Builds the discovery listing: one block per permitted location, each an absolute header
-    ///     followed by its matching names.
+    ///     followed by its matching names, or a marker naming its access level when it is empty.
     /// </summary>
     /// <remarks>
     ///     The header is written once per location — an O(1) cost — and names are given relative to
     ///     it rather than as full absolute paths, so a location with a long path does not spend the
-    ///     result budget on repetition. A location with no match contributes no block, so an empty
-    ///     result is an empty string the caller reports as "no files matched".
+    ///     result budget on repetition. Every permitted location contributes a block, including one
+    ///     that currently holds no matching file: it renders as its header followed by a marker line
+    ///     naming its access level, so a discovery listing never hides a granted location. The joined
+    ///     result is therefore an empty string only when there are no grants at all, which the caller
+    ///     reports as "no files matched".
     /// </remarks>
     /// <param name="policy">The access policy governing the listing.</param>
     /// <param name="pattern">The resolved search pattern.</param>
-    /// <returns>The joined discovery listing, empty when nothing matched anywhere.</returns>
+    /// <returns>The joined discovery listing, empty only when there are no grants.</returns>
     private static string ListEveryLocation(PathPolicy policy, string pattern)
     {
         var blocks = new List<string>();
@@ -251,13 +281,38 @@ public static class TextFileListTool
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-            if (names.Count > 0)
-            {
-                blocks.Add(RenderBlock(root, names));
-            }
+            // Every permitted location is reported, including an empty one: a discovery listing
+            // that hid a granted location would let a model invent a path and write to the wrong
+            // target, the exact failure this library exists to prevent. A location with matches
+            // renders as before; one with none renders its header and a marker naming its access.
+            blocks.Add(names.Count > 0
+                ? RenderBlock(root, names)
+                : RenderEmptyLocation(policy, root));
         }
 
         return string.Join(BlockSeparator, blocks);
+    }
+
+    /// <summary>
+    ///     Renders a permitted-but-empty location's block: its absolute header followed by a marker
+    ///     line naming the access level, so discovery reports the location without inventing a name.
+    /// </summary>
+    /// <remarks>
+    ///     The access level is taken from <see cref="PathPolicy.TryResolveWrite"/> — the single write
+    ///     decision the policy already exposes — so the marker states truthfully whether the location
+    ///     is writable: a location a read-write grant covers reads read-write, and any other reads
+    ///     read-only.
+    /// </remarks>
+    /// <param name="policy">The access policy governing the listing.</param>
+    /// <param name="root">The permitted location that currently holds no matching file.</param>
+    /// <returns>The rendered empty-location block.</returns>
+    private static string RenderEmptyLocation(PathPolicy policy, string root)
+    {
+        var marker = policy.TryResolveWrite(root, out _, out _)
+            ? EmptyReadWriteMarker
+            : EmptyReadOnlyMarker;
+
+        return ToForwardSlash(root) + NameSeparator + marker;
     }
 
     /// <summary>

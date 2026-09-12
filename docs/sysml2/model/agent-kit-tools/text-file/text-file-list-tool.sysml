@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def TextFileListTool {
-        doc /* Publishes the text_file_list tool, listing the permitted files grouped under an absolute location header with names given relative to it, mirroring the caller's path dialect, enumerating strictly through the access policy so no escaped file is ever listed. */
+        doc /* Publishes the text_file_list tool, listing the permitted files grouped under an absolute location header with names given relative to it, mirroring the caller's path dialect, reporting on discovery every permitted location including an empty one shown with a marker naming its access level, enumerating strictly through the access policy so no escaped file is ever listed. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/TextFile/TextFileListTool.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileListToolTests.cs */

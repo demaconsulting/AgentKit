@@ -27,6 +27,8 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | `ReportedSeparator`    | `char`   | `/` on every platform                                        |
 | `BlockSeparator`       | `string` | A blank line between discovery listing blocks                |
 | `NoMatches`            | `string` | The result reported when nothing matched                     |
+| `EmptyReadWriteMarker` | `string` | `(no files - read-write)`; empty read-write location marker  |
+| `EmptyReadOnlyMarker`  | `string` | `(no files - read-only)`; empty read-only location marker    |
 
 The listing returned is one or more newline-separated blocks, bounded by
 `PathPolicy.Limits.MaxResultCharacters`. Each block starts with an absolute location header, written
@@ -62,9 +64,13 @@ governed by the supplied policy for the rest of its life.
    reading for a model exploring a directory it does not know
 2. An omitted, empty, whitespace or placeholder directory is a discovery request. It enumerates
    every `policy.DiscoveryRoots()` location, rendering each location once as an absolute header and
-   rendering its matching names beneath it. A single granted working directory therefore establishes
-   the relative dialect — bare names beneath the working-directory header — while an ungranted
-   working directory can only be addressed by absolute headers
+   rendering its matching names beneath it. **Every permitted location contributes a block, including
+   one that currently holds no matching file**: an empty location renders as its absolute header
+   followed by a single marker line naming its access level, taken from
+   `policy.TryResolveWrite(root, …)` — `(no files - read-write)` when a read-write grant covers it,
+   `(no files - read-only)` otherwise. A single granted working directory therefore establishes the
+   relative dialect — bare names beneath the working-directory header — while an ungranted working
+   directory can only be addressed by absolute headers
 3. Otherwise `policy.TryResolveRead(directory, …)` resolves the requested directory; a refusal is
    returned as `PathNotPermitted`. Resolving first is what produces a refusal rather than the empty
    sequence enumeration alone would return, and the resolved location participates in the output
@@ -106,21 +112,15 @@ was wrong in both directions: it told a model its request was malformed when the
 only one the model could make, and it sent the model guessing at locations it has no business
 exploring. Discovery now establishes the path dialect up front: a single granted working directory
 establishes bare relative names, while an ungranted working directory produces only absolute
-headers because relative names would not address a granted location.
-
-**Known limitation.** A permitted location that currently holds no matching file contributes no
-block, so it is absent from the discovery listing entirely. Discovery therefore reports every
-permitted location *in which something matched*, not every permitted location — which is weaker
-than the description above and than what `Purpose` claims. The gap matters most on a first run: an
-application that grants a freshly created, still-empty output location and relies on discovery to
-teach the agent that location's path does not get it. This was observed live in the
-`samples/01-document-assistant` sample, where a new and empty session folder was omitted from the
-listing, the model never learned the session path, guessed a workspace-relative name, and was
-denied. This is recorded as a known limitation rather than closed: rendering a header with no names
-beneath it changes the shape of every discovery result and the meaning of the `No files matched.`
-answer, which is an owner decision and out of scope for the current design. Until it is closed, an
-application that needs an agent to know a location should state that location itself — its own
-configuration is the authoritative source — as the sample now does in its system instructions.
+headers because relative names would not address a granted location. **Discovery reports every
+permitted location, including one that currently holds no matching file.** An empty location renders
+as its absolute header followed by a single marker line — `(no files - read-write)` or
+`(no files - read-only)`, chosen by `policy.TryResolveWrite` — so a model learns the location exists
+and may address it, most importantly a freshly created, still-empty output location whose path the
+agent needs on its very first run. The marker sits beneath its header with a single newline and
+cannot be mistaken for a file name, an error, or the next location's absolute header. An empty string
+now arises only when the policy carries no grants at all, which the caller still reports as
+`No files matched.`
 
 **The enumeration invariant.** Enumeration goes through `PathPolicy.EnumerateFiles` and never
 through `Directory.EnumerateFiles` or `Directory.GetFiles`. Recursive enumeration performed by the

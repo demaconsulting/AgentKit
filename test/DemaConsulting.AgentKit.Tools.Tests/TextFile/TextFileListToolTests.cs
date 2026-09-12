@@ -224,7 +224,7 @@ public class TextFileListToolTests
     }
 
     /// <summary>
-    ///     Proves a directory matching nothing reports an empty listing rather than a refusal.
+    ///     Proves a named directory matching nothing reports an empty listing rather than a refusal.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -233,10 +233,12 @@ public class TextFileListToolTests
         // Arrange: a permitted directory holding nothing the pattern matches
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "text");
-        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
 
-        // Act: list with a pattern nothing matches
-        var result = await InvokeAsync(tool, null, "*.absent");
+        // Act: name the directory and give a pattern nothing matches — the named-directory path,
+        // distinct from discovery, which now reports every permitted location including an empty one
+        var result = await InvokeAsync(tool, policy.WorkingDirectory, "*.absent");
 
         // Assert: an answer, not a refusal — nothing about the request was wrong
         var text = Assert.IsType<string>(result);
@@ -433,6 +435,246 @@ public class TextFileListToolTests
     }
 
     /// <summary>
+    ///     Proves a discovery listing over a single empty read-write location reports that location
+    ///     under its absolute header with a marker naming its access level, not as "No files matched.".
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_SingleEmptyLocation_AppearsWithItsAccessLevel()
+    {
+        // Arrange: a granted, read-write working directory holding no matching file
+        using var fixture = new ReparsePointFixture();
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover, the way a model with no directory name would
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: the empty location appears under its header with its access level, not hidden
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(EmptyBlock(policy.WorkingDirectory, "(no files - read-write)"), text);
+        Assert.NotEqual("No files matched.", text);
+    }
+
+    /// <summary>
+    ///     Proves the marker beneath an empty read-only location names read-only, so a model does
+    ///     not attempt a write the policy would refuse there.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_ReadOnlyEmptyLocation_MarkerNamesReadOnly()
+    {
+        // Arrange: a populated read-write anchor and a separate, empty read-only location
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "here.txt", "1");
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root), PathRule.ReadOnly(fixture.Outside)]);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover across both grants
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: the empty read-only location appears with the read-only marker
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(
+            EmptyBlock(RealPathResolver.Resolve(fixture.Outside), "(no files - read-only)"),
+            text,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an empty location is reported wherever it falls in ordinal order — first, middle
+    ///     and last — and can never be confused with an adjacent populated block or its header.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_EmptyLocationsAmongPopulated_EachAppearsInFirstMiddleLast()
+    {
+        // Arrange: five granted locations whose ordinal order is empty, populated, empty,
+        // populated, empty — so an empty block occupies the first, a middle and the last position
+        using var fixture = new ReparsePointFixture();
+        var one = Path.Combine(fixture.Root, "1e");
+        var two = Path.Combine(fixture.Root, "2p");
+        var three = Path.Combine(fixture.Root, "3e");
+        var four = Path.Combine(fixture.Root, "4p");
+        var five = Path.Combine(fixture.Root, "5e");
+        Directory.CreateDirectory(one);
+        Directory.CreateDirectory(three);
+        Directory.CreateDirectory(five);
+        ReparsePointFixture.WriteFile(two, "a.txt", "a");
+        ReparsePointFixture.WriteFile(four, "b.txt", "b");
+        var policy = new PathPolicy(
+            fixture.Root,
+            [
+                PathRule.ReadWrite(one),
+                PathRule.ReadWrite(two),
+                PathRule.ReadWrite(three),
+                PathRule.ReadWrite(four),
+                PathRule.ReadWrite(five)
+            ]);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover across all five grants
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: the exact joined listing, so an empty block is never taken for an adjacent header
+        var expected = string.Join(
+            "\n\n",
+            EmptyBlock(RealPathResolver.Resolve(one), "(no files - read-write)"),
+            Block(RealPathResolver.Resolve(two), "a.txt"),
+            EmptyBlock(RealPathResolver.Resolve(three), "(no files - read-write)"),
+            Block(RealPathResolver.Resolve(four), "b.txt"),
+            EmptyBlock(RealPathResolver.Resolve(five), "(no files - read-write)"));
+        Assert.Equal(expected, Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves a discovery listing in which every granted location is empty reports each one with
+    ///     a marker rather than collapsing to "No files matched.".
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_EveryLocationEmpty_AllAppearWithMarkers()
+    {
+        // Arrange: three granted locations, all empty
+        using var fixture = new ReparsePointFixture();
+        var alpha = Path.Combine(fixture.Root, "alpha");
+        var bravo = Path.Combine(fixture.Root, "bravo");
+        var charlie = Path.Combine(fixture.Root, "charlie");
+        Directory.CreateDirectory(alpha);
+        Directory.CreateDirectory(bravo);
+        Directory.CreateDirectory(charlie);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(alpha), PathRule.ReadWrite(bravo), PathRule.ReadWrite(charlie)]);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover across all three empty grants
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: not a refusal; each location present under its header, blocks blank-line separated
+        var text = Assert.IsType<string>(result);
+        Assert.NotEqual("No files matched.", text);
+        Assert.Contains(EmptyBlock(RealPathResolver.Resolve(alpha), "(no files - read-write)"), text, StringComparison.Ordinal);
+        Assert.Contains(EmptyBlock(RealPathResolver.Resolve(bravo), "(no files - read-write)"), text, StringComparison.Ordinal);
+        Assert.Contains(EmptyBlock(RealPathResolver.Resolve(charlie), "(no files - read-write)"), text, StringComparison.Ordinal);
+        Assert.Contains("\n\n", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a location holding only a subdirectory, and no matching file, is reported as empty
+    ///     — the listing reports files, so subdirectories alone leave the location empty.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_LocationWithOnlySubdirectories_AppearsAsEmpty()
+    {
+        // Arrange: a granted location whose only content is an empty subdirectory
+        using var fixture = new ReparsePointFixture();
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "sub"));
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover the location
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: no file matched, so the location renders as an empty block
+        Assert.Equal(
+            EmptyBlock(policy.WorkingDirectory, "(no files - read-write)"),
+            Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves adding empty-location reporting does not change how a populated block renders: the
+    ///     populated block is byte-identical to the pre-change rendering.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_PopulatedAndEmpty_PopulatedBlockRendersExactlyAsBefore()
+    {
+        // Arrange: a populated anchor and a separate, empty granted location
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover across both grants
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: the populated block is exactly the block the pre-change tool produced
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(Block(policy.WorkingDirectory, "note.txt"), text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a policy carrying no grants still reports "No files matched." for discovery — there
+    ///     is genuinely no permitted location to report.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_NoGrants_ReturnsNoFilesMatched()
+    {
+        // Arrange: a policy with an empty grant set
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileListTool.Create(new PathPolicy(fixture.Root, []));
+
+        // Act: discover with nothing granted
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: the zero-grants contract is preserved
+        Assert.Equal("No files matched.", Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves the empty-location markers count toward the result ceiling: a discovery whose
+    ///     headers and markers exceed the ceiling is refused, naming it, rather than truncated.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_EmptyMarkersBeyondResultCeiling_ReturnsDenialNamingTheCeiling()
+    {
+        // Arrange: an empty location whose header and marker exceed a five-character ceiling
+        using var fixture = new ReparsePointFixture();
+        var limits = new ToolLimits(maxResultCharacters: 5);
+        var tool = TextFileListTool.Create(RootedPolicy(fixture.Root, limits));
+
+        // Act: discover the empty location
+        var result = await InvokeAsync(tool, null, null);
+
+        // Assert: a refusal naming the ceiling, never a truncated marker
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("5-character", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a discovery listing whose search pattern matches nothing in a populated location
+    ///     still reports that location, so a narrow pattern never hides a location from the agent.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileListTool_List_Discovery_PatternMatchesNothing_LocationStillAppears()
+    {
+        // Arrange: a granted location that holds a file the pattern will not match
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "text");
+        var policy = RootedPolicy(fixture.Root);
+        var tool = TextFileListTool.Create(policy);
+
+        // Act: discover with a pattern nothing matches — emptiness here comes from the pattern,
+        // not from the location, and the agent must still learn the location exists
+        var result = await InvokeAsync(tool, null, "*.absent");
+
+        // Assert: the location is reported as empty rather than omitted
+        Assert.Equal(
+            EmptyBlock(policy.WorkingDirectory, "(no files - read-write)"),
+            Assert.IsType<string>(result));
+    }
+
+    /// <summary>
     ///     Creates a policy whose working directory is also its single read-write grant.
     /// </summary>
     /// <param name="root">The location that is both the anchor and the grant.</param>
@@ -452,6 +694,18 @@ public class TextFileListToolTests
     private static string Block(string header, params string[] names)
     {
         return ToForwardSlash(header) + "\n" + string.Join("\n", names);
+    }
+
+    /// <summary>
+    ///     Builds the expected empty-location block: the absolute header, forward-slashed, then a
+    ///     single marker line naming the access level.
+    /// </summary>
+    /// <param name="header">The absolute location header.</param>
+    /// <param name="marker">The access-level marker expected beneath the header.</param>
+    /// <returns>The expected empty-location block text.</returns>
+    private static string EmptyBlock(string header, string marker)
+    {
+        return ToForwardSlash(header) + "\n" + marker;
     }
 
     /// <summary>

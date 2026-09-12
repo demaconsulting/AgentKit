@@ -19,9 +19,11 @@ vacuously.
 The remaining scenarios assert the properties that determine whether a listing is usable rather than
 merely safe: grouped output under absolute location headers, bare names relative to each header,
 dialect mirroring for relative and absolute requests, deterministic order, pattern narrowing, an
-empty listing reported as a fact, a discovery listing that covers every grant, and an oversized
-listing refused rather than truncated. Policy denials are passed through with the current disclosure
-behavior, so the refused request and permitted locations are visible to the model.
+empty named listing reported as a fact, a discovery listing that covers every grant — including a
+permitted location that currently holds no matching file, reported under its absolute header with a
+marker naming its access level — and an oversized listing refused rather than truncated. Policy
+denials are passed through with the current disclosure behavior, so the refused request and permitted
+locations are visible to the model.
 
 Unit tests reside in `TextFile/TextFileListToolTests.cs`, with the shared reparse-point fixture in
 `TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -39,12 +41,14 @@ Unit tests reside in `TextFile/TextFileListToolTests.cs`, with the shared repars
 
 #### Acceptance Criteria
 
-A unit test run passes when all nineteen scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-eight scenarios below pass without error or exception beyond
 those explicitly asserted. An escaped file appearing in a listing, a missing absolute header, names
 reported relative to the wrong header, a non-deterministic order, a truncated listing where a refusal
-was required, an empty listing reported as a refusal, a request naming no directory refused or
-raising rather than discovering permitted locations, an exception raised at a malformed request, or a
-policy refusal that does not disclose the permitted locations constitutes a failure.
+was required, an empty listing reported as a refusal, a discovery listing that omits a permitted
+empty location, or renders one in a form a model could mistake for an error or the next header, a
+request naming no directory refused or raising rather than discovering permitted locations, an
+exception raised at a malformed request, or a policy refusal that does not disclose the permitted
+locations constitutes a failure.
 
 #### Test Scenarios
 
@@ -122,8 +126,9 @@ model exploring a directory it does not know.
 
 **Test**: `TextFileListTool_List_NoMatches_ReturnsAnEmptyListingNotADenial`
 
-Boundary condition: asserts both the reported text, `No files matched.`, and the absence of a
-denial, because refusing here would tell the model to correct a request that is already correct.
+Boundary condition for a **named** directory: asserts both the reported text, `No files matched.`,
+and the absence of a denial, because refusing here would tell the model to correct a request that is
+already correct. Discovery is distinct and is covered by the discovery-completeness scenarios below.
 
 ##### AgentKitTools-TextFile-ListTool-ResultCeiling: A Listing Beyond the Result Ceiling Is Refused
 
@@ -186,3 +191,74 @@ absolute location the model must use to address that grant.
 
 Disclosure behavior: the refused request is echoed, and the permitted working directory is named
 with its `(read-write)` access level so a confined model learns where it may list instead.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: A Single Empty Location Appears With Its Access Level
+
+**Test**: `TextFileListTool_List_Discovery_SingleEmptyLocation_AppearsWithItsAccessLevel`
+
+The core of the fix: a lone granted read-write location holding no matching file is reported under
+its absolute header with the `(no files - read-write)` marker, and explicitly not as `No files
+matched.`, so the location's existence is never hidden from a discovering model.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: An Empty Read-Only Location Names Read-Only
+
+**Test**: `TextFileListTool_List_Discovery_ReadOnlyEmptyLocation_MarkerNamesReadOnly`
+
+The marker reflects the truthful access level: an empty read-only location, discovered alongside a
+populated read-write anchor, renders with the `(no files - read-only)` marker so a model does not
+attempt a write it would be refused.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: Empty Locations Appear First, Middle and Last
+
+**Test**: `TextFileListTool_List_Discovery_EmptyLocationsAmongPopulated_EachAppearsInFirstMiddleLast`
+
+Five granted locations ordered so an empty block falls first, in the middle and last among populated
+blocks. The exact joined listing is asserted — headers, markers, names and blank-line block
+separators — so an empty block can never be confused with an adjacent block's absolute header.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: Every Location Empty Still Reports Each
+
+**Test**: `TextFileListTool_List_Discovery_EveryLocationEmpty_AllAppearWithMarkers`
+
+Several granted locations, all empty. The result is asserted not to be `No files matched.`; each
+header-and-marker block is present and blocks are blank-line separated, proving discovery reports
+every permitted location even when none holds a file.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: A Location With Only Subdirectories Is Empty
+
+**Test**: `TextFileListTool_List_Discovery_LocationWithOnlySubdirectories_AppearsAsEmpty`
+
+A granted location whose only content is a subdirectory matches no *file*, so it renders as an empty
+block with its access-level marker — confirming the listing reports files and that subdirectories
+alone leave a location empty.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: A Populated Block Renders Exactly As Before
+
+**Test**: `TextFileListTool_List_Discovery_PopulatedAndEmpty_PopulatedBlockRendersExactlyAsBefore`
+
+Regression lock: a discovery over one populated and one empty grant is asserted to contain the
+populated block byte-for-byte as the pre-change tool produced it, proving the empty-location
+rendering introduces no populated-output regression.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: No Grants Still Reports No Files Matched
+
+**Test**: `TextFileListTool_List_Discovery_NoGrants_ReturnsNoFilesMatched`
+
+Boundary condition: a policy carrying no grants produces no block and reports `No files matched.`,
+preserving the zero-grants contract — there is genuinely no permitted location to report.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: Empty Markers Count Toward the Result Ceiling
+
+**Test**: `TextFileListTool_List_Discovery_EmptyMarkersBeyondResultCeiling_ReturnsDenialNamingTheCeiling`
+
+Boundary condition: an empty location whose header and marker exceed a small result ceiling is
+refused as `ResourceTooLarge` with the ceiling named, proving markers count toward the ceiling and
+are refused rather than truncated.
+
+##### AgentKitTools-TextFile-ListTool-DiscoveryCompleteness: A Pattern Matching Nothing Still Reports the Location
+
+**Test**: `TextFileListTool_List_Discovery_PatternMatchesNothing_LocationStillAppears`
+
+Boundary condition: a populated location narrowed by a pattern that matches nothing is still reported
+under its absolute header with its access-level marker, proving emptiness arising from the pattern
+hides a location no more than emptiness arising from the location itself.

@@ -86,6 +86,7 @@ sections:
               - AgentKitTools-TextFile-ListTool-DeterministicOrder
               - AgentKitTools-TextFile-ListTool-SearchPattern
               - AgentKitTools-TextFile-ListTool-EmptyListing
+              - AgentKitTools-TextFile-ListTool-DiscoveryCompleteness
             tests:
               - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheWrite
               - TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool

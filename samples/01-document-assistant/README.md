@@ -62,13 +62,13 @@ composed anything, so it is the authoritative source for them. The instructions 
 per run rather than held as a constant string.
 
 A no-argument `text_file_list` is still requested, and it is still a **discovery** request: it
-reports the permitted locations as absolute headers with the file names beneath them. It is worth
-watching, because it is what establishes the two path dialects. It is simply not the *only* way the
-agent learns where it may write — and it cannot be, because **a permitted location that currently
-holds no files contributes no block to the listing at all**. On a first run the session folder has
-just been created and is empty, which is precisely when the agent most needs its path. This is a
-known limitation of the discovery listing, recorded against `TextFileListTool` in the design
-documentation; the sample does not work around it, it just tells the truth up front.
+reports every permitted location as an absolute header with the file names beneath them, and an empty
+location under its header with a marker naming its access level. It is worth watching, because it is
+what establishes the two path dialects. It is simply not the *only* way the agent learns where it may
+write. Discovery reports even an empty session folder, so an agent could learn its path that way — but
+naming both locations up front removes a round-trip and puts the session path in the agent's hands on
+its very first turn, before it has listed anything. The sample therefore tells the truth up front
+rather than relying on discovery alone.
 
 Write with the **full absolute path** of the session folder. A relative name is always interpreted
 against the workspace, so `session/summary.md` would target a `session` subfolder *inside the
@@ -169,10 +169,10 @@ The default session folder is `document-assistant-session` beneath the system te
 ## What to try
 
 - **Discovery.** "List every location you can reach and say which you can write to." The agent calls
-  `text_file_list` with no argument and reports the locations that contain files as absolute headers,
-  with the workspace files beneath the workspace header. It knows about both locations either way,
-  because the system instructions name them; an empty session folder is simply absent from the
-  listing.
+  `text_file_list` with no argument and reports every permitted location as an absolute header, with
+  the workspace files beneath the workspace header and an empty session folder shown under its header
+  with an access-level marker. It also knows about both locations from the system instructions, which
+  name them.
 - **A plain relative read.** "Read welcome.txt and summarize it." The agent calls `text_file_read`
   with `welcome.txt`, resolved inside the workspace.
 - **Cross-location work.** "Read welcome.txt, then save a summary into the session folder." Watch the

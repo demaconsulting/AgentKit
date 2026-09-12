@@ -78,18 +78,14 @@ public static class AgentComposition
     ///     <para>
     ///     <b>The instructions name the locations, which is why they are built per run rather than
     ///     held as a constant.</b> An application knows its own locations — this one resolves both
-    ///     before it composes anything — so stating them is the honest and robust thing to do.
-    ///     Withholding them and relying on the agent to discover them was tried first and is not
-    ///     sound: a no-argument <c>text_file_list</c> reports only those permitted locations that
-    ///     currently contain a matching file, so a granted location that is empty contributes no
-    ///     block and is absent from the listing entirely. On a first run the session folder has just
-    ///     been created and is therefore empty, which is exactly when the agent most needs its path;
-    ///     an agent told only to discover then never learns it, guesses a relative name, and has the
-    ///     guess joined to the workspace. This is an observed limitation of
-    ///     <see cref="DemaConsulting.AgentKit.Tools.TextFile.TextFilePack"/>'s <c>text_file_list</c>
-    ///     discovery listing, recorded as a known limitation in that unit's design documentation. It
-    ///     is not fixed here, and this sample does not work around it beyond telling the truth up
-    ///     front.
+    ///     before it composes anything — so stating them outright is the honest, robust design: it
+    ///     removes a discovery round-trip and makes the session folder's absolute path available to
+    ///     the agent immediately, on the very first turn, before it has listed anything. Discovery
+    ///     and the named instructions are complementary rather than one compensating for a defect in
+    ///     the other: a no-argument <c>text_file_list</c> reports every permitted location, including
+    ///     one that is currently empty (rendered under its absolute header with a marker naming its
+    ///     access level), so an agent could learn the empty session folder's path from discovery
+    ///     alone — but naming it up front is simpler and saves the round-trip.
     ///     </para>
     ///     <para>
     ///     Discovery is still requested, because it is genuinely useful and it demonstrates the
@@ -121,9 +117,10 @@ public static class AgentComposition
             "be refused, and that is by design. You have no shell, terminal, code-execution, or " +
             "web/fetch tool; do not claim otherwise. " +
             "To see what files exist, call text_file_list with no directory argument: it reports " +
-            "the locations it found files in, each as an absolute path with its files beneath it. " +
-            "A location it does not report is not a location you lack — an empty one simply has " +
-            "nothing to list. Read files from the workspace using the plain relative names the " +
+            "every location you may read, each as an absolute path with its files beneath it — and " +
+            "an empty location still appears, shown under its absolute path with a marker naming " +
+            "its access level, so you always learn every location you may use. Read files from the " +
+            "workspace using the plain relative names the " +
             "listing shows for it (for example 'welcome.txt'). Write new files into the session " +
             "folder using its full absolute path exactly as given above — a relative name is " +
             "always interpreted against the workspace, so it will not reach any other location. " +
