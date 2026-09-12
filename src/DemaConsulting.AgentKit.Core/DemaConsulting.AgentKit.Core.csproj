@@ -54,9 +54,15 @@
          - The targets run once per build, for the first target framework only, which is the
            correct behavior for a multi-targeted project whose public surface is identical.
          - ApiMarkPackDocs ships the generated api/ tree inside the nupkg, which is the delivery
-           mechanism for the consuming-agent audience. -->
+           mechanism for the consuming-agent audience.
+         - ApiMarkEnforceDocs fails the build on any public API member lacking an XML doc
+           <summary>, so the shipped reference cannot silently develop gaps. The Public tier
+           matches ApiMarkVisibility, so enforcement covers exactly the surface that is
+           generated and shipped. -->
     <ApiMarkOutputDir>$(MSBuildProjectDirectory)\generated\api</ApiMarkOutputDir>
     <ApiMarkPackDocs>true</ApiMarkPackDocs>
+    <ApiMarkEnforceDocs>Public</ApiMarkEnforceDocs>
+    <ApiMarkEnforceDocsSeverity>Error</ApiMarkEnforceDocsSeverity>
   </PropertyGroup>
 
   <!-- Build Tool Dependencies -->
@@ -64,7 +70,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
-    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.4.10" PrivateAssets="All" />
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.0-beta.3" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.5" PrivateAssets="All" />
     <PackageReference Include="Polyfill" Version="11.2.0" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400" PrivateAssets="All" />

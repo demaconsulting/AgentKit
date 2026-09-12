@@ -46,6 +46,19 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
 ```
 
+## API Documentation
+
+Detailed API documentation for all public types and members is distributed in the `api/` folder
+of the NuGet package.
+
+This guide explains the safety model and how the pieces compose; the `api/` reference is the
+signature-level companion to it. It is generated from the XML doc comments by the build — so it
+cannot drift from the code it describes — and is organized for gradual disclosure: an index, then
+a page per namespace, type, and member. That shape is deliberate, because the intended reader is
+often a coding agent assembling an application against AgentKit, which works far better from one
+small targeted page than from a single large document. The build fails on any public member that
+lacks a documentation summary, so the reference is complete by construction.
+
 # What the Library Provides Today
 
 AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and

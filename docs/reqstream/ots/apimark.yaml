@@ -45,3 +45,23 @@ sections:
             tests:
               - ApiMark_ExampleCodeRendered
               - ApiMark_TransitionHazardDocumented
+
+          - id: AgentKit-OTS-ApiMark-EnforceDocs
+            title: >-
+              ApiMark shall fail the build when a public API member of a shipped package lacks
+              an XML doc summary.
+            justification: |
+              An API reference is only trustworthy if it is complete, and completeness cannot be
+              maintained by attention alone: the C# compiler's own documentation warning
+              (`CS1591`) does not fire on an implicit default constructor, which is exactly the
+              gap that existed in this repository before enforcement was enabled. ApiMark's
+              documentation-coverage check closes that blind spot, and it is configured at
+              severity `Error` rather than `Warning` because a warning in a build nobody reads
+              is indistinguishable from no enforcement at all. With enforcement active the
+              build cannot succeed while a public member is undocumented, so every green build
+              is itself evidence of complete coverage; the asserted artifact is the generated
+              page for a constructor that only exists in documented form because enforcement
+              demanded it.
+            tags: [ots]
+            tests:
+              - ApiMark_PackConstructorsDocumented

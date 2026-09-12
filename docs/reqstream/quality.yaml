@@ -112,13 +112,16 @@ sections:
         tags: [quality]
         justification: |
           The API reference an agent consuming AgentKit reads is generated from XML doc
-          comments by ApiMark during the build of each shipped package. This grouping
+          comments by ApiMark during the build of each shipped package, and ApiMark also
+          enforces that every public member carries a documentation summary, so the
+          generated reference is complete rather than merely present. This grouping
           requirement links those OTS requirements to the quality root so they participate
           in orphan detection without being falsely reported as disconnected from library
           functionality.
         children:
           - AgentKit-OTS-ApiMark-Generate
           - AgentKit-OTS-ApiMark-RenderExamples
+          - AgentKit-OTS-ApiMark-EnforceDocs
 
       - id: Quality-ApiExamplesCompile
         title: >-

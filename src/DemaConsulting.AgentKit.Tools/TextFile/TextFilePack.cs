@@ -65,6 +65,19 @@ public sealed class TextFilePack : IToolPack
     public const string FamilyPrefix = "text_file";
 
     /// <summary>
+    ///     Initializes a new instance of the <see cref="TextFilePack"/> class.
+    /// </summary>
+    /// <remarks>
+    ///     The pack carries no state and grants nothing on its own: the policy that governs its
+    ///     tools comes from the <see cref="ToolPackBuilder"/> the pack is added to, not from
+    ///     construction. Declared explicitly rather than left implicit so that the documentation
+    ///     the package ships describes every public member.
+    /// </remarks>
+    public TextFilePack()
+    {
+    }
+
+    /// <summary>
     ///     Gets the family prefix every tool in this pack carries.
     /// </summary>
     /// <remarks>

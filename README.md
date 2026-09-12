@@ -79,6 +79,15 @@ dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
 ```
 
+## API Documentation
+
+Detailed API documentation for all public types and members is distributed in the `api/` folder
+of the NuGet package.
+
+It is generated from the XML doc comments by the build, and organized for gradual disclosure — an
+index, then a page per namespace, type, and member — so that a coding agent working against
+AgentKit can read the one page it needs rather than the whole reference.
+
 ## Usage
 
 `DemaConsulting.AgentKit.Core` currently provides the contract that other AgentKit packages — and
