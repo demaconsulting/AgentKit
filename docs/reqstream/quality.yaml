@@ -54,10 +54,11 @@ sections:
         tags: [quality]
         justification: |
           Peer-review compliance depends on ReviewMark's indexing, enforcement,
-          elaboration, linting, and directory-override capabilities. This grouping
-          requirement links those OTS requirements to the quality root so they
-          participate in orphan detection without being falsely reported as
-          disconnected from library functionality.
+          elaboration, linting, directory-override, and review-plan
+          coverage-reporting capabilities. This grouping requirement links those
+          OTS requirements to the quality root so they participate in orphan
+          detection without being falsely reported as disconnected from library
+          functionality.
         children:
           - AgentKit-OTS-ReviewMark
           - AgentKit-OTS-ReviewMark-IndexScan
@@ -65,6 +66,7 @@ sections:
           - AgentKit-OTS-ReviewMark-Elaborate
           - AgentKit-OTS-ReviewMark-Lint
           - AgentKit-OTS-ReviewMark-DirectoryOverride
+          - AgentKit-OTS-ReviewMark-PlanCoverage
 
       - id: Quality-DocumentationGeneration
         title: The repository shall rely on Pandoc and WeasyPrint to generate HTML and PDF documentation.

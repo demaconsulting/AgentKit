@@ -119,7 +119,8 @@ if (-not $skipDotnetTools) {
     # review yet belong to no review-set. Only the review plan reports those, and it exits 0
     # whether or not gaps exist, so the plan must be written to a scratch file and inspected.
     # The success sentence is asserted rather than the failure text matched, so an unrecognized
-    # plan format fails closed instead of passing silently.
+    # plan format fails closed instead of passing silently. Capability requirement:
+    # AgentKit-OTS-ReviewMark-PlanCoverage.
     $reviewPlan = Join-Path ([System.IO.Path]::GetTempPath()) "reviewmark-coverage-$PID.md"
     dotnet reviewmark --plan $reviewPlan > $null
     if ($LASTEXITCODE -ne 0) { $lintError = $true }

@@ -63,3 +63,18 @@ sections:
             tags: [ots]
             tests:
               - ReviewMark_WorkingDirectoryOverride
+          - id: AgentKit-OTS-ReviewMark-PlanCoverage
+            title: >-
+              ReviewMark shall report in the review plan whether every file requiring review is
+              covered by a review-set, identifying any files that are not.
+            justification: |
+              Review coverage is only meaningful if every file that requires review belongs to a
+              review-set; a file in no review-set is never presented to a reviewer and its absence
+              is silent. ReviewMark's review plan contains a coverage section that states this
+              verdict explicitly, which is what makes the gap detectable by automation. The
+              repository's lint gate reads that section to fail the build when a review-set gap
+              exists, so this reporting capability is load-bearing for peer-review compliance
+              rather than informational.
+            tags: [ots]
+            tests:
+              - ReviewMark_PlanCoverageVerdict

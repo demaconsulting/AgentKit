@@ -9,6 +9,9 @@
 #
 # NOTE: api-docs tests provide OTS evidence for ApiMark and run in the build matrix job,
 # immediately after the build that produces the generated API reference.
+#
+# NOTE: the code-review tests also provide OTS evidence for ReviewMark's review-plan coverage
+# reporting; they assert the real plan ReviewMark generated earlier in the same job.
 
 tests:
 
@@ -184,6 +187,16 @@ tests:
             min: 1
           text:
             - contains: "Review Plan"
+
+  - name: ReviewMark_PlanCoverageVerdict
+    description: "The generated review plan reports that every file requiring review is covered by a review-set"
+    tags: [code-review]
+    files:
+      - pattern: "docs/code_review_plan/generated/plan.md"
+        count: 1
+        text:
+          - contains: "## Coverage"
+          - contains: "All files requiring review are covered by a review-set."
 
   # --- CODE REVIEW REPORT ---
 
