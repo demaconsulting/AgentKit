@@ -40,7 +40,7 @@
     <!-- Roslyn: used by the XML-documentation example verifier to compile every documented
          example code block against the real API. Test-only; no runtime dependency is added to
          any shipped package. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0" />
     <PackageReference Include="xunit.v3" Version="4.0.0" />

@@ -72,7 +72,7 @@
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.20.0" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.21.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
     <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.0-beta.3" PrivateAssets="All" />

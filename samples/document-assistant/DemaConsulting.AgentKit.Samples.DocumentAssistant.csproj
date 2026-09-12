@@ -31,8 +31,9 @@
 
   <!-- Project References: the sample composes the shipped Core + Tools packages and both agent
        adapters. The GitHub Copilot SDK is NOT referenced directly; it flows in transitively at the
-       version pinned by Microsoft.Agents.AI.GitHub.Copilot (1.0.5), which is the version whose
-       bundled runtime asset works. A direct reference risks resolving a newer, broken SDK. -->
+       version pinned by Microsoft.Agents.AI.GitHub.Copilot (1.0.11), whose bundled runtime asset
+       is verified to launch and serve a turn. A direct reference would win over the transitive
+       one and let the SDK drift away from the version its parent was built and tested against. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
