@@ -115,6 +115,26 @@ if (-not $skipDotnetTools) {
     dotnet reviewmark --lint
     if ($LASTEXITCODE -ne 0) { $lintError = $true }
 
+    # 'reviewmark --lint' validates the configuration but does NOT detect files that require
+    # review yet belong to no review-set. Only the review plan reports those, and it exits 0
+    # whether or not gaps exist, so the plan must be written to a scratch file and inspected.
+    # The success sentence is asserted rather than the failure text matched, so an unrecognized
+    # plan format fails closed instead of passing silently.
+    $reviewPlan = Join-Path ([System.IO.Path]::GetTempPath()) "reviewmark-coverage-$PID.md"
+    dotnet reviewmark --plan $reviewPlan > $null
+    if ($LASTEXITCODE -ne 0) { $lintError = $true }
+    if (-not (Test-Path $reviewPlan)) {
+        Write-Host "reviewmark: review plan was not produced; coverage could not be checked."
+        $lintError = $true
+    }
+    elseif (-not (Select-String -Path $reviewPlan -Pattern 'All files requiring review are covered by a review-set' -Quiet)) {
+        Write-Host "reviewmark: review-set coverage gap"
+        Select-String -Path $reviewPlan -Pattern 'not covered by any review-set' -Context 0, 20 |
+            ForEach-Object { $_.Line.Trim(); $_.Context.PostContext | Where-Object { $_ -match '^\s*-\s' } }
+        $lintError = $true
+    }
+    Remove-Item $reviewPlan -ErrorAction SilentlyContinue
+
     if (Test-Path docs/sysml2) {
         dotnet sysml2tools lint 'docs/sysml2/**/*.sysml'
         if ($LASTEXITCODE -ne 0) { $lintError = $true }
