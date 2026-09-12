@@ -13,5 +13,6 @@
     <Project Path="test/DemaConsulting.AgentKit.Tools.Tests/DemaConsulting.AgentKit.Tools.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/DemaConsulting.AgentKit.Agents.ChatClient.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Agents.Copilot.Tests/DemaConsulting.AgentKit.Agents.Copilot.Tests.csproj" />
+    <Project Path="test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests.csproj" />
   </Folder>
 </Solution>

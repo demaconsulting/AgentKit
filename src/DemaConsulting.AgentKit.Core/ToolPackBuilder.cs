@@ -23,6 +23,37 @@ namespace DemaConsulting.AgentKit.Core;
 ///     object assembled on one thread during application start-up.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Composing a tool list: one policy governs every tool, the host declares what it can support,
+///     and each pack is added in the order the model should see its tools. The shipped packs
+///     <c>TextFilePack</c> and <c>ImagePack</c> (from the <c>DemaConsulting.AgentKit.Tools</c>
+///     package) are the usual arguments; this snippet takes them as <see cref="IToolPack"/> so the
+///     shape is clear without Core depending on Tools. Declaring
+///     <see cref="HostCapabilities.Vision"/> is what allows a vision-requiring pack to contribute
+///     its tools at all — withhold it and that pack is never even asked.
+///     </para>
+///     <code>
+///     // Composed once at application start-up; the result is handed to an agent factory.
+///     public IReadOnlyList&lt;AIFunction&gt; BuildTools(
+///         PathPolicy policy,
+///         IToolPack textFiles,
+///         IToolPack images,
+///         bool visionEnabled)
+///     {
+///         var builder = new ToolPackBuilder(policy).Add(textFiles);
+///
+///         if (visionEnabled)
+///         {
+///             builder = builder
+///                 .WithHostCapabilities(HostCapabilities.Vision)
+///                 .Add(images);
+///         }
+///
+///         return builder.Build();
+///     }
+///     </code>
+/// </example>
 public sealed class ToolPackBuilder
 {
     /// <summary>

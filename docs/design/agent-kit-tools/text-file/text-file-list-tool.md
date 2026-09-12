@@ -108,6 +108,20 @@ exploring. Discovery now establishes the path dialect up front: a single granted
 establishes bare relative names, while an ungranted working directory produces only absolute
 headers because relative names would not address a granted location.
 
+**Known limitation.** A permitted location that currently holds no matching file contributes no
+block, so it is absent from the discovery listing entirely. Discovery therefore reports every
+permitted location *in which something matched*, not every permitted location — which is weaker
+than the description above and than what `Purpose` claims. The gap matters most on a first run: an
+application that grants a freshly created, still-empty output location and relies on discovery to
+teach the agent that location's path does not get it. This was observed live in the
+`samples/01-document-assistant` sample, where a new and empty session folder was omitted from the
+listing, the model never learned the session path, guessed a workspace-relative name, and was
+denied. This is recorded as a known limitation rather than closed: rendering a header with no names
+beneath it changes the shape of every discovery result and the meaning of the `No files matched.`
+answer, which is an owner decision and out of scope for the current design. Until it is closed, an
+application that needs an agent to know a location should state that location itself — its own
+configuration is the authoritative source — as the sample now does in its system instructions.
+
 **The enumeration invariant.** Enumeration goes through `PathPolicy.EnumerateFiles` and never
 through `Directory.EnumerateFiles` or `Directory.GetFiles`. Recursive enumeration performed by the
 operating system follows directory junctions and symbolic links, so a directly-enumerating

@@ -63,6 +63,46 @@ namespace DemaConsulting.AgentKit.Core;
 ///     Instances are immutable after construction and are safe for concurrent use.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     The common application shape: one working directory to anchor relative paths, and two
+///     granted locations with different access. The workspace is granted read-only while a
+///     separate session location is granted read-write, so the agent can read the user's documents
+///     and write its artifacts somewhere else entirely.
+///     </para>
+///     <para>
+///     <b>Note the dialect consequence, and read the transition hazard on the constructor
+///     (<see cref="PathPolicy(string, IEnumerable{PathRule}, ToolLimits)"/>) before adding a second
+///     location to an existing single-location application.</b> Because the working directory is
+///     granted, results inside it are still reported as relative names; results in the session
+///     location lie outside the anchor and are therefore reported as absolute paths. An application
+///     that previously granted only its working directory will see that switch happen silently the
+///     moment a second location is added, and nothing else warns it.
+///     </para>
+///     <code>
+///     var workspace = Path.GetFullPath("workspace");
+///     var session = Path.GetFullPath("session");
+///
+///     // The anchor grants nothing on its own; the read-only grant below is what permits reads.
+///     var policy = new PathPolicy(
+///         workingDirectory: workspace,
+///         grants:
+///         [
+///             PathRule.ReadOnly(workspace),
+///             PathRule.ReadWrite(session)
+///         ]);
+///
+///     // Relative names anchor at the workspace whether or not the workspace is granted.
+///     policy.TryResolveRead("notes.txt", out var readable, out var readDenial);
+///
+///     // A write into the read-only workspace is denied; the denial enumerates the writable
+///     // session location so the model can re-address the request rather than guess.
+///     policy.TryResolveWrite("notes.txt", out _, out var writeDenial);
+///
+///     // Relative output is emitted only when the anchor is granted and the result lies within it.
+///     var emitsRelative = policy.EmitRelative(readable ?? workspace, "notes.txt");
+///     </code>
+/// </example>
 public sealed class PathPolicy
 {
     /// <summary>

@@ -182,6 +182,15 @@ jobs:
           --configuration Release
           --property:Version=${{ inputs.version }}
 
+      # Asserts that ApiMark generated the API reference for every shipped package during the
+      # build above. The assertions run against the real generated output, which is the only
+      # evidence that the MSBuild integration actually ran.
+      - name: Assert API documentation
+        run: >
+          dotnet fileassert
+          --results artifacts/fileassert-api-docs-${{ matrix.os }}.trx
+          api-docs
+
       - name: Test
         run: >
           dotnet test

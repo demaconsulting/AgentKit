@@ -29,6 +29,30 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Attaching the family. The pack requires no host capability, so it is registered by every
+///     composition. It publishes three tools, in this order: <c>text_file_read</c>,
+///     <c>text_file_write</c>, and <c>text_file_list</c>. Every one of them is governed by the
+///     policy the builder was constructed with — the pack itself grants nothing.
+///     </para>
+///     <code>
+///     var workspace = Path.GetFullPath("workspace");
+///     var session = Path.GetFullPath("session");
+///
+///     var policy = new PathPolicy(
+///         workingDirectory: workspace,
+///         grants: [PathRule.ReadOnly(workspace), PathRule.ReadWrite(session)]);
+///
+///     IReadOnlyList&lt;AIFunction&gt; tools = new ToolPackBuilder(policy)
+///         .Add(new TextFilePack())
+///         .Build();
+///
+///     // text_file_read, text_file_write, text_file_list — every name carries the family prefix.
+///     var names = tools.Select(tool =&gt; tool.Name).ToList();
+///     var prefix = TextFilePack.FamilyPrefix;
+///     </code>
+/// </example>
 public sealed class TextFilePack : IToolPack
 {
     /// <summary>

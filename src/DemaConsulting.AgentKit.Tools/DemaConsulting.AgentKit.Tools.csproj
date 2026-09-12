@@ -44,6 +44,19 @@
     <SBOMPackageName>$(PackageId)</SBOMPackageName>
     <SBOMPackageVersion>$(Version)</SBOMPackageVersion>
     <SBOMPackageSupplier>Organization: $(Company)</SBOMPackageSupplier>
+
+    <!-- API Documentation Configuration -->
+    <!-- ApiMark turns this project's XML doc comments into gradually-disclosed Markdown API
+         reference (index -> namespace -> type -> member) for a coding agent to read.
+         - Output is redirected under 'generated/' so it is already covered by the repository's
+           .gitignore, markdownlint, and cspell ignore rules, and by the standing rule that
+           agents never read, lint, or modify generated content.
+         - The targets run once per build, for the first target framework only, which is the
+           correct behavior for a multi-targeted project whose public surface is identical.
+         - ApiMarkPackDocs ships the generated api/ tree inside the nupkg, which is the delivery
+           mechanism for the consuming-agent audience. -->
+    <ApiMarkOutputDir>$(MSBuildProjectDirectory)\generated\api</ApiMarkOutputDir>
+    <ApiMarkPackDocs>true</ApiMarkPackDocs>
   </PropertyGroup>
 
   <!-- Project References -->
@@ -53,6 +66,9 @@
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>
+    <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
+         consuming project's dependency graph. -->
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.4.10" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.5" PrivateAssets="All" />
     <PackageReference Include="Polyfill" Version="11.2.0" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400" PrivateAssets="All" />

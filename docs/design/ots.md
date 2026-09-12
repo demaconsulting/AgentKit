@@ -16,12 +16,17 @@ design records the dependency. Every other OTS item listed below is a build-time
 quality-pipeline tool rather than a runtime library dependency: each provides one stage of the
 documentation, requirements-traceability, testing, and quality-reporting pipeline invoked by
 `build.ps1`, `lint.ps1`, and the `.github/workflows/build.yaml` CI workflow, and none of those
-tools are linked into, or shipped with, the compiled NuGet package.
+tools are linked into, or shipped with, the compiled NuGet package. ApiMark is the one of those
+tools that runs as part of the package build itself rather than as a separate pipeline step; it is
+still build-time only — referenced with `PrivateAssets="All"` so it never becomes a transitive
+dependency, and never linked into or shipped as runtime code. Only its Markdown *output* is placed
+inside the package.
 
 ## OTS Items
 
 | OTS Item                             | Purpose                                                              |
 |--------------------------------------|----------------------------------------------------------------------|
+| ApiMark                              | Generates Markdown API reference documentation from XML doc comments |
 | BuildMark                            | Generates build-notes documentation from GitHub Actions metadata     |
 | FileAssert                           | Validates generated documents (HTML/PDF) against acceptance criteria |
 | Microsoft.Agents.AI                  | Runtime library defining `AIAgent` and `ChatClientAgent`             |

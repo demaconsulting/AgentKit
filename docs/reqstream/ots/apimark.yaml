@@ -1,0 +1,47 @@
+---
+# ApiMark OTS Software Requirements
+#
+# Requirements for the ApiMark API reference generation tool functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: ApiMark Requirements
+        requirements:
+          - id: AgentKit-OTS-ApiMark-Generate
+            title: >-
+              ApiMark shall generate gradually-disclosed Markdown API reference documentation
+              for each shipped package from its XML doc comments.
+            justification: |
+              The stated audience for AgentKit's API documentation is a coding agent assembling
+              an application against the library, which reads far more effectively from compact
+              Markdown organized for gradual disclosure (index, then namespace, type, and member
+              pages) than from a single large reference. DemaConsulting.ApiMark.MSBuild produces
+              exactly that during the build of each shipped package, so a failure to generate
+              must fail the build rather than silently ship a package without its reference.
+              FileAssert asserts the real generated index page for each of the four shipped
+              packages, which is the only evidence the MSBuild integration actually ran.
+            tags: [ots]
+            tests:
+              - ApiMark_CoreApiIndex
+              - ApiMark_ToolsApiIndex
+              - ApiMark_CopilotApiIndex
+              - ApiMark_ChatClientApiIndex
+
+          - id: AgentKit-OTS-ApiMark-RenderExamples
+            title: >-
+              ApiMark shall render documented examples and remarks into the generated API
+              reference.
+            justification: |
+              An agent assembling an application needs the worked examples and the behavioral
+              caveats, not only the signatures. Two facts are asserted because both are
+              load-bearing: that an example's code renders as a fenced code block a reader can
+              copy, and that the path-model transition hazard documented on PathPolicy's
+              constructor survives into the generated output. The hazard is the one behavioral
+              change an otherwise additive configuration change causes, and nothing else warns
+              an application author about it, so losing it in generation would be a silent
+              documentation defect.
+            tags: [ots]
+            tests:
+              - ApiMark_ExampleCodeRendered
+              - ApiMark_TransitionHazardDocumented

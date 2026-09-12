@@ -31,6 +31,32 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Capability gating. The pack is added only when the application can actually show an image to
+///     the model, and the <see cref="HostCapabilities.Vision"/> declaration is what permits the pack
+///     to contribute its tools. Without the declaration the composition never asks this pack for
+///     tools at all, so <c>image_read</c> is not refused at call time — it is never offered.
+///     </para>
+///     <code>
+///     var workspace = Path.GetFullPath("workspace");
+///     var policy = new PathPolicy(workspace, [PathRule.ReadOnly(workspace)]);
+///
+///     var visionEnabled = true;
+///
+///     var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
+///     if (visionEnabled)
+///     {
+///         builder = builder
+///             .WithHostCapabilities(HostCapabilities.Vision)
+///             .Add(new ImagePack());
+///     }
+///
+///     // With vision declared the list ends with image_read; without it, the pack contributes
+///     // nothing and the model never sees an image tool.
+///     IReadOnlyList&lt;AIFunction&gt; tools = builder.Build();
+///     </code>
+/// </example>
 public sealed class ImagePack : IToolPack
 {
     /// <summary>

@@ -45,6 +45,7 @@ reviews:
       - "docs/user_guide/**/*.md"                                   # user guide
       - "samples/01-document-assistant/README.md"                   # document assistant sample readme
       - "samples/01-document-assistant/**/*.cs"                     # document assistant sample sources
+      - "test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/**/*.cs"  # sample composition tests
 
   # Decomposition Review (only one per repository)
   - id: Decomposition
@@ -70,6 +71,8 @@ reviews:
       - "docs/verification/introduction.md"                                    # verification introduction
       - "docs/verification/agent-kit-core.md"                        # system verification
       - "test/DemaConsulting.AgentKit.Core.Tests/AgentKitCoreTests.cs"  # integration tests
+      - "test/Shared/XmlDocExampleVerifier.cs"                          # shared documented-example compile verifier
+      - "test/DemaConsulting.AgentKit.Core.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
   # AgentKitCore-Design Review (one per system)
   - id: AgentKitCore-Design
@@ -250,6 +253,7 @@ reviews:
       - "docs/verification/introduction.md"                                    # verification introduction
       - "docs/verification/agent-kit-tools.md"                       # system verification
       - "test/DemaConsulting.AgentKit.Tools.Tests/AgentKitToolsTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
   # AgentKitTools-Design Review (one per system)
   - id: AgentKitTools-Design
@@ -427,6 +431,7 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-chat-client.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/AgentKitAgentsChatClientTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
   # AgentKitAgentsChatClient-Design Review (one per system)
   - id: AgentKitAgentsChatClient-Design
@@ -488,6 +493,7 @@ reviews:
       - "docs/verification/introduction.md"                                     # verification introduction
       - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
   # AgentKitAgentsCopilot-Design Review (one per system)
   - id: AgentKitAgentsCopilot-Design
@@ -534,6 +540,14 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
+
+  # OTS-ApiMark Review (one per OTS item)
+  - id: OTS-ApiMark
+    title: Review that ApiMark Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/apimark.yaml"                                   # OTS requirements
+      - "docs/design/ots/apimark.md"                                        # OTS integration design
+      - "docs/verification/ots/apimark.md"                                 # OTS verification
 
   # OTS-BuildMark Review (one per OTS item)
   - id: OTS-BuildMark

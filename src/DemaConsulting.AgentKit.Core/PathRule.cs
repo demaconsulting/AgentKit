@@ -64,6 +64,34 @@ public enum AccessLevel
 ///     immutable after construction and are safe for concurrent use.
 ///     </para>
 /// </remarks>
+/// <example>
+///     <para>
+///     Asymmetric grants: read widely, write narrowly. A read-only grant never authorizes a write,
+///     no matter how many other grants exist, because a write consults only
+///     <see cref="AccessLevel.ReadWrite"/> grants. Deny patterns belong to the individual grant, so
+///     credential material can be excluded from the wide read grant without affecting the write
+///     grant at all.
+///     </para>
+///     <code>
+///     var source = Path.GetFullPath("source");
+///     var output = Path.GetFullPath("output");
+///
+///     // Read the source tree, but never write to it — and never read its secrets at all.
+///     var readSource = PathRule.ReadOnly(source, ["*.pem", "*.key", ".env"]);
+///
+///     // Write only here.
+///     var writeOutput = PathRule.ReadWrite(output);
+///
+///     var policy = new PathPolicy(source, [readSource, writeOutput]);
+///
+///     // Permitted: the read-only grant covers it.
+///     var canRead = policy.TryResolveRead("report.txt", out _, out _);
+///
+///     // Refused: no read-write grant covers the source tree. The denial enumerates every
+///     // permitted location with its access level, so the output location is discoverable.
+///     var canWrite = policy.TryResolveWrite("report.txt", out _, out var denial);
+///     </code>
+/// </example>
 public sealed class PathRule
 {
     /// <summary>

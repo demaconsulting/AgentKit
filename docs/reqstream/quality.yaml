@@ -106,3 +106,35 @@ sections:
         children:
           - AgentKit-OTS-SysML2Tools-Lint
           - AgentKit-OTS-SysML2Tools-Render
+
+      - id: Quality-ApiReferenceGeneration
+        title: The repository shall rely on ApiMark to generate API reference documentation for each shipped package.
+        tags: [quality]
+        justification: |
+          The API reference an agent consuming AgentKit reads is generated from XML doc
+          comments by ApiMark during the build of each shipped package. This grouping
+          requirement links those OTS requirements to the quality root so they participate
+          in orphan detection without being falsely reported as disconnected from library
+          functionality.
+        children:
+          - AgentKit-OTS-ApiMark-Generate
+          - AgentKit-OTS-ApiMark-RenderExamples
+
+      - id: Quality-ApiExamplesCompile
+        title: >-
+          Every example documented on a shipped package's public API shall compile against
+          that package's real API.
+        tags: [quality]
+        justification: |
+          The documented examples are the assembly instructions a coding agent follows to
+          build an application against AgentKit, so an example that does not compile is a
+          confident instruction that fails only after the reader has acted on it. Each
+          package's test project extracts every example from the package's shipped XML
+          documentation file and compiles it with Roslyn against the real compiled API,
+          which makes a documentation claim the code does not support a build failure
+          rather than a latent defect.
+        tests:
+          - AgentKitCore_XmlDocExamplesCompile
+          - AgentKitTools_XmlDocExamplesCompile
+          - AgentKitAgentsCopilot_XmlDocExamplesCompile
+          - AgentKitAgentsChatClient_XmlDocExamplesCompile

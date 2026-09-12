@@ -152,6 +152,10 @@ Generated documentation includes:
 
 - **Build Notes**: Release information and changes
 - **User Guide**: Comprehensive usage documentation
+- **API Reference**: Compact, gradually-disclosed Markdown API documentation generated from the XML
+  doc comments and shipped inside each NuGet package, written for a coding agent to read: an index,
+  then a page per namespace, type, and member. Every `<example>` it contains is compiled against the
+  real API by the build, so a documented example cannot describe an API the code does not have.
 - **Code Quality Report**: CodeQL and SonarCloud analysis results
 - **Requirements**: Functional and non-functional requirements
 - **Requirements Justifications**: Detailed requirement rationale
@@ -162,10 +166,12 @@ Generated documentation includes:
 Runnable samples live under [`samples/`](https://github.com/demaconsulting/AgentKit/tree/main/samples):
 
 - **[01 — Document Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/01-document-assistant)**:
-  A console chat application that confines an agent to a workspace folder and gives it the shipped
-  text-file and image tool packs. It runs unchanged against the GitHub Copilot runtime and any Ollama
-  model, and prints every tool call so the containment, capability gating, and built-in suppression are
-  visible as they happen. See the sample's README for how to run it and what to try.
+  A console chat application that grants an agent two locations — a workspace folder to read and a
+  separate session folder to write artifacts into — and gives it the shipped text-file and image tool
+  packs. A `--read-only-workspace` switch makes the grants asymmetric, so a refused write enumerates
+  the writable location and the agent recovers. It runs unchanged against the GitHub Copilot runtime
+  and any Ollama model, and prints every tool call so the containment, capability gating, and built-in
+  suppression are visible as they happen. See the sample's README for how to run it and what to try.
 
 ## Contributing
 

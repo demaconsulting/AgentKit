@@ -5,7 +5,7 @@ namespace DemaConsulting.AgentKit.Samples.DocumentAssistant;
 /// </summary>
 /// <remarks>
 ///     The provider is the <em>only</em> thing that changes how the agent is constructed. Every
-///     other option describes the workspace, the model, or the interaction, not the runtime — which
+///     other option describes the locations, the model, or the interaction, not the runtime — which
 ///     is the whole point of the sample: a tool set composed once runs unchanged on either provider.
 /// </remarks>
 public enum AgentProvider
@@ -30,9 +30,9 @@ public enum AgentProvider
 ///     <para>
 ///     The parser accepts <b>named flags only</b> — there are no positional arguments — because a
 ///     positional path argument would be easy to confuse with the prompt text and would obscure the
-///     one option that actually matters for safety: the workspace the agent is confined to. Every
-///     flag has an actionable failure message so a mistake names itself rather than surfacing as a
-///     later runtime error.
+///     options that actually matter for safety: the two locations the agent is granted and what
+///     access each carries. Every flag has an actionable failure message so a mistake names itself
+///     rather than surfacing as a later runtime error.
 ///     </para>
 ///     <para>
 ///     This type only holds and validates configuration; it constructs nothing and performs no I/O,
@@ -66,14 +66,64 @@ public sealed class CommandLineOptions
     public const string DefaultOllamaModel = "qwen3.5:9b";
 
     /// <summary>
-    ///     Gets the workspace directory the agent is confined to. Required.
+    ///     The folder name, beneath the system temporary directory, the sample uses for session
+    ///     artifacts when <c>--session</c> is not supplied.
     /// </summary>
     /// <remarks>
-    ///     This single path becomes the read root, the write root, and the base directory a
-    ///     relative path a model supplies is resolved against. It is the containment boundary the
-    ///     whole demonstration turns on, so it has no default and must be supplied explicitly.
+    ///     <b>This is the sample's choice, not an AgentKit convention.</b> AgentKit has no opinion
+    ///     about session folders — an application supplies whatever locations it likes, and the
+    ///     library treats each one identically. A temporary-directory default was chosen here for
+    ///     two reasons: it is unambiguously <em>outside</em> the workspace, so the cross-location
+    ///     behaviors the sample demonstrates are real rather than staged, and it keeps the
+    ///     repository clean. Any other location works exactly as well; pass <c>--session</c> to use
+    ///     one.
+    /// </remarks>
+    public const string DefaultSessionFolderName = "document-assistant-session";
+
+    /// <summary>
+    ///     Gets the workspace directory the agent's relative paths are anchored to. Required.
+    /// </summary>
+    /// <remarks>
+    ///     This path becomes the policy's <em>working directory</em> — the single location a
+    ///     relative path a model supplies is resolved against — and it is also granted, either
+    ///     read-only or read-write depending on <see cref="WorkspaceReadOnly"/>. The two facts are
+    ///     independent: anchoring grants nothing, and granting anchors nothing. It has no default
+    ///     and must be supplied explicitly, because it is the location the demonstration turns on.
     /// </remarks>
     public required string Workspace { get; init; }
+
+    /// <summary>
+    ///     Gets the session directory the agent may write artifacts to, or <see langword="null"/>
+    ///     to use the default beneath the system temporary directory. Set by <c>--session</c>.
+    /// </summary>
+    /// <remarks>
+    ///     The session location is a second granted location, always read-write, and always outside
+    ///     the workspace. It exists to make the sample the shape a real application has: essentially
+    ///     every application has a user work folder plus somewhere of its own to put what the agent
+    ///     produces. It is created if it does not exist, because an application that asks an agent
+    ///     to write somewhere is responsible for that location existing.
+    /// </remarks>
+    public string? Session { get; init; }
+
+    /// <summary>
+    ///     Gets a value indicating whether the workspace is granted read-only rather than
+    ///     read-write. Set by <c>--read-only-workspace</c>.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This is the sample's asymmetric-grant demonstration: the user's documents become
+    ///     readable but unmodifiable while the session location stays writable. A write into the
+    ///     workspace is then refused, and the refusal enumerates every permitted location with its
+    ///     access level — so the agent learns where it <em>may</em> write and can recover, rather
+    ///     than simply failing.
+    ///     </para>
+    ///     <para>
+    ///     Note what this switch does <em>not</em> change: the workspace is still the working
+    ///     directory and is still granted, so relative paths still resolve against it and results
+    ///     inside it are still reported as relative names. Permission and addressing are orthogonal.
+    ///     </para>
+    /// </remarks>
+    public bool WorkspaceReadOnly { get; init; }
 
     /// <summary>
     ///     Gets the provider whose runtime the agent runs on. Defaults to <see cref="AgentProvider.Copilot"/>.
@@ -147,6 +197,8 @@ public sealed class CommandLineOptions
         // Accumulate into locals so the immutable options object can be built once at the end with
         // every value validated.
         string? workspace = null;
+        string? session = null;
+        var workspaceReadOnly = false;
         var provider = AgentProvider.Copilot;
         var host = DefaultOllamaHost;
         var model = DefaultOllamaModel;
@@ -160,6 +212,14 @@ public sealed class CommandLineOptions
             {
                 case "--workspace":
                     workspace = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--session":
+                    session = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--read-only-workspace":
+                    workspaceReadOnly = true;
                     break;
 
                 case "--provider":
@@ -191,17 +251,22 @@ public sealed class CommandLineOptions
             }
         }
 
-        // The workspace is the containment boundary; without it there is nothing to confine the
-        // agent to, so its absence is an error rather than a defaulted convenience.
+        // The workspace is the relative anchor and the location the user's documents live in.
+        // Without it there is nothing to anchor and nothing to grant, so its absence is an error
+        // rather than a defaulted convenience. The session location is different: the sample picks
+        // a default for it and prints that choice at startup.
         if (string.IsNullOrWhiteSpace(workspace))
         {
             throw new CommandLineException(
-                "The --workspace <path> argument is required; it is the folder the agent is confined to.");
+                "The --workspace <path> argument is required; it is the folder relative paths are "
+                + "anchored to and the folder the agent is granted access to.");
         }
 
         return new CommandLineOptions
         {
             Workspace = workspace,
+            Session = session,
+            WorkspaceReadOnly = workspaceReadOnly,
             Provider = provider,
             Host = host,
             Model = model,
@@ -259,16 +324,27 @@ public sealed class CommandLineOptions
     /// <returns>The multi-line help text.</returns>
     public static string HelpText() =>
         $"""
-         document-assistant — chat with an agent confined to a workspace folder.
+         document-assistant — chat with an agent granted exactly two locations.
 
-         The agent can read text files, list them, and (with vision) look at images, but only
-         within the workspace: a path outside it is impossible to reach, not merely discouraged.
+         The agent reads text files and (with vision) looks at images in a workspace folder, and
+         writes whatever it produces into a separate session folder. Anything outside those two
+         locations is impossible to reach, not merely discouraged.
+
+         The two locations are orthogonal ideas working together. The workspace is the working
+         directory — the single anchor a relative path resolves against — and it is also granted,
+         read-write by default or read-only with --read-only-workspace. The session folder is
+         granted read-write but is not an anchor, so it is always addressed by absolute path.
+         AgentKit has no session-folder convention; this location is the sample's own choice.
 
          Usage:
            document-assistant --workspace <path> [options]
 
          Options:
-           --workspace <path>        Folder the agent is confined to (required).
+           --workspace <path>        Folder relative paths anchor to, and which is granted (required).
+           --session <path>          Folder for agent-written artifacts, granted read-write and
+                                     created if absent (default: a '{DefaultSessionFolderName}'
+                                     folder beneath the system temporary directory).
+           --read-only-workspace     Grant the workspace read-only; the session stays writable.
            --provider copilot|ollama Runtime to run the agent on (default: copilot).
            --host <url>              Ollama server URL (default: {DefaultOllamaHost}; ollama only).
            --model <name>            Ollama model name (default: {DefaultOllamaModel}; ollama only).
@@ -277,7 +353,12 @@ public sealed class CommandLineOptions
            --help                    Show this help and exit.
 
          Try:
-           --prompt "List the files, read welcome.txt, then describe diagram.png"
+           --prompt "List every location you can reach and say which you can write to"
+           --prompt "Read welcome.txt, then save a summary into the session folder"
+                                                        (watch the absolute session path come back)
+           --read-only-workspace --prompt "Summarize welcome.txt into summary.md next to it"
+                                     (watch the write be refused, the refusal name the writable
+                                      session folder, and the agent recover by writing there)
            --prompt "Read ../outside-workspace.txt"      (watch containment refuse it)
            --prompt "Use text_file_read on diagram.png"  (watch the binary guard redirect to image_read)
          """;

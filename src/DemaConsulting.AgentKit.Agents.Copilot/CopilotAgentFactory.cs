@@ -74,6 +74,54 @@ public static class CopilotAgentFactory
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> is empty, or two tools carry the same name.
     /// </exception>
+    /// <example>
+    ///     <para>
+    ///     Assembling a complete agent on the GitHub Copilot runtime. The host constructs and starts
+    ///     the client and keeps ownership of it; this factory derives the session allow-list from
+    ///     the same tool list it publishes, which is what suppresses the runtime's built-in shell,
+    ///     fetch and file tools. In a real application <c>textFiles</c> and
+    ///     <c>images</c> are <c>new TextFilePack()</c> and <c>new ImagePack()</c> from
+    ///     the <c>DemaConsulting.AgentKit.Tools</c> package.
+    ///     </para>
+    ///     <code>
+    ///     public async Task&lt;AIAgent&gt; CreateAgentAsync(
+    ///         string workspace,
+    ///         string session,
+    ///         IToolPack textFiles,
+    ///         IToolPack images,
+    ///         CancellationToken cancellationToken)
+    ///     {
+    ///         // The anchor is the workspace; the grants say what may be read and what may be written.
+    ///         var policy = new PathPolicy(
+    ///             workingDirectory: workspace,
+    ///             grants: [PathRule.ReadOnly(workspace), PathRule.ReadWrite(session)]);
+    ///
+    ///         IList&lt;AIFunction&gt; tools =
+    ///         [
+    ///             .. new ToolPackBuilder(policy)
+    ///                 .WithHostCapabilities(HostCapabilities.Vision)
+    ///                 .Add(textFiles)
+    ///                 .Add(images)
+    ///                 .Build()
+    ///         ];
+    ///
+    ///         // The host owns the client: it constructs, starts, and disposes it.
+    ///         var client = new CopilotClient(new CopilotClientOptions
+    ///         {
+    ///             WorkingDirectory = workspace,
+    ///             UseLoggedInUser = true,
+    ///         });
+    ///
+    ///         await client.StartAsync(cancellationToken);
+    ///
+    ///         return CopilotAgentFactory.Create(
+    ///             client,
+    ///             tools,
+    ///             instructions: "You are a document assistant confined to the permitted locations.",
+    ///             name: "document-assistant");
+    ///     }
+    ///     </code>
+    /// </example>
     public static AIAgent Create(
         CopilotClient client,
         IList<AIFunction> tools,

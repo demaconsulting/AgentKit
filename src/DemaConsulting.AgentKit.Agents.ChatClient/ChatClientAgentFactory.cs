@@ -55,6 +55,45 @@ public static class ChatClientAgentFactory
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> is empty, or two tools carry the same name.
     /// </exception>
+    /// <example>
+    ///     <para>
+    ///     Assembling a complete agent on any <see cref="IChatClient"/> provider. The policy decides
+    ///     where the tools may go, the builder composes the tool list, and this factory turns the
+    ///     client plus that list into a runnable agent — the image-promoting decorator is installed
+    ///     for you. In a real application <c>textFiles</c> and <c>images</c>
+    ///     are <c>new TextFilePack()</c> and <c>new ImagePack()</c> from the
+    ///     <c>DemaConsulting.AgentKit.Tools</c> package.
+    ///     </para>
+    ///     <code>
+    ///     public AIAgent CreateAgent(
+    ///         IChatClient client,
+    ///         string workspace,
+    ///         string session,
+    ///         IToolPack textFiles,
+    ///         IToolPack images)
+    ///     {
+    ///         // The anchor is the workspace; the grants say what may be read and what may be written.
+    ///         var policy = new PathPolicy(
+    ///             workingDirectory: workspace,
+    ///             grants: [PathRule.ReadOnly(workspace), PathRule.ReadWrite(session)]);
+    ///
+    ///         IList&lt;AIFunction&gt; tools =
+    ///         [
+    ///             .. new ToolPackBuilder(policy)
+    ///                 .WithHostCapabilities(HostCapabilities.Vision)
+    ///                 .Add(textFiles)
+    ///                 .Add(images)
+    ///                 .Build()
+    ///         ];
+    ///
+    ///         return ChatClientAgentFactory.Create(
+    ///             client,
+    ///             tools,
+    ///             instructions: "You are a document assistant confined to the permitted locations.",
+    ///             name: "document-assistant");
+    ///     }
+    ///     </code>
+    /// </example>
     public static AIAgent Create(
         IChatClient client,
         IList<AIFunction> tools,

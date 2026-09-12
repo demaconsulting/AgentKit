@@ -37,6 +37,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- Roslyn: used by the XML-documentation example verifier to compile every documented
+         example code block against the real API. Test-only; no runtime dependency is added to
+         any shipped package. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0" />
     <PackageReference Include="xunit.v3" Version="4.0.0" />
@@ -61,6 +65,13 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <!-- Shared Test Sources -->
+  <ItemGroup>
+    <!-- Linked rather than referenced: a shared project reference would publish another assembly
+         into this test project's output and change what the example verifier sees there. -->
+    <Compile Include="..\Shared\XmlDocExampleVerifier.cs" Link="XmlDocExampleVerifier.cs" />
   </ItemGroup>
 
   <!-- Project References -->
