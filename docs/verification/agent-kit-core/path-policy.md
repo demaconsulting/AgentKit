@@ -28,8 +28,8 @@ become vacuous: the naive-prefix scenario asserts that a text-based check _would
 before asserting the policy refuses it, and the enumeration scenario asserts that a raw recursive
 listing _does_ surface the escaped file before asserting the policy's listing does not. Denial
 scenarios verify the new disclosure behavior: the request is echoed, a relative interpretation is
-reported only when one occurred, and the permitted locations are enumerated with access levels or
-reported as empty.
+reported only when one occurred and in canonical (lexically normalized) form with `.` and `..`
+collapsed, and the permitted locations are enumerated with access levels or reported as empty.
 
 Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Core.Tests` project.
 
@@ -50,7 +50,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all forty-three scenarios below pass without error or exception beyond
+A unit test run passes when all fifty scenarios below pass without error or exception beyond
 those explicitly asserted. Any escaping path that is permitted, any escaped file that appears in a
 listing, any relative request resolved against the process working directory, any missing working
 directory accepted, any null grant accepted, any empty grant set permitting access, any read-only
@@ -348,6 +348,54 @@ permitted.
 When no path was supplied and the working directory itself is not granted, the denial echoes
 `(no path — the working directory)` rather than an empty quotation and does not include an
 interpretation clause.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Parent-Traversal Denial Normalizes the Interpreted Path
+
+**Test**: `PathPolicy_TryResolveRead_RelativeParentTraversalDenial_InterpretedPathIsNormalized`
+
+A `../outside.md` request that escapes the anchor is denied, and the `Interpreted as:` line reports
+a canonical location: the parent segment is collapsed, so the reported interpretation carries no
+`..`.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Dot-Slash Denial Normalizes the Interpreted Path
+
+**Test**: `PathPolicy_TryResolveRead_DotSlashDenial_InterpretedPathIsNormalized`
+
+A `./../outside.md` request is denied, and the reported interpretation collapses both the `.` and
+the `..` segments, so neither a `..` nor a same-directory `.` navigation survives in the
+`Interpreted as:` line.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Nested Traversal Denial Normalizes the Interpreted Path
+
+**Test**: `PathPolicy_TryResolveRead_NestedTraversalDenial_InterpretedPathIsNormalized`
+
+A nested `a/../../b/outside.md` request is denied, and the `Interpreted as:` line equals the
+lexically normalized location `Path.GetFullPath(Path.Combine(workingDirectory, request))`, with no
+`..` remaining.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Plain Relative Denial Reports the Interpretation Verbatim
+
+**Test**: `PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim`
+
+The no-regression pin: a plain relative name needing no normalization is still reported as the
+working-directory-combined location exactly as before, confirming normalization did not alter the
+no-op case.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Interpreted-Path Normalization Failure Still Denies and Discloses
+
+**Test**: `PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses`
+
+The robustness pin for the non-throwing contract. A relative request whose interpretation cannot be
+normalized (an embedded null after a parent segment) still returns a denial rather than throwing,
+still echoes the requested text, and still enumerates the permitted location.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Alias to a Read-Only Grant Omits the Interpretation Clause
+
+**Test**: `PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause`
+
+A write aliased to a read-only grant is denied because it is read-only, and the denial omits the
+`Interpreted as:` line entirely, because the alias branch performs no working-directory
+interpretation.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: Enumeration Across a Link Excludes the Escaped File
 

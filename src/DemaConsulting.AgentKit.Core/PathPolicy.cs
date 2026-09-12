@@ -809,8 +809,39 @@ public sealed class PathPolicy
         // The working-directory interpretation stands: it named a real path, the request was not
         // a bare segment, or no single grant matched the alias.
         wasRelative = true;
-        interpretedAbsolute = combined;
-        return combined;
+        interpretedAbsolute = NormalizeInterpretedPath(combined);   // report a navigable location
+        return combined;                                            // candidate to resolve is unchanged
+    }
+
+    /// <summary>
+    ///     Lexically normalizes the absolute location a relative request was interpreted as, so a
+    ///     denial reports a navigable path rather than one still carrying "." or ".." segments.
+    /// </summary>
+    /// <remarks>
+    ///     Normalization is lexical only — it collapses "." and ".." against the already-absolute
+    ///     input and does not touch the file system. It deliberately does not resolve links: the
+    ///     per-component reparse walk in <see cref="RealPathResolver"/> exists for the containment
+    ///     decision, and placing a link-resolved real path into a denial would disclose a link
+    ///     target the caller never named. Only the reported value is normalized; the candidate
+    ///     handed to the resolver is unchanged, so containment is unaffected. Because the path is
+    ///     caller-controlled, normalization can throw on malformed input (invalid characters, an
+    ///     over-long result); a denial must never throw, so the same resolution-class failures
+    ///     <see cref="IsResolutionFailure"/> recognizes fall back to the un-normalized value.
+    /// </remarks>
+    /// <param name="interpreted">The working-directory-combined absolute path to normalize for a denial.</param>
+    /// <returns>The lexically normalized path, or the original value when normalization fails.</returns>
+    private static string NormalizeInterpretedPath(string interpreted)
+    {
+        try
+        {
+            return Path.GetFullPath(interpreted);
+        }
+        catch (Exception exception) when (IsResolutionFailure(exception))
+        {
+            // A caller-supplied path that cannot be normalized still yields a denial; reporting the
+            // un-normalized interpretation is the fail-safe reading and keeps the non-throwing contract.
+            return interpreted;
+        }
     }
 
     /// <summary>

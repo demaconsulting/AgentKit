@@ -225,7 +225,23 @@ guessed at never overrides the documented mechanism; this eliminates the silent 
 where a request for a folder inside the working directory returned a different granted location
 sharing the final folder name. It also records whether a relative request was joined to the working
 directory, because only that case is reported as an interpretation in a denial. Absolute inputs and
-successful aliases are not reported as "interpreted as" values.
+successful aliases are not reported as "interpreted as" values. The absolute location reported for a
+working-directory interpretation is lexically normalized before it is handed to a denial (`.` and
+`..` collapsed), while the candidate handed to the resolver is the un-normalized combined path, so
+containment is unchanged. The normalization is lexical only — links are not resolved, because a
+denial must not disclose a link target the caller did not name.
+
+#### NormalizeInterpretedPath(string interpreted)
+
+Private helper that lexically normalizes the absolute location a relative request was interpreted
+as, so a denial reports a navigable path rather than one still carrying `.` or `..` segments. It
+collapses those segments against the already-absolute input via `Path.GetFullPath` and touches
+neither the file system nor any link: the per-component reparse walk in `RealPathResolver` exists for
+the containment decision, and a link-resolved real path in a denial would disclose a link target the
+caller never named. Only the reported value is normalized; the candidate handed to the resolver is
+unchanged. Because the path is caller-controlled, normalization can throw on malformed input; a
+denial must never throw, so the same resolution-class failures `IsResolutionFailure` recognizes fall
+back to the un-normalized value.
 
 #### CombinedPathExists(string combined)
 
@@ -256,7 +272,8 @@ Private helper constructing a denial in the order the model needs to recover:
 
 1. The request, echoed verbatim, or an explicit marker for no path.
 2. The absolute location a relative request was interpreted as, only when the request was joined
-   to the working directory.
+   to the working directory, reported in canonical (lexically normalized) form with `.` and `..`
+   collapsed.
 3. The permitted locations, each with its access level, or a statement that no locations are
    permitted.
 
@@ -278,6 +295,7 @@ Private helper constructing a denial in the order the model needs to recover:
 | Bare segment exists under working directory | Handled locally; working-directory reading wins            |
 | Existence probe cannot determine existence  | Handled locally; treated as missing; alias used            |
 | Ambiguous last-segment alias                | Handled locally; interpreted beneath the working directory |
+| Interpreted path cannot be normalized       | Handled locally; interpretation falls back un-normalized   |
 
 The dividing line is deliberate and is stated here so a reviewer can check it: **programming
 errors propagate; anything a model can produce is returned.** A path is the one argument a model
@@ -315,7 +333,9 @@ withheld.
 string? denialMessage`. The message deliberately includes permitted locations and access levels,
 because a confined model needs the map of where it may work. It must not report an
 interpretation-only denial, and it must not add an interpretation line for absolute input or for a
-successful last-segment alias.
+successful last-segment alias. The interpreted location is reported in canonical form — lexical
+normalization only, with `.` and `..` collapsed and no link resolution — and normalizing the
+reported value must not change the candidate that is resolved.
 
 **Output dialect must mirror input dialect without lying.** Absolute input fixes absolute output.
 Relative or discovery input is only relative-eligible. A relative result is allowed only when the

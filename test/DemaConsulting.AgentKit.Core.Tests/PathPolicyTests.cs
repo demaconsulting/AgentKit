@@ -924,6 +924,144 @@ public class PathPolicyTests
         Assert.DoesNotContain("Interpreted as:", denial, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    ///     Proves that a parent-traversal relative request denied for escaping the anchor reports a
+    ///     normalized interpreted location, with the <c>..</c> segment collapsed rather than echoed
+    ///     verbatim, so the reported location names a real place.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_RelativeParentTraversalDenial_InterpretedPathIsNormalized()
+    {
+        // Arrange: a granted read-only anchor, and a request that climbs out of it
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+
+        // Act: a relative request that escapes the anchor via a parent segment
+        policy.TryResolveRead("../outside.md", out _, out var denial);
+
+        // Assert: the interpretation is reported, and it carries no un-collapsed ".." segment
+        Assert.NotNull(denial);
+        Assert.Contains("Interpreted as:", denial, StringComparison.Ordinal);
+        Assert.DoesNotContain("..", InterpretedLine(denial), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a <c>./</c>-prefixed relative request that still escapes is reported with both
+    ///     the <c>.</c> and the <c>..</c> segments collapsed.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_DotSlashDenial_InterpretedPathIsNormalized()
+    {
+        // Arrange: a granted read-only anchor, and a "./"-prefixed escaping request
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+
+        // Act: a relative request that begins with "./" and then escapes the anchor
+        policy.TryResolveRead("./../outside.md", out _, out var denial);
+
+        // Assert: the interpretation is reported, and neither "." nor ".." navigation survives
+        Assert.NotNull(denial);
+        Assert.Contains("Interpreted as:", denial, StringComparison.Ordinal);
+        var interpreted = InterpretedLine(denial);
+        Assert.DoesNotContain("..", interpreted, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            Path.DirectorySeparatorChar + "." + Path.DirectorySeparatorChar,
+            interpreted,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a nested traversal request collapses correctly, reporting exactly the
+    ///     lexically normalized location the resolver would be asked about.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_NestedTraversalDenial_InterpretedPathIsNormalized()
+    {
+        // Arrange: a granted read-only anchor, and a nested traversal request that escapes it
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        const string requested = "a/../../b/outside.md";
+        var expected = Path.GetFullPath(Path.Combine(policy.WorkingDirectory, requested));
+
+        // Act: a nested relative traversal request
+        policy.TryResolveRead(requested, out _, out var denial);
+
+        // Assert: the reported interpretation equals the lexically normalized location
+        Assert.NotNull(denial);
+        Assert.Contains("Interpreted as: " + expected, denial, StringComparison.Ordinal);
+        Assert.DoesNotContain("..", InterpretedLine(denial), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the no-regression case: a plain relative request needing no normalization is still
+    ///     reported as the working-directory-combined location, exactly as before the normalization
+    ///     was introduced.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim()
+    {
+        // Arrange: an ungranted anchor and a plain relative name with nothing to collapse
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, []);
+
+        // Act: the model asks for a plain relative segment
+        policy.TryResolveRead("work", out _, out var denial);
+
+        // Assert: the interpretation is the working-directory-combined path, unchanged by normalization
+        Assert.NotNull(denial);
+        Assert.Contains(
+            "Interpreted as: " + Path.Combine(policy.WorkingDirectory, "work"),
+            denial,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a relative request whose normalization would throw still yields a denial —
+    ///     never an exception — and the denial still echoes the request and enumerates the permitted
+    ///     locations, confirming the non-throwing fallback in the interpreted-path helper.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses()
+    {
+        // Arrange: a granted read-only anchor, and a relative path whose normalization throws
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        const string malformed = "../a\0b";
+
+        // Act: resolve a malformed relative request whose normalization would throw
+        var permitted = policy.TryResolveRead(malformed, out var realPath, out var denial);
+
+        // Assert: the request is refused with no exception escaping, and the denial still discloses
+        Assert.False(permitted);
+        Assert.Null(realPath);
+        Assert.NotNull(denial);
+        Assert.Contains($"Requested: \"{malformed}\"", denial, StringComparison.Ordinal);
+        Assert.Contains("Permitted locations:", denial, StringComparison.Ordinal);
+        Assert.Contains("  - " + policy.WorkingDirectory + " (read-only)", denial, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a write aliased to a read-only grant is denied without reporting an
+    ///     interpretation, because the alias branch performs no working-directory interpretation.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause()
+    {
+        // Arrange: anchor at Root (nothing named "outside" beneath it); grant Outside read-only,
+        // whose final segment is "outside" so the bare segment aliases to it
+        using var fixture = new ReparsePointFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
+
+        // Act: a write to the bare alias, which resolves to a read-only grant
+        var permitted = policy.TryResolveWrite("outside", out var realPath, out var denial);
+
+        // Assert: denied because it is read-only, and no interpretation is reported for an alias
+        Assert.False(permitted);
+        Assert.Null(realPath);
+        Assert.NotNull(denial);
+        Assert.DoesNotContain("Interpreted as:", denial, StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Enumeration (unchanged single-decision filtering).
     // ---------------------------------------------------------------------------------------------
@@ -1041,5 +1179,20 @@ public class PathPolicyTests
     private static PathPolicy CreateRootedPolicy(string root)
     {
         return new PathPolicy(root, [PathRule.ReadWrite(root)]);
+    }
+
+    /// <summary>
+    ///     Extracts the single "Interpreted as:" line from a denial message, so an assertion can
+    ///     examine the reported interpretation without matching text in the echoed request or the
+    ///     enumerated locations.
+    /// </summary>
+    /// <param name="denial">The denial message to search.</param>
+    /// <returns>The "Interpreted as:" line, or an empty string when the denial has none.</returns>
+    private static string InterpretedLine(string denial)
+    {
+        return denial
+            .Split('\n')
+            .FirstOrDefault(line => line.StartsWith("Interpreted as:", StringComparison.Ordinal))
+            ?? string.Empty;
     }
 }

@@ -180,9 +180,9 @@ sections:
           - id: AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
             title: >-
               A denial reported by a path policy shall echo the caller's request, shall state the
-              location the request was interpreted as when and only when the request was relative,
-              and shall enumerate the permitted locations with their access levels, or state that
-              none are permitted.
+              canonical (normalized) absolute location the request was interpreted as, with `.` and
+              `..` collapsed, when and only when the request was relative, and shall enumerate the
+              permitted locations with their access levels, or state that none are permitted.
             justification: |
               The earlier host-path-disclosure rule is deliberately dropped. Telling a confined model
               the complete, truthful map of where it may work is worth more than concealing paths it
@@ -191,12 +191,21 @@ sections:
               joined to the working directory, so an interpretation that did not occur is never
               reported and the interpretation is never reported on its own; and the permitted
               locations, each with its access level, so the model can re-address a request rather than
-              guess. This makes a silent wrong-target impossible to miss.
+              guess. This makes a silent wrong-target impossible to miss. The interpreted location
+              must name a place the model can navigate to, so it is reported with `.` and `..`
+              collapsed; a location that cannot be normalized is reported as-interpreted rather than
+              raising, keeping the non-throwing contract.
             tests:
               - PathPolicy_TryResolveRead_RelativeDenial_EchoesInterpretsAndEnumerates
               - PathPolicy_TryResolveRead_AbsoluteDenial_HasNoInterpretationClause
               - PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample
               - PathPolicy_TryResolveRead_OmittedDenial_EchoesAStandIn
+              - PathPolicy_TryResolveRead_RelativeParentTraversalDenial_InterpretedPathIsNormalized
+              - PathPolicy_TryResolveRead_DotSlashDenial_InterpretedPathIsNormalized
+              - PathPolicy_TryResolveRead_NestedTraversalDenial_InterpretedPathIsNormalized
+              - PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim
+              - PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses
+              - PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause
 
           - id: AgentKitCore-PathPolicy-DialectMirroring
             title: >-
