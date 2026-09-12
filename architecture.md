@@ -58,15 +58,20 @@ Overstating this would be the single most dangerous thing the documentation coul
 
 ```text
 AgentKit
-├── DemaConsulting.AgentKit.Core    — policy primitives, guarded tool construction,
-│                                     tool result helpers, tool-pack contract
-├── DemaConsulting.AgentKit.Tools   — general pack: text file, file system, image,
-│                                     transfer buffer, work queue, interaction, sub-agent
-├── DemaConsulting.AgentKit.Speech  — agent-initiated speaking, listening, and voice
-│                                     selection, adapting DemaConsulting.Speech
-├── DemaConsulting.AgentKit.DocDown — document text and image extraction, adapting
-│                                     DemaConsulting.DocDown
-└── DemaConsulting.AgentKit.Repo    — future; version-control operations
+├── DemaConsulting.AgentKit.Core              — policy primitives, guarded tool construction,
+│                                               tool result helpers, tool-pack contract
+├── DemaConsulting.AgentKit.Tools             — general pack: text file and image today;
+│                                               file system, transfer buffer, work queue,
+│                                               interaction, sub-agent to follow
+├── DemaConsulting.AgentKit.Agents.ChatClient — builds a Microsoft Agent Framework agent
+│                                               from any IChatClient
+├── DemaConsulting.AgentKit.Agents.Copilot    — builds a Microsoft Agent Framework agent
+│                                               from a GitHub Copilot CopilotClient
+├── DemaConsulting.AgentKit.Speech            — future; agent-initiated speaking, listening,
+│                                               and voice selection, adapting DemaConsulting.Speech
+├── DemaConsulting.AgentKit.DocDown           — future; document text and image extraction,
+│                                               adapting DemaConsulting.DocDown
+└── DemaConsulting.AgentKit.Repo              — future; version-control operations
 ```
 
 Every package targets `net8.0`, `net9.0`, and `net10.0`.
@@ -76,6 +81,17 @@ slow-moving, because every other package depends on it and inherits its churn.
 
 **Tools** depends only on Core and the base class library. It is a peer of the capability
 packs, not a layer beneath them; no capability pack depends on it.
+
+**Provider adapters** exist to absorb provider asymmetry so that no application has to. Each
+carries the SDK it adapts, which is exactly why it is a separate package rather than part of
+Core. Only two asymmetries have proved to need absorbing: a Copilot runtime arrives carrying its
+own built-in tools, which the adapter suppresses by deriving the session allow-list from the
+tools it was given; and providers reached over an `IChatClient` preserve a tool-returned image
+through the framework and then drop it at the wire, which the adapter corrects by installing an
+image-promoting decorator on every agent it builds, with no option to disable it. Both corrections
+are unconditional, because a correction that can be forgotten will be. Adapter count therefore
+grows with provider *kinds*, not with providers: any future `IChatClient` provider, AI Foundry
+included, is served by the existing `Agents.ChatClient` package without new code.
 
 **Capability packs** depend on Core plus whatever library supplies their capability. They never
 depend on each other.
@@ -98,10 +114,25 @@ without a pack existing for it is a measure of whether Core's contract is right.
 Core defines the entire contract between packages. A capability pack author writes tools against
 these and nothing else.
 
-**Path policy.** Read and write rules are expressed independently, each either unrestricted or
-rooted, and each carrying its own deny rules. All containment decisions resolve symbolic links
-and directory junctions at every path component. Both access and directory enumeration flow
-through the same decision.
+**Path policy.** A policy separates two orthogonal ideas. One required **working directory**
+anchors relative paths and carries no permission of its own. Zero or more **access grants** each
+permit a location at a stated level — read-only or read-write — and each carries its own deny
+rules, but say nothing about addressing. An application grants the working directory whatever
+access it should have, exactly as it grants any other location, so an application folder that
+anchors relative paths while granting nothing is a valid configuration rather than a special case.
+A missing working directory is a programming error, not something to default: resolving relative
+paths against wherever the host process happened to start would refuse every legitimate request
+while looking, from outside, like a containment decision. All containment decisions resolve
+symbolic links and directory junctions at every path component. Both access and directory
+enumeration flow through the same decision, so a listing can never advertise a file that access
+would refuse.
+
+**Path dialect.** A tool reports paths in the dialect its caller used, emitting relative form only
+when the working directory is granted and the result lies within it, and absolute form otherwise.
+This is a safety property rather than a cosmetic one: tool output is a demonstration, and a model
+imitates whatever form it is shown. Relative addressing cannot express a second granted location
+except by traversal that depends on where the locations happen to sit on disk, so a loop that
+teaches relative form while granting several locations invites a silent write to the wrong one.
 
 **Tool limits.** Ceilings on bytes read, result size returned to the model, and attachments per
 turn. Limits are carried with the policy so every pack observes the same budget.
@@ -251,35 +282,31 @@ copy whatever the first sample does.
 
 ### Example applications
 
-Built in CI, not packed, and not requirement-traced.
+Built in CI, not packed, and not requirement-traced. Samples are not numbered: the ordering
+carried no meaning and made renaming costly. `samples/README.md` indexes them.
 
-| Sample | Packages | Demonstrates |
-| --- | --- | --- |
-| `01-document-assistant` | Core, Tools | Folder-confined read and write, no shell, unattended operation |
-| `02-image-reviewer` | Core, Tools | Attaching images and PDFs for analysis, encoding the marshalling fix |
-| `03-voice-assistant` | Core, Tools, Speech | Agent-initiated speaking and listening, spoken questions and approvals |
-| `04-batch-worker` | Core, Tools | Unattended operation, auto-deciding approvals, work queue, exit codes |
-| `05-custom-tool` | Core only | An application building its own guarded tool — read-only SQLite question and answer |
-| `06-provider-swap` | Core, Tools | The same tools over both a Copilot and an `IChatClient` back-end |
+| Sample | Packages | Demonstrates | Status |
+| --- | --- | --- | --- |
+| `document-assistant` | Core, Tools, adapters | Two granted locations, asymmetric grants, denials | Shipped |
+| `custom-tools` | Core, Tools, adapters | An application building its own guarded tools as packs | Shipped |
+| `voice-assistant` | Core, Tools, Speech | Agent-initiated speaking and listening, spoken approvals | Future |
+| `batch-worker` | Core, Tools | Unattended operation, auto-deciding approvals, work queue | Future |
 
-Two samples carry architectural weight beyond illustration, and a third makes a claim no other
-sample can.
+`document-assistant` runs unchanged over both the GitHub Copilot runtime and any Ollama model,
+and prints every tool call so containment, capability gating, and built-in suppression are visible
+as they happen.
 
-`03-voice-assistant` drives an agent by speech using `DemaConsulting.Speech` for local offline
-recognition and synthesis, with the agent choosing when to speak and when to listen rather than
-the application narrating every response. It demonstrates that AgentKit's tools carry no
-assumption about how the user is present — the same folder-confined tools serve a spoken
-conversation as a typed one — and it exercises the listen-duration and cycle limits that
-agent-initiated device tools carry.
+`document-assistant` absorbed what were separately planned image-reviewer and provider-swap
+samples. Both claims are better made by one application that does the ordinary thing and happens
+to run unchanged on two providers than by samples existing only to prove a point.
 
-`05-custom-tool` is the only sample that uses Core without any pack, and it is the test of whether
-the pack contract is right. If an application can express a schema-bound, read-only database tool
-naturally — with the same guarded construction, limits, and denial conventions as a shipped pack —
-then Core is the correct shape. If it has to fight the contract, Core is wrong. It also keeps the
-question-and-answer scenario from the Purpose section honest, by showing how it is actually built.
-
-`06-provider-swap` is the executable proof of the provider-neutrality claim, and therefore of the
-decision to depend only on `Microsoft.Extensions.AI.Abstractions`.
+`custom-tools` is the test of whether the pack contract is right. It builds a path-taking tool
+governed by the policy and a tool that takes no path at all, showing that guarded construction is
+the path for every tool rather than only for file-touching ones. If an application can express
+such tools naturally — with the same guarded construction, limits, and denial conventions as a
+shipped pack — then Core is the correct shape; if it has to fight the contract, Core is wrong. It
+is also the first consumer of the public path helpers from outside the library, which is what
+turns their extensibility justification from an assertion into a demonstration.
 
 A capability-pack sample should follow once `DemaConsulting.DocDown` stabilizes, demonstrating
 document extraction through `AgentKit.DocDown`.
@@ -300,9 +327,9 @@ the proof that the pack contract genuinely supports capability packs written aga
 
 ## Open Concerns
 
-1. 🟡 **MEDIUM** The repository is scaffolded for a single system, `AgentKitCore`. The remaining
-   packages must be added as sibling systems, each with its own requirements, design,
-   verification, SysML2 model, and review sets.
+1. ✅ **RESOLVED** The repository was scaffolded for a single system. The two provider-adapter
+   packages were added as sibling systems, each with its own requirements, design, verification,
+   SysML2 model, and review sets, establishing the pattern the remaining packages follow.
 2. 🟡 **MEDIUM** Extraction risk. AgentKit must match DocPilot's current safety behavior exactly
    before replacing anything in that product.
 3. 🟡 **MEDIUM** Deletion semantics. Whether recoverable quarantine is sufficient, and whether
@@ -310,21 +337,27 @@ the proof that the pack contract genuinely supports capability packs written aga
 4. 🟡 **MEDIUM** Overlap with Agent Framework's `FileAccessProvider` on the harness path.
    Family-prefixed names prevent collisions, but the duplication needs documenting so consumers
    understand which to choose.
-5. 🟡 **MEDIUM** Sample review treatment. Including samples in the Purpose review while excluding
-   them from requirements traceability requires a change to `.reviewmark.yaml`, a protected file.
+5. ✅ **RESOLVED** Sample review treatment. Samples join the Purpose review set while staying
+   outside requirements traceability, which is consistent with samples not being software items.
 6. 🟡 **MEDIUM** Interaction tools sit outside the containment safety model. Their risk is a batch
    run blocking forever rather than unauthorized access, and they should be documented as a
    different category of tool.
 7. 🟡 **MEDIUM** Per-package compliance cost. Each package carries requirements, design,
    verification, and at least two review sets; the pack count should stay justified by dependency
    pressure alone.
-8. 🟢 **LOW** Sample rot. Mitigated by CI builds. Six samples is at the upper limit of what is
-   worth maintaining.
-9. 🟢 **LOW** Samples 03 and 06 cannot run unattended in CI — the first needs audio devices and a
-   downloaded speech model, the second a second back-end. Both degrade to compile-only checks
-   unless additional infrastructure is provided.
+8. 🟢 **LOW** Sample rot, mitigated by CI builds. Two samples ship today and two more are
+   contemplated; four is the point at which the maintenance cost should be re-examined.
+9. 🟢 **LOW** A future `voice-assistant` sample cannot run unattended in CI, needing audio devices
+   and a downloaded speech model, and would degrade to a compile-only check.
 10. 🟡 **MEDIUM** Limits for agent-initiated listening — maximum listen duration and the ceiling on
     listen-and-respond cycles — are not yet chosen. They are liveness and cost controls and belong
     with the other entries in tool limits.
 11. 🟢 **LOW** A camera capture pack, returning a captured image through the same binary result
     path as file-based images. Deferred until a demonstrated need arises.
+12. 🟢 **LOW** `PathPolicy.EmitRelative` returns a decision rather than a path, so an external tool
+    author must pair it with relative-path computation and separator normalization themselves. The
+    shipped tools do the same, so it is an ergonomic wart rather than a gap, but a helper returning
+    the finished string would remove a step an author has to know to take.
+13. 🟡 **MEDIUM** Review evidence. Renamed and newly added reviewed files need fresh evidence on
+    the `reviews` branch. CI runs `reviewmark --lint` rather than `--enforce`, so this fails no
+    gate today, but it will when enforcement is switched on.
