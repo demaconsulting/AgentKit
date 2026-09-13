@@ -128,7 +128,11 @@ sections:
               edits precise and reviewable. A create refuses to clobber an existing file, a replace
               matches exactly once so an ambiguous edit is refused rather than misapplied, a cut
               always captures what it removes so every deletion is recoverable by pasting it back,
-              and a copy captures a range for pasting without ever mutating its source.
+              and a copy captures a range for pasting without ever mutating its source. Every tool
+              that mutates a file reports the line span it affected and the file's resulting line
+              count, because an edit renumbers every line below it and evaluation measured models
+              re-reading an entire file immediately after every edit purely to re-derive numbering
+              the result had not given them.
             children:
               - AgentKitTools-TextFile-CreateTool-CreatesNew
               - AgentKitTools-TextFile-CreateTool-RefusesExisting
@@ -140,6 +144,7 @@ sections:
               - AgentKitTools-TextFile-CopyTool-CapturesUnchanged
               - AgentKitTools-TextFile-CopyTool-RangeValidation
               - AgentKitTools-TextFile-PasteTool-RoundTrip
+              - AgentKitTools-TextFile-PasteTool-ReportsSpan
               - AgentKitTools-TextFile-PasteTool-EmptyBuffer
               - AgentKitTools-TextFile-Buffers-CaptureAndPaste
               - AgentKitTools-TextFile-Buffers-Replace

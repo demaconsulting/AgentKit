@@ -49,10 +49,13 @@ The listed tests prove a missing policy or buffer is a programming error rather 
 
 ##### AgentKitTools-TextFile-CutTool-CapturesAndRemoves: Captures And Removes
 
-**Test**: `TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountAndBounds`
+**Test**: `TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountBoundsAndNewTotal`
 
-The listed tests prove a range of lines is removed and the confirmation names the count and the
-first and last captured line.
+**Test**: `TextFileCutLinesTool_Cut_ThroughEndOfFile_ReportsTheCutReachedTheEnd`
+
+The listed tests prove a range of lines is removed and the confirmation names the count, the first
+and last captured line, the file's new total line count, and which line now sits where the removal
+began — or that the cut reached the end of the file, when no line does.
 
 ##### AgentKitTools-TextFile-CutTool-RangeValidation: Range Validation
 

@@ -43,7 +43,8 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     This tool consults <see cref="PathPolicy.TryResolveWrite"/> and nothing else. The delegate is
 ///     declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
 ///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown. On
-///     success the confirmation reports the change in the file's line count.
+///     success the confirmation reports the line span the new text now occupies and the change in
+///     the file's line count, so the model's next line-addressed request needs no re-read.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -162,7 +163,8 @@ public static class TextFileReplaceTool
     /// <param name="oldText">The exact text to replace, or null when it supplied none.</param>
     /// <param name="newText">The replacement text, or null when it supplied none.</param>
     /// <param name="cancellationToken">A token that cancels the edit.</param>
-    /// <returns>A confirmation naming the line-count change, or a refusal naming its reason.</returns>
+    /// <returns>A confirmation naming the affected line span and the line-count change, or a
+    ///     refusal naming its reason.</returns>
     private static async Task<object> ReplaceAsync(
         PathPolicy policy,
         string? path,
@@ -259,10 +261,16 @@ public static class TextFileReplaceTool
             var before = TextLines.Split(text).Count;
             var after = TextLines.Split(updated).Count;
 
+            // Where the change landed, in the updated file's own numbering. An edit shifts every
+            // line below it, so reporting the span spares the model a whole-file re-read purely to
+            // re-derive line numbers before its next line-addressed request.
+            var firstLine = TextLines.LineOfOffset(updated, index);
+            var lastLine = TextLines.LastLineOfInsertedText(firstLine, newText);
+
             await System.IO.File.WriteAllTextAsync(realPath, updated, cancellationToken)
                 .ConfigureAwait(false);
 
-            return ToolResult.Text(ReportDelta(before, after));
+            return ToolResult.Text(ReportDelta(before, after, firstLine, lastLine, newText.Length > 0));
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {
@@ -271,17 +279,35 @@ public static class TextFileReplaceTool
     }
 
     /// <summary>
-    ///     Composes the success confirmation naming the change in the file's line count.
+    ///     Composes the success confirmation naming where the change landed and the change in the
+    ///     file's line count.
     /// </summary>
+    /// <remarks>
+    ///     The span comes first because it is the part the model's next request depends on: an edit
+    ///     renumbers every line below it, and a confirmation that does not say where the change
+    ///     landed leaves re-reading the whole file as the only way to find out. A deletion occupies
+    ///     no lines of its own, so it is reported as the single position the removed text was at.
+    /// </remarks>
     /// <param name="before">The file's line count before the edit.</param>
     /// <param name="after">The file's line count after the edit.</param>
+    /// <param name="firstLine">The 1-based first line the change landed on.</param>
+    /// <param name="lastLine">The 1-based last line the new text occupies.</param>
+    /// <param name="inserted">
+    ///     <see langword="true"/> when new text was written; <see langword="false"/> when the
+    ///     replacement was empty and the edit was therefore a deletion.
+    /// </param>
     /// <returns>The confirmation text.</returns>
-    private static string ReportDelta(int before, int after)
+    private static string ReportDelta(int before, int after, int firstLine, int lastLine, bool inserted)
     {
         var delta = after - before;
         var sign = delta >= 0 ? "+" : "-";
 
-        return "Replaced 1 occurrence. The file changed from "
+        var where = inserted
+            ? "The new text occupies " + TextLines.DescribeSpan(firstLine, lastLine) + "."
+            : "The replaced text was removed at line "
+              + firstLine.ToString(CultureInfo.InvariantCulture) + ".";
+
+        return "Replaced 1 occurrence. " + where + " The file changed from "
             + before.ToString(CultureInfo.InvariantCulture) + " to "
             + after.ToString(CultureInfo.InvariantCulture) + " lines ("
             + sign + Math.Abs(delta).ToString(CultureInfo.InvariantCulture) + ").";

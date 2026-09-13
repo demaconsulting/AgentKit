@@ -34,7 +34,9 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
 ///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown. Empty
-///     content is a legitimate new empty file; only a missing content argument is refused.
+///     content is a legitimate new empty file; only a missing content argument is refused. On
+///     success the confirmation reports the new file's total line count, so a model that goes on to
+///     address the file by line number needs no exploratory read first.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -139,7 +141,8 @@ public static class TextFileCreateTool
     /// <param name="path">The path the model requested, or null when it supplied none.</param>
     /// <param name="content">The text the model wishes to write, or null when it supplied none.</param>
     /// <param name="cancellationToken">A token that cancels the write.</param>
-    /// <returns>A confirmation naming a character count, or a refusal naming its reason.</returns>
+    /// <returns>A confirmation naming a character count and the file's line count, or a refusal
+    ///     naming its reason.</returns>
     private static async Task<object> CreateAsync(
         PathPolicy policy,
         string? path,
@@ -206,7 +209,9 @@ public static class TextFileCreateTool
             return ToolResult.Text(
                 "Created the file with "
                 + content.Length.ToString(CultureInfo.InvariantCulture)
-                + " characters.");
+                + " characters in "
+                + TextLines.Split(content).Count.ToString(CultureInfo.InvariantCulture)
+                + " lines.");
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {

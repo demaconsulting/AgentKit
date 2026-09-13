@@ -17,13 +17,19 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     and a caller that named a <c>.png</c> is asking for it to be delivered as one.
 ///     </para>
 ///     <para>
-///     <b>A refusal redirects wherever a better tool exists.</b> An agent told only "no" retries
-///     the same tool, while an agent told what to do instead makes progress. An <c>.svg</c> is
-///     text and vector content, so its refusal names <c>text_file_read</c> — the tool that can
-///     actually read it. An <c>.svgz</c> is that same content gzip-compressed, which no tool in
-///     this family can read, so its refusal says so plainly rather than sending the model to a
-///     tool that would also fail. Any other extension is refused without a redirect there is no
-///     honest one to give.
+///     <b>A refusal states a fact and stops; naming a sibling tool is permitted only when the
+///     naming <em>is</em> the fact.</b> The library's rule is that a denial never prescribes a way
+///     around itself, because a denial that suggested another tool was measured pushing a model
+///     into a destructive workaround the user had explicitly forbidden. A media-type refusal is the
+///     one place a tool name survives that rule, and it survives it on the same basis as the
+///     established precedent in <see cref="TextFileReadTool"/>, whose binary-content refusal names
+///     <c>image_read</c>: what is being stated is what the file <em>is</em>, and the named tool is
+///     simply the reader for that kind of content — not an alternative route to the content this
+///     refusal withheld. An <c>.svg</c> genuinely is text, so naming <c>text_file_read</c> is a
+///     classification of the file, and the two refusals are kept symmetric rather than one being
+///     stripped and the other left. An <c>.svgz</c> is that same content gzip-compressed, which no
+///     tool reads as such, so its refusal states only that. Any other extension is stated as
+///     unsupported, with nothing further.
 ///     </para>
 ///     <para>
 ///     Every refusal message is a compile-time constant carrying no host detail: no absolute
@@ -131,10 +137,12 @@ public static class ImageMediaTypes
     ///     Only called once <see cref="TryResolveMediaType"/> has reported the type is
     ///     unsupported, so the refusal it returns is always an
     ///     <see cref="DenialReason.UnsupportedMediaType"/>. The extension decides which of the
-    ///     three refusals applies and whether a redirect is honest to give.
+    ///     three refusals applies and whether naming a sibling reader is a classification of the
+    ///     file rather than a prescribed remedy.
     /// </remarks>
     /// <param name="path">The requested path, whose extension the refusal is chosen from.</param>
-    /// <returns>The composed refusal, naming a better tool where one exists.</returns>
+    /// <returns>The composed refusal, naming the reader for the content's actual kind where the
+    ///     extension identifies one.</returns>
     public static object DenyUnsupportedType(string path)
     {
         // A missing path is a programming error in the caller.
@@ -142,14 +150,16 @@ public static class ImageMediaTypes
 
         return Extension(path) switch
         {
-            // An .svg is text a text tool can read, so the refusal points the model at it.
+            // An .svg genuinely is text, so naming the text reader states what the file is rather
+            // than offering a way around the refusal — the same basis on which TextFileReadTool's
+            // binary-content refusal names image_read.
             ".svg" => ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
                 SvgIsText,
                 TextFileReadTool.ToolName),
 
-            // An .svgz is the same content compressed; no tool in this family reads it, and
-            // there is no honest redirect, so the refusal says so plainly rather than misleading.
+            // An .svgz is the same content compressed; no tool reads it as such, and there is no
+            // classification that names a reader, so the refusal states only that.
             ".svgz" => ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
                 SvgzIsCompressed),

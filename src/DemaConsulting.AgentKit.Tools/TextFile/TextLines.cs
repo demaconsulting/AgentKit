@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace DemaConsulting.AgentKit.Tools.TextFile;
@@ -22,6 +23,14 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     tool restore it without altering a single character. <see cref="Content"/> is the companion
 ///     that strips the terminator for display, because a numbered read line and a search hit show the
 ///     content without the newline that ends it.
+///     </para>
+///     <para>
+///     <b>Every line model question an editing tool asks is answered here, including where a
+///     change landed.</b> An edit shifts the numbering of every line below it, so the tools that
+///     mutate a file report the line span they affected and the file's new total using
+///     <see cref="LineOfOffset"/>, <see cref="LastLineOfInsertedText"/> and
+///     <see cref="DescribeSpan"/>. Evaluation found that without that span a model re-read the
+///     whole file after every edit purely to re-derive the numbering.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
@@ -186,6 +195,84 @@ internal static class TextLines
         }
 
         return offset;
+    }
+
+    /// <summary>
+    ///     Returns the 1-based number of the line a character offset falls on.
+    /// </summary>
+    /// <remarks>
+    ///     This is the inverse of <see cref="OffsetOfLine"/>, and it exists so that an editing tool
+    ///     can say where its change landed in the numbering <see cref="TextFileReadTool"/> prints.
+    ///     Reporting the affected line span is what lets a model issue its next line-addressed
+    ///     request without first re-reading the file to re-derive the numbering an edit shifted.
+    ///     The offset is clamped to the text, so an offset at or past the end names the last line
+    ///     a character could occupy rather than throwing.
+    /// </remarks>
+    /// <param name="text">The text the offset indexes into.</param>
+    /// <param name="offset">The character offset whose line is wanted.</param>
+    /// <returns>The 1-based line number, never less than one.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="text"/> is <see langword="null"/>.
+    /// </exception>
+    public static int LineOfOffset(string text, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        // Counting the line feeds before the offset matches Split exactly, so the number reported
+        // is the number the read, cut and paste tools address.
+        var limit = Math.Clamp(offset, 0, text.Length);
+        return text.AsSpan(0, limit).Count('\n') + 1;
+    }
+
+    /// <summary>
+    ///     Returns the 1-based number of the last line a run of inserted text occupies.
+    /// </summary>
+    /// <remarks>
+    ///     Whether the inserted text ends with a terminator decides the answer: text that ends with
+    ///     a newline finishes the line that newline terminates, while text that does not runs on
+    ///     into the line that previously began at the insertion point, so that line is the last one
+    ///     the insertion occupies. Empty inserted text occupies no line of its own, so the first
+    ///     line is returned unchanged and the caller reports a single position.
+    /// </remarks>
+    /// <param name="firstLine">The 1-based line the insertion begins on.</param>
+    /// <param name="inserted">The inserted text, as written into the file.</param>
+    /// <returns>The 1-based last line the insertion occupies, never less than
+    ///     <paramref name="firstLine"/>.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="inserted"/> is <see langword="null"/>.
+    /// </exception>
+    public static int LastLineOfInsertedText(int firstLine, string inserted)
+    {
+        ArgumentNullException.ThrowIfNull(inserted);
+
+        var breaks = inserted.AsSpan().Count('\n');
+
+        // A trailing terminator closes the final inserted line rather than starting another.
+        if (inserted.EndsWith('\n'))
+        {
+            breaks--;
+        }
+
+        return firstLine + Math.Max(breaks, 0);
+    }
+
+    /// <summary>
+    ///     Renders a 1-based inclusive line span as the phrase a confirmation names it by.
+    /// </summary>
+    /// <remarks>
+    ///     A one-line span reads as "line 12" rather than "lines 12-12", because a model reading a
+    ///     degenerate range has to work out that it is degenerate. The phrase omits the word "the"
+    ///     so a caller can place it in whatever sentence it is composing.
+    /// </remarks>
+    /// <param name="firstLine">The 1-based first line of the span.</param>
+    /// <param name="lastLine">The 1-based last line of the span, inclusive.</param>
+    /// <returns>The phrase naming the span, for example <c>lines 40-44</c> or <c>line 12</c>.</returns>
+    public static string DescribeSpan(int firstLine, int lastLine)
+    {
+        return firstLine == lastLine
+            ? "line " + firstLine.ToString(CultureInfo.InvariantCulture)
+            : "lines " + firstLine.ToString(CultureInfo.InvariantCulture) + "-"
+              + lastLine.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>

@@ -36,7 +36,8 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     This tool consults <see cref="PathPolicy.TryResolveWrite"/> and nothing else. The delegate is
 ///     declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
 ///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown. On
-///     success the confirmation reports how many lines were captured and the first and last of them.
+///     success the confirmation reports how many lines were captured, the first and last of them,
+///     the file's new total line count, and which line now sits where the removal began.
 ///     </para>
 ///     <para>
 ///     The class is stateless and holds no buffer of its own; the buffer is supplied by the pack and
@@ -231,12 +232,31 @@ public static class TextFileCutLinesTool
                 .ConfigureAwait(false);
 
             var count = end - startLine + 1;
+            var remaining = total - count;
+
+            // An edit shifts every line below it, so the confirmation says what the file now is and
+            // which line now sits where the removal began. Without that, the only way for a model to
+            // learn the new numbering is to re-read the whole file. The file-state sentence precedes
+            // the labeled line contents because those end in arbitrary text — a blank captured line
+            // would otherwise run straight into whatever followed it.
+            var atStart = startLine <= remaining
+                ? " Line " + startLine.ToString(CultureInfo.InvariantCulture) + " is now: "
+                  + TextLines.Content(lines[end])
+                : string.Empty;
+
+            var reachedEnd = startLine <= remaining
+                ? "."
+                : " and the cut reached the end of the file.";
+
             return ToolResult.Text(
                 "Cut " + count.ToString(CultureInfo.InvariantCulture) + " lines ("
                 + startLine.ToString(CultureInfo.InvariantCulture) + "-"
                 + end.ToString(CultureInfo.InvariantCulture) + ") into buffer '" + slot
-                + "'. First: " + TextLines.Content(lines[startLine - 1])
-                + " Last: " + TextLines.Content(lines[end - 1]));
+                + "'. The file now has " + remaining.ToString(CultureInfo.InvariantCulture)
+                + " lines" + reachedEnd
+                + " First: " + TextLines.Content(lines[startLine - 1])
+                + " Last: " + TextLines.Content(lines[end - 1])
+                + atStart);
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {

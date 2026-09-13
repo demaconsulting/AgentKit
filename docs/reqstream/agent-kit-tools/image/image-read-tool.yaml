@@ -84,36 +84,40 @@ sections:
               - id: AgentKitTools-Image-ReadTool-UnsupportedTypeDenied
                 title: >-
                   The read tool shall refuse a permitted file whose type the family cannot read,
-                  composing the refusal through the media-type map so a redirect is given where
-                  one is useful.
+                  composing the refusal through the media-type map so the decision about naming a
+                  sibling reader is made in one place.
                 justification: |
-                  A file of a type the family cannot read has no content to return, and where a
-                  better tool exists — a text tool for an .svg — naming it turns a dead end into
-                  the agent's next step. Delegating the refusal to the media-type map keeps the
-                  redirect decision in one place rather than duplicated in the tool.
+                  A file of a type the family cannot read has no content to return. A denial states
+                  a fact and never prescribes a remedy; the one thing a media-type refusal may add
+                  is a statement of what the file actually is, which for an .svg means naming the
+                  text reader. Delegating the refusal to the media-type map keeps that judgment in
+                  one place rather than duplicated in the tool.
                 tests:
                   - ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead
 
               - id: AgentKitTools-Image-ReadTool-DirectoryRefused
                 title: >-
-                  The read tool shall refuse a request naming a directory.
+                  The read tool shall refuse a request naming a directory with a plain fact that
+                  prescribes no course of action.
                 justification: |
-                  A directory has no visual content to return, and this family has no listing
-                  tool to redirect a model to, so the refusal names the mistake plainly rather
-                  than pointing at a tool that does not exist.
+                  A directory has no visual content to return. A denial states a fact and never
+                  prescribes a remedy, because a denial that suggested one was measured driving a
+                  model into a destructive workaround the user had explicitly forbidden, so the
+                  refusal says only that the path is a directory.
                 tests:
                   - ImageReadTool_Read_DirectoryPath_ReturnsDenial
 
               - id: AgentKitTools-Image-ReadTool-MissingFileDenied
                 title: >-
                   The read tool shall refuse a request for a supported-type file that does not
-                  exist.
+                  exist, with a plain fact that prescribes no course of action.
                 justification: |
                   A missing file cannot be read, and the refusal reports that as a returned
                   result the model can act on rather than as an exception that would end the
-                  agent's turn. The type is judged from the extension before existence, so a
-                  supported extension that names no file is refused as not found rather than as
-                  an unsupported type.
+                  agent's turn. It states only that the file does not exist, because a denial
+                  states a fact and never prescribes a remedy. The type is judged from the
+                  extension before existence, so a supported extension that names no file is
+                  refused as not found rather than as an unsupported type.
                 tests:
                   - ImageReadTool_Read_MissingFile_ReturnsDenial
 

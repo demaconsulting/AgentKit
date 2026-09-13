@@ -113,22 +113,24 @@ fails the scenario rather than making it pass vacuously.
 
 **Test**: `ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead`
 
-Error path: a permitted `.svg` is refused as an unsupported type and the refusal names
-`text_file_read`, confirming the tool composes the refusal through the media-type map rather than
+Error path: a permitted `.svg` is refused as an unsupported type, the refusal states that the file is
+text and vector content, and it names `text_file_read` as the reader for that kind of content —
+confirming the tool composes the refusal through the media-type map rather than
 inventing its own.
 
 ##### AgentKitTools-Image-ReadTool-DirectoryRefused: A Directory Is Refused
 
 **Test**: `ImageReadTool_Read_DirectoryPath_ReturnsDenial`
 
-Error path: a directory has no visual content to return and no listing tool to redirect to, so it is
-refused as a malformed request.
+Error path: a directory has no visual content to return, so it is refused as a malformed request with
+a plain statement of that fact; the assertion confirms the refusal prescribes no course of action.
 
 ##### AgentKitTools-Image-ReadTool-MissingFileDenied: A Missing File Is Refused
 
 **Test**: `ImageReadTool_Read_MissingFile_ReturnsDenial`
 
-Error path: a supported-type file that does not exist is refused as `TargetNotFound`, proving the
+Error path: a supported-type file that does not exist is refused as `TargetNotFound` with a plain
+statement of that fact and no prescribed course of action, proving the
 type is judged before existence and a supported extension that names no file is refused as not found
 rather than as an unsupported type.
 

@@ -49,9 +49,15 @@ The listed tests prove a missing policy is a programming error rather than a den
 
 ##### AgentKitTools-TextFile-ReplaceTool-UniqueMatch: Unique Match
 
-**Test**: `TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsDelta`
+**Test**: `TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsSpanAndDelta`
 
-The listed tests prove a unique match is replaced and the confirmation names the line-count change.
+**Test**: `TextFileReplaceTool_Replace_MultiLineNewText_ReportsTheWholeSpan`
+
+**Test**: `TextFileReplaceTool_Replace_EmptyNewText_ReportsTheRemovalPosition`
+
+The listed tests prove a unique match is replaced and the confirmation names the line span the new
+text now occupies — or, for an empty replacement, the single position the removed text was at —
+together with the line-count change.
 
 ##### AgentKitTools-TextFile-ReplaceTool-Ambiguity: Ambiguity
 

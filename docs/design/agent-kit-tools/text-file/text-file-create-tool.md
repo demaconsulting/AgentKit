@@ -53,7 +53,10 @@ governed by the supplied policy for the rest of its life.
 5. An existing file is refused as `InvalidRequest` with a plain statement of the fact, naming no
    other tool.
 6. A missing parent directory is refused as `TargetNotFound`; the tool creates no directory.
-7. The file is written and the confirmation reports the character count.
+7. The file is written and the confirmation reports the character count and the created file's total
+   line count, so a model that goes on to address the file by line number needs no exploratory read
+   first. The line count uses `TextLines.Split`, so an empty file is reported as zero lines rather
+   than one.
 
 #### Error Handling
 

@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def TextFileCutLinesTool {
-        doc /* Publishes the text_file_cut_lines tool, removing a range of lines from a permitted file and capturing them into a named buffer slot first so every deletion is recoverable, reporting the count and the first and last captured line, and consulting the write decision alone. */
+        doc /* Publishes the text_file_cut_lines tool, removing a range of lines from a permitted file and capturing them into a named buffer slot first so every deletion is recoverable, reporting the count, the first and last captured line, the file's new total line count and which line now sits where the removal began, and consulting the write decision alone. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/TextFile/TextFileCutLinesTool.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileCutLinesToolTests.cs */

@@ -75,8 +75,10 @@ public class ImageMediaTypesTests
         // Act: refuse a vector-text file that a text tool, not this family, should read
         var text = Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svg"));
 
-        // Assert: refused as an unsupported type, and pointed at the tool that can read it
+        // Assert: refused as an unsupported type, stating what the file is; naming the reader for
+        // that kind of content is a classification, not a prescribed way around the refusal
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
         Assert.Contains(TextFileReadTool.ToolName, text, StringComparison.Ordinal);
     }
 

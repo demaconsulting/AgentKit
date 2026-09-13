@@ -46,8 +46,11 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     integer or the resolved media type. A refusal the access policy produces, by contrast, states
 ///     what was requested, how a relative request was interpreted, and which locations are permitted,
 ///     so a confined model is told where it may look instead of being left to guess. Each refusal
-///     states what the model should do next, because an agent told only "no" retries the same
-///     request.
+///     states a fact and stops: it does not prescribe a course of action, because a denial that
+///     suggested one was measured pushing a model into a destructive workaround the user had
+///     explicitly forbidden. Naming a sibling tool remains permissible only where doing so states
+///     what the file <em>is</em> rather than offering a way around the refusal — see
+///     <see cref="ImageMediaTypes"/>.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads;
@@ -84,14 +87,22 @@ public static class ImageReadTool
     /// <summary>
     ///     The refusal used when the request names a directory rather than a file.
     /// </summary>
+    /// <remarks>
+    ///     The refusal states the fact and stops. A denial that prescribes another course of action
+    ///     was measured pushing a model into a workaround the user had forbidden, so a denial in
+    ///     this library says what is so and leaves the choice of what to do next to the model.
+    /// </remarks>
     private const string PathIsDirectory =
-        "The requested path is a directory, not a file. Name an image file to read instead.";
+        "The requested path is a directory, not a file.";
 
     /// <summary>
     ///     The refusal used when the requested file does not exist.
     /// </summary>
+    /// <remarks>
+    ///     States the fact and stops, for the same reason as <see cref="PathIsDirectory"/>.
+    /// </remarks>
     private const string FileNotFound =
-        "The requested file does not exist. Check the file name and request it again.";
+        "The requested file does not exist.";
 
     /// <summary>
     ///     The refusal used when the file exists and is permitted but cannot be read.
@@ -179,7 +190,8 @@ public static class ImageReadTool
         }
 
         // The type is decided from the extension before the file system is consulted for size or
-        // content. An unsupported type is refused — with a redirect where one is honest — rather
+        // content. An unsupported type is refused — stating what the file is, which for an .svg
+        // means naming the text reader — rather
         // than a file being read only to be discarded.
         if (!ImageMediaTypes.TryResolveMediaType(realPath, out var mediaType))
         {

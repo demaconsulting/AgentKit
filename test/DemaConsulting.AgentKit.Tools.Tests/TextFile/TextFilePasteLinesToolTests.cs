@@ -67,11 +67,12 @@ public class TextFilePasteLinesToolTests
     }
 
     /// <summary>
-    ///     Proves an omitted atLine appends the captured text to the end of the file.
+    ///     Proves an omitted atLine appends the captured text to the end of the file, and the
+    ///     confirmation names the span the appended text occupies and the file's new total.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFilePasteLines_OmittedAtLine_AppendsToEnd()
+    public async Task TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal()
     {
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
@@ -84,9 +85,48 @@ public class TextFilePasteLinesToolTests
         await InvokeAsync(
             cut,
             new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 1, ["endLine"] = 1 });
-        await InvokeAsync(paste, new AIFunctionArguments { ["path"] = "note.txt" });
+        var result = await InvokeAsync(paste, new AIFunctionArguments { ["path"] = "note.txt" });
 
+        Assert.Equal(
+            "Pasted 1 lines from buffer 'default' at the end of the file. "
+            + "The pasted text occupies line 3, and the file now has 3 lines.",
+            Assert.IsType<string>(result));
         Assert.Equal("two\nthree\none\n", await ReadAsync(Path.Combine(fixture.Root, "note.txt")));
+    }
+
+    /// <summary>
+    ///     Proves a paste at a named line reports the whole span the inserted text now occupies, in
+    ///     the updated file's own numbering, together with the file's new total.
+    /// </summary>
+    /// <remarks>
+    ///     An insertion shifts every line below it, so the span and the new total are what let a
+    ///     model issue its next line-addressed request without re-reading the file to re-derive the
+    ///     numbering.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFilePasteLines_AtLine_ReportsTheInsertedSpanAndNewTotal()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\nfive\n");
+        var buffers = new TextFileLineBuffers();
+        var policy = RootedPolicy(fixture.Root);
+        var cut = TextFileCutLinesTool.Create(policy, buffers);
+        var paste = TextFilePasteLinesTool.Create(policy, buffers);
+
+        // Cut two lines from the top, then paste them back below what remains of the file
+        await InvokeAsync(
+            cut,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 1, ["endLine"] = 2 });
+        var result = await InvokeAsync(
+            paste,
+            new AIFunctionArguments { ["path"] = "note.txt", ["atLine"] = 2 });
+
+        Assert.Equal(
+            "Pasted 2 lines from buffer 'default' at line 2. "
+            + "The pasted text occupies lines 2-3, and the file now has 5 lines.",
+            Assert.IsType<string>(result));
+        Assert.Equal("three\none\ntwo\nfour\nfive\n", await ReadAsync(Path.Combine(fixture.Root, "note.txt")));
     }
 
     /// <summary>

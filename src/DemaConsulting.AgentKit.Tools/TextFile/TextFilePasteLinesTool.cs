@@ -34,7 +34,9 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <para>
 ///     This tool consults <see cref="PathPolicy.TryResolveWrite"/> and nothing else. The delegate is
 ///     declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
-///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
+///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown. On
+///     success the confirmation reports the line span the pasted text now occupies and the file's
+///     new total line count, so the model's next line-addressed request needs no re-read.
 ///     </para>
 ///     <para>
 ///     The class is stateless and holds no buffer of its own; the buffer is supplied by the pack and
@@ -240,9 +242,19 @@ public static class TextFilePasteLinesTool
                 ? "the end of the file"
                 : "line " + line.ToString(CultureInfo.InvariantCulture);
 
+            // The inserted span and the new total, in the updated file's own numbering. An insertion
+            // shifts every line below it, so stating the span spares the model a whole-file re-read
+            // purely to re-derive line numbers before its next line-addressed request.
+            var firstLine = TextLines.LineOfOffset(updated, offset);
+            var lastLine = TextLines.LastLineOfInsertedText(firstLine, captured);
+            var newTotal = TextLines.Split(updated).Count;
+
             return ToolResult.Text(
                 "Pasted " + pastedCount.ToString(CultureInfo.InvariantCulture)
-                + " lines from buffer '" + slot + "' at " + where + ".");
+                + " lines from buffer '" + slot + "' at " + where
+                + ". The pasted text occupies " + TextLines.DescribeSpan(firstLine, lastLine)
+                + ", and the file now has " + newTotal.ToString(CultureInfo.InvariantCulture)
+                + " lines.");
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {

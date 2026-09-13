@@ -26,14 +26,17 @@ sections:
 
               - id: AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
                 title: >-
-                  The media-type map shall refuse an svg file as an unsupported type and direct
-                  the model to the text file read tool.
+                  The media-type map shall refuse an svg file as an unsupported type, stating that
+                  it is text and vector content and naming the text file read tool as the reader
+                  for that kind of content.
                 tags: [security]
                 justification: |
-                  An .svg is text and vector content, not a raster image, and the tool that can
-                  actually read it is the text file read tool. An agent told only "no" retries
-                  the same tool, while an agent told which tool reads the content makes progress,
-                  so the refusal names that tool rather than leaving the model to guess.
+                  A denial states a fact and never prescribes a remedy. An .svg genuinely is text
+                  and vector content, not a raster image, so naming the text file read tool states
+                  what the file is rather than offering a way around the refusal. This is the same
+                  basis on which the text file read tool's own binary-content refusal names
+                  image_read, and the two are kept symmetric rather than one being stripped and the
+                  other left.
                 tests:
                   - ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead
 

@@ -29,11 +29,17 @@ public class TextFileReplaceToolTests
     }
 
     /// <summary>
-    ///     Proves a unique match is replaced and the confirmation names the line-count change.
+    ///     Proves a unique match is replaced and the confirmation names the line span the new text
+    ///     now occupies as well as the line-count change.
     /// </summary>
+    /// <remarks>
+    ///     The span is the point of the confirmation: an edit renumbers every line below it, and
+    ///     evaluation found that a confirmation without the span drove models to re-read the whole
+    ///     file purely to re-derive line numbers.
+    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsDelta()
+    public async Task TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsSpanAndDelta()
     {
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
@@ -44,8 +50,68 @@ public class TextFileReplaceToolTests
             new AIFunctionArguments { ["path"] = "note.txt", ["oldText"] = "beta", ["newText"] = "BETA" });
 
         var text = Assert.IsType<string>(result);
-        Assert.Contains("Replaced 1 occurrence", text, StringComparison.Ordinal);
+        Assert.Equal(
+            "Replaced 1 occurrence. The new text occupies line 2. "
+            + "The file changed from 3 to 3 lines (+0).",
+            text);
         Assert.Equal("alpha\nBETA\ngamma\n", await ReadAsync(Path.Combine(fixture.Root, "note.txt")));
+    }
+
+    /// <summary>
+    ///     Proves a multi-line replacement names the whole span the new text occupies, in the
+    ///     updated file's own numbering.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReplaceTool_Replace_MultiLineNewText_ReportsTheWholeSpan()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
+        var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments
+            {
+                ["path"] = "note.txt",
+                ["oldText"] = "beta",
+                ["newText"] = "one\ntwo\nthree"
+            });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(
+            "Replaced 1 occurrence. The new text occupies lines 2-4. "
+            + "The file changed from 3 to 5 lines (+2).",
+            text);
+    }
+
+    /// <summary>
+    ///     Proves a deletion — an empty replacement — names the position the removed text was at
+    ///     rather than claiming a span the new text does not occupy.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReplaceTool_Replace_EmptyNewText_ReportsTheRemovalPosition()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
+        var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments
+            {
+                ["path"] = "note.txt",
+                ["oldText"] = "beta\n",
+                ["newText"] = string.Empty
+            });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(
+            "Replaced 1 occurrence. The replaced text was removed at line 2. "
+            + "The file changed from 3 to 2 lines (-1).",
+            text);
+        Assert.Equal("alpha\ngamma\n", await ReadAsync(Path.Combine(fixture.Root, "note.txt")));
     }
 
     /// <summary>

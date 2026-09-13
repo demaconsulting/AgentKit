@@ -29,21 +29,42 @@ public class TextFileCreateToolTests
     }
 
     /// <summary>
-    ///     Proves a new file is created with the given content, addressed by a bare relative name.
+    ///     Proves a new file is created with the given content, addressed by a bare relative name,
+    ///     and the confirmation reports the created file's total line count.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileCreateTool_Create_NewFile_WritesTheContent()
+    public async Task TextFileCreateTool_Create_NewFile_WritesTheContentAndReportsTheLineCount()
     {
         using var fixture = new ReparsePointFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
             tool,
-            new AIFunctionArguments { ["path"] = "new.txt", ["content"] = "fresh content" });
+            new AIFunctionArguments { ["path"] = "new.txt", ["content"] = "alpha\nbeta\ngamma\n" });
 
-        Assert.IsType<string>(result);
-        Assert.Equal("fresh content", await ReadAsync(Path.Combine(fixture.Root, "new.txt")));
+        // The line count spares the model an exploratory read before its next line-addressed request.
+        var text = Assert.IsType<string>(result);
+        Assert.Equal("Created the file with 17 characters in 3 lines.", text);
+        Assert.Equal("alpha\nbeta\ngamma\n", await ReadAsync(Path.Combine(fixture.Root, "new.txt")));
+    }
+
+    /// <summary>
+    ///     Proves an empty new file is reported as zero lines rather than one, matching the line
+    ///     model every other tool in the family addresses.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileCreateTool_Create_EmptyContent_ReportsZeroLines()
+    {
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "empty.txt", ["content"] = string.Empty });
+
+        Assert.Equal("Created the file with 0 characters in 0 lines.", Assert.IsType<string>(result));
     }
 
     /// <summary>

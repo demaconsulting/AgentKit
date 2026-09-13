@@ -65,13 +65,13 @@ governed by the supplied policy for the rest of its life.
    directly usable. This step resolves every
    path component, so a link that escapes
    the permitted location is refused here without this unit knowing links exist
-3. An existing directory is refused as `InvalidRequest`; this family has no listing tool to redirect
-   to
+3. An existing directory is refused as `InvalidRequest`, stating the fact and prescribing nothing
 4. `ImageMediaTypes.TryResolveMediaType` — an unsupported type is refused through
-   `ImageMediaTypes.DenyUnsupportedType`, which redirects where one is useful. The type is judged
+   `ImageMediaTypes.DenyUnsupportedType`, which names a sibling reader only where doing so states
+   what the file is. The type is judged
    before the file system is consulted for size or content, so a file is never read only to be
    discarded
-5. A non-existent file is refused as `TargetNotFound`
+5. A non-existent file is refused as `TargetNotFound`, stating the fact and prescribing nothing
 6. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size is
    judged before the file is opened, so an oversized file is never loaded merely to discover it was
    oversized
@@ -113,9 +113,12 @@ interpreted, and the permitted locations with their access levels, so a confined
 it may read instead of guessing. Refusals this unit composes itself — including unsupported media
 types, directory requests, missing or unreadable files, and the oversized-image ceiling — are
 constants or interpolate only a media type, a sibling tool name, or an integer ceiling. **Each
-refusal nevertheless states what the model should do instead** — the form a path takes, or the tool
-better suited to the file — because an agent told only "no" retries the same request until it
-abandons the task.
+refusal states a fact and stops** — it does not prescribe a course of action, because a denial that
+suggested one was measured driving a model into a destructive workaround the user had explicitly
+forbidden. The directory and missing-file refusals therefore say only what is so. Naming a sibling
+tool survives that rule in exactly one place — the unsupported-type refusal `ImageMediaTypes`
+composes — because there the naming *is* the statement of what the file is, on the same basis as
+`TextFileReadTool`'s binary-content refusal naming `image_read`.
 
 #### Dependencies
 

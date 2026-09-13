@@ -51,14 +51,17 @@ Composes the refusal for a file whose extension the family cannot read.
 **Preconditions:** called only once `TryResolveMediaType` has reported the type unsupported, so the
 refusal is always an `UnsupportedMediaType`.
 
-**Algorithm:** chooses on the extension. An `.svg` is text and vector content, so it is refused with
-a redirect to `TextFileReadTool.ToolName` — the tool that can actually read it. An `.svgz` is that
-same content gzip-compressed, which no tool in this family reads and which a text tool would fail on
-too, so it is refused without a redirect and the message says so. Any other extension is refused
-without a redirect, because there is no honest better tool to name.
+**Algorithm:** chooses on the extension. An `.svg` genuinely *is* text and vector content, so the
+refusal states that and names `TextFileReadTool.ToolName` — the reader for that kind of content. That
+naming survives the library's rule that **a denial states a fact and never prescribes another tool**,
+on exactly the basis the established precedent in `TextFileReadTool` does: its binary-content refusal
+names `image_read` because what is being stated is what the file *is*, not a way around the refusal.
+The two are deliberately kept symmetric rather than one being stripped and the other left. An
+`.svgz` is that same content gzip-compressed, which no tool reads as such, so its refusal states only
+that. Any other extension is stated as unsupported, with nothing further.
 
-**Postconditions:** returns a `ToolResult.Denied` result naming the reason and, where one is useful,
-the tool to use instead.
+**Postconditions:** returns a `ToolResult.Denied` result naming the reason and, where the extension
+identifies the kind of content, the reader for that kind.
 
 #### Error Handling
 
@@ -70,8 +73,9 @@ permitted location or a directory separator — the messages are compile-time co
 #### Dependencies
 
 `ToolResult` for the refusals it composes, `DenialReason` for the reason each carries, and
-`TextFileReadTool.ToolName` for the one redirect an `.svg` earns — read as a published constant so
-the redirect cannot drift from the name the sibling family publishes. From the Base Class Library:
+`TextFileReadTool.ToolName` for the one classification an `.svg` earns — read as a published constant
+so the named tool cannot drift from the name the sibling family publishes. From the Base Class
+Library:
 `Path` for the extension.
 
 #### Callers

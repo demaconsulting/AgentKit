@@ -49,12 +49,15 @@ The listed tests prove a missing policy is a programming error rather than a den
 
 ##### AgentKitTools-TextFile-CreateTool-CreatesNew: Creates New
 
-**Test**: `TextFileCreateTool_Create_NewFile_WritesTheContent`
+**Test**: `TextFileCreateTool_Create_NewFile_WritesTheContentAndReportsTheLineCount`
 
 **Test**: `TextFileCreateTool_Create_EmptyContent_CreatesAnEmptyFile`
 
+**Test**: `TextFileCreateTool_Create_EmptyContent_ReportsZeroLines`
+
 The listed tests prove a new file is created with the given content, addressed by a bare relative
-name; an empty content string creates an empty file rather than being refused.
+name; an empty content string creates an empty file rather than being refused; and the confirmation
+reports the created file's total line count, counting an empty file as zero lines.
 
 ##### AgentKitTools-TextFile-CreateTool-RefusesExisting: Refuses Existing
 

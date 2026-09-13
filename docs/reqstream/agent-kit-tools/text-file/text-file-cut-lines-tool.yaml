@@ -32,12 +32,18 @@ sections:
               - id: AgentKitTools-TextFile-CutTool-CapturesAndRemoves
                 title: >-
                   The cut-lines tool shall capture the removed range into a named buffer before
-                  removing it, and shall report the count and the first and last captured line.
+                  removing it, and shall report the count, the first and last captured line, the
+                  file's new total line count, and which line now sits where the removal began.
                 justification: |
                   A deletion of a whole range is recoverable only if what was removed is captured
-                  first; the report tells the model what it now holds in the buffer.
+                  first; the report tells the model what it now holds in the buffer. A removal
+                  renumbers every line below it, and evaluation measured models re-reading an entire
+                  file immediately after every edit purely to re-derive line numbers, so the new
+                  total and the line now at the cut's start are reported to make that re-read
+                  unnecessary.
                 tests:
-                  - TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountAndBounds
+                  - TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountBoundsAndNewTotal
+                  - TextFileCutLinesTool_Cut_ThroughEndOfFile_ReportsTheCutReachedTheEnd
 
               - id: AgentKitTools-TextFile-CutTool-RangeValidation
                 title: >-

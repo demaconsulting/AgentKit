@@ -41,8 +41,21 @@ sections:
                   into a relocation.
                 tests:
                   - TextFilePasteLines_CutThenPasteAtSameLine_ReproducesTheFileExactly
-                  - TextFilePasteLines_OmittedAtLine_AppendsToEnd
+                  - TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal
                   - TextFilePasteLines_NamedBuffer_RelocatesToAnotherFile
+
+              - id: AgentKitTools-TextFile-PasteTool-ReportsSpan
+                title: >-
+                  The paste-lines tool shall report the line span the pasted text now occupies and
+                  the file's new total line count.
+                justification: |
+                  An insertion renumbers every line below it, and evaluation measured models
+                  re-reading an entire file immediately after every edit purely to re-derive line
+                  numbers the result did not give them. Stating the inserted span and the new total
+                  makes the model's next line-addressed request possible without that re-read.
+                tests:
+                  - TextFilePasteLines_AtLine_ReportsTheInsertedSpanAndNewTotal
+                  - TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal
 
               - id: AgentKitTools-TextFile-PasteTool-EmptyBuffer
                 title: >-

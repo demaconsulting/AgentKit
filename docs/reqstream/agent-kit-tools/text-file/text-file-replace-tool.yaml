@@ -32,12 +32,18 @@ sections:
               - id: AgentKitTools-TextFile-ReplaceTool-UniqueMatch
                 title: >-
                   The replace tool shall replace exactly one occurrence of the given text and report
-                  the change in the file's line count.
+                  the line span the new text now occupies together with the change in the file's
+                  line count.
                 justification: |
                   Editing by exact content match is what lets a model change one line without
-                  rewriting the file; the delta confirms the edit took effect.
+                  rewriting the file; the delta confirms the edit took effect. An edit renumbers
+                  every line below it, and evaluation measured models re-reading an entire file
+                  immediately after every edit purely to re-derive line numbers the result did not
+                  give them, so the affected span is reported to make that re-read unnecessary.
                 tests:
-                  - TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsDelta
+                  - TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsSpanAndDelta
+                  - TextFileReplaceTool_Replace_MultiLineNewText_ReportsTheWholeSpan
+                  - TextFileReplaceTool_Replace_EmptyNewText_ReportsTheRemovalPosition
 
               - id: AgentKitTools-TextFile-ReplaceTool-Ambiguity
                 title: >-

@@ -63,8 +63,13 @@ its buffer with the cut tool from the same `CreateTools` call.
 8. The target file is read and split through `TextLines.Split`.
 9. An omitted `atLine`, or a value past the end of the file, appends. Otherwise the captured text is
    inserted before the requested line.
-10. The updated file is written and the confirmation reports how many captured lines were pasted and
-    where.
+10. The updated file is written and the confirmation reports how many captured lines were pasted,
+    where they were inserted, the explicit line span the pasted text now occupies, and the file's
+    new total line count. The span and total are stated in the updated file's own numbering, because
+    an insertion renumbers every line below it and a confirmation without them leaves a whole-file
+    re-read as the only way to learn the new numbering. The span is computed with
+    `TextLines.LineOfOffset` and `TextLines.LastLineOfInsertedText`, so captured text that does not
+    end in a terminator is reported as running on into the line that followed the insertion point.
 
 #### Error Handling
 
@@ -84,7 +89,7 @@ it back at the same place reproduces the original content.
 `PathPolicy` for the write decision, `ToolResult` for results, `GuardedToolFactory` for construction,
 `TextFileLineBuffers` for named paste slots and, through `PopulatedSlots`, for the names an empty-slot
 refusal reports as a fact, and `TextLines` for line
-counts and insertion offsets. From
+counts, insertion offsets and the reported line span. From
 the Base Class Library it uses `Directory` and text file I/O. `AIFunction`, from
 `Microsoft.Extensions.AI.Abstractions`, is the constructed tool type.
 

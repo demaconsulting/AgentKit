@@ -61,7 +61,12 @@ its buffer with the paste tool from the same `CreateTools` call.
 9. The exact raw slice from the first selected line through the terminator of the last selected line
    is captured into the slot.
 10. The slice is removed and the updated file is written.
-11. The confirmation reports the count and the first and last captured line content.
+11. The confirmation reports the count, the file's new total line count and — when the cut reached
+    the end of the file — that it did, followed by the first and last captured line content and the
+    line that now sits where the removal began. The file-state sentence precedes the labeled line
+    contents because those end in arbitrary text, which would otherwise run into whatever followed
+    it. A removal renumbers every line below it, so stating the new numbering spares the model a
+    whole-file re-read before its next line-addressed request.
 
 #### Error Handling
 

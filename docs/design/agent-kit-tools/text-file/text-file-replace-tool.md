@@ -60,7 +60,10 @@ governed by the supplied policy for the rest of its life.
 9. More than one occurrence is refused as ambiguous; the refusal names the count and tells the model
    to include more surrounding lines.
 10. Exactly one occurrence is replaced and the updated file is written.
-11. The confirmation reports the line-count delta.
+11. The confirmation reports the line span the new text now occupies — or, when the replacement was
+    empty, the single line the removed text was at — followed by the line-count delta. The span is
+    stated in the updated file's own numbering, because an edit renumbers every line below it and a
+    confirmation without it leaves a whole-file re-read as the only way to learn the new numbering.
 
 ##### CountOccurrences(string text, string value)
 
@@ -68,10 +71,16 @@ Counts non-overlapping ordinal occurrences. The match is exact raw text, not cul
 and not a regular expression. The count is taken before any write, so a not-found or ambiguous edit
 leaves the file unchanged.
 
-##### ReportDelta(int before, int after)
+##### ReportDelta(int before, int after, int firstLine, int lastLine, bool inserted)
 
-Composes the success message from the before and after line counts, including a signed delta. The
-line count uses the same `TextLines` model as read, search, cut and paste.
+Composes the success message. It names where the change landed first, because that is what the
+model's next line-addressed request depends on, and then the before and after line counts with a
+signed delta. A non-empty replacement is reported as the span it occupies
+(`The new text occupies lines 12-14.`); an empty replacement occupies no lines of its own and is
+reported as the position the removed text was at
+(`The replaced text was removed at line 12.`). The line numbering and the span arithmetic use the
+same `TextLines` model as read, search, cut and paste, through `TextLines.LineOfOffset`,
+`TextLines.LastLineOfInsertedText` and `TextLines.DescribeSpan`.
 
 #### Error Handling
 
@@ -89,7 +98,8 @@ which is the action that makes the edit unique.
 #### Dependencies
 
 `PathPolicy` for the write decision, `ToolResult` for results, `GuardedToolFactory` for construction,
-and `TextLines` for line-count deltas. From the Base Class Library it uses
+and `TextLines` for the line model, the affected-span arithmetic and line-count deltas. From the
+Base Class Library it uses
 `Directory`, `File`, and ordinal string operations. `AIFunction`, from
 `Microsoft.Extensions.AI.Abstractions`, is the constructed tool type.
 

@@ -51,12 +51,22 @@ The listed tests prove a missing policy or buffer is a programming error rather 
 
 **Test**: `TextFilePasteLines_CutThenPasteAtSameLine_ReproducesTheFileExactly`
 
-**Test**: `TextFilePasteLines_OmittedAtLine_AppendsToEnd`
+**Test**: `TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal`
 
 **Test**: `TextFilePasteLines_NamedBuffer_RelocatesToAnotherFile`
 
 The listed tests prove an omitted atLine appends the captured text to the end of the file; a named
 buffer relocates a cut fragment to a different file.
+
+##### AgentKitTools-TextFile-PasteTool-ReportsSpan: Reports Span
+
+**Test**: `TextFilePasteLines_AtLine_ReportsTheInsertedSpanAndNewTotal`
+
+**Test**: `TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal`
+
+The listed tests prove the confirmation names the line span the pasted text now occupies, in the
+updated file's own numbering, together with the file's new total line count — for an insertion at a
+named line and for an append alike.
 
 ##### AgentKitTools-TextFile-PasteTool-EmptyBuffer: Empty Buffer
 

@@ -46,7 +46,7 @@ it from collision.
 |-------------------------|-----------|------------------------------|---------------------------------------|
 | `ImagePack`             | Outbound  | AgentKitCore `IToolPack`     | Prefix `image`; requires Vision       |
 | `ImageReadTool.ToolName`| Outbound  | `string` constant            | The name the tool is published under  |
-| `ImageMediaTypes`       | Outbound  | Media-type map and refusals  | Extension-driven; refusals redirect   |
+| `ImageMediaTypes`       | Outbound  | Media-type map and refusals  | Extension-driven; states content kind |
 | `PathPolicy`            | Inbound   | AgentKitCore policy object   | Supplied at construction              |
 | File system             | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
 
@@ -54,7 +54,7 @@ The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFac
 and `HostCapabilities` from AgentKitCore, `AIFunction` and the content types (`AIContent`,
 `DataContent`, `TextContent`) from `Microsoft.Extensions.AI.Abstractions` reached through Core, and
 `TextFileReadTool.ToolName` from the sibling TextFile subsystem — read as a constant, for the one
-redirect an unsupported `.svg` earns. It exposes nothing of its own that another package would
+classification an unsupported `.svg` earns. It exposes nothing of its own that another package would
 depend on.
 
 ### Design
@@ -94,9 +94,16 @@ refused path never discloses whether it exists.
 **The type is decided from the extension.** `ImageMediaTypes` maps an extension to the media type
 the family reads it as, because the media type is what a provider is told the content is and a
 caller that named a `.png` is asking for it to be delivered as one. A type the family cannot read
-is refused through the same unit, which owns whether a redirect is honest to give: an `.svg` is
-refused with a redirect to `text_file_read`, an `.svgz` is refused without one because no tool reads
-it, and any other extension is refused without one because there is no better tool to name.
+is refused through the same unit, which owns whether naming a sibling reader states what the file is
+rather than prescribing a way around the refusal: an `.svg` genuinely *is* text, so its refusal says
+so and names `text_file_read`, on the same basis as `text_file_read`'s own binary-content refusal
+naming `image_read`; an `.svgz` is stated as compressed vector content with nothing further, and any
+other extension is stated as unsupported with nothing further.
+
+**A denial states a fact and stops.** Refusals this subsystem composes — an absent path, a directory,
+a missing file, a ceiling overrun — say what is so and prescribe no course of action, because a
+denial that suggested one was measured driving a model into a destructive workaround the user had
+explicitly forbidden.
 
 **Image and PDF take different result paths, by necessity.** The result constructor for an image
 refuses a media type that does not begin `image/`, so a PDF — `application/pdf` — cannot go through

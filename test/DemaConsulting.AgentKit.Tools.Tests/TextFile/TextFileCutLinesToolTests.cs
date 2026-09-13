@@ -31,12 +31,13 @@ public class TextFileCutLinesToolTests
     }
 
     /// <summary>
-    ///     Proves a range of lines is removed and the confirmation names the count and the first and
-    ///     last captured line.
+    ///     Proves a range of lines is removed and the confirmation names the count, the first and
+    ///     last captured line, the file's new total, and which line now sits where the removal
+    ///     began.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountAndBounds()
+    public async Task TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountBoundsAndNewTotal()
     {
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\n");
@@ -46,11 +47,38 @@ public class TextFileCutLinesToolTests
             tool,
             new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 2, ["endLine"] = 3 });
 
+        // A removal shifts every line below it, so the confirmation states the new total and the
+        // line that now sits at the cut's start rather than leaving a re-read as the only way to
+        // learn the new numbering.
         var text = Assert.IsType<string>(result);
-        Assert.Contains("Cut 2 lines (2-3)", text, StringComparison.Ordinal);
-        Assert.Contains("First: two", text, StringComparison.Ordinal);
-        Assert.Contains("Last: three", text, StringComparison.Ordinal);
+        Assert.Equal(
+            "Cut 2 lines (2-3) into buffer 'default'. The file now has 2 lines. "
+            + "First: two Last: three Line 2 is now: four",
+            text);
         Assert.Equal("one\nfour\n", await ReadAsync(Path.Combine(fixture.Root, "note.txt")));
+    }
+
+    /// <summary>
+    ///     Proves a cut that reaches the end of the file says so, since no line then sits where the
+    ///     removal began.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileCutLinesTool_Cut_ThroughEndOfFile_ReportsTheCutReachedTheEnd()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        var tool = TextFileCutLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 2, ["endLine"] = 3 });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(
+            "Cut 2 lines (2-3) into buffer 'default'. The file now has 1 lines and the cut reached "
+            + "the end of the file. First: two Last: three",
+            text);
     }
 
     /// <summary>

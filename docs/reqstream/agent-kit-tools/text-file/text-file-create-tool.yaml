@@ -32,13 +32,17 @@ sections:
               - id: AgentKitTools-TextFile-CreateTool-CreatesNew
                 title: >-
                   The create tool shall write a new file with the given content, treating empty
-                  content as a legitimate empty file.
+                  content as a legitimate empty file, and shall report the created file's total line
+                  count.
                 justification: |
                   Creating a file is the tool's reason to exist, and an empty file is a real outcome
-                  an agent may want.
+                  an agent may want. The line count is reported because a model that goes on to
+                  address the new file by line number would otherwise have to read it back first,
+                  which evaluation measured as a recurring waste after every edit.
                 tests:
-                  - TextFileCreateTool_Create_NewFile_WritesTheContent
+                  - TextFileCreateTool_Create_NewFile_WritesTheContentAndReportsTheLineCount
                   - TextFileCreateTool_Create_EmptyContent_CreatesAnEmptyFile
+                  - TextFileCreateTool_Create_EmptyContent_ReportsZeroLines
 
               - id: AgentKitTools-TextFile-CreateTool-RefusesExisting
                 title: >-

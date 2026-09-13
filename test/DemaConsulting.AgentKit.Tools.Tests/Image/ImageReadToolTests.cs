@@ -216,9 +216,11 @@ public class ImageReadToolTests
         // Act: request the .svg file
         var result = await InvokeAsync(tool, file);
 
-        // Assert: refused as an unsupported type and pointed at the tool that can read it
+        // Assert: refused as an unsupported type, stating what the file is; naming the reader for
+        // that kind of content is a classification, not a prescribed way around the refusal
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
         Assert.Contains(TextFileReadTool.ToolName, text, StringComparison.Ordinal);
     }
 
@@ -236,9 +238,12 @@ public class ImageReadToolTests
         // Act: request the directory itself
         var result = await InvokeAsync(tool, fixture.Root);
 
-        // Assert: refused as malformed, since a directory has no visual content
+        // Assert: refused as malformed, stating the fact and prescribing nothing
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("The requested path is a directory, not a file.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("instead", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Name an image file", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -255,9 +260,12 @@ public class ImageReadToolTests
         // Act: request a supported-type file that does not exist
         var result = await InvokeAsync(tool, Path.Combine(fixture.Root, "absent.png"));
 
-        // Assert: refused as not found
+        // Assert: refused as not found, stating the fact and prescribing nothing
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (TargetNotFound)", text, StringComparison.Ordinal);
+        Assert.Contains("The requested file does not exist.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Check the file name", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("request it again", text, StringComparison.Ordinal);
     }
 
     /// <summary>

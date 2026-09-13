@@ -7,8 +7,9 @@ This document describes the unit-level verification strategy for the `ImageMedia
 Nothing is mocked or stubbed. The unit is a pure function of a path's extension: it reads no state
 and touches no file system, so each scenario simply calls a method with a file name and asserts on
 the result. What must be verified is which extensions resolve to which media types, and how a file
-whose type the family cannot read is refused — including the redirects that turn a refusal into the
-model's next step and the deliberate absence of a redirect where none would be honest.
+whose type the family cannot read is refused — including the one case where naming a sibling reader
+states what the file is, and the cases where a refusal states the type is unsupported and nothing
+more.
 
 Unit tests reside in `Image/ImageMediaTypesTests.cs` within the
 `DemaConsulting.AgentKit.Tools.Tests` project.
@@ -51,12 +52,15 @@ resolves identically, so a caller is not refused for a difference that means not
 Error path: an extension the family does not read reports as unsupported with no media type, so the
 read tool refuses it rather than attempting a read it cannot complete.
 
-##### AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText: An svg Redirects to the Text File Read Tool
+##### AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText: An svg Is Stated to Be Text
 
 **Test**: `ImageMediaTypes_DenyUnsupportedType_Svg_RedirectsToTextFileRead`
 
-Error path with a redirect: an `.svg` is refused as an unsupported type and the refusal names
-`text_file_read`, the tool that can actually read the vector-text content.
+Error path stating what the file is: an `.svg` is refused as an unsupported type, the refusal states
+that it is text and vector content, and it names `text_file_read` as the reader for that kind of
+content. Naming the tool survives the denial rule on the same basis as the text file read tool's own
+binary-content refusal naming `image_read` — the naming *is* the classification, not a prescribed way
+around the refusal.
 
 ##### AgentKitTools-Image-MediaTypes-RefusesSvgzNoTool: An svgz Is Refused Without a Redirect
 

@@ -143,12 +143,14 @@ Disclosure behavior: asserts the refusal names the permitted location so a confi
 where it may work. The transcript leaves the process, so this disclosure is a deliberate control —
 the rule that once redacted these refusals is dropped.
 
-#### AgentKitTools-Image-DenialsAreResults: An Unsupported Type Is Refused With a Redirect Where Useful
+#### AgentKitTools-Image-DenialsAreResults: An Unsupported Type Is Refused, Stating What the File Is
 
 **Test**: `Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful`
 
-Error path: an `.svg` — text a text tool reads — is refused as an unsupported type and the refusal
-names `text_file_read`, which is what turns a dead end into the agent's next step.
+Error path: an `.svg` — which genuinely *is* text — is refused as an unsupported type, the refusal
+states that, and it names `text_file_read` as the reader for that kind of content. The naming is a
+classification of the file rather than a prescribed way around the refusal, on the same basis as the
+text file read tool's own binary-content refusal naming `image_read`.
 
 #### AgentKitTools-Image-ObservesPolicyLimits: A File Beyond the Binary Ceiling Is Refused, Not Truncated
 
