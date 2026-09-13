@@ -1,0 +1,56 @@
+---
+# Software Unit Requirements for FilePack
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FilePack Requirements
+            requirements:
+              - id: AgentKitTools-File-Pack-FamilyPrefix
+                title: >-
+                  The pack shall publish the family prefix file as a constant and through the
+                  contract.
+                justification: |
+                  The prefix is what keeps the family's names from colliding with another library's,
+                  and publishing it both ways keeps the constant and the contract from drifting.
+                tests:
+                  - FilePack_FamilyPrefix_IsPublishedAsConstantAndContract
+
+              - id: AgentKitTools-File-Pack-NoCapabilityRequired
+                title: >-
+                  The pack shall require no host capability.
+                justification: |
+                  Managing files asks nothing of the host, so every composition receives the family.
+                tests:
+                  - FilePack_RequiredCapabilities_IsNone
+
+              - id: AgentKitTools-File-Pack-RegistersFourTools
+                title: >-
+                  The pack shall create its four tools — list, copy, move and delete — in a fixed,
+                  documented order.
+                justification: |
+                  The order a model sees the tools in is observable, so it is fixed rather than
+                  incidental.
+                tests:
+                  - FilePack_CreateTools_RegistersListCopyMoveDeleteInOrder
+
+              - id: AgentKitTools-File-Pack-ToolsCarryFamilyPrefix
+                title: >-
+                  Every tool the pack creates shall carry a valid, family-prefixed name and a
+                  description.
+                justification: |
+                  The prefix-collision check the builder performs depends on this being true.
+                tests:
+                  - FilePack_CreateTools_EveryTool_CarriesAValidatedNameAndDescription
+
+              - id: AgentKitTools-File-Pack-RequiresPolicy
+                title: >-
+                  The pack shall require a policy to create its tools.
+                tags: [security]
+                justification: |
+                  A missing policy is a programming error in the composing application, named at the
+                  point it was made.
+                tests:
+                  - FilePack_CreateTools_NullPolicy_ThrowsArgumentNullException

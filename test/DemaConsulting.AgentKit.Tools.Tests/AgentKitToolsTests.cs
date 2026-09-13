@@ -1,5 +1,7 @@
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Image;
+using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.TextFile;
 
 namespace DemaConsulting.AgentKit.Tools.Tests;
@@ -40,9 +42,57 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's three tools are published, each under the family prefix
+        // Assert: the family's seven tools are published, each under the family prefix
         Assert.Equal(
-            ["text_file_read", "text_file_write", "text_file_list"],
+            [
+                "text_file_search",
+                "text_file_read",
+                "text_file_create",
+                "text_file_replace",
+                "text_file_cut_lines",
+                "text_file_copy_lines",
+                "text_file_paste_lines"
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that attaching the File pack contributes the type-agnostic file family to a
+    ///     composition, under the one family prefix the pack claims.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_FilePack_ContributesTheFileFamily()
+    {
+        // Arrange: a policy governing a composition with the file family attached
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+        var builder = new ToolPackBuilder(policy).Add(new FilePack());
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: the family's four tools are published, each under the family prefix
+        Assert.Equal(
+            ["file_list", "file_copy", "file_move", "file_delete"],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that attaching the Markdown pack contributes the markdown family to a composition,
+    ///     under the one family prefix the pack claims.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_MarkdownPack_ContributesTheMarkdownFamily()
+    {
+        // Arrange: a policy governing a composition with the markdown family attached
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+        var builder = new ToolPackBuilder(policy).Add(new MarkdownPack());
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: the family's single tool is published, under the family prefix
+        Assert.Equal(
+            ["markdown_outline"],
             tools.Select(tool => tool.Name));
     }
 

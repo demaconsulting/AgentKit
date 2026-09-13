@@ -1,7 +1,5 @@
 ---
 # Software Unit Requirements for TextFileReadTool
-#
-# These requirements describe the design-level behavior of the TextFileReadTool unit.
 
 sections:
   - title: AgentKitTools Requirements
@@ -15,176 +13,145 @@ sections:
                   The read tool shall be published under the name text_file_read, exposed as a
                   constant on the unit that defines it, and shall carry a description.
                 justification: |
-                  The name is the only handle a model has on the tool, and a sibling tool that
-                  redirects to it must name it without repeating a literal that could drift.
-                  A description is the only basis a model has for choosing this tool over
-                  another, so a tool offered without one is offered blind.
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing this tool over another.
                 tests:
                   - TextFileReadTool_ToolName_Constant_IsTheFamilyQualifiedName
                   - TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
 
               - id: AgentKitTools-TextFile-ReadTool-GuardedConstruction
                 title: >-
-                  The read tool shall be constructed only through the guarded construction path
-                  with an access policy supplied at construction, and shall deliver its result to
-                  the caller in the form it returned it.
+                  The read tool shall be constructed only through the guarded construction path with
+                  an access policy supplied at construction, and shall deliver its result unserialized.
                 tags: [security]
                 justification: |
-                  Without the guard the result is serialized to JSON before a provider sees it,
-                  a failure that is silent because the model reports success either way.
-                  Requiring the policy at construction is what makes a read tool governed by no policy
-                  impossible to build rather than merely a mistake somebody might notice.
+                  Without the guard the result is serialized to JSON before a provider sees it, and
+                  requiring the policy at construction makes an unguarded read tool impossible to
+                  build.
                 tests:
                   - TextFileReadTool_Create_NullPolicy_ThrowsArgumentNullException
                   - TextFileReadTool_Read_PermittedFile_ResultIsPlainTextNotJsonElement
 
-              - id: AgentKitTools-TextFile-ReadTool-ReadPermittedFile
+              - id: AgentKitTools-TextFile-ReadTool-RelativePath
                 title: >-
-                  The read tool shall return the text content of a file the access policy permits
-                  it to read, including an empty file.
+                  The read tool shall read a file named relative to the workspace root, and shall
+                  report the file's path in the caller's dialect.
                 justification: |
-                  Reading a permitted file is the tool's reason to exist, and the content
-                  returned must be that of the real file rather than of whatever the requested
-                  path appeared to name. An empty file is a legitimate result; reporting it as a
-                  refusal would tell the model something untrue about the host.
+                  A model asks for a file by the bare name a listing reported, so that name must be
+                  directly usable, and the header must echo it in the same dialect.
                 tests:
-                  - TextFileReadTool_Read_PermittedFile_ReturnsTheFileContents
-                  - TextFileReadTool_Read_EmptyFile_ReturnsEmptyTextNotDenial
+                  - TextFileReadTool_Read_BareFileName_ReturnsTheFileContents
 
               - id: AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
                 title: >-
-                  The read tool shall refuse a request whose real location lies outside the
-                  permitted read location, including one that reaches outside through a link.
+                  The read tool shall refuse a request whose real location lies outside the permitted
+                  read location, including one that reaches outside through a link, without disclosing
+                  the file's content.
                 tags: [security]
                 justification: |
-                  This is the primary threat the library exists to control: a path that looks
-                  contained can still reach outside it when a reparse point sits anywhere along
-                  it. Judging the request on the location it actually reaches keeps an agent
-                  inside what its operator granted.
+                  A path that looks contained can still reach outside it through a reparse point;
+                  judging the request on the location it actually reaches keeps an agent inside what
+                  its operator granted.
                 tests:
                   - TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial
                   - TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial
 
-              - id: AgentKitTools-TextFile-ReadTool-MissingFileDenied
+              - id: AgentKitTools-TextFile-ReadTool-RangedPaging
                 title: >-
-                  The read tool shall refuse a request for a file that does not exist, directing
-                  the model to the listing tool.
+                  The read tool shall return only the requested window of lines when startLine and
+                  lineCount are supplied, clamping a window that runs past the end of the file to the
+                  file's true total.
                 justification: |
-                  An agent told only "no" retries the same tool with the same name, while an
-                  agent told which tool would find the right name makes progress. A missing file
-                  is the case where the better alternative is obvious, so naming it costs the
-                  model nothing and saves a wasted turn.
+                  Paging is what lets a model work with a file larger than a single result; the
+                  window it asks for is the window it receives, bounded honestly by the file's size.
                 tests:
-                  - TextFileReadTool_Read_MissingFile_ReturnsDenialRedirectingToList
+                  - TextFileReadTool_Read_RangedWindow_ReturnsOnlyThoseLines
+                  - TextFileReadTool_Read_LineCountPastEndOfFile_ClampsToTheTotal
 
-              - id: AgentKitTools-TextFile-ReadTool-DirectoryRefused
+              - id: AgentKitTools-TextFile-ReadTool-LineNumbered
                 title: >-
-                  The read tool shall refuse a request naming a directory, directing the model to
-                  the listing tool.
+                  The read tool shall open its result with a 'path lines A-B of N' header and prefix
+                  each line with its 1-based number and a delimiter that is not part of the content.
                 justification: |
-                  A directory has no text to return, and the operation the model almost certainly
-                  intended has its own tool. Refusing with that redirect turns a dead end into the
-                  next step.
+                  The header lets a model learn how far a file extends beyond the window it received,
+                  and the numbered prefix — clearly not content — lets it address a line while
+                  keeping the raw text available for an exact-match edit.
                 tests:
-                  - TextFileReadTool_Read_DirectoryPath_ReturnsDenialRedirectingToList
+                  - TextFileReadTool_Read_PermittedFile_ReturnsNumberedContentWithHeader
 
-              - id: AgentKitTools-TextFile-ReadTool-ReadCeiling
+              - id: AgentKitTools-TextFile-ReadTool-PastEndOfFile
                 title: >-
-                  The read tool shall refuse a file larger than the policy's read ceiling, naming
-                  the ceiling, and shall read a file that sits exactly on it.
+                  The read tool shall return an honest empty window naming the true total when the
+                  start line is past the end of the file, and shall report an empty file as zero
+                  lines rather than as a refusal.
                 justification: |
-                  A file read past the ceiling crowds out the conversation the agent still has to
-                  have, and the failure presents as the model becoming vague rather than as an
-                  error anyone can see. The boundary is stated explicitly because a ceiling whose
-                  inclusiveness is undefined is one every caller has to guess at.
+                  Paging too far is a fact about the request, not a malformed one, and an empty file
+                  is a legitimate result; reporting either as a refusal would tell the model
+                  something untrue.
                 tests:
-                  - TextFileReadTool_Read_FileLargerThanTheReadCeiling_ReturnsDenialNamingTheCeiling
-                  - TextFileReadTool_Read_FileAtTheReadCeiling_IsRead
+                  - TextFileReadTool_Read_StartLinePastEndOfFile_ReturnsEmptyWindowNamingTotal
+                  - TextFileReadTool_Read_EmptyFile_ReturnsZeroLineHeaderNotDenial
 
-              - id: AgentKitTools-TextFile-ReadTool-ResultCeiling
+              - id: AgentKitTools-TextFile-ReadTool-MissingOrDirectory
                 title: >-
-                  The read tool shall refuse to return text exceeding the policy's result ceiling
-                  rather than returning a truncated part of it.
+                  The read tool shall refuse a missing file and a directory with a plain fact that
+                  names no other tool.
                 justification: |
-                  What a tool may read and what it may return are deliberately different budgets,
-                  and the return budget is the tighter one. Truncating would hand the model a
-                  silently incomplete document, which is worse than a refusal it can act on.
+                  A denial states a fact and never prescribes a remedy; a directory has no text and a
+                  missing file has none, so the refusal states that and names no tool to run.
                 tests:
-                  - TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncatedText
+                  - TextFileReadTool_Read_MissingFile_ReturnsDenialNamingNoTool
+                  - TextFileReadTool_Read_DirectoryPath_ReturnsDenialNamingNoTool
+
+              - id: AgentKitTools-TextFile-ReadTool-MalformedRequest
+                title: >-
+                  The read tool shall return a refusal rather than throwing when the path is omitted,
+                  empty or whitespace, or when a paging argument is out of its domain.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must be told
+                  how to correct it; an exception at a tool call ends the agent's turn.
+                tests:
+                  - TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing
+                  - TextFileReadTool_Read_InvalidStartLine_ReturnsDenialWithoutThrowing
 
               - id: AgentKitTools-TextFile-ReadTool-BinaryRefused
                 title: >-
                   The read tool shall refuse a file whose content is binary rather than text,
-                  reporting it as unsupported media and, where the file's type is one the image
-                  tool can read, directing the model to that tool.
+                  reporting it as unsupported media and redirecting to the image tool where the type
+                  is one it can read, while still reading a byte-order-marked text file.
                 justification: |
-                  Decoding a binary file as text injects a wall of replacement characters into
-                  the model's context: it wastes a large slice of the context window, tells the
-                  model nothing true, and invites it to reason confidently about content it never
-                  actually saw. Detection is content-based — a byte-order mark means text,
-                  otherwise a NUL byte or failed strict UTF-8 validation means binary — so a
-                  legitimately encoded UTF-16 or UTF-32 file, which carries NUL bytes yet decodes
-                  correctly, is not misclassified. The redirect is chosen from the extension by
-                  reusing the image family's own resolver, so an agent handed a picture is sent to
-                  the one tool that can read it rather than told only "no".
+                  Decoding a binary file as text injects a wall of replacement characters into the
+                  model's context; content-based detection keeps a legitimately encoded UTF-16 or
+                  UTF-32 file, which carries NUL bytes yet decodes correctly, from being misclassified.
                 tests:
                   - TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead
-                  - TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead
                   - TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect
-                  - TextFileReadTool_Read_InvalidUtf8WithoutBom_ReturnsDenial
                   - TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents
-                  - TextFileReadTool_Read_Utf16BigEndianBomTextFile_ReturnsTheFileContents
-                  - TextFileReadTool_Read_Utf32BomTextFile_ReturnsTheFileContents
-                  - TextFileReadTool_Read_Utf8TextFile_ReturnsTheFileContents
-                  - TextFileReadTool_Read_LargeValidUtf8_ReadsAcrossWindowBoundary
 
-              - id: AgentKitTools-TextFile-ReadTool-RelativePath
+              - id: AgentKitTools-TextFile-ReadTool-ReadCeiling
                 title: >-
-                  The read tool shall read a file named relative to the workspace root, and shall
-                  continue to read one named absolutely.
+                  The read tool shall page a file larger than the policy's read ceiling when a
+                  window is requested, materializing only the requested window, and shall refuse an
+                  unranged read of such a file with a refusal that names the file's total line count
+                  and directs the model to page with startLine and lineCount.
                 justification: |
-                  A model asks for a file by name, and the listing tool reports names relatively,
-                  so a name an agent just discovered must be directly usable as a request. The
-                  absolute form remains accepted because a host composing paths itself relies on
-                  it, and it remains subject to the same containment decision.
+                  A large file is only useful if the model can reach the line it needs; the read
+                  ceiling bounds the bytes materialized for a window rather than gating the whole
+                  file, so paging still works. An unranged read asks for the whole file as one
+                  window, which cannot fit — but naming the total line count and the paging arguments
+                  gives the model a way forward rather than a dead end.
                 tests:
-                  - TextFileReadTool_Read_BareFileName_ReturnsTheFileContents
-                  - TextFileReadTool_Read_DotSlashFileName_ReturnsTheFileContents
-                  - TextFileReadTool_Read_NestedRelativePath_ReturnsTheFileContents
-                  - TextFileReadTool_Read_AbsolutePathInsideRoot_ReturnsTheFileContents
+                  - TextFileReadTool_Read_RangedWindowInLargeFile_ReturnsThatWindowNotADenial
+                  - TextFileReadTool_Read_RangedWindowNearEndOfLargeFile_ReturnsTailWindow
+                  - TextFileReadTool_Read_UnrangedLargeFile_ReturnsDenialNamingRecourseAndTotal
+                  - TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse
 
-              - id: AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
+              - id: AgentKitTools-TextFile-ReadTool-ResultCeiling
                 title: >-
-                  The read tool shall return a refusal, rather than raising an exception or a
-                  framework error, when the requested path is omitted, empty or consists only of
-                  whitespace.
+                  The read tool shall refuse to return a window exceeding the policy's result ceiling
+                  rather than returning a truncated part of it.
                 justification: |
-                  A malformed request comes from the model, so the model is the one that must be
-                  told how to correct it. An exception at a tool call ends the agent's turn and
-                  strands it, turning a typo into a failed task. An omitted argument is the same
-                  case reached by a different route: a path parameter that is required rather
-                  than defaulted fails inside the function factory before the tool is reached,
-                  and the model receives an opaque framework error instead of a refusal naming
-                  what to supply.
+                  What a tool may read and what it may return are different budgets, and truncating
+                  would hand the model a silently incomplete document.
                 tests:
-                  - TextFileReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing
-                  - TextFileReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing
-                  - TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing
-
-              - id: AgentKitTools-TextFile-ReadTool-DenialDisclosure
-                title: >-
-                  A refusal from the read tool shall carry the disclosure the access policy
-                  produces: it shall echo the request, state any interpretation, and enumerate the
-                  permitted locations, while a refusal the tool composes itself shall name only a
-                  ceiling or a sibling tool.
-                justification: |
-                  The host-path-disclosure rule that once redacted these refusals is deliberately
-                  dropped. A policy refusal now discloses the permitted locations so a confined
-                  model learns where it may read instead of guessing, and the tool passes that
-                  refusal through unchanged. The tool's own refusals — a binary file redirected to
-                  another tool, or an oversized file naming its ceiling — still interpolate only an
-                  integer or a sibling tool name, because they concern the file's shape rather than
-                  its location.
-                tests:
-                  - TextFileReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation
-                  - TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm
+                  - TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncated

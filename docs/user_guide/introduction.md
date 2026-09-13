@@ -63,7 +63,8 @@ lacks a documentation summary, so the reference is complete by construction.
 
 AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
 every tool an application writes for itself, is built against. Ready-made guarded tool families
-ship in `DemaConsulting.AgentKit.Tools` — the text file and image families described under
+ship in `DemaConsulting.AgentKit.Tools` — the text file, file, markdown and image families
+described under
 [Tool Families](#tool-families) below — so a consumer can attach shipped tools directly, or write
 its own tools against this contract.
 
@@ -183,20 +184,30 @@ create its tools at all, so the model is never offered a tool it cannot use.
 
 # Tool Families
 
-`DemaConsulting.AgentKit.Tools` ships two ready-made guarded tool families. Each family is a pack
+`DemaConsulting.AgentKit.Tools` ships four ready-made guarded tool families. Each family is a pack
 an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
 requires and returns the `AIFunction` list to hand to an agent framework.
 
 ## Available Tools
 
-| Family    | Tool              | Purpose                                                   | Required capability |
-|-----------|-------------------|-----------------------------------------------------------|---------------------|
-| Text file | `text_file_read`  | Reads a text file within the policy                       | None                |
-| Text file | `text_file_write` | Writes a text file within the policy                      | None                |
-| Text file | `text_file_list`  | Lists text files within the policy                        | None                |
-| Image     | `image_read`      | Reads an image or PDF document for a vision-capable agent | `Vision`            |
+| Family    | Tool                    | Purpose                                          | Required capability |
+|-----------|-------------------------|--------------------------------------------------|---------------------|
+| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None                |
+| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None                |
+| Text file | `text_file_create`      | Creates a new text file within the policy        | None                |
+| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None                |
+| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None                |
+| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None                |
+| Text file | `text_file_paste_lines` | Pastes previously cut lines back into a file     | None                |
+| File      | `file_list`             | Lists files of any type within the policy        | None                |
+| File      | `file_copy`             | Copies a file within the policy                  | None                |
+| File      | `file_move`             | Moves a file within the policy                   | None                |
+| File      | `file_delete`           | Deletes a single file within the policy          | None                |
+| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
+| Image     | `image_read`            | Reads an image or PDF for a vision-capable agent | `Vision`            |
 
-The text file family (`TextFilePack`) requires no host capability. The image family (`ImagePack`)
+The text file family (`TextFilePack`), the file family (`FilePack`), and the Markdown family
+(`MarkdownPack`) require no host capability. The image family (`ImagePack`)
 requires the `Vision` host capability: unless the host declares `HostCapabilities.Vision`, the
 builder never asks the pack to create `image_read`, so a model is never offered a tool its host
 cannot use.
@@ -209,6 +220,8 @@ An application names its working directory, adds the packs it wants to a
 ```csharp
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.AgentKit.Tools.File;
+using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.Image;
 using Microsoft.Extensions.AI;
 
@@ -217,6 +230,8 @@ var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
 IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .WithHostCapabilities(HostCapabilities.Vision)
     .Add(new TextFilePack())
+    .Add(new FilePack())
+    .Add(new MarkdownPack())
     .Add(new ImagePack())
     .Build();
 
@@ -225,8 +240,8 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 
 Every tool returned observes the same policy and limits: a `text_file_read` that steps outside the
 granted location, or exceeds the byte ceiling, returns a refusal rather than the file. Every tool
-also reads a path the same way, so a name `text_file_list` reported can be handed straight back to
-`text_file_read` or `image_read`, and `text_file_list` called with no directory lists every
+also reads a path the same way, so a name `file_list` reported can be handed straight back to
+`text_file_read` or `image_read`, and `file_list` called with no directory lists every
 permitted location. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.

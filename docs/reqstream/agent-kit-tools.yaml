@@ -25,30 +25,86 @@ sections:
 
       - id: AgentKitTools-TextFileFamily-GuardedTextFileAccess
         title: >-
-          The library shall provide a text file family that reads, writes and lists text files
-          under the access policy the composing application supplies, interpreting the paths a
-          model states as relative to the workspace, publishing every tool under
-          one family prefix and refusing rather than throwing when the policy does not permit a
-          request.
+          The library shall provide a text file family that searches, reads, creates and edits the
+          contents of text files under the access policy the composing application supplies,
+          interpreting the paths a model states as relative to the workspace, paging a read to a
+          line-numbered window, editing by exact content match and by captured line range,
+          publishing every tool under one family prefix and refusing rather than throwing when the
+          policy does not permit a request.
         tags: [system, security]
         justification: |
-          Reading, writing and listing text files is the capability an agent needs most often and
-          the one an operator is least willing to grant unconditionally. Providing it as one
-          policy-governed family means an application grants file access in a single, auditable
-          step, with containment applied to every request rather than to whichever tool happened
-          to remember to check. A model states a path the way a person does — a bare file name —
-          so the family must read it that way, or an operator's correctly configured agent is
-          refused every legitimate request. Refusing rather than throwing keeps a denied request
-          from ending the agent's turn, so a model that asks for the wrong file learns why and
-          can ask again.
+          Reading and editing the contents of text files is the capability an agent needs most
+          often and the one an operator is least willing to grant unconditionally. Providing it as
+          one policy-governed family means an application grants file-content access in a single,
+          auditable step, with containment applied to every request rather than to whichever tool
+          happened to remember to check. A model states a path the way a person does — a bare file
+          name — so the family must read it that way, or an operator's correctly configured agent
+          is refused every legitimate request. Paging a read lets a model work with a file larger
+          than a single result; editing by exact content match lets it change one line without
+          rewriting the file; and a cut always captures what it removes so every deletion is
+          recoverable. Refusing rather than throwing keeps a denied request from ending the
+          agent's turn.
         children:
           - AgentKitTools-TextFile-FamilyComposition
           - AgentKitTools-TextFile-GuardedConstruction
           - AgentKitTools-TextFile-PolicyGoverned
+          - AgentKitTools-TextFile-NavigationAndPaging
+          - AgentKitTools-TextFile-ContentEditing
           - AgentKitTools-TextFile-DenialsAreResults
           - AgentKitTools-TextFile-ObservesPolicyLimits
         tests:
           - AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily
+
+      - id: AgentKitTools-FileFamily-GuardedFileManagement
+        title: >-
+          The library shall provide a type-agnostic file family that lists, copies, moves and
+          deletes files of any type under the access policy the composing application supplies,
+          judging each endpoint by the policy decision that matches it, refusing to overwrite an
+          existing destination unless overwrite is explicitly permitted, deleting only a single
+          file and never a directory, publishing every tool under one family prefix and refusing
+          rather than throwing when the policy does not permit a request.
+        tags: [system, security]
+        justification: |
+          Managing the files an agent works with — listing what exists, copying, moving and
+          deleting — is the same operation whatever a file holds, so it belongs to a family that
+          treats a file as an entity rather than as a kind of content. Providing it as one
+          policy-governed family means an application grants file management in a single, auditable
+          step, with containment applied to every endpoint. Refusing to clobber a destination and
+          refusing to delete a directory make the two most dangerous, least reversible operations
+          impossible to perform by accident; recovery from a mistaken change is source control,
+          which is why an agent should be run in a repository. This family replaces the listing the
+          text family used to provide, so listing is now type-agnostic rather than wearing a text
+          prefix.
+        children:
+          - AgentKitTools-File-FamilyComposition
+          - AgentKitTools-File-GuardedConstruction
+          - AgentKitTools-File-PolicyGoverned
+          - AgentKitTools-File-DenialsAreResults
+          - AgentKitTools-File-SafeMutation
+        tests:
+          - AgentKitTools_SystemComposition_FilePack_ContributesTheFileFamily
+
+      - id: AgentKitTools-MarkdownFamily-GuardedMarkdownOutline
+        title: >-
+          The library shall provide a markdown family that reports the heading structure of a
+          Markdown file as sections carrying a level, a title and a 1-based line range under the
+          access policy the composing application supplies, publishing every tool under one family
+          prefix and refusing rather than throwing when the policy does not permit a request.
+        tags: [system, security]
+        justification: |
+          A model that means to read or remove a section of a Markdown document needs to know where
+          the section is. Reporting each section's line range composes directly into the text
+          family's read and cut tools, so the markdown family provides only the outline the text
+          family cannot supply on its own rather than duplicating reading or editing. Providing it
+          as one policy-governed family keeps containment applied to every request, and owning the
+          markdown family prefix is why a sample demonstrating custom tools uses a different prefix.
+        children:
+          - AgentKitTools-Markdown-FamilyComposition
+          - AgentKitTools-Markdown-GuardedConstruction
+          - AgentKitTools-Markdown-PolicyGoverned
+          - AgentKitTools-Markdown-Outline
+        tests:
+          - AgentKitTools_SystemComposition_MarkdownPack_ContributesTheMarkdownFamily
 
       - id: AgentKitTools-ImageFamily-GuardedImageAccess
         title: >-

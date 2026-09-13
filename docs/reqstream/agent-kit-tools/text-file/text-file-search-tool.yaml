@@ -1,0 +1,145 @@
+---
+# Software Unit Requirements for TextFileSearchTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileSearchTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-SearchTool-ToolName
+                title: >-
+                  The search tool shall be published under the name text_file_search, exposed as a
+                  constant on the unit that defines it, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFileSearchTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-SearchTool-GuardedConstruction
+                title: >-
+                  The search tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded search tool impossible to
+                  build.
+                tests:
+                  - TextFileSearchTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-TextFile-SearchTool-PolicyFiltered
+                title: >-
+                  The search tool shall draw every candidate file from the access policy's own
+                  enumeration, so a search never discloses the content, the path, or the existence of
+                  a file the policy would refuse, including one reachable only through a link outside
+                  the grants, and shall skip a binary file rather than search it.
+                tags: [security]
+                justification: |
+                  This is the single most important security property of the family: a search that
+                  surfaced a file a read would refuse would leak both its contents and the fact that
+                  it exists. Drawing candidates from the policy's per-candidate-filtered enumeration
+                  is what makes enumeration and access reach the same conclusion.
+                tests:
+                  - TextFileSearchTool_Search_FileBeneathLinkOutsideRoot_IsNeverSurfaced
+                  - TextFileSearchTool_Search_BinaryFile_IsSkipped
+
+              - id: AgentKitTools-TextFile-SearchTool-Scoped
+                title: >-
+                  The search tool shall restrict the search to a named directory or a file glob when
+                  supplied, and shall refuse a named directory the policy does not permit rather than
+                  searching it silently.
+                justification: |
+                  Scoping a search keeps a result focused and small, and a refused directory must be
+                  reported so the model learns where it may search.
+                tests:
+                  - TextFileSearchTool_Search_FilePattern_RestrictsToMatchingFiles
+                  - TextFileSearchTool_Search_DirectoryOutsideGrants_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-SearchTool-GrepOutput
+                title: >-
+                  The search tool shall report a match grep-style as path:line:content, with the path
+                  in the caller's dialect and a 1-based line number.
+                justification: |
+                  The grep form is the one a developer reads without instruction, and the path and
+                  line number compose directly into the read tool.
+                tests:
+                  - TextFileSearchTool_Search_Match_ReportsPathLineContent
+
+              - id: AgentKitTools-TextFile-SearchTool-ContextLines
+                title: >-
+                  The search tool shall show the requested number of context lines around each match,
+                  distinguishing a context line from a match line.
+                justification: |
+                  Context is what lets a model understand a match without a second read, and the
+                  separator convention keeps a context line from being mistaken for a match.
+                tests:
+                  - TextFileSearchTool_Search_WithContextLines_ShowsSurroundingLines
+
+              - id: AgentKitTools-TextFile-SearchTool-Matching
+                title: >-
+                  The search tool shall treat the pattern literally by default, interpret it as a
+                  regular expression when literal is false, and honor the ignore-case option in
+                  either mode.
+                justification: |
+                  Most searches are for a fixed string, and treating the pattern literally avoids a
+                  stray metacharacter matching by surprise while leaving the regular-expression mode
+                  available.
+                tests:
+                  - TextFileSearchTool_Search_LiteralByDefault_MatchesMetacharactersAsText
+                  - TextFileSearchTool_Search_RegexMode_MatchesTheExpression
+                  - TextFileSearchTool_Search_IgnoreCase_MatchesRegardlessOfCase
+
+              - id: AgentKitTools-TextFile-SearchTool-MaxMatches
+                title: >-
+                  The search tool shall cap the number of reported matches at maxMatches when
+                  supplied.
+                justification: |
+                  A cap keeps a search over a large tree from spending the whole result budget on one
+                  common term.
+                tests:
+                  - TextFileSearchTool_Search_MaxMatches_CapsTheReportedMatches
+
+              - id: AgentKitTools-TextFile-SearchTool-EmptyResult
+                title: >-
+                  The search tool shall report a search that matched nothing, and a search over an
+                  empty location, as a plain result rather than a refusal.
+                justification: |
+                  A search that found nothing is not a failed request, so refusing would tell the
+                  model its request was wrong when it was merely unproductive.
+                tests:
+                  - TextFileSearchTool_Search_NoMatch_ReturnsNoMatchesNotADenial
+                  - TextFileSearchTool_Search_EmptyDirectory_ReturnsNoMatches
+
+              - id: AgentKitTools-TextFile-SearchTool-InvalidRegex
+                title: >-
+                  The search tool shall return a refusal rather than throwing when the pattern is an
+                  invalid regular expression or absent.
+                justification: |
+                  A malformed pattern comes from the model, so the model must be told how to correct
+                  it rather than have its turn ended by an exception.
+                tests:
+                  - TextFileSearchTool_Search_InvalidRegex_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-TextFile-SearchTool-LargeFileSearchable
+                title: >-
+                  The search tool shall search a text file larger than the policy's read ceiling by
+                  streaming it line by line, so no readable file is silently omitted for size.
+                justification: |
+                  A file invisible to search because it is large is a silent gap the model cannot
+                  see or work around; streaming the file line by line searches it within bounded
+                  memory without gating on its size, while the leading binary sniff still skips a
+                  file that is not text.
+                tests:
+                  - TextFileSearchTool_Search_MatchInsideLargeFile_IsReported
+
+              - id: AgentKitTools-TextFile-SearchTool-BoundedResult
+                title: >-
+                  The search tool shall refuse a result exceeding the policy's result ceiling, naming
+                  the ceiling rather than truncating.
+                justification: |
+                  A truncated search result hides matches the model would then never see; naming the
+                  ceiling lets it narrow the search instead.
+                tests:
+                  - TextFileSearchTool_Search_MaxMatches_CapsTheReportedMatches

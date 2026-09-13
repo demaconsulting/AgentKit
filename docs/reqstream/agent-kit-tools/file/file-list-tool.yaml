@@ -1,0 +1,75 @@
+---
+# Software Unit Requirements for FileListTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileListTool Requirements
+            requirements:
+              - id: AgentKitTools-File-ListTool-ToolName
+                title: >-
+                  The list tool shall be published under the name file_list, exposed as a constant,
+                  and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - FileListTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - FileListTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-File-ListTool-GuardedConstruction
+                title: >-
+                  The list tool shall be constructed only through the guarded construction path with
+                  an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded list tool impossible to
+                  build.
+                tests:
+                  - FileListTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-ListTool-TypeAgnostic
+                title: >-
+                  The list tool shall list files of every type, not only text files, enumerating
+                  strictly through the access policy.
+                justification: |
+                  The family treats a file as an entity, so its listing reports a file whatever it
+                  holds; enumerating through the policy is what keeps an escaped file from ever being
+                  listed.
+                tests:
+                  - FileListTool_List_TypeAgnostic_ReportsFilesOfEveryType
+
+              - id: AgentKitTools-File-ListTool-Discovery
+                title: >-
+                  The list tool shall list every permitted location when the directory is omitted,
+                  including one that currently holds no matching file, and shall report an empty
+                  directory as a fact rather than a refusal.
+                justification: |
+                  A model exploring for the first time has no directory to name, and a discovery
+                  listing that hid a granted location would let it invent a path; an empty listing is
+                  an answer, not an error.
+                tests:
+                  - FileListTool_List_OmittedDirectory_ListsEveryPermittedLocationIncludingEmpty
+                  - FileListTool_List_EmptyDirectory_ReturnsNoFilesMatchedNotADenial
+
+              - id: AgentKitTools-File-ListTool-Glob
+                title: >-
+                  The list tool shall restrict a listing to a glob pattern, honoring an optional
+                  recursive prefix.
+                justification: |
+                  A glob keeps a listing focused; a recursive prefix is accepted for the model's
+                  convenience because the policy enumeration walks the whole subtree anyway.
+                tests:
+                  - FileListTool_List_GlobPattern_RestrictsToMatchingFiles
+
+              - id: AgentKitTools-File-ListTool-PolicyGoverned
+                title: >-
+                  The list tool shall refuse a directory outside the grants, disclosing the permitted
+                  location.
+                tags: [security]
+                justification: |
+                  A refused directory must be reported so the model learns where it may read.
+                tests:
+                  - FileListTool_List_DirectoryOutsideGrants_ReturnsDenial

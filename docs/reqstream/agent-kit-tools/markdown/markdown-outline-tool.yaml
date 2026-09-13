@@ -1,0 +1,93 @@
+---
+# Software Unit Requirements for MarkdownOutlineTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Markdown Requirements
+        sections:
+          - title: MarkdownOutlineTool Requirements
+            requirements:
+              - id: AgentKitTools-Markdown-OutlineTool-ToolName
+                title: >-
+                  The outline tool shall be published under the name markdown_outline, exposed as a
+                  constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - MarkdownOutlineTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-Markdown-OutlineTool-GuardedConstruction
+                title: >-
+                  The outline tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded outline tool impossible to
+                  build.
+                tests:
+                  - MarkdownOutlineTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Markdown-OutlineTool-Sections
+                title: >-
+                  The outline tool shall report each section's level, title and 1-based line range,
+                  computing a section's end as the line before the next heading of the same or a
+                  higher level, and skipping a hash inside a fenced code block.
+                justification: |
+                  The line ranges feed the text read and cut tools, and a fence-aware reading keeps a
+                  hash in a code sample from being mistaken for a heading.
+                tests:
+                  - MarkdownOutlineTool_Outline_KnownFile_ReportsSectionsWithLineRanges
+
+              - id: AgentKitTools-Markdown-OutlineTool-MaxDepth
+                title: >-
+                  The outline tool shall filter the reported headings to maxDepth when supplied,
+                  without changing where a section ends.
+                justification: |
+                  A shallow outline still describes whole sections, so the depth filter changes only
+                  which sections are emitted, not their computed ranges.
+                tests:
+                  - MarkdownOutlineTool_Outline_MaxDepth_FiltersDeeperHeadings
+
+              - id: AgentKitTools-Markdown-OutlineTool-EmptyOutline
+                title: >-
+                  The outline tool shall report a file with no headings as an empty outline rather
+                  than a refusal.
+                justification: |
+                  A file with no headings is a legitimate result, so reporting a refusal would tell
+                  the model something untrue.
+                tests:
+                  - MarkdownOutlineTool_Outline_FileWithoutHeadings_ReturnsEmptyOutline
+
+              - id: AgentKitTools-Markdown-OutlineTool-PolicyGoverned
+                title: >-
+                  The outline tool shall consult the read decision, refusing a path outside the
+                  grants.
+                tags: [security]
+                justification: |
+                  Reading a file's structure is a read, so containment applies exactly as it does to
+                  the text read tool.
+                tests:
+                  - MarkdownOutlineTool_Outline_PathOutsideGrants_ReturnsDenial
+
+              - id: AgentKitTools-Markdown-OutlineTool-LargeDocument
+                title: >-
+                  The outline tool shall outline a document larger than the policy's read ceiling by
+                  streaming its headings, bounding the outline result rather than the source
+                  document.
+                justification: |
+                  A large document is exactly the one whose structure a model most needs to navigate;
+                  streaming the headings holds only the small heading list, so the read ceiling bounds
+                  the returned outline rather than gating the document.
+                tests:
+                  - MarkdownOutlineTool_Outline_LargeDocument_ReportsHeadingsNotADenial
+
+              - id: AgentKitTools-Markdown-OutlineTool-MissingOrDirectory
+                title: >-
+                  The outline tool shall refuse a missing file rather than throwing.
+                justification: |
+                  A missing file comes from the model's request, so it is a returned refusal it can
+                  act on.
+                tests:
+                  - MarkdownOutlineTool_Outline_MissingFile_ReturnsDenial

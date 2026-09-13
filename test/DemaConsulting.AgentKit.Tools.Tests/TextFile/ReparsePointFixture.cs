@@ -96,7 +96,7 @@ internal sealed class ReparsePointFixture : IDisposable
         Directory.CreateDirectory(directory);
 
         var filePath = Path.Combine(directory, fileName);
-        File.WriteAllText(filePath, content);
+        System.IO.File.WriteAllText(filePath, content);
         return filePath;
     }
 
@@ -118,7 +118,7 @@ internal sealed class ReparsePointFixture : IDisposable
         Directory.CreateDirectory(directory);
 
         var filePath = Path.Combine(directory, fileName);
-        File.WriteAllBytes(filePath, content);
+        System.IO.File.WriteAllBytes(filePath, content);
         return filePath;
     }
 

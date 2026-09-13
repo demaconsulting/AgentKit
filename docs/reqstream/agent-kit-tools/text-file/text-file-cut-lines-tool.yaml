@@ -1,0 +1,60 @@
+---
+# Software Unit Requirements for TextFileCutLinesTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileCutLinesTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-CutTool-ToolName
+                title: >-
+                  The cut-lines tool shall be published under the name text_file_cut_lines, exposed
+                  as a constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFileCutLinesTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-CutTool-GuardedConstruction
+                title: >-
+                  The cut-lines tool shall be constructed only through the guarded construction path,
+                  requiring both an access policy and a buffer at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy makes an unguarded cut tool impossible to build, and requiring
+                  the buffer is what lets the capture be shared with the paste tool.
+                tests:
+                  - TextFileCutLinesTool_Create_NullArguments_ThrowArgumentNullException
+
+              - id: AgentKitTools-TextFile-CutTool-CapturesAndRemoves
+                title: >-
+                  The cut-lines tool shall capture the removed range into a named buffer before
+                  removing it, and shall report the count and the first and last captured line.
+                justification: |
+                  A deletion of a whole range is recoverable only if what was removed is captured
+                  first; the report tells the model what it now holds in the buffer.
+                tests:
+                  - TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountAndBounds
+
+              - id: AgentKitTools-TextFile-CutTool-RangeValidation
+                title: >-
+                  The cut-lines tool shall refuse an out-of-range line range and leave the file
+                  unchanged.
+                justification: |
+                  A range validated against the file's real line count before anything is removed
+                  keeps an out-of-range cut from changing anything.
+                tests:
+                  - TextFileCutLinesTool_Cut_OutOfRange_ReturnsDenialAndLeavesFileUnchanged
+
+              - id: AgentKitTools-TextFile-CutTool-PolicyGoverned
+                title: >-
+                  The cut-lines tool shall consult the write decision alone, refusing a cut in a
+                  read-only location.
+                tags: [security]
+                justification: |
+                  Removing lines is a write, so a read-only location is refused.
+                tests:
+                  - TextFileCutLinesTool_Cut_ReadOnlyLocation_ReturnsDenial

@@ -25,6 +25,14 @@ package AgentKitTools {
         expose TextFile;
     }
 
+    view FileView {
+        expose File;
+    }
+
+    view MarkdownView {
+        expose Markdown;
+    }
+
     view ImageView {
         expose Image;
     }

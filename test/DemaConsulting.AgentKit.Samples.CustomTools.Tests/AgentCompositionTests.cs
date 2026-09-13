@@ -6,9 +6,9 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools.Tests;
 
 /// <summary>
 ///     Unit tests for the custom-tools sample: that the two author-written packs compose alongside a
-///     shipped pack, that the path-taking Markdown tool observes containment and returns a structured
-///     result, that the no-path clock tool returns a structured result, and that the instructions
-///     name the run's workspace and tools.
+///     shipped pack, that the path-taking document-statistics tool observes containment and returns a
+///     structured result, that the no-path clock tool returns a structured result, and that the
+///     instructions name the run's workspace and tools.
 /// </summary>
 /// <remarks>
 ///     These tests exercise the sample's real composition and tool bodies directly — no live
@@ -19,33 +19,20 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools.Tests;
 public sealed class AgentCompositionTests : IDisposable
 {
     /// <summary>
-    ///     A temporary workspace holding a known Markdown fixture, so section line numbers are
-    ///     deterministic.
+    ///     A temporary workspace holding a known text fixture, so the counts are deterministic.
     /// </summary>
     private readonly string _workspace;
 
     /// <summary>
-    ///     Initializes the fixture, creating a temporary workspace with a known Markdown file.
+    ///     Initializes the fixture, creating a temporary workspace with a known text file.
     /// </summary>
     public AgentCompositionTests()
     {
         _workspace = Path.Combine(Path.GetTempPath(), "custom-tools-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_workspace);
 
-        // A fixture with known headings on known lines: the fenced hash on line 8 must NOT be read
-        // as a heading, which is what proves the parser honors fenced code blocks.
-        var markdown =
-            "# Title\n" +          // line 1, level 1
-            "\n" +                 // line 2
-            "## Section A\n" +     // line 3, level 2
-            "text\n" +             // line 4
-            "### Sub\n" +          // line 5, level 3
-            "\n" +                 // line 6
-            "```text\n" +          // line 7 (fence open)
-            "# not a heading\n" +  // line 8 (inside fence)
-            "```\n" +              // line 9 (fence close)
-            "## Section B\n";      // line 10, level 2
-        File.WriteAllText(Path.Combine(_workspace, "doc.md"), markdown);
+        // A fixture with known counts: 5 words across 2 lines, 24 characters including newlines.
+        File.WriteAllText(Path.Combine(_workspace, "doc.txt"), "one two three\nfour five\n");
     }
 
     /// <summary>
@@ -74,42 +61,36 @@ public sealed class AgentCompositionTests : IDisposable
         // Assert: both custom tools and the shipped text-file tools are present, and every name is a
         // valid family-prefixed tool name
         Assert.Multiple(
-            () => Assert.Contains(MarkdownSectionsTool.ToolName, names),
+            () => Assert.Contains(DocStatsWordCountTool.ToolName, names),
             () => Assert.Contains(ClockNowTool.ToolName, names),
+            () => Assert.Contains("text_file_search", names),
             () => Assert.Contains("text_file_read", names),
-            () => Assert.Contains("text_file_write", names),
-            () => Assert.Contains("text_file_list", names),
+            () => Assert.Contains("text_file_replace", names),
             () => Assert.All(names, ToolName.Validate));
     }
 
     /// <summary>
-    ///     Proves the Markdown tool returns a structured listing of a file's headings with correct
-    ///     levels and 1-based line numbers, ignoring a hash inside a fenced code block.
+    ///     Proves the document-statistics tool returns a structured count of a file's words, lines
+    ///     and characters, addressed by its bare relative name.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task MarkdownSections_KnownFile_ReturnsStructuredHeadingsWithLineNumbers()
+    public async Task DocStatsWordCount_KnownFile_ReturnsStructuredCounts()
     {
-        // Arrange: the composed Markdown tool
-        var tool = GetTool(MarkdownSectionsTool.ToolName);
+        // Arrange: the composed document-statistics tool
+        var tool = GetTool(DocStatsWordCountTool.ToolName);
 
-        // Act: list the sections of the known fixture, addressed by its bare relative name
-        var result = await InvokeAsync(tool, "doc.md");
+        // Act: count the known fixture, addressed by its bare relative name
+        var result = await InvokeAsync(tool, "doc.txt");
 
-        // Assert: a structured result (a JsonElement, since the guard serializes structured data)
+        // Assert: a structured result carrying the deterministic counts
         var element = Assert.IsType<JsonElement>(result);
-        var sections = element.GetProperty("sections");
-
         Assert.Multiple(
             // The file lies inside the granted workspace, so it is reported by its bare relative name
-            () => Assert.Equal("doc.md", element.GetProperty("path").GetString()),
-            () => Assert.Equal(4, element.GetProperty("sectionCount").GetInt32()),
-            () => Assert.Equal(4, sections.GetArrayLength()),
-            () => AssertSection(sections[0], 1, "Title", 1),
-            () => AssertSection(sections[1], 2, "Section A", 3),
-            () => AssertSection(sections[2], 3, "Sub", 5),
-            // The fenced hash on line 8 is skipped; the next real heading is on line 10
-            () => AssertSection(sections[3], 2, "Section B", 10));
+            () => Assert.Equal("doc.txt", element.GetProperty("path").GetString()),
+            () => Assert.Equal(24, element.GetProperty("characters").GetInt32()),
+            () => Assert.Equal(5, element.GetProperty("words").GetInt32()),
+            () => Assert.Equal(2, element.GetProperty("lines").GetInt32()));
     }
 
     /// <summary>
@@ -118,13 +99,13 @@ public sealed class AgentCompositionTests : IDisposable
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task MarkdownSections_PathOutsideWorkspace_ReturnsPathNotPermittedDenial()
+    public async Task DocStatsWordCount_PathOutsideWorkspace_ReturnsPathNotPermittedDenial()
     {
-        // Arrange: the composed Markdown tool, and a path escaping the workspace
-        var tool = GetTool(MarkdownSectionsTool.ToolName);
+        // Arrange: the composed document-statistics tool, and a path escaping the workspace
+        var tool = GetTool(DocStatsWordCountTool.ToolName);
 
         // Act: request a file above the workspace
-        var result = await InvokeAsync(tool, "../escape.md");
+        var result = await InvokeAsync(tool, "../escape.txt");
 
         // Assert: a returned refusal, not a thrown exception, naming the containment reason
         var text = Assert.IsType<string>(result);
@@ -132,27 +113,27 @@ public sealed class AgentCompositionTests : IDisposable
     }
 
     /// <summary>
-    ///     Proves a no-argument request is answered as discovery, reporting the searchable locations
+    ///     Proves a no-argument request is answered as discovery, reporting the inspectable locations
     ///     and that relative addressing applies because the granted workspace is the anchor.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task MarkdownSections_NoArgument_ReturnsDiscoveryStructure()
+    public async Task DocStatsWordCount_NoArgument_ReturnsDiscoveryStructure()
     {
-        // Arrange: the composed Markdown tool
-        var tool = GetTool(MarkdownSectionsTool.ToolName);
+        // Arrange: the composed document-statistics tool
+        var tool = GetTool(DocStatsWordCountTool.ToolName);
 
         // Act: invoke with no arguments at all
         var result = await tool.InvokeAsync(
             new AIFunctionArguments(),
             TestContext.Current.CancellationToken);
 
-        // Assert: a structured discovery result naming the searchable workspace and the dialect
+        // Assert: a structured discovery result naming the inspectable workspace and the dialect
         var element = Assert.IsType<JsonElement>(result);
         Assert.Multiple(
             () => Assert.True(element.GetProperty("discovery").GetBoolean()),
             () => Assert.True(element.GetProperty("relativeAddressing").GetBoolean()),
-            () => Assert.True(element.GetProperty("searchableLocations").GetArrayLength() >= 1));
+            () => Assert.True(element.GetProperty("inspectableLocations").GetArrayLength() >= 1));
     }
 
     /// <summary>
@@ -191,23 +172,8 @@ public sealed class AgentCompositionTests : IDisposable
         // Assert: the workspace and both custom tools are named
         Assert.Multiple(
             () => Assert.Contains(_workspace, instructions, StringComparison.Ordinal),
-            () => Assert.Contains("markdown_sections", instructions, StringComparison.Ordinal),
+            () => Assert.Contains("docstats_wordcount", instructions, StringComparison.Ordinal),
             () => Assert.Contains("clock_now", instructions, StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    ///     Asserts a section element carries the expected level, title, and line number.
-    /// </summary>
-    /// <param name="section">The section JSON element.</param>
-    /// <param name="level">The expected heading level.</param>
-    /// <param name="title">The expected heading title.</param>
-    /// <param name="line">The expected 1-based line number.</param>
-    private static void AssertSection(JsonElement section, int level, string title, int line)
-    {
-        Assert.Multiple(
-            () => Assert.Equal(level, section.GetProperty("level").GetInt32()),
-            () => Assert.Equal(title, section.GetProperty("title").GetString()),
-            () => Assert.Equal(line, section.GetProperty("line").GetInt32()));
     }
 
     /// <summary>

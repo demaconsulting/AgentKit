@@ -17,7 +17,7 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools;
 ///     </para>
 ///     <para>
 ///     Printing each tool call and its result is the point of the sample. A user watches the agent
-///     call the author-written <c>markdown_sections</c> and <c>clock_now</c> tools and sees the
+///     call the author-written <c>docstats_wordcount</c> and <c>clock_now</c> tools and sees the
 ///     structured results — and, for a refused path, the containment denial — come back exactly as
 ///     they would for a shipped tool.
 ///     </para>

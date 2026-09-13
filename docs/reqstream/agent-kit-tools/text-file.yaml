@@ -12,44 +12,55 @@ sections:
         requirements:
           - id: AgentKitTools-TextFile-FamilyComposition
             title: >-
-              The text file family shall publish a read tool, a write tool and a list tool under
-              the text_file family prefix, and shall require no host capability.
+              The text file family shall publish seven content tools — search, read, create, replace,
+              cut-lines, copy-lines and paste-lines — under the text_file family prefix, and shall
+              require no host capability.
             justification: |
-              An application attaches a capability to an agent as one pack rather than as a
-              handful of individually registered tools, so the family must be the unit of
-              attachment. Publishing every tool under one prefix is what keeps this family's
-              names from colliding with those of any other library an application combines.
-              Requiring no host capability means an operator does not have to discover and
-              declare something before ordinary text file access works.
+              An application attaches a capability as one pack rather than as a handful of
+              individually registered tools, so the family must be the unit of attachment.
+              Publishing every tool under one prefix keeps this family's names from colliding with
+              those of any other library an application combines, and requiring no host capability
+              means ordinary text file access works without an operator declaring anything first.
             children:
+              - AgentKitTools-TextFile-SearchTool-ToolName
               - AgentKitTools-TextFile-ReadTool-ToolName
-              - AgentKitTools-TextFile-WriteTool-ToolName
-              - AgentKitTools-TextFile-ListTool-ToolName
+              - AgentKitTools-TextFile-CreateTool-ToolName
+              - AgentKitTools-TextFile-ReplaceTool-ToolName
+              - AgentKitTools-TextFile-CutTool-ToolName
+              - AgentKitTools-TextFile-CopyTool-ToolName
+              - AgentKitTools-TextFile-PasteTool-ToolName
               - AgentKitTools-TextFile-Pack-FamilyPrefix
               - AgentKitTools-TextFile-Pack-NoCapabilityRequired
-              - AgentKitTools-TextFile-Pack-RegistersThreeTools
+              - AgentKitTools-TextFile-Pack-RegistersSevenTools
               - AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
+              - AgentKitTools-TextFile-Buffers-DefaultSlot
             tests:
-              - TextFile_Family_ComposedThroughBuilder_PublishesReadWriteAndList
+              - TextFile_Family_ComposedThroughBuilder_PublishesTheSevenContentTools
               - TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily
 
           - id: AgentKitTools-TextFile-GuardedConstruction
             title: >-
               Every tool in the text file family shall be constructed through the guarded
-              construction path and shall take its access policy at construction.
+              construction path and shall take its access policy at construction, and the cut and
+              paste tools shall share one buffer per composition.
             tags: [security]
             justification: |
-              A tool built any other way has its result flattened into JSON before a provider
-              sees it, and a tool that received its policy later — or not at all — could be
-              attached to an agent while governed by nothing. Making construction the only
-              moment a policy can be supplied is what makes an unguarded tool, or one governed by
-              no policy, impossible to express rather than merely discouraged.
+              A tool built any other way has its result flattened into JSON before a provider sees
+              it, and a tool that received its policy later — or not at all — could be attached to
+              an agent while governed by nothing. Allocating one buffer per composition gives the
+              cut/paste buffer exactly the lifetime of the tools and keeps two independently
+              composed tool sets from sharing slots.
             children:
+              - AgentKitTools-TextFile-SearchTool-GuardedConstruction
               - AgentKitTools-TextFile-ReadTool-GuardedConstruction
-              - AgentKitTools-TextFile-WriteTool-GuardedConstruction
-              - AgentKitTools-TextFile-ListTool-GuardedConstruction
+              - AgentKitTools-TextFile-CreateTool-GuardedConstruction
+              - AgentKitTools-TextFile-ReplaceTool-GuardedConstruction
+              - AgentKitTools-TextFile-CutTool-GuardedConstruction
+              - AgentKitTools-TextFile-CopyTool-GuardedConstruction
+              - AgentKitTools-TextFile-PasteTool-GuardedConstruction
               - AgentKitTools-TextFile-Pack-RequiresPolicy
               - AgentKitTools-TextFile-Pack-PolicyGovernsCreatedTools
+              - AgentKitTools-TextFile-Pack-SharedBuffer
             tests:
               - TextFile_Family_EveryTool_CarriesAValidatedNameAndDescription
               - TextFile_Family_ToolResult_ReachesTheCallerUnserialized
@@ -57,84 +68,124 @@ sections:
           - id: AgentKitTools-TextFile-PolicyGoverned
             title: >-
               The text file family shall judge each request with the policy decision matching the
-              operation — the read decision for reads and listings, the write decision for writes
-              — interpreting a path a model states relative to the workspace, and including
-              requests that reach outside a permitted location through a link.
+              operation — the read decision for search, read and copy, the write decision for create,
+              replace, cut and paste — interpreting a path a model states relative to the
+              workspace, and refusing a request that reaches outside a permitted location through a
+              link.
             tags: [security]
             justification: |
               An operator commonly wants an agent that reads widely but writes into one working
               directory, and that configuration is meaningless unless each tool consults the rule
-              belonging to the operation it performs. Judging a request by the location it
-              actually reaches, rather than by how its path was spelled, is what stops an agent
-              from stepping outside the location its operator granted. The family shares one
-              policy, so the workspace a bare name is measured from is the same for a listing, a
-              read and a write; a family whose three tools disagreed would let an agent list a
-              name it then could not read.
+              belonging to the operation it performs. Copy mutates nothing, so it consults the read
+              decision exactly as read does, permitting a copy from a read-only grant. Judging a
+              request by the location it actually reaches, rather than by how its path was spelled,
+              is what stops an agent from stepping outside the location its operator granted.
             children:
-              - AgentKitTools-TextFile-ReadTool-ReadPermittedFile
               - AgentKitTools-TextFile-ReadTool-RelativePath
               - AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
-              - AgentKitTools-TextFile-WriteTool-WritePermittedFile
-              - AgentKitTools-TextFile-WriteTool-RelativePath
-              - AgentKitTools-TextFile-WriteTool-ReplacesExistingContent
-              - AgentKitTools-TextFile-WriteTool-WriteDecisionAlone
-              - AgentKitTools-TextFile-WriteTool-DenyOutsideRoot
-              - AgentKitTools-TextFile-ListTool-PolicyEnumeration
-              - AgentKitTools-TextFile-ListTool-GroupedListing
-              - AgentKitTools-TextFile-ListTool-RelativeDirectory
-              - AgentKitTools-TextFile-ListTool-OmittedDirectory
-              - AgentKitTools-TextFile-ListTool-DeterministicOrder
-              - AgentKitTools-TextFile-ListTool-SearchPattern
-              - AgentKitTools-TextFile-ListTool-EmptyListing
-              - AgentKitTools-TextFile-ListTool-DiscoveryCompleteness
+              - AgentKitTools-TextFile-SearchTool-PolicyFiltered
+              - AgentKitTools-TextFile-SearchTool-Scoped
+              - AgentKitTools-TextFile-CreateTool-PolicyGoverned
+              - AgentKitTools-TextFile-ReplaceTool-PolicyGoverned
+              - AgentKitTools-TextFile-CutTool-PolicyGoverned
+              - AgentKitTools-TextFile-CopyTool-PolicyGoverned
+              - AgentKitTools-TextFile-PasteTool-PolicyGoverned
             tests:
-              - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheWrite
+              - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheEdit
               - TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool
-              - TextFile_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace
+
+          - id: AgentKitTools-TextFile-NavigationAndPaging
+            title: >-
+              The text file family shall let a model navigate a file by line number — paging a read
+              to a line-numbered window with a range header, and searching for a pattern with a
+              grep-style listing — so a large file can be read and searched a region at a time.
+            justification: |
+              A file can be far larger than a single result, so a read must be pageable and its
+              header must state the file's true total, and a search must report where matches are
+              in a form that composes back into a read. Navigation by line number is the natural
+              complement to editing by content: the model finds a region by number, then edits it
+              by matched text.
+            children:
+              - AgentKitTools-TextFile-ReadTool-RangedPaging
+              - AgentKitTools-TextFile-ReadTool-LineNumbered
+              - AgentKitTools-TextFile-ReadTool-PastEndOfFile
+              - AgentKitTools-TextFile-SearchTool-GrepOutput
+              - AgentKitTools-TextFile-SearchTool-ContextLines
+              - AgentKitTools-TextFile-SearchTool-Matching
+              - AgentKitTools-TextFile-SearchTool-MaxMatches
+              - AgentKitTools-TextFile-SearchTool-EmptyResult
+            tests:
+              - TextFile_Family_SearchReadEditLoop_WorksByRelativeNames
+
+          - id: AgentKitTools-TextFile-ContentEditing
+            title: >-
+              The text file family shall edit a file's contents by creating a new file, replacing an
+              exact unique match, and cutting, copying and pasting a range of lines, with every cut
+              captured into a recoverable buffer, every copy captured while leaving its source
+              byte-identical, and a cut/paste round-trip reproducing the file exactly.
+            justification: |
+              Editing one line of a file without rewriting the whole file is what makes an agent's
+              edits precise and reviewable. A create refuses to clobber an existing file, a replace
+              matches exactly once so an ambiguous edit is refused rather than misapplied, a cut
+              always captures what it removes so every deletion is recoverable by pasting it back,
+              and a copy captures a range for pasting without ever mutating its source.
+            children:
+              - AgentKitTools-TextFile-CreateTool-CreatesNew
+              - AgentKitTools-TextFile-CreateTool-RefusesExisting
+              - AgentKitTools-TextFile-ReplaceTool-UniqueMatch
+              - AgentKitTools-TextFile-ReplaceTool-Ambiguity
+              - AgentKitTools-TextFile-ReplaceTool-InsertAndDelete
+              - AgentKitTools-TextFile-CutTool-CapturesAndRemoves
+              - AgentKitTools-TextFile-CutTool-RangeValidation
+              - AgentKitTools-TextFile-CopyTool-CapturesUnchanged
+              - AgentKitTools-TextFile-CopyTool-RangeValidation
+              - AgentKitTools-TextFile-PasteTool-RoundTrip
+              - AgentKitTools-TextFile-PasteTool-EmptyBuffer
+              - AgentKitTools-TextFile-Buffers-CaptureAndPaste
+              - AgentKitTools-TextFile-Buffers-Replace
+            tests:
+              - TextFile_Family_SearchReadEditLoop_WorksByRelativeNames
+              - TextFile_Family_LargeBlockDuplication_CopiesCreatesAndPastes
 
           - id: AgentKitTools-TextFile-DenialsAreResults
             title: >-
               The text file family shall report every refusal as a returned result that names its
-              reason, discloses the permitted locations, and directs the model to a better tool
-              where one exists.
+              reason, and shall never throw at a model — a missing file, a directory, a binary file,
+              a malformed request, an invalid expression or an empty buffer are all returned
+              refusals.
             justification: |
-              An exception raised while a model is calling a tool ends the agent's turn and
-              strands it with no way forward, whereas a returned refusal lets it read the reason
-              and choose a permitted alternative. A refusal that names no alternative is barely
-              better: an agent told only "no" retries the same request until it abandons the
-              task. A policy refusal now discloses the permitted locations so a confined model
-              learns the truthful map of where it may work instead of guessing — the
-              host-path-disclosure rule that once redacted these refusals is deliberately dropped.
+              An exception raised while a model is calling a tool ends the agent's turn and strands
+              it, whereas a returned refusal lets it read the reason and choose a permitted
+              alternative. A refusal that redirects to a better tool turns a dead end into the next
+              step.
             children:
-              - AgentKitTools-TextFile-ReadTool-MissingFileDenied
-              - AgentKitTools-TextFile-ReadTool-DirectoryRefused
+              - AgentKitTools-TextFile-ReadTool-MissingOrDirectory
+              - AgentKitTools-TextFile-ReadTool-MalformedRequest
               - AgentKitTools-TextFile-ReadTool-BinaryRefused
-              - AgentKitTools-TextFile-ReadTool-MalformedRequestDenied
-              - AgentKitTools-TextFile-ReadTool-DenialDisclosure
-              - AgentKitTools-TextFile-WriteTool-MissingParentDenied
-              - AgentKitTools-TextFile-WriteTool-DirectoryRefused
-              - AgentKitTools-TextFile-WriteTool-MalformedRequestDenied
-              - AgentKitTools-TextFile-WriteTool-DenialDisclosure
-              - AgentKitTools-TextFile-ListTool-DeniedDirectory
-              - AgentKitTools-TextFile-ListTool-DenialDisclosure
+              - AgentKitTools-TextFile-CreateTool-MalformedRequest
+              - AgentKitTools-TextFile-ReplaceTool-MissingFile
+              - AgentKitTools-TextFile-PasteTool-MissingFile
+              - AgentKitTools-TextFile-PasteTool-PopulatedSlotGuidance
+              - AgentKitTools-TextFile-SearchTool-InvalidRegex
+              - AgentKitTools-TextFile-Buffers-Validation
+              - AgentKitTools-TextFile-Buffers-PopulatedSlots
             tests:
               - TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing
-              - TextFile_Family_DenialText_DisclosesPermittedLocation
 
           - id: AgentKitTools-TextFile-ObservesPolicyLimits
             title: >-
-              The text file family shall observe the ceilings the access policy carries, refusing
-              an oversized operation and naming the ceiling rather than returning truncated
+              The text file family shall observe the ceilings the access policy carries, refusing an
+              oversized read or search result and naming the ceiling rather than returning truncated
               content.
             justification: |
               Everything a tool returns is spent out of the same finite context window the
-              conversation must share, so the ceilings have to be honored rather than advisory.
-              Truncating instead of refusing is worse than either: the model receives an
-              incomplete document it has no way to detect and then reasons confidently about
-              content it never saw. Naming the ceiling lets it narrow the request instead.
+              conversation must share, so the ceilings have to be honored. Truncating instead of
+              refusing hands the model an incomplete document it has no way to detect; naming the
+              ceiling lets it narrow the request instead.
             children:
               - AgentKitTools-TextFile-ReadTool-ReadCeiling
               - AgentKitTools-TextFile-ReadTool-ResultCeiling
-              - AgentKitTools-TextFile-ListTool-ResultCeiling
+              - AgentKitTools-TextFile-SearchTool-LargeFileSearchable
+              - AgentKitTools-TextFile-SearchTool-BoundedResult
             tests:
-              - TextFile_Family_FileBeyondTheReadCeiling_IsRefusedNotTruncated
+              - TextFile_Family_ToolResult_ReachesTheCallerUnserialized

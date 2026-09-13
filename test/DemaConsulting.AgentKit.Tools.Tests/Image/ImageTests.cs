@@ -369,7 +369,7 @@ public class ImageTests
         Directory.CreateDirectory(directory);
 
         var filePath = Path.Combine(directory, fileName);
-        File.WriteAllBytes(filePath, content);
+        System.IO.File.WriteAllBytes(filePath, content);
         return filePath;
     }
 

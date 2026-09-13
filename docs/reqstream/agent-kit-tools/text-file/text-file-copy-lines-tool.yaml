@@ -1,0 +1,72 @@
+---
+# Software Unit Requirements for TextFileCopyLinesTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileCopyLinesTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-CopyTool-ToolName
+                title: >-
+                  The copy-lines tool shall be published under the name text_file_copy_lines, exposed
+                  as a constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFileCopyLinesTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-CopyTool-GuardedConstruction
+                title: >-
+                  The copy-lines tool shall be constructed only through the guarded construction
+                  path, requiring both an access policy and a buffer at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy makes an unguarded copy tool impossible to build, and
+                  requiring the buffer is what lets the capture be shared with the paste tool.
+                tests:
+                  - TextFileCopyLinesTool_Create_NullArguments_ThrowArgumentNullException
+
+              - id: AgentKitTools-TextFile-CopyTool-CapturesUnchanged
+                title: >-
+                  The copy-lines tool shall capture the range into a named buffer and leave the
+                  source byte-identical, reporting the count and the first and last captured line.
+                justification: |
+                  Copy is the non-destructive sibling of cut: it duplicates a passage into the buffer
+                  for pasting without ever mutating the source, so a large block can be relocated or
+                  duplicated without the copied lines entering the context window. The report tells
+                  the model what it now holds in the buffer and that the source is unchanged.
+                tests:
+                  - TextFileCopyLinesTool_Copy_Range_CapturesReportsAndLeavesSourceByteIdentical
+                  - TextFileCopyLinesTool_Copy_WholeFile_CapturesAll
+                  - TextFileCopyLinesTool_Copy_ThenPasteAtLine_ReproducesContentExactly
+                  - TextFileCopyLinesTool_Copy_ThenPasteTwice_ProducesTwoCopies
+                  - TextFileCopyLinesTool_Copy_RecaptureSameSlot_ReplacesContent
+                  - TextFileCopyLinesTool_Copy_ThenCutSameSlot_CutReplacesTheCopiedSlot
+
+              - id: AgentKitTools-TextFile-CopyTool-RangeValidation
+                title: >-
+                  The copy-lines tool shall refuse an out-of-range line range, capturing nothing and
+                  leaving the file unchanged.
+                justification: |
+                  A range validated against the file's real line count before anything is captured
+                  keeps an out-of-range copy from capturing partial text or changing anything.
+                tests:
+                  - TextFileCopyLinesTool_Copy_OutOfRange_ReturnsDenialAndLeavesFileUnchanged
+
+              - id: AgentKitTools-TextFile-CopyTool-PolicyGoverned
+                title: >-
+                  The copy-lines tool shall consult the read decision alone, permitting a copy from a
+                  read-only location and refusing a path outside every grant.
+                tags: [security]
+                justification: |
+                  A copy mutates nothing, so it does to the source exactly what a read does and must
+                  consult the read decision — the deliberate inverse of cut's write decision.
+                  Requiring write would wrongly refuse a legitimate copy from a read-only grant while
+                  adding no protection, because the paste side independently enforces the write
+                  decision on the destination.
+                tests:
+                  - TextFileCopyLinesTool_Copy_ReadOnlyLocation_Succeeds
+                  - TextFileCopyLinesTool_Copy_NonPermittedPath_ReturnsDenial

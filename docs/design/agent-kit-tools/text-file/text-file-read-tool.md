@@ -6,29 +6,33 @@ The `TextFileReadTool` class publishes the `text_file_read` tool.
 
 #### Purpose
 
-To return the text of one file the access policy permits the agent to read, and to refuse — in a
-way the agent can act on — every request it cannot honor. It is the tool an agent reaches for most
-often, and it is the one that has the most ways to be asked for something it must not provide: a
-path outside the permitted location, a path that reaches outside through a link, a directory, a
-file that does not exist, or a file too large to return.
+To return a ranged, line-numbered window of one text file the access policy permits the agent to
+read, and to refuse — in a way the agent can act on — every request it cannot honor. The window
+opens with a `path lines A-B of N` header, where `N` is the file's true line count, so a model can
+page through a large file without guessing how far it extends.
 
-The unit does no containment reasoning of its own. It asks the policy, and shapes the answer into
-something a model can use.
+The unit does no containment reasoning of its own. It asks the policy, checks the file is text, and
+shapes the answer into a display form that composes with the search, replace and cut tools.
 
 #### Data Model
 
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                      |
-| ----------------- | -------- | -------------------------------------------------------------- |
-| `ToolName`        | `string` | `text_file_read`; public constant; carries the family prefix   |
-| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool        |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
+| Member                | Type     | Invariant                                                    |
+| --------------------- | -------- | ------------------------------------------------------------ |
+| `ToolName`            | `string` | `text_file_read`; public constant; carries the family prefix |
+| `ToolDescription`     | `string` | Non-empty; the basis on which a model chooses this tool      |
+| `LineNumberDelimiter` | `string` | `\|`; display delimiter, never part of file content          |
+| `StreamBufferSize`    | `int`    | Byte buffer used while streaming a file's lines              |
+| Denial messages       | `string` | Tool-composed constants; policy denials come from policy     |
 
-Two ceilings from `PathPolicy.Limits` bound the operation: `MaxReadBytes`, the greatest size that
-may be read from one source, and `MaxResultCharacters`, the deliberately tighter budget for what
-may be returned to the model. Both are inclusive — a file exactly at a ceiling is returned.
+Two ceilings from `PathPolicy.Limits` bound the operation. `MaxReadBytes` bounds the bytes
+materialized to satisfy the requested read window — not the size of the file, which is streamed so
+only the window is held in memory — and `MaxResultCharacters` is the budget for the rendered numbered
+result. Both are inclusive — a window or result exactly at a ceiling is returned. Binary detection is
+delegated to `TextFileBinaryGuard`, which sniffs only a leading window, so a file far larger than
+`MaxReadBytes` is still classified and paged.
 
 #### Key Methods
 
@@ -40,102 +44,97 @@ Creates the tool. `internal` rather than public, because the pack is the unit of
 **Preconditions:** `policy` is non-null; it is the policy the composition was built with.
 
 **Algorithm:** validates `policy`, then returns
-`GuardedToolFactory.Create(delegate, ToolName, ToolDescription)`. The delegate is declared
-`Task<object>` deliberately — that is the shape the underlying function factory would otherwise
-serialize into JSON, and is precisely the case the guard exists for; see *GuardedToolFactory Unit
-Design*. The policy is captured by the delegate's closure.
+`GuardedToolFactory.Create(delegate, ToolName, ToolDescription)`. The delegate accepts `path`,
+optional `startLine`, optional `lineCount`, and a cancellation token. The delegate is declared
+`Task<object>` deliberately, because the tool returns a union of refusal or text.
 
 **Postconditions:** the returned tool carries `ToolName`, carries a non-empty description, and is
 governed by the supplied policy for the rest of its life.
 
-##### The tool delegate: `(string? path = null, CancellationToken cancellationToken = default)`
+##### The tool delegate: `(string? path = null, int? startLine = null, int? lineCount = null, ...)`
 
 **Algorithm**, in this order, because the order is itself the contract:
 
-1. An absent, empty or whitespace `path` is refused as `InvalidRequest`, naming the form a
-   request should take. **The parameter carries a default**, which is load-bearing rather than
-   cosmetic: a parameter with no default is required by the function factory, and an omitted
-   argument then fails inside the factory before this step is reached, leaving the model an
-   opaque framework error rather than a refusal it can act on
-2. `policy.TryResolveRead(path, …)` — a refusal is returned as `PathNotPermitted` carrying the
-   policy's own message unchanged. **A relative path is interpreted against the workspace here**,
-   which is why a bare file name a listing reported is directly usable, and an absolute path is
-   accepted unchanged. This step resolves every path component, so a link that escapes
-   the permitted location is refused here without this unit knowing links exist
-3. An existing directory is refused as `InvalidRequest`, redirecting to `text_file_list`
-4. A non-existent file is refused as `TargetNotFound`, redirecting to `text_file_list`
-5. A file larger than `MaxReadBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size is
-   judged before the file is opened, so an oversized file is never loaded merely to discover it was
-   oversized
-6. A file whose leading bytes indicate **binary content** is refused as `UnsupportedMediaType`
-   before any decode, so a binary file is never returned as garbled replacement characters.
-   Detection is content-based: a recognized byte-order mark (UTF-8, UTF-16 LE/BE, UTF-32 LE/BE)
-   means text; otherwise a NUL byte, or a failure of strict UTF-8 validation over a leading window,
-   means binary. The byte-order-mark check is first precisely so a legitimately encoded UTF-16 or
-   UTF-32 file — which carries NUL bytes yet decodes correctly — is not misclassified by the NUL
-   rule; the four-byte UTF-32 marks are tested before the two-byte UTF-16 marks because the UTF-16
-   LE mark is a prefix of the UTF-32 LE mark. The *redirect* a refusal offers is chosen from the
-   extension by reusing `ImageMediaTypes.TryResolveMediaType`: the file is offered to `image_read`
-   when it resolves, and refused without a redirect otherwise. This step sits after the size check
-   (the cheaper gate) and before the decode (so detection precedes any decode and therefore the
-   result-ceiling check)
-7. The text is read; text longer than `MaxResultCharacters` is refused as `ResourceTooLarge`,
-   naming that ceiling
-8. Otherwise the text is returned
+1. An absent, empty or whitespace `path` is refused as `InvalidRequest`, naming the form a request
+   should take.
+2. A `startLine` less than one, or a `lineCount` less than zero, is refused as `InvalidRequest`.
+3. `policy.TryResolveRead(path, …)` is called. A refusal is returned as `PathNotPermitted` carrying
+   the policy's own message unchanged.
+4. An existing directory is refused as `InvalidRequest` with a plain statement of what was wrong,
+   naming no other tool.
+5. A non-existent file is refused as `TargetNotFound` with the same plain statement, naming no other
+   tool.
+6. A file whose leading bytes indicate binary content is refused as `UnsupportedMediaType` before
+   decode. The sniff reads only a leading window, so it never materializes a large file. When the
+   extension is one the image family recognizes, the refusal redirects to `image_read`.
+7. The file is streamed line by line. Every line is counted so the header's `N` is the file's true
+   total, but only the lines of the requested window are materialized, and their accumulated UTF-8
+   bytes are bounded by `MaxReadBytes`.
+8. If the window's bytes exceed `MaxReadBytes` — which an unranged read of a large file always does,
+   because its window is the whole file — the request is refused as `ResourceTooLarge`. The refusal
+   names the byte ceiling **and** the file's true total line count **and** directs the model to page
+   with `startLine` and `lineCount`, so a large file is never a dead end.
+9. Otherwise the window is rendered as a numbered listing. A rendered result longer than
+   `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the character ceiling.
+10. Otherwise the rendered text is returned.
 
-The policy decision precedes every observation of the file system, so a refused path never
-discloses whether it exists.
+The policy decision precedes every observation of the file system, so a refused path never discloses
+whether it exists.
+
+##### RenderWindow(...)
+
+Renders the materialized window into the model-facing form. The header is `path lines A-B of N`,
+where `N` is the true total streamed to the end of the file. Each body line is the right-aligned
+1-based number, the `|` delimiter, and the line's content without the line terminator. The reported
+path mirrors the caller's dialect: relative when the caller addressed a working-directory file
+relatively and the policy permits, otherwise absolute.
+
+A range beyond the end of the file is an honest empty window, not a refusal. For a file with ten
+lines, `startLine` eleven renders `lines 11-10 of 10`. A zero `lineCount` also renders an empty
+window. An empty file renders `lines 0-0 of 0`.
+
+##### Streaming and binary detection
+
+Lines are streamed through `TextLines.EnumerateLines`, which splits only on `\n` so a line the reader
+numbers is the same line `TextLines.Split` numbers and the cut and paste tools address. Binary
+detection is delegated to `TextFileBinaryGuard`, which sniffs a leading byte window before decode: a
+recognized UTF byte-order mark means text; without a mark, a NUL byte means binary, and otherwise the
+window must pass strict UTF-8 validation. Because both the sniff and the window stream read only what
+they need, a file far larger than `MaxReadBytes` is still classified and paged.
 
 #### Error Handling
 
-Everything a model controls produces a returned refusal, never an exception: an exception raised
-during a tool call ends the agent's turn and strands it with no way forward. The only exception the
+Everything a model controls produces a returned refusal, never an exception. The only exception the
 unit raises is `ArgumentNullException` for a null policy at construction, which is a programming
-error in the composing application rather than anything a model can provoke — the same dividing
-line `PathPolicy` and `ToolName` draw.
+error in the composing application rather than anything a model can provoke.
 
 File system failures are caught by an explicit classification — `IOException`,
 `UnauthorizedAccessException`, `NotSupportedException`, `SecurityException` — and reported as an
-`InvalidRequest` refusal. The classification is enumerated rather than catching everything so that
-a genuine defect still surfaces during development instead of being reported to a model as an
-unreadable file. Cancellation is not classified, so a canceled read propagates as the runtime
-expects.
+`InvalidRequest` refusal. Cancellation is not classified, so a canceled read propagates as the
+runtime expects.
 
-**An oversized file is refused, never truncated.** A truncated file is an omission the model cannot
-detect; it would then reason confidently about content it never saw. Refusing with the ceiling
-named lets it narrow the request instead.
+**A large file is paged, and only an oversized result or an unranged large read is refused — always
+with recourse.** `MaxReadBytes` bounds the bytes materialized for a window rather than gating the
+file, so a model can page to any line of a file far larger than the read ceiling. A truncated window
+would be an omission the model cannot detect, so an unranged read of a large file is refused instead,
+naming the total line count and the paging arguments; a rendered window past `MaxResultCharacters` is
+likewise refused, naming the character ceiling.
 
-**A binary file is refused as `UnsupportedMediaType`, never decoded into garbled text.** The binary
-sniff opens the file for a leading window and is subject to the same explicit
-`IsAccessFailure` classification as the decode, so a read failure during the sniff becomes the
-ordinary unreadable-file refusal rather than a thrown exception. The strict UTF-8 validation flushes
-its decoder only when the window reached end of file, so a multi-byte character the window boundary
-split in half is buffered rather than rejected and a valid UTF-8 file is never misclassified because
-a character straddled the window edge.
-
-Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
-`PathPolicy` message unchanged: it states what was requested, how a relative request was
-interpreted, and the permitted locations with their access levels, so a confined model learns where
-it may read instead of guessing. Refusals this unit composes itself — including the binary-file
-redirect, the directory and missing-file redirects, and the oversized-file ceilings — are constants
-or interpolate only an integer ceiling or a sibling tool name. **Each nevertheless states what the
-model should do instead** — the form a path takes, or the tool that would find the right name —
-because an agent told only "no" retries the same request until it abandons the task.
+**A binary file is refused, never decoded into garbled text.** The binary sniff is subject to the
+same access-failure classification as the decode, so a read failure during sniff becomes the ordinary
+unreadable-file refusal rather than a thrown exception.
 
 #### Dependencies
 
 `PathPolicy` and `ToolLimits` for the decision and the ceilings, `ToolResult` for every result it
-returns, `GuardedToolFactory` for construction, and `TextFileListTool.ToolName` for the two
-redirects. For the binary guard it reuses the sibling image family's `ImageMediaTypes.TryResolveMediaType`
-to choose the `image_read` redirect and `ImageReadTool.ToolName` to name it, so media-type knowledge
-lives in the one unit that owns it rather than being duplicated here; the reference is mutual with
-`ImageMediaTypes`, which already redirects an `.svg` back to this tool, and both directions are leaf
-references to published constants within one assembly. From the Base Class Library: `File`,
-`FileInfo`, `Directory` and `FileStream`, and `UTF8Encoding`/`Decoder` from `System.Text` for the
-strict UTF-8 validation. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the form the
-constructed tool takes.
+returns, and `GuardedToolFactory` for construction. It streams lines through `TextLines` and detects
+binary content through `TextFileBinaryGuard`. It names `ImageMediaTypes` plus `ImageReadTool.ToolName`
+for the binary image redirect — the one redirect it still offers, because it states what the file is.
+From the Base Class Library: `File`, `FileInfo`, `Directory`, `FileStream`, `StreamReader`,
+`StringBuilder`, and `Encoding` from `System.Text`. `AIFunction`, from
+`Microsoft.Extensions.AI.Abstractions`, is the form the constructed tool takes.
 
 #### Callers
 
-`TextFilePack.CreateTools` is the only caller of `Create`, and the constructed tool is invoked by
-the agent runtime an application composed it into. Nothing else in this package calls the unit.
+`TextFilePack.CreateTools` is the only caller of `Create`, and the constructed tool is invoked by the
+agent runtime an application composed it into. Nothing else in this package calls the unit.

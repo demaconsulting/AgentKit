@@ -303,8 +303,26 @@ reviews:
       - "docs/reqstream/agent-kit-tools/text-file.yaml"            # subsystem requirements
       - "docs/design/agent-kit-tools/text-file.md"                 # subsystem design
       - "docs/verification/agent-kit-tools/text-file.md"           # subsystem verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextLines.cs"                   # shared line model helper
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileBinaryGuard.cs"         # shared binary-detection helper
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileTests.cs"        # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextLinesTests.cs"       # shared line model helper tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/ReparsePointFixture.cs"  # reparse-point test fixture
+
+  # AgentKitTools-TextFile-TextFileSearchTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileSearchTool
+    title: Review that AgentKitTools TextFile TextFileSearchTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-search-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-search-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-search-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileSearchTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileSearchToolTests.cs"  # unit tests
 
   # AgentKitTools-TextFile-TextFileReadTool Review (one per unit)
   - id: AgentKitTools-TextFile-TextFileReadTool
@@ -321,35 +339,95 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileReadTool.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileReadToolTests.cs"  # unit tests
 
-  # AgentKitTools-TextFile-TextFileWriteTool Review (one per unit)
-  - id: AgentKitTools-TextFile-TextFileWriteTool
-    title: Review that AgentKitTools TextFile TextFileWriteTool Implementation is Correct
+  # AgentKitTools-TextFile-TextFileCreateTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileCreateTool
+    title: Review that AgentKitTools TextFile TextFileCreateTool Implementation is Correct
     context:
       - "docs/design/agent-kit-tools.md"
       - "docs/reqstream/agent-kit-tools.yaml"
       - "docs/design/agent-kit-tools/text-file.md"
       - "docs/reqstream/agent-kit-tools/text-file.yaml"
     paths:
-      - "docs/reqstream/agent-kit-tools/text-file/text-file-write-tool.yaml"   # unit requirements
-      - "docs/design/agent-kit-tools/text-file/text-file-write-tool.md"        # unit design
-      - "docs/verification/agent-kit-tools/text-file/text-file-write-tool.md"  # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileWriteTool.cs"       # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileWriteToolTests.cs"  # unit tests
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-create-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-create-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-create-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileCreateTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileCreateToolTests.cs"  # unit tests
 
-  # AgentKitTools-TextFile-TextFileListTool Review (one per unit)
-  - id: AgentKitTools-TextFile-TextFileListTool
-    title: Review that AgentKitTools TextFile TextFileListTool Implementation is Correct
+  # AgentKitTools-TextFile-TextFileReplaceTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileReplaceTool
+    title: Review that AgentKitTools TextFile TextFileReplaceTool Implementation is Correct
     context:
       - "docs/design/agent-kit-tools.md"
       - "docs/reqstream/agent-kit-tools.yaml"
       - "docs/design/agent-kit-tools/text-file.md"
       - "docs/reqstream/agent-kit-tools/text-file.yaml"
     paths:
-      - "docs/reqstream/agent-kit-tools/text-file/text-file-list-tool.yaml"    # unit requirements
-      - "docs/design/agent-kit-tools/text-file/text-file-list-tool.md"         # unit design
-      - "docs/verification/agent-kit-tools/text-file/text-file-list-tool.md"   # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileListTool.cs"        # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileListToolTests.cs"  # unit tests
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-replace-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-replace-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-replace-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileReplaceTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileReplaceToolTests.cs"  # unit tests
+
+  # AgentKitTools-TextFile-TextFileCutLinesTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileCutLinesTool
+    title: Review that AgentKitTools TextFile TextFileCutLinesTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-cut-lines-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-cut-lines-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-cut-lines-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileCutLinesTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileCutLinesToolTests.cs"  # unit tests
+
+  # AgentKitTools-TextFile-TextFileCopyLinesTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileCopyLinesTool
+    title: Review that AgentKitTools TextFile TextFileCopyLinesTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-copy-lines-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-copy-lines-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-copy-lines-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileCopyLinesTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileCopyLinesToolTests.cs"  # unit tests
+
+  # AgentKitTools-TextFile-TextFilePasteLinesTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFilePasteLinesTool
+    title: Review that AgentKitTools TextFile TextFilePasteLinesTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-paste-lines-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-paste-lines-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-paste-lines-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFilePasteLinesTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFilePasteLinesToolTests.cs"  # unit tests
+
+  # AgentKitTools-TextFile-TextFileLineBuffers Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileLineBuffers
+    title: Review that AgentKitTools TextFile TextFileLineBuffers Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-line-buffers.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-line-buffers.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-line-buffers.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileLineBuffers.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileLineBuffersTests.cs"  # unit tests
 
   # AgentKitTools-TextFile-TextFilePack Review (one per unit)
   - id: AgentKitTools-TextFile-TextFilePack
@@ -365,6 +443,135 @@ reviews:
       - "docs/verification/agent-kit-tools/text-file/text-file-pack.md"        # unit verification
       - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFilePack.cs"            # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFilePackTests.cs"  # unit tests
+
+  # AgentKitTools-File Review (one per subsystem)
+  - id: AgentKitTools-File
+    title: Review that AgentKitTools File Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file.yaml"                 # subsystem requirements
+      - "docs/design/agent-kit-tools/file.md"                      # subsystem design
+      - "docs/verification/agent-kit-tools/file.md"                # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs"  # subsystem tests
+
+  # AgentKitTools-File-FileListTool Review (one per unit)
+  - id: AgentKitTools-File-FileListTool
+    title: Review that AgentKitTools File FileListTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-list-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-list-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-list-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileListTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileListToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileCopyTool Review (one per unit)
+  - id: AgentKitTools-File-FileCopyTool
+    title: Review that AgentKitTools File FileCopyTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-copy-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-copy-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-copy-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileCopyTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileCopyToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileMoveTool Review (one per unit)
+  - id: AgentKitTools-File-FileMoveTool
+    title: Review that AgentKitTools File FileMoveTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-move-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-move-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-move-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileMoveTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileMoveToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileDeleteTool Review (one per unit)
+  - id: AgentKitTools-File-FileDeleteTool
+    title: Review that AgentKitTools File FileDeleteTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-delete-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-delete-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-delete-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FilePack Review (one per unit)
+  - id: AgentKitTools-File-FilePack
+    title: Review that AgentKitTools File FilePack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-pack.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-pack.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-pack.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FilePack.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FilePackTests.cs"  # unit tests
+
+  # AgentKitTools-Markdown Review (one per subsystem)
+  - id: AgentKitTools-Markdown
+    title: Review that AgentKitTools Markdown Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/markdown.yaml"                 # subsystem requirements
+      - "docs/design/agent-kit-tools/markdown.md"                      # subsystem design
+      - "docs/verification/agent-kit-tools/markdown.md"                # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownTests.cs"  # subsystem tests
+
+  # AgentKitTools-Markdown-MarkdownOutlineTool Review (one per unit)
+  - id: AgentKitTools-Markdown-MarkdownOutlineTool
+    title: Review that AgentKitTools Markdown MarkdownOutlineTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/markdown.md"
+      - "docs/reqstream/agent-kit-tools/markdown.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/markdown/markdown-outline-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/markdown/markdown-outline-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/markdown/markdown-outline-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Markdown/MarkdownOutlineTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownOutlineToolTests.cs"  # unit tests
+
+  # AgentKitTools-Markdown-MarkdownPack Review (one per unit)
+  - id: AgentKitTools-Markdown-MarkdownPack
+    title: Review that AgentKitTools Markdown MarkdownPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/markdown.md"
+      - "docs/reqstream/agent-kit-tools/markdown.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/markdown/markdown-pack.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/markdown/markdown-pack.md"         # unit design
+      - "docs/verification/agent-kit-tools/markdown/markdown-pack.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Markdown/MarkdownPack.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownPackTests.cs"  # unit tests
 
   # AgentKitTools-Image Review (one per subsystem)
   - id: AgentKitTools-Image

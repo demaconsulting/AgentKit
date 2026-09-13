@@ -2,7 +2,8 @@
 
 A console chat application that grants an AI agent exactly two locations — a **workspace** folder of
 documents to read, and a separate **session** folder to write its artifacts into — and hands it the
-shipped AgentKit tool packs: reading text files, listing them, writing text files, and, when vision is
+shipped AgentKit tool packs: searching, reading, creating, and editing text files; listing, copying,
+moving, and deleting files of any type; outlining a Markdown file's headings; and, when vision is
 enabled, looking at images. It is the first end-to-end demonstration of the AgentKit tools against live
 models, and it runs unchanged against the GitHub Copilot runtime and against any Ollama model.
 
@@ -61,7 +62,7 @@ level, and the session folder as read-write — because the application resolved
 composed anything, so it is the authoritative source for them. The instructions are therefore built
 per run rather than held as a constant string.
 
-A no-argument `text_file_list` is still requested, and it is still a **discovery** request: it
+A no-argument `file_list` is still requested, and it is still a **discovery** request: it
 reports every permitted location as an absolute header with the file names beneath them, and an empty
 location under its header with a marker naming its access level. It is worth watching, because it is
 what establishes the two path dialects. It is simply not the *only* way the agent learns where it may
@@ -119,9 +120,10 @@ express:
 - The image family is only ever created when `Vision` is declared, so a model without eyes is never
   offered a tool whose image result it could only describe from nothing.
 
-Note that the text-file pack includes `text_file_write`, so the agent can create or modify files
-wherever a `ReadWrite` grant permits. That is safe — writes are contained by the same policy — but it
-is a real capability, not a read-only view, and the system instructions acknowledge it.
+Note that the text-file pack includes `text_file_create` and `text_file_replace`, so the agent can
+create new files and edit existing ones wherever a `ReadWrite` grant permits. That is safe — writes
+are contained by the same policy — but it is a real capability, not a read-only view, and the system
+instructions acknowledge it.
 
 ## Running the sample
 
@@ -169,7 +171,7 @@ The default session folder is `document-assistant-session` beneath the system te
 ## What to try
 
 - **Discovery.** "List every location you can reach and say which you can write to." The agent calls
-  `text_file_list` with no argument and reports every permitted location as an absolute header, with
+  `file_list` with no argument and reports every permitted location as an absolute header, with
   the workspace files beneath the workspace header and an empty session folder shown under its header
   with an access-level marker. It also knows about both locations from the system instructions, which
   name them.
@@ -179,7 +181,7 @@ The default session folder is `document-assistant-session` beneath the system te
   agent write with the absolute session path it was given in its instructions, and get that absolute
   path back — the relative dialect it used for the workspace does not apply there.
 - **Asymmetric grants.** Add `--read-only-workspace` and ask "Summarize welcome.txt into summary.md
-  next to it." The `text_file_write` tool returns `Denied` and enumerates both locations with their
+  next to it." The `text_file_create` tool returns `Denied` and enumerates both locations with their
   access levels; the agent should then write into the session folder instead. This is the highest-value
   thing in the sample: the denial is what lets the agent recover correctly.
 - **Vision.** "Describe diagram.png." `diagram.png` shows a red circle, a blue square, and a green

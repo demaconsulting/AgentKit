@@ -1,0 +1,71 @@
+---
+# Software Unit Requirements for FileMoveTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileMoveTool Requirements
+            requirements:
+              - id: AgentKitTools-File-MoveTool-ToolName
+                title: >-
+                  The move tool shall be published under the name file_move, exposed as a constant,
+                  and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - FileMoveTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-File-MoveTool-GuardedConstruction
+                title: >-
+                  The move tool shall be constructed only through the guarded construction path with
+                  an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded move tool impossible to
+                  build.
+                tests:
+                  - FileMoveTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-MoveTool-Moves
+                title: >-
+                  The move tool shall move a permitted file to a permitted destination, removing the
+                  source, addressed by the relative names a model sends.
+                justification: |
+                  Moving a file is the tool's reason to exist, and the names it accepts are the bare
+                  names a listing reported.
+                tests:
+                  - FileMoveTool_Move_RelativePaths_MovesTheFileAndRemovesTheSource
+
+              - id: AgentKitTools-File-MoveTool-PolicyGoverned
+                title: >-
+                  The move tool shall judge both endpoints by the write decision, so a read-only
+                  source cannot be moved out of its location.
+                tags: [security]
+                justification: |
+                  A move removes the source and creates the destination, so it needs write permission
+                  at the source as well; this is what keeps a read-only grant genuinely read-only.
+                tests:
+                  - FileMoveTool_Move_ReadOnlySource_ReturnsDenialAndLeavesItInPlace
+
+              - id: AgentKitTools-File-MoveTool-NoClobber
+                title: >-
+                  The move tool shall refuse to overwrite an existing destination unless overwrite is
+                  explicitly true, leaving both files unchanged when it refuses.
+                justification: |
+                  Silently replacing a file is an irreversible side effect the family exists to make
+                  impossible by accident.
+                tests:
+                  - FileMoveTool_Move_ExistingDestinationWithoutOverwrite_ReturnsDenialAndLeavesBoth
+
+              - id: AgentKitTools-File-MoveTool-MissingSource
+                title: >-
+                  The move tool shall refuse a missing source with a plain fact that names no other
+                  tool.
+                justification: |
+                  A denial states a fact and never prescribes a remedy; naming another tool to run is
+                  a prescription the refusal must not make.
+                tests:
+                  - FileMoveTool_Move_MissingSource_ReturnsDenialNamingNoTool

@@ -32,13 +32,13 @@ public sealed record AgentSetup(AIAgent Agent, IAsyncDisposable Cleanup);
 ///     <para>
 ///     This type embodies the sample's governing principle, the same one the document-assistant
 ///     sample follows: <b>no provider-specific logic beyond choosing which factory to call.</b> The
-///     tool set — including the custom <c>markdown</c> and <c>clock</c> packs — is composed once,
+///     tool set — including the custom <c>docstats</c> and <c>clock</c> packs — is composed once,
 ///     identically, for both providers; only <see cref="CreateAgentAsync"/> branches, and it
 ///     branches solely to pick a factory and hand back a uniform cleanup handle.
 ///     </para>
 ///     <para>
 ///     The point the sample makes is that <b>an author-written pack composes exactly like a shipped
-///     one.</b> <see cref="MarkdownToolPack"/> and <see cref="ClockToolPack"/> are added to the same
+///     one.</b> <see cref="DocStatsToolPack"/> and <see cref="ClockToolPack"/> are added to the same
 ///     <see cref="ToolPackBuilder"/> as <see cref="TextFilePack"/>, on the same policy, before the
 ///     provider switch. The builder verifies each pack's tool names carry its declared family
 ///     prefix, so a malformed custom pack fails at composition rather than at a model's call.
@@ -69,12 +69,13 @@ public static class AgentComposition
         return
             "You are an assistant demonstrating author-written AgentKit tools. Your workspace is '" +
             workspaceRoot + "' (read-write); it is what relative names are interpreted against. You " +
-            "have these tools and nothing else: 'markdown_sections', a custom tool that lists the " +
-            "headings of a Markdown file in the workspace with their line numbers; 'clock_now', a " +
-            "custom tool that reports the current local and UTC time and takes no arguments; and the " +
-            "shipped text-file tools 'text_file_read', 'text_file_write', and 'text_file_list'. Read " +
-            "and list files using plain relative names within the workspace (for example " +
-            "'sample.md'). A path outside the workspace will be refused, and that is by design. You " +
+            "have these tools and nothing else: 'docstats_wordcount', a custom tool that reports the " +
+            "word, line and character counts of a text file in the workspace; 'clock_now', a custom " +
+            "tool that reports the current local and UTC time and takes no arguments; and the shipped " +
+            "text-file tools 'text_file_search', 'text_file_read', 'text_file_create', " +
+            "'text_file_replace', 'text_file_cut_lines', and 'text_file_paste_lines'. Read files " +
+            "using plain relative names within the workspace (for example 'sample.md'). A path " +
+            "outside the workspace will be refused, and that is by design. You " +
             "have no shell, terminal, code-execution, or web/fetch tool; do not claim otherwise. " +
             "When a tool refuses a request, read the refusal: it explains why and, where useful, " +
             "which tool to use instead. Do not retry the identical call, and do not invent a path.";
@@ -89,8 +90,8 @@ public static class AgentComposition
     ///     One <see cref="PathPolicy"/> governs every path-taking tool. The workspace is passed as
     ///     the working directory — the anchor for relative paths — and granted read-write, exactly
     ///     as the document-assistant sample grants its workspace. Because the working directory is
-    ///     granted, the custom Markdown tool reports workspace results as bare relative names,
-    ///     mirroring the shipped tools' dialect.
+    ///     granted, the custom document-statistics tool reports workspace results as bare relative
+    ///     names, mirroring the shipped tools' dialect.
     ///     </para>
     ///     <para>
     ///     The custom packs are added to the same builder as the shipped pack. The clock pack needs
@@ -115,7 +116,7 @@ public static class AgentComposition
         // same policy. Build verifies each tool name carries its pack's declared family prefix.
         var builder = new ToolPackBuilder(policy)
             .Add(new TextFilePack())
-            .Add(new MarkdownToolPack())
+            .Add(new DocStatsToolPack())
             .Add(new ClockToolPack());
 
         return [.. builder.Build()];

@@ -1,0 +1,86 @@
+---
+# Software Unit Requirements for TextFileReplaceTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileReplaceTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-ReplaceTool-ToolName
+                title: >-
+                  The replace tool shall be published under the name text_file_replace, exposed as a
+                  constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFileReplaceTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-ReplaceTool-GuardedConstruction
+                title: >-
+                  The replace tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded replace tool impossible to
+                  build.
+                tests:
+                  - TextFileReplaceTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-TextFile-ReplaceTool-UniqueMatch
+                title: >-
+                  The replace tool shall replace exactly one occurrence of the given text and report
+                  the change in the file's line count.
+                justification: |
+                  Editing by exact content match is what lets a model change one line without
+                  rewriting the file; the delta confirms the edit took effect.
+                tests:
+                  - TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsDelta
+
+              - id: AgentKitTools-TextFile-ReplaceTool-Ambiguity
+                title: >-
+                  The replace tool shall refuse a match that is not found and a match that appears
+                  more than once, saying which case occurred and, for the ambiguous case, naming the
+                  count and instructing the model to include more surrounding lines, leaving the file
+                  unchanged.
+                justification: |
+                  The refusal must say which case occurred because the correction differs, and the
+                  spike found that naming the count and asking for more surrounding lines was enough
+                  for a model to recover on its own.
+                tests:
+                  - TextFileReplaceTool_Replace_NotFound_ReturnsDenialSayingNotFound
+                  - TextFileReplaceTool_Replace_AppearsMultipleTimes_ReturnsDenialNamingCountAndAsksForContext
+
+              - id: AgentKitTools-TextFile-ReplaceTool-InsertAndDelete
+                title: >-
+                  The replace tool shall express a deletion as an empty replacement and an insertion
+                  as surrounding text present in both the old and the new text.
+                justification: |
+                  One match-exactly-once substitution expresses replace, insert and delete, so the
+                  family needs no separate insert or delete editor.
+                tests:
+                  - TextFileReplaceTool_Replace_EmptyNewText_DeletesTheMatchedText
+                  - TextFileReplaceTool_Replace_SurroundingContext_InsertsBetweenLines
+
+              - id: AgentKitTools-TextFile-ReplaceTool-PolicyGoverned
+                title: >-
+                  The replace tool shall consult the write decision alone, refusing an edit in a
+                  read-only location.
+                tags: [security]
+                justification: |
+                  A path a read-only grant permits is not thereby editable, which is what makes a
+                  read-wide, write-narrow configuration real.
+                tests:
+                  - TextFileReplaceTool_Replace_ReadOnlyLocation_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-ReplaceTool-MissingFile
+                title: >-
+                  The replace tool shall refuse a missing file with a plain fact that names no other
+                  tool.
+                justification: |
+                  A denial states a fact and never prescribes a remedy; naming another tool to run is
+                  a prescription the refusal must not make.
+                tests:
+                  - TextFileReplaceTool_Replace_MissingFile_ReturnsDenialNamingNoTool

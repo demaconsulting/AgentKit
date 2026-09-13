@@ -28,8 +28,8 @@ namespace DemaConsulting.AgentKit.Core;
 ///     name assembled some other way, throwing when the convention is not met.
 ///     </para>
 ///     <code>
-///     // Compose a conforming name from a family prefix and a verb: "markdown_sections".
-///     string name = ToolName.Create("markdown", "sections");
+///     // Compose a conforming name from a family prefix and a verb: "docstats_wordcount".
+///     string name = ToolName.Create("docstats", "wordcount");
 ///
 ///     // Validate a name you assembled yourself; it throws when the convention is not met.
 ///     ToolName.Validate(name);
@@ -38,7 +38,7 @@ namespace DemaConsulting.AgentKit.Core;
 ///     bool accepted;
 ///     try
 ///     {
-///         ToolName.Validate("sections");
+///         ToolName.Validate("wordcount");
 ///         accepted = true;
 ///     }
 ///     catch (ArgumentException)

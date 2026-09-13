@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def TextFilePack {
-        doc /* Publishes the text file family as one pack under the text_file family prefix, requiring no host capability and creating the read, write and list tools from the supplied access policy. */
+        doc /* Publishes the text_file tool family as one pack: the search, read, create, replace, cut-lines and paste-lines tools in a fixed order, each governed by the supplied policy, with one cut/paste buffer allocated per composition and shared by the cut and paste tools. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/TextFile/TextFilePack.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFilePackTests.cs */

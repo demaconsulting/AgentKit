@@ -18,7 +18,7 @@ of the other immediately.
 
 **The consumption path.** A console chat application that grants an agent exactly two locations — a
 workspace folder to read and a separate session folder to write artifacts into — and hands it the
-shipped text-file and image tool packs. It makes the AgentKit safety model *observable*: it prints
+shipped text-file, file, Markdown, and image tool packs. It makes the AgentKit safety model *observable*: it prints
 every tool call and result, so containment, asymmetric read/write grants, capability gating, the
 relative-versus-absolute path dialect, and the adapters' suppression of provider built-ins are all
 visible as they happen. It runs unchanged against the GitHub Copilot runtime and any Ollama model.
@@ -32,11 +32,12 @@ policy, its grants, and the pack builder fit together.
 writes their *own* guarded tools with `GuardedToolFactory` and publishes them as packs, composed
 together with a shipped pack. It ships two author-written packs:
 
-- **`markdown`** — a `markdown_sections` tool that lists the headings of a markdown file with their
-  line numbers. It is a *path-taking* tool: it goes through `PathPolicy` for containment exactly as
+- **`docstats`** — a `docstats_wordcount` tool that reports the word, line, and character counts of
+  a text file. It is a *path-taking* tool: it goes through `PathPolicy` for containment exactly as
   a shipped tool does, reports the file's location in the same path dialect the shipped tools use
   (via the public `PathPolicy` helpers), and returns its findings as a structured, machine-readable
-  result.
+  result. Its `docstats` family prefix is deliberately one the shipped library does not publish — the
+  library now owns the `markdown` prefix — so the custom pack never collides with a built-in family.
 - **`clock`** — a `clock_now` tool that reports the current local and UTC time. It takes *no path at
   all*, demonstrating that `GuardedToolFactory` is the construction path for **every** tool, not
   only path-based ones, and that a tool needing no policy simply does not consult one.

@@ -1,0 +1,47 @@
+---
+# Software Unit Requirements for MarkdownPack
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Markdown Requirements
+        sections:
+          - title: MarkdownPack Requirements
+            requirements:
+              - id: AgentKitTools-Markdown-Pack-FamilyPrefix
+                title: >-
+                  The pack shall publish the family prefix markdown as a constant and through the
+                  contract.
+                justification: |
+                  The prefix is what keeps the family's names from colliding with another library's,
+                  and publishing it both ways keeps the constant and the contract from drifting.
+                tests:
+                  - MarkdownPack_FamilyPrefix_IsPublishedAsConstantAndContract
+
+              - id: AgentKitTools-Markdown-Pack-NoCapabilityRequired
+                title: >-
+                  The pack shall require no host capability.
+                justification: |
+                  Reading a file's structure asks nothing of the host, so every composition receives
+                  the family.
+                tests:
+                  - MarkdownPack_RequiredCapabilities_IsNone
+
+              - id: AgentKitTools-Markdown-Pack-RegistersOutlineTool
+                title: >-
+                  The pack shall create its single outline tool.
+                justification: |
+                  The family publishes one tool, returned as a collection because the pack contract
+                  is a collection and a family grows without its callers changing.
+                tests:
+                  - MarkdownPack_CreateTools_RegistersTheOutlineTool
+
+              - id: AgentKitTools-Markdown-Pack-RequiresPolicy
+                title: >-
+                  The pack shall require a policy to create its tools.
+                tags: [security]
+                justification: |
+                  A missing policy is a programming error in the composing application, named at the
+                  point it was made.
+                tests:
+                  - MarkdownPack_CreateTools_NullPolicy_ThrowsArgumentNullException

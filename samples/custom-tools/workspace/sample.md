@@ -1,11 +1,11 @@
 # Sample Document
 
-An ordinary Markdown file the `markdown_sections` custom tool can enumerate. Its headings, and the
-line each begins on, are exactly what the tool reports back as a structured result.
+An ordinary text file the `docstats_wordcount` custom tool can count. Its words, lines and
+characters are exactly what the tool reports back as a structured result.
 
 ## Introduction
 
-A short opening section so the tool has more than one heading to find.
+A short opening section so the document has more than one paragraph to count.
 
 ## Usage
 
@@ -13,7 +13,7 @@ How a reader might use this document.
 
 ### Prerequisites
 
-A third-level heading, so the reported levels are not all the same.
+A third-level heading, adding a little more prose for the counter to tally.
 
 ### Running
 
@@ -24,9 +24,9 @@ Another third-level heading beneath Usage.
 A closing section.
 
 ```text
-# This hash is inside a fenced code block, so it is not a heading.
+# This hash is inside a fenced code block, and its words are counted like any other.
 ```
 
 ## Conclusion
 
-The final heading in the file.
+The final section in the file.

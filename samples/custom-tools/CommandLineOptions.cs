@@ -229,7 +229,7 @@ public sealed class CommandLineOptions
          GuardedToolFactory and publishes them as packs, composed alongside a shipped pack. It
          registers two custom packs and one shipped one:
 
-           markdown_sections  (custom) lists a Markdown file's headings with line numbers, going
+           docstats_wordcount (custom) counts the words, lines and characters of a text file, going
                               through the same PathPolicy containment and path dialect the shipped
                               tools use, and returning a structured result.
            clock_now          (custom) reports the current local and UTC time. It takes no path and
@@ -250,8 +250,8 @@ public sealed class CommandLineOptions
 
          Try:
            --prompt "What time is it, in local time and UTC?"
-           --prompt "List the sections of sample.md with their line numbers"
-           --prompt "List the sections of ../outside.md"   (watch containment refuse it)
-           --prompt "What locations can the markdown tool search?"
+           --prompt "Count the words, lines and characters of sample.md"
+           --prompt "Count the words of ../outside.txt"   (watch containment refuse it)
+           --prompt "What locations can the docstats tool reach?"
          """;
 }

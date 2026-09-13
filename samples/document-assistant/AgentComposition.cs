@@ -1,7 +1,9 @@
 using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Agents.Copilot;
 using DemaConsulting.AgentKit.Core;
+using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Image;
+using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using GitHub.Copilot;
 using Microsoft.Agents.AI;
@@ -82,7 +84,7 @@ public static class AgentComposition
     ///     removes a discovery round-trip and makes the session folder's absolute path available to
     ///     the agent immediately, on the very first turn, before it has listed anything. Discovery
     ///     and the named instructions are complementary rather than one compensating for a defect in
-    ///     the other: a no-argument <c>text_file_list</c> reports every permitted location, including
+    ///     the other: a no-argument <c>file_list</c> reports every permitted location, including
     ///     one that is currently empty (rendered under its absolute header with a marker naming its
     ///     access level), so an agent could learn the empty session folder's path from discovery
     ///     alone — but naming it up front is simpler and saves the round-trip.
@@ -111,17 +113,21 @@ public static class AgentComposition
             "nothing else. There are exactly two of them. The workspace is '" + workspaceRoot +
             "' (" + workspaceAccess + "); it is what relative names are interpreted against. The " +
             "session folder is '" + sessionRoot + "' (read-write); it lies outside the workspace, " +
-            "so only its full absolute path reaches it. You can read text files, list files, write " +
-            "text files, and (when a vision tool is offered) look at images — but only within " +
+            "so only its full absolute path reaches it. You can search and read text files, create " +
+            "and edit them, list, copy, move and delete files of any type, outline a Markdown " +
+            "file's sections, and (when a vision tool is offered) look at images — but only within " +
             "those two locations, and only where you have write access. A path outside them will " +
             "be refused, and that is by design. You have no shell, terminal, code-execution, or " +
             "web/fetch tool; do not claim otherwise. " +
-            "To see what files exist, call text_file_list with no directory argument: it reports " +
+            "To see what files exist, call file_list with no directory argument: it reports " +
             "every location you may read, each as an absolute path with its files beneath it — and " +
             "an empty location still appears, shown under its absolute path with a marker naming " +
             "its access level, so you always learn every location you may use. Read files from the " +
             "workspace using the plain relative names the " +
-            "listing shows for it (for example 'welcome.txt'). Write new files into the session " +
+            "listing shows for it (for example 'welcome.txt'). text_file_read prefixes each line " +
+            "with its 1-based number and a '| ' delimiter, which are not part of the file; to edit, " +
+            "give text_file_replace the file's raw text, not the numbered prefixes. Create new " +
+            "files in the session " +
             "folder using its full absolute path exactly as given above — a relative name is " +
             "always interpreted against the workspace, so it will not reach any other location. " +
             "When a tool refuses a request, read the refusal: it echoes what you asked for, states " +
@@ -186,7 +192,10 @@ public static class AgentComposition
 
         var policy = new PathPolicy(workspaceRoot, grants);
 
-        var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
+        var builder = new ToolPackBuilder(policy)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new MarkdownPack());
 
         // Vision is a host/user capability, not a provider trait: declaring it adds the image pack
         // for either provider, and withholding it removes image_read from either provider.

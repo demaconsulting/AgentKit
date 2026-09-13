@@ -187,7 +187,9 @@ public static class ImageReadTool
         }
 
         // A missing file is refused as such; there is no listing tool in this family to name.
-        if (!File.Exists(realPath))
+        // System.IO.File is qualified because the sibling File tool family occupies the unqualified
+        // 'File' name within this assembly.
+        if (!System.IO.File.Exists(realPath))
         {
             return ToolResult.Denied(DenialReason.TargetNotFound, FileNotFound);
         }
@@ -231,7 +233,7 @@ public static class ImageReadTool
                     + "-byte binary limit.");
             }
 
-            var data = await File.ReadAllBytesAsync(realPath, cancellationToken)
+            var data = await System.IO.File.ReadAllBytesAsync(realPath, cancellationToken)
                 .ConfigureAwait(false);
             var caption = CaptionPrefix + mediaType + ".";
 

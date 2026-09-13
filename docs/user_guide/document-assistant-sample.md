@@ -3,7 +3,7 @@
 The repository ships a runnable sample under `samples/document-assistant` that puts the pieces
 described earlier in this guide together into a working console application. It grants an agent two
 locations — a workspace folder of documents and a separate session folder for the artifacts the agent
-produces — hands it the text-file and image tool packs, and runs the same conversation against either
+produces — hands it the text-file, file, Markdown, and image tool packs, and runs the same conversation against either
 the GitHub Copilot runtime or an Ollama model. Refer to the sample's own README for the full option
 reference and a catalogue of things to try.
 
@@ -32,7 +32,7 @@ they are reported as absolute paths. That is the transition hazard described ear
 happening live: an application that adds a second location moves from the relative dialect to the
 absolute one for that location, and nothing else announces it.
 
-A no-argument `text_file_list` is a discovery request — it reports every permitted location as an
+A no-argument `file_list` is a discovery request — it reports every permitted location as an
 absolute header, with any files beneath it, and an empty location shown under its header with a
 marker naming its access level — and the sample's system instructions still direct the model to list
 before it writes, because that listing is what establishes the two dialects. The instructions also
@@ -101,9 +101,12 @@ dotnet run --project samples/document-assistant -- \
   --prompt "List every tool you have available by name."
 ```
 
-With vision enabled the agent lists `text_file_read`, `text_file_write`, `text_file_list`, and
-`image_read`; with `--no-vision` the image tool is absent, because the builder never asks a pack for
-tools whose required capability the host has not declared.
+With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_file_create`,
+`text_file_replace`, `text_file_cut_lines`, `text_file_copy_lines`, `text_file_paste_lines`,
+`file_list`, `file_copy`,
+`file_move`, `file_delete`, `markdown_outline`, and `image_read`; with `--no-vision` the image tool
+is absent, because the builder never asks a pack for tools whose required capability the host has not
+declared.
 
 ## Demonstrating Containment
 

@@ -16,8 +16,9 @@ permission-governed set of tools to the agent framework of its choice, bounded b
 application configures and a tool cannot omit.
 
 > **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
-> construction, tool results, and the tool pack contract — is implemented; two guarded tool
-> families, text file and image, are built on it in `DemaConsulting.AgentKit.Tools`; and two
+> construction, tool results, and the tool pack contract — is implemented; four guarded tool
+> families, text file, file, markdown and image, are built on it in
+> `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
 > a GitHub Copilot `CopilotClient`.
 
@@ -28,10 +29,12 @@ demonstrates writing your own guarded tools. See the [Samples](#samples) section
 ## Capabilities
 
 - **Guarded tool families**: each family is bound at construction to a policy that constrains what
-  it may touch. Two families ship today — **text file** (read, write, list) and **image** (read
-  images and PDF documents for a vision-capable agent) — in `DemaConsulting.AgentKit.Tools`.
-  File system, transfer buffer, work queue, user interaction, and sub-agent delegation families
-  are planned.
+  it may touch. Four families ship today — **text file** (search, read, create, replace, and
+  line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
+  delete files of any type), **markdown** (outline a document's headings with their line ranges),
+  and **image** (read images and PDF documents for a vision-capable agent) — in
+  `DemaConsulting.AgentKit.Tools`. Transfer buffer, work queue, user interaction, and sub-agent
+  delegation families are planned.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
 - **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
@@ -48,8 +51,8 @@ abstraction. Microsoft Agent Framework supplies those.
 
 - **`DemaConsulting.AgentKit.Core`** — policy primitives, guarded tool construction, tool result
   helpers, and the tool-pack contract.
-- **`DemaConsulting.AgentKit.Tools`** — ready-made guarded tool families (text file and image),
-  each composed onto a policy through the pack contract.
+- **`DemaConsulting.AgentKit.Tools`** — ready-made guarded tool families (text file, file, markdown
+  and image), each composed onto a policy through the pack contract.
 - **`DemaConsulting.AgentKit.Agents.ChatClient`** — builds a Microsoft Agent Framework agent from any
   `IChatClient`, installing the image-promoting decorator on every agent so a tool-returned image
   reaches the model even on a provider that would otherwise drop it.
@@ -182,16 +185,19 @@ of what each demonstrates and when to read it.
 - **[Document Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/document-assistant)**
   — *the consumption path.* A console chat application that grants an agent two locations — a
   workspace folder to read and a separate session folder to write artifacts into — and gives it the
-  shipped text-file and image tool packs. A `--read-only-workspace` switch makes the grants
+  shipped text-file, file, Markdown, and image tool packs. A `--read-only-workspace` switch makes the grants
   asymmetric, so a refused write enumerates the writable location and the agent recovers. It runs
   unchanged against the GitHub Copilot runtime and any Ollama model, and prints every tool call so
   the containment, capability gating, and built-in suppression are visible as they happen.
 - **[Custom Tools](https://github.com/demaconsulting/AgentKit/tree/main/samples/custom-tools)**
   — *the extension path.* A console chat application that shows how an application author writes
   their own guarded tools with `GuardedToolFactory` and publishes them as packs, composed alongside
-  a shipped pack. It ships a path-taking `markdown_sections` tool (going through `PathPolicy` for
-  containment and returning a structured result) and a no-path `clock_now` tool (the deliberate
-  contrast — every tool is built through the guarded factory, not only path-based ones).
+  a shipped pack. It ships a path-taking `docstats_wordcount` tool (going through `PathPolicy` for
+  containment and returning a structured result of a text file's word, line, and character counts)
+  and a no-path `clock_now` tool (the deliberate contrast — every tool is built through the guarded
+  factory, not only path-based ones). Its `docstats` family prefix is deliberately one the shipped
+  library does not publish — the library now owns the `markdown` prefix — so the custom pack never
+  collides with a built-in family.
 
 Each sample has its own README explaining how to run it and what to try.
 

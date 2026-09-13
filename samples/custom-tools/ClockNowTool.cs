@@ -9,7 +9,7 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools;
 /// </summary>
 /// <remarks>
 ///     <para>
-///     This tool is the sample's <b>deliberate contrast</b> to <see cref="MarkdownSectionsTool"/>.
+///     This tool is the sample's <b>deliberate contrast</b> to <see cref="DocStatsWordCountTool"/>.
 ///     It takes no path — indeed no arguments at all — and it consults no <see cref="PathPolicy"/>,
 ///     because it touches nothing a policy governs. Its purpose is to show that
 ///     <see cref="GuardedToolFactory"/> is the construction path for <em>every</em> tool, not only

@@ -188,7 +188,7 @@ public class ImageReadToolTests
         WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
         var escapedPath = Path.Combine(link, "secret.png");
-        Assert.Equal(SampleBytes, await File.ReadAllBytesAsync(
+        Assert.Equal(SampleBytes, await System.IO.File.ReadAllBytesAsync(
             escapedPath,
             TestContext.Current.CancellationToken));
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
@@ -442,7 +442,7 @@ public class ImageReadToolTests
         Directory.CreateDirectory(directory);
 
         var filePath = Path.Combine(directory, fileName);
-        File.WriteAllBytes(filePath, content);
+        System.IO.File.WriteAllBytes(filePath, content);
         return filePath;
     }
 

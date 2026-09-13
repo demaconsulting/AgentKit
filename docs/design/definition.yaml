@@ -21,10 +21,23 @@ input-files:
   - docs/design/agent-kit-tools/image/image-pack.md
   - docs/design/agent-kit-tools/image/image-read-tool.md
   - docs/design/agent-kit-tools/text-file.md
-  - docs/design/agent-kit-tools/text-file/text-file-list-tool.md
-  - docs/design/agent-kit-tools/text-file/text-file-pack.md
+  - docs/design/agent-kit-tools/text-file/text-file-search-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-read-tool.md
-  - docs/design/agent-kit-tools/text-file/text-file-write-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-create-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-replace-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-cut-lines-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-paste-lines-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-line-buffers.md
+  - docs/design/agent-kit-tools/text-file/text-file-pack.md
+  - docs/design/agent-kit-tools/file.md
+  - docs/design/agent-kit-tools/file/file-list-tool.md
+  - docs/design/agent-kit-tools/file/file-copy-tool.md
+  - docs/design/agent-kit-tools/file/file-move-tool.md
+  - docs/design/agent-kit-tools/file/file-delete-tool.md
+  - docs/design/agent-kit-tools/file/file-pack.md
+  - docs/design/agent-kit-tools/markdown.md
+  - docs/design/agent-kit-tools/markdown/markdown-outline-tool.md
+  - docs/design/agent-kit-tools/markdown/markdown-pack.md
   - docs/design/agent-kit-agents-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-copilot.md

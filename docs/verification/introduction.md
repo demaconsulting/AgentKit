@@ -44,12 +44,30 @@ constituent software items, specifically:
   application offers a model
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
-- **TextFile (Subsystem)** — The text file tool family: policy-governed reading, writing and
-  listing of text files, published as one capability-gated pack
+- **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
+  creating and editing of text files, published as one capability-gated pack
+- **TextFileSearchTool (Unit)** — Publishes the `text_file_search` tool
 - **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
-- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
-- **TextFileListTool (Unit)** — Publishes the `text_file_list` tool
+- **TextFileCreateTool (Unit)** — Publishes the `text_file_create` tool
+- **TextFileReplaceTool (Unit)** — Publishes the `text_file_replace` tool
+- **TextFileCutLinesTool (Unit)** — Publishes the `text_file_cut_lines` tool
+- **TextFileCopyLinesTool (Unit)** — Publishes the `text_file_copy_lines` tool
+- **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
+- **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
+  and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
+- **TextLines (Unit)** — Shared helper for line-oriented reading and rewriting used across the family
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
+- **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
+  of files of any type, published as one capability-gated pack
+- **FileListTool (Unit)** — Publishes the `file_list` tool
+- **FileCopyTool (Unit)** — Publishes the `file_copy` tool
+- **FileMoveTool (Unit)** — Publishes the `file_move` tool
+- **FileDeleteTool (Unit)** — Publishes the `file_delete` tool
+- **FilePack (Unit)** — Publishes the file family as one pack
+- **Markdown (Subsystem)** — The Markdown tool family: policy-governed outlining of a Markdown file's
+  heading structure, published as one capability-gated pack
+- **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
+- **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
   documents for a vision-capable agent, published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,

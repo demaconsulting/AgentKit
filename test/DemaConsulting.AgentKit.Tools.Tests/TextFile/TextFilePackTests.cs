@@ -9,9 +9,9 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// </summary>
 /// <remarks>
 ///     The pack is the only public way to obtain the family's tools, so these scenarios verify
-///     what a composing application can observe: the prefix claimed, the capability required,
-///     the tools produced, and that the policy the composition supplied is the one governing
-///     them.
+///     what a composing application can observe: the prefix claimed, the capability required, the
+///     tools produced, the shared cut/paste buffer, and that the policy the composition supplied is
+///     the one governing them.
 /// </remarks>
 public class TextFilePackTests
 {
@@ -21,11 +21,7 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_FamilyPrefix_Constant_IsTextFile()
     {
-        // Arrange / Act: read the published constant
-        var prefix = TextFilePack.FamilyPrefix;
-
-        // Assert: the family the tool names are qualified by
-        Assert.Equal("text_file", prefix);
+        Assert.Equal("text_file", TextFilePack.FamilyPrefix);
     }
 
     /// <summary>
@@ -34,14 +30,8 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_FamilyPrefix_Contract_ReportsTheDeclaredConstant()
     {
-        // Arrange: the pack seen through the contract a composer uses
         IToolPack pack = new TextFilePack();
-
-        // Act: read the prefix through the contract
-        var prefix = pack.FamilyPrefix;
-
-        // Assert: the constant and the contract cannot drift apart
-        Assert.Equal(TextFilePack.FamilyPrefix, prefix);
+        Assert.Equal(TextFilePack.FamilyPrefix, pack.FamilyPrefix);
     }
 
     /// <summary>
@@ -50,34 +40,32 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_RequiredCapabilities_Pack_RequiresNoHostCapability()
     {
-        // Arrange: the pack
-        var pack = new TextFilePack();
-
-        // Act: read what it requires of a host
-        var required = pack.RequiredCapabilities;
-
-        // Assert: requiring nothing means every host receives the family
-        Assert.Equal(HostCapabilities.None, required);
+        Assert.Equal(HostCapabilities.None, new TextFilePack().RequiredCapabilities);
     }
 
     /// <summary>
-    ///     Proves the pack creates the read, write and list tools in a fixed order.
+    ///     Proves the pack creates the seven tools in the fixed, documented order.
     /// </summary>
     [Fact]
-    public void TextFilePack_CreateTools_Policy_CreatesTheReadWriteAndListTools()
+    public void TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder()
     {
-        // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
-        // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: exactly three tools, in the order the model will see them
-        Assert.Equal(3, tools.Count);
-        Assert.Equal(TextFileReadTool.ToolName, tools[0].Name);
-        Assert.Equal(TextFileWriteTool.ToolName, tools[1].Name);
-        Assert.Equal(TextFileListTool.ToolName, tools[2].Name);
+        Assert.Equal(7, tools.Count);
+        Assert.Equal(
+            [
+                TextFileSearchTool.ToolName,
+                TextFileReadTool.ToolName,
+                TextFileCreateTool.ToolName,
+                TextFileReplaceTool.ToolName,
+                TextFileCutLinesTool.ToolName,
+                TextFileCopyLinesTool.ToolName,
+                TextFilePasteLinesTool.ToolName
+            ],
+            tools.Select(tool => tool.Name));
     }
 
     /// <summary>
@@ -86,14 +74,11 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_CreateTools_Policy_ReturnsNoNullTool()
     {
-        // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
-        // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: the collection the composer receives contains no hole
         Assert.NotEmpty(tools);
         Assert.All(tools, Assert.NotNull);
     }
@@ -104,14 +89,11 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_CreateTools_EveryTool_CarriesTheFamilyPrefix()
     {
-        // Arrange: a pack and a policy to govern its tools
         var pack = new TextFilePack();
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
-        // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: the declaration the prefix collision check depends on is true
         Assert.All(
             tools,
             tool => Assert.StartsWith(
@@ -126,11 +108,59 @@ public class TextFilePackTests
     [Fact]
     public void TextFilePack_CreateTools_NullPolicy_ThrowsArgumentNullException()
     {
-        // Arrange: a pack with no policy to hand its tools
         var pack = new TextFilePack();
-
-        // Act / Assert: a family with no policy cannot be created
         Assert.Throws<ArgumentNullException>(() => pack.CreateTools(null!).ToList());
+    }
+
+    /// <summary>
+    ///     Proves the cut and paste tools one composition produces share a buffer, so a range cut
+    ///     through one is pasteable through the other.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition()
+    {
+        using var fixture = new ReparsePointFixture();
+        var path = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
+        var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
+        var cut = tools.Single(tool => tool.Name == TextFileCutLinesTool.ToolName);
+        var paste = tools.Single(tool => tool.Name == TextFilePasteLinesTool.ToolName);
+
+        await cut.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 2, ["endLine"] = 2 },
+            TestContext.Current.CancellationToken);
+        await paste.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt", ["atLine"] = 2 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "one\ntwo\nthree\n",
+            await System.IO.File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves two separate compositions do not share buffer slots.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
+
+        var first = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
+        await first.Single(tool => tool.Name == TextFileCutLinesTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 1, ["endLine"] = 1 },
+            TestContext.Current.CancellationToken);
+
+        var second = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
+        var result = await second.Single(tool => tool.Name == TextFilePasteLinesTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt" },
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains("Denied (TargetNotFound)", Assert.IsType<string>(result), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -140,19 +170,17 @@ public class TextFilePackTests
     [Fact]
     public async Task TextFilePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools()
     {
-        // Arrange: a pack whose tools are created from a policy rooted at one location
         using var fixture = new ReparsePointFixture();
         var permitted = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "permitted");
         var refused = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
-        var readTool = new TextFilePack().CreateTools(policy).First();
+        var readTool = new TextFilePack().CreateTools(policy)
+            .Single(tool => tool.Name == TextFileReadTool.ToolName);
 
-        // Act: read one path the policy permits and one it does not
         var permittedResult = await InvokeReadAsync(readTool, permitted);
         var refusedResult = await InvokeReadAsync(readTool, refused);
 
-        // Assert: the supplied policy governs both decisions
-        Assert.Equal("permitted", Assert.IsType<string>(permittedResult));
+        Assert.Contains("permitted", Assert.IsType<string>(permittedResult), StringComparison.Ordinal);
         Assert.Contains(
             "Denied (PathNotPermitted)",
             Assert.IsType<string>(refusedResult),
@@ -172,4 +200,3 @@ public class TextFilePackTests
             TestContext.Current.CancellationToken);
     }
 }
-

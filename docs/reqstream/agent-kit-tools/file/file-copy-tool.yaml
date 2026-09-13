@@ -1,0 +1,75 @@
+---
+# Software Unit Requirements for FileCopyTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileCopyTool Requirements
+            requirements:
+              - id: AgentKitTools-File-CopyTool-ToolName
+                title: >-
+                  The copy tool shall be published under the name file_copy, exposed as a constant,
+                  and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - FileCopyTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-File-CopyTool-GuardedConstruction
+                title: >-
+                  The copy tool shall be constructed only through the guarded construction path with
+                  an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded copy tool impossible to
+                  build.
+                tests:
+                  - FileCopyTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-CopyTool-Copies
+                title: >-
+                  The copy tool shall copy a permitted file to a permitted destination, addressed by
+                  the relative names a model sends, leaving the source in place.
+                justification: |
+                  Copying a file is the tool's reason to exist, and the names it accepts are the bare
+                  names a listing reported.
+                tests:
+                  - FileCopyTool_Copy_RelativePaths_CopiesTheFileContent
+
+              - id: AgentKitTools-File-CopyTool-PerEndpointPolicy
+                title: >-
+                  The copy tool shall judge the source by the read decision and the destination by
+                  the write decision, so a read-only source may be copied into a writable location
+                  but a destination outside the write grant is refused.
+                tags: [security]
+                justification: |
+                  A copy reads from one place and writes to another; consulting the decision that
+                  matches each endpoint is what keeps a read-wide, write-narrow configuration
+                  meaningful for a copy.
+                tests:
+                  - FileCopyTool_Copy_ReadOnlySourceToWritableDestination_IsPermitted
+                  - FileCopyTool_Copy_DestinationOutsideWriteGrant_ReturnsDenial
+
+              - id: AgentKitTools-File-CopyTool-NoClobber
+                title: >-
+                  The copy tool shall refuse to overwrite an existing destination unless overwrite is
+                  explicitly true, replacing it only when it is.
+                justification: |
+                  Silently replacing a file an agent did not mean to touch is the kind of irreversible
+                  side effect the family exists to make impossible by accident.
+                tests:
+                  - FileCopyTool_Copy_ExistingDestinationWithoutOverwrite_ReturnsDenialAndLeavesItUnchanged
+                  - FileCopyTool_Copy_ExistingDestinationWithOverwrite_ReplacesIt
+
+              - id: AgentKitTools-File-CopyTool-MissingSource
+                title: >-
+                  The copy tool shall refuse a missing source with a plain fact that names no other
+                  tool.
+                justification: |
+                  A denial states a fact and never prescribes a remedy; naming another tool to run is
+                  a prescription the refusal must not make.
+                tests:
+                  - FileCopyTool_Copy_MissingSource_ReturnsDenialNamingNoTool

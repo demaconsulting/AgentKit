@@ -1,0 +1,77 @@
+---
+# Software Unit Requirements for TextFileCreateTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileCreateTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-CreateTool-ToolName
+                title: >-
+                  The create tool shall be published under the name text_file_create, exposed as a
+                  constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFileCreateTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-CreateTool-GuardedConstruction
+                title: >-
+                  The create tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded create tool impossible to
+                  build.
+                tests:
+                  - TextFileCreateTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-TextFile-CreateTool-CreatesNew
+                title: >-
+                  The create tool shall write a new file with the given content, treating empty
+                  content as a legitimate empty file.
+                justification: |
+                  Creating a file is the tool's reason to exist, and an empty file is a real outcome
+                  an agent may want.
+                tests:
+                  - TextFileCreateTool_Create_NewFile_WritesTheContent
+                  - TextFileCreateTool_Create_EmptyContent_CreatesAnEmptyFile
+
+              - id: AgentKitTools-TextFile-CreateTool-RefusesExisting
+                title: >-
+                  The create tool shall refuse to replace a file that already exists with a plain
+                  fact that names no other tool, and shall refuse a missing parent directory rather
+                  than creating one.
+                justification: |
+                  Refusing an existing file is the tool's defining guarantee — it brings a new file
+                  into existence and never clobbers one — and creating a directory tree would be a
+                  side effect nobody asked for. A denial states a fact and never prescribes a remedy,
+                  so the refusal names no tool that would perform the destructive replacement.
+                tests:
+                  - TextFileCreateTool_Create_ExistingFile_ReturnsDenialAndLeavesItUnchanged
+                  - TextFileCreateTool_Create_ExistingFile_DenialPrescribesNoRemedy
+                  - TextFileCreateTool_Create_MissingParentDirectory_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-CreateTool-PolicyGoverned
+                title: >-
+                  The create tool shall consult the write decision alone, refusing creation in a
+                  read-only location.
+                tags: [security]
+                justification: |
+                  A path a read-only grant permits is not thereby writable, which is what makes a
+                  read-wide, write-narrow configuration real.
+                tests:
+                  - TextFileCreateTool_Create_ReadOnlyLocation_ReturnsDenial
+
+              - id: AgentKitTools-TextFile-CreateTool-MalformedRequest
+                title: >-
+                  The create tool shall return a refusal rather than throwing when the path or the
+                  content argument is absent.
+                justification: |
+                  A malformed request comes from the model; an exception at a tool call would end the
+                  agent's turn.
+                tests:
+                  - TextFileCreateTool_Create_MissingContent_ReturnsDenialWithoutThrowing

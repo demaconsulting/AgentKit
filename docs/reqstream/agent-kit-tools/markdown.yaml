@@ -1,0 +1,74 @@
+---
+# Software Subsystem Requirements for the Markdown tool family
+#
+# These requirements describe the behavior of the Markdown subsystem as a whole,
+# decomposing the system-level markdown family requirement into the behavior its unit
+# provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Markdown Requirements
+        requirements:
+          - id: AgentKitTools-Markdown-FamilyComposition
+            title: >-
+              The markdown family shall publish a single outline tool under the markdown family
+              prefix, and shall require no host capability.
+            justification: |
+              The family is deliberately a single tool: reading and editing a section by its line
+              range is already what the text family's read and cut tools do, so the markdown family
+              provides only the outline they cannot supply on their own. Owning the markdown family
+              prefix is why a sample demonstrating custom tools uses a different prefix.
+            children:
+              - AgentKitTools-Markdown-OutlineTool-ToolName
+              - AgentKitTools-Markdown-Pack-FamilyPrefix
+              - AgentKitTools-Markdown-Pack-NoCapabilityRequired
+              - AgentKitTools-Markdown-Pack-RegistersOutlineTool
+            tests:
+              - Markdown_Family_ComposedThroughBuilder_PublishesTheOutlineTool
+
+          - id: AgentKitTools-Markdown-GuardedConstruction
+            title: >-
+              The markdown family's tool shall be constructed through the guarded construction path
+              and shall take its access policy at construction.
+            tags: [security]
+            justification: |
+              A tool that received its policy later — or not at all — could be attached to an agent
+              while governed by nothing.
+            children:
+              - AgentKitTools-Markdown-OutlineTool-GuardedConstruction
+              - AgentKitTools-Markdown-Pack-RequiresPolicy
+            tests:
+              - Markdown_Family_EveryTool_CarriesAValidatedNameAndDescription
+
+          - id: AgentKitTools-Markdown-PolicyGoverned
+            title: >-
+              The markdown family shall judge each request with the read decision, refusing a path
+              outside the grants, a directory and a missing file.
+            tags: [security]
+            justification: |
+              Reading a file's structure is a read, so containment applies exactly as it does to the
+              text read tool.
+            children:
+              - AgentKitTools-Markdown-OutlineTool-PolicyGoverned
+              - AgentKitTools-Markdown-OutlineTool-MissingOrDirectory
+            tests:
+              - Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult
+
+          - id: AgentKitTools-Markdown-Outline
+            title: >-
+              The markdown family shall report each section's heading level, title and 1-based line
+              range, computing a section's end as the line before the next heading of the same or a
+              higher level, filtering the reported depth with maxDepth, and skipping a hash inside a
+              fenced or indented code block.
+            justification: |
+              The line ranges compose directly into the text family's read and cut tools, which is
+              why the family is only an outline; a fence-aware, indent-aware reading matches what a
+              renderer shows.
+            children:
+              - AgentKitTools-Markdown-OutlineTool-Sections
+              - AgentKitTools-Markdown-OutlineTool-MaxDepth
+              - AgentKitTools-Markdown-OutlineTool-EmptyOutline
+              - AgentKitTools-Markdown-OutlineTool-LargeDocument
+            tests:
+              - Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult

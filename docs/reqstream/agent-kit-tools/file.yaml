@@ -1,0 +1,110 @@
+---
+# Software Subsystem Requirements for the File tool family
+#
+# These requirements describe the behavior of the type-agnostic File subsystem as a
+# whole, decomposing the system-level file family requirement into the behavior each of
+# its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        requirements:
+          - id: AgentKitTools-File-FamilyComposition
+            title: >-
+              The file family shall publish four tools — list, copy, move and delete — under the
+              file family prefix, treat a file as an entity regardless of type, and require no host
+              capability.
+            justification: |
+              Managing a file is the same operation whatever it holds, so the family treats a file
+              as an entity rather than as a kind of content, and the listing it provides replaces the
+              text family's former listing so that discovery is type-agnostic. Publishing every tool
+              under one prefix keeps the names from colliding with another library's.
+            children:
+              - AgentKitTools-File-ListTool-ToolName
+              - AgentKitTools-File-CopyTool-ToolName
+              - AgentKitTools-File-MoveTool-ToolName
+              - AgentKitTools-File-DeleteTool-ToolName
+              - AgentKitTools-File-ListTool-TypeAgnostic
+              - AgentKitTools-File-ListTool-Discovery
+              - AgentKitTools-File-ListTool-Glob
+              - AgentKitTools-File-Pack-FamilyPrefix
+              - AgentKitTools-File-Pack-NoCapabilityRequired
+              - AgentKitTools-File-Pack-RegistersFourTools
+              - AgentKitTools-File-Pack-ToolsCarryFamilyPrefix
+            tests:
+              - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
+              - File_Family_HostDeclaringNoCapability_StillReceivesTheFamily
+
+          - id: AgentKitTools-File-GuardedConstruction
+            title: >-
+              Every tool in the file family shall be constructed through the guarded construction
+              path and shall take its access policy at construction.
+            tags: [security]
+            justification: |
+              A tool that received its policy later — or not at all — could be attached to an agent
+              while governed by nothing; making construction the only moment a policy can be supplied
+              makes an unguarded tool impossible to express.
+            children:
+              - AgentKitTools-File-ListTool-GuardedConstruction
+              - AgentKitTools-File-CopyTool-GuardedConstruction
+              - AgentKitTools-File-MoveTool-GuardedConstruction
+              - AgentKitTools-File-DeleteTool-GuardedConstruction
+              - AgentKitTools-File-Pack-RequiresPolicy
+            tests:
+              - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
+
+          - id: AgentKitTools-File-PolicyGoverned
+            title: >-
+              The file family shall judge each endpoint by the policy decision that matches it — a
+              read for the list source and a copy source, a write for a copy destination and for
+              every move and delete endpoint — refusing a request that reaches outside a permitted
+              location through a link.
+            tags: [security]
+            justification: |
+              A copy reads from one place and writes to another, and a move and a delete write in the
+              strongest sense; consulting the decision that matches each endpoint keeps a read-only
+              grant genuinely read-only. Judging a request by the location it actually reaches keeps
+              an agent inside what its operator granted.
+            children:
+              - AgentKitTools-File-ListTool-PolicyGoverned
+              - AgentKitTools-File-CopyTool-Copies
+              - AgentKitTools-File-CopyTool-PerEndpointPolicy
+              - AgentKitTools-File-MoveTool-Moves
+              - AgentKitTools-File-MoveTool-PolicyGoverned
+              - AgentKitTools-File-DeleteTool-DeletesFile
+              - AgentKitTools-File-DeleteTool-PolicyGoverned
+            tests:
+              - File_Family_PathBeneathLinkOutsideRoot_IsNeverReachableByAnyTool
+
+          - id: AgentKitTools-File-DenialsAreResults
+            title: >-
+              The file family shall report every refusal as a returned result that names its reason,
+              never throwing at a model, and shall direct the model to the listing tool where a
+              missing target has one.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and strands
+              it, whereas a returned refusal lets it read the reason and choose a permitted
+              alternative.
+            children:
+              - AgentKitTools-File-CopyTool-MissingSource
+              - AgentKitTools-File-MoveTool-MissingSource
+              - AgentKitTools-File-DeleteTool-MissingFile
+            tests:
+              - File_Family_DeniedRequest_ReturnsAResultWithoutThrowing
+
+          - id: AgentKitTools-File-SafeMutation
+            title: >-
+              The file family shall refuse to overwrite an existing destination unless overwrite is
+              explicitly true, and shall refuse to delete a directory and never recurse, so the least
+              reversible operations cannot happen by accident.
+            justification: |
+              Silently replacing a file, or deleting a whole tree behind a single call, are the kinds
+              of irreversible side effect this library exists to make impossible to express by
+              accident; recovery from a mistaken change is source control.
+            children:
+              - AgentKitTools-File-CopyTool-NoClobber
+              - AgentKitTools-File-MoveTool-NoClobber
+              - AgentKitTools-File-DeleteTool-RefusesDirectory
+            tests:
+              - File_Family_CopyThenDelete_ByRelativeNames_WorksEndToEnd

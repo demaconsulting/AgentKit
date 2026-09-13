@@ -1,0 +1,93 @@
+---
+# Software Unit Requirements for TextFilePasteLinesTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFilePasteLinesTool Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-PasteTool-ToolName
+                title: >-
+                  The paste-lines tool shall be published under the name text_file_paste_lines,
+                  exposed as a constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the only
+                  basis it has for choosing it.
+                tests:
+                  - TextFilePasteLinesTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-TextFile-PasteTool-GuardedConstruction
+                title: >-
+                  The paste-lines tool shall be constructed only through the guarded construction
+                  path, requiring both an access policy and a buffer at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy makes an unguarded paste tool impossible to build, and
+                  requiring the buffer is what lets it read what the cut tool captured.
+                tests:
+                  - TextFilePasteLinesTool_Create_NullArguments_ThrowArgumentNullException
+
+              - id: AgentKitTools-TextFile-PasteTool-RoundTrip
+                title: >-
+                  The paste-lines tool shall insert captured text at a chosen line, or append it when
+                  the line is omitted, so a cut immediately followed by a paste at the same line
+                  reproduces the file exactly, and a named buffer relocates a fragment to another
+                  file.
+                justification: |
+                  Paste is the other half of a cut: restoring the captured text unchanged is what
+                  makes a cut a reversible move rather than a destruction, and a named buffer turns it
+                  into a relocation.
+                tests:
+                  - TextFilePasteLines_CutThenPasteAtSameLine_ReproducesTheFileExactly
+                  - TextFilePasteLines_OmittedAtLine_AppendsToEnd
+                  - TextFilePasteLines_NamedBuffer_RelocatesToAnotherFile
+
+              - id: AgentKitTools-TextFile-PasteTool-EmptyBuffer
+                title: >-
+                  The paste-lines tool shall refuse a paste from an empty buffer, naming the buffer,
+                  rather than silently doing nothing.
+                justification: |
+                  A model that pasted from an empty buffer and received a bland success could not
+                  tell a paste from a no-op, so the empty buffer is a refusal naming the slot.
+                tests:
+                  - TextFilePasteLines_EmptyBuffer_ReturnsDenialNamingTheBuffer
+
+              - id: AgentKitTools-TextFile-PasteTool-MissingFile
+                title: >-
+                  The paste-lines tool shall refuse a paste into a file that does not exist as
+                  TargetNotFound with a plain fact that names no other tool.
+                justification: |
+                  A denial states a fact and never prescribes a remedy. Naming another tool to run —
+                  even the one that could make the target — is a prescription the refusal must not
+                  make; it states only that the file does not exist.
+                tests:
+                  - TextFilePasteLines_MissingFile_RefusesNamingNoTool
+
+              - id: AgentKitTools-TextFile-PasteTool-PopulatedSlotGuidance
+                title: >-
+                  When the requested buffer slot is empty, the paste-lines tool shall state that fact
+                  and name any other slots that hold captured text, so a model that captured into a
+                  named slot and then omitted the name learns which name to pass, while naming no tool
+                  to run.
+                justification: |
+                  The usual cause of an empty-slot paste is a capture into a named slot followed by a
+                  paste that omitted the same name. Naming which slots hold captured lines is a
+                  statement of fact about tool state, not a prescribed remedy, so it lets the model
+                  retry with the name instead of re-reading the captured lines back into its context
+                  window — without the refusal prescribing another tool to run.
+                tests:
+                  - TextFilePasteLines_EmptyDefaultSlot_NoOtherSlotPopulated_StatesTheFactNamingNoTool
+                  - TextFilePasteLines_EmptySlot_AnotherSlotPopulated_NamesThatSlot
+
+              - id: AgentKitTools-TextFile-PasteTool-PolicyGoverned
+                title: >-
+                  The paste-lines tool shall consult the write decision alone, so a read-only
+                  location is refused.
+                tags: [security]
+                justification: |
+                  Inserting text is a write, so a read-only location is refused; this is covered
+                  together with the cut tool's read-only refusal through the shared editing loop.
+                tests:
+                  - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheEdit

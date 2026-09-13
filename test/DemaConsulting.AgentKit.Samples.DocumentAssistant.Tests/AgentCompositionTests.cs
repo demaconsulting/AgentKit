@@ -103,7 +103,7 @@ public class AgentCompositionTests
         // something to read rather than something to retry
         Assert.Multiple(
             () => Assert.Contains(
-                "text_file_list with no directory argument",
+                "file_list with no directory argument",
                 instructions,
                 StringComparison.Ordinal),
             () => Assert.Contains("Do not retry the identical call", instructions, StringComparison.Ordinal));

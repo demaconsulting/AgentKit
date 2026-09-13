@@ -19,17 +19,27 @@ package set flat: applications attach the families they want, in any combination
 dependency being forced upon a family that does not need it.
 
 The system contains the **TextFile** subsystem: the text file tool family, publishing
-`text_file_read`, `text_file_write` and `text_file_list` under the `text_file` family prefix and
-attached to an application as one pack. It was scaffolded ahead of that family so that its build,
-tests, requirements traceability and review coverage were established before any family was added.
+`text_file_search`, `text_file_read`, `text_file_create`, `text_file_replace`,
+`text_file_cut_lines`, `text_file_copy_lines` and `text_file_paste_lines` under the `text_file`
+family prefix and attached to an application as one pack.
+
+The system contains the **File** subsystem: the type-agnostic file tool family, publishing
+`file_list`, `file_copy`, `file_move` and `file_delete` under the `file` family prefix and
+attached to an application as one pack. It manages files of any content type — listing,
+copying, moving and deleting — while reading and editing a file's contents belong to the
+content families.
+
+The system contains the **Markdown** subsystem: the markdown tool family, publishing
+`markdown_outline` under the `markdown` family prefix and attached to an application as one
+pack. It reports a Markdown file's heading structure as line ranges the text tools can then
+read or cut.
 
 The system also contains the **Image** subsystem: the image tool family, publishing `image_read`
-under the `image` family prefix and attached to an application as one pack. Unlike the text file
-family, it is gated on a host capability — it is registered only for a host that declares it can
+under the `image` family prefix and attached to an application as one pack. Unlike the other
+families, it is gated on a host capability — it is registered only for a host that declares it can
 present visual content to a model — because its tool returns image and PDF content that a
-non-vision host could not use. The remaining tool families this package will provide are introduced
-in subsequent increments, each as its own subsystem with its own units, requirements, design,
-verification and review set.
+non-vision host could not use. Each family this package provides is its own subsystem with its own
+units, requirements, design, verification and review set.
 
 ## External Interfaces
 
@@ -44,8 +54,10 @@ through the AgentKitCore pack contract:
   any other AgentKit packs, into one ordered tool list governed by a single `PathPolicy`.
 
 An application attaches a family by adding that family's pack: `TextFilePack` is the type an
-application adds to give an agent the text file family, and `ImagePack` is the type it adds to give
-a vision-capable agent the image family. A composition to which no family has been added remains
+application adds to give an agent the text file family, `FilePack` the type it adds for the
+type-agnostic file family, `MarkdownPack` the type it adds for the Markdown family, and `ImagePack`
+is the type it adds to give a vision-capable agent the image family. A composition to which no
+family has been added remains
 well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty tool list — and
 a family whose required capability the host has not declared, such as the image family on a
 non-vision host, contributes no tools because the composition never asks its pack for them.
@@ -55,6 +67,8 @@ non-vision host, contributes no tools because the composition never asks its pac
 | `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family        |
 | `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`      |
 | `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability |
+| `FilePack`        | Outbound         | AgentKitCore pack contract | Prefix `file`; no capability      |
+| `MarkdownPack`    | Outbound         | AgentKitCore pack contract | Prefix `markdown`; no capability  |
 | `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision   |
 
 ## Dependencies

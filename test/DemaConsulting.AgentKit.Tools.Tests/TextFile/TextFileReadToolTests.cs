@@ -12,17 +12,19 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// </summary>
 /// <remarks>
 ///     Every scenario invokes the constructed tool exactly as a runtime would — through
-///     <see cref="AIFunction.InvokeAsync"/> with named arguments — rather than calling an
-///     internal method directly, because the delivery of the result through the guarded factory
-///     is part of what is under verification.
+///     <see cref="AIFunction.InvokeAsync"/> with named arguments — and uses the paths a model
+///     actually sends. The output is the paged, line-numbered form, so scenarios assert the
+///     <c>path lines A-B of N</c> header and the numbered body rather than bare content.
 /// </remarks>
 public class TextFileReadToolTests
 {
     /// <summary>
-    ///     A real PNG file header: the eight-byte signature followed by a length field, a
-    ///     NUL-bearing chunk, and a distinctive ASCII marker. The NUL bytes and invalid UTF-8
-    ///     make it unambiguously binary, the marker would only surface if the bytes were decoded
-    ///     and returned, and its <c>.png</c> name resolves to a type the image tool reads.
+    ///     A five-line fixture with no trailing newline, so line counts are unambiguous.
+    /// </summary>
+    private const string FiveLines = "line one\nline two\nline three\nline four\nline five";
+
+    /// <summary>
+    ///     A real PNG file header: signature, a NUL-bearing chunk, and a distinctive ASCII marker.
     /// </summary>
     private static readonly byte[] PngHeaderBytes =
     [
@@ -37,29 +39,8 @@ public class TextFileReadToolTests
     [Fact]
     public void TextFileReadTool_ToolName_Constant_IsTheFamilyQualifiedName()
     {
-        // Arrange / Act: read the published constant
-        var name = TextFileReadTool.ToolName;
-
-        // Assert: the name is qualified by the family prefix the pack claims
-        Assert.Equal("text_file_read", name);
-        Assert.StartsWith(TextFilePack.FamilyPrefix + "_", name, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves the constructed tool carries the published name and a non-empty description.
-    /// </summary>
-    [Fact]
-    public void TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
-    {
-        // Arrange: a policy governing an otherwise irrelevant location
-        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
-
-        // Act: construct the tool
-        var tool = TextFileReadTool.Create(policy);
-
-        // Assert: the model sees the published name and a description it can choose by
-        Assert.Equal(TextFileReadTool.ToolName, tool.Name);
-        Assert.False(string.IsNullOrWhiteSpace(tool.Description));
+        Assert.Equal("text_file_read", TextFileReadTool.ToolName);
+        Assert.StartsWith(TextFilePack.FamilyPrefix + "_", TextFileReadTool.ToolName, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -68,442 +49,396 @@ public class TextFileReadToolTests
     [Fact]
     public void TextFileReadTool_Create_NullPolicy_ThrowsArgumentNullException()
     {
-        // Arrange / Act / Assert: a tool with no policy cannot be constructed
         Assert.Throws<ArgumentNullException>(() => TextFileReadTool.Create(null!));
     }
 
     /// <summary>
-    ///     Proves the result reaches the caller as plain text rather than as serialized JSON.
+    ///     Proves the constructed tool carries the published name and a non-empty description.
+    /// </summary>
+    [Fact]
+    public void TextFileReadTool_Create_ConstructedTool_CarriesTheToolNameAndADescription()
+    {
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+        var tool = TextFileReadTool.Create(policy);
+
+        Assert.Equal(TextFileReadTool.ToolName, tool.Name);
+        Assert.False(string.IsNullOrWhiteSpace(tool.Description));
+    }
+
+    /// <summary>
+    ///     Proves the result reaches the caller as plain text rather than serialized JSON.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_PermittedFile_ResultIsPlainTextNotJsonElement()
     {
-        // Arrange: a permitted file with known content
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: invoke the tool as the runtime would
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
 
-        // Assert: the guard delivered the result unserialized
         Assert.IsType<string>(result);
         Assert.IsNotType<JsonElement>(result);
     }
 
     /// <summary>
-    ///     Proves a permitted file's content is what the tool returns.
+    ///     Proves a whole-file read carries the range header and the numbered content.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_PermittedFile_ReturnsTheFileContents()
+    public async Task TextFileReadTool_Read_PermittedFile_ReturnsNumberedContentWithHeader()
     {
-        // Arrange: a permitted file whose content identifies it unambiguously
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "the-real-content");
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: read the file
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
 
-        // Assert: the content of the real file, not a plausible-looking substitute
-        Assert.Equal("the-real-content", Assert.IsType<string>(result));
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("note.txt lines 1-5 of 5", text, StringComparison.Ordinal);
+        Assert.Contains("\n1| line one", text, StringComparison.Ordinal);
+        Assert.Contains("\n5| line five", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves an empty file reads as empty text rather than as a refusal.
+    ///     Proves an empty file reads as an honest empty window rather than a refusal.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_EmptyFile_ReturnsEmptyTextNotDenial()
+    public async Task TextFileReadTool_Read_EmptyFile_ReturnsZeroLineHeaderNotDenial()
     {
-        // Arrange: a permitted but empty file
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "empty.txt", string.Empty);
+        ReparsePointFixture.WriteFile(fixture.Root, "empty.txt", string.Empty);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: read the empty file
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "empty.txt" });
 
-        // Assert: an empty file is a legitimate outcome, so reporting a refusal would be a lie
-        Assert.Equal(string.Empty, Assert.IsType<string>(result));
+        var text = Assert.IsType<string>(result);
+        Assert.Equal("empty.txt lines 0-0 of 0", text);
     }
 
     /// <summary>
-    ///     Proves a path outside the permitted read location is refused.
+    ///     Proves a ranged read returns only the requested window, with a header naming it and the
+    ///     file's true total.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
+    public async Task TextFileReadTool_Read_RangedWindow_ReturnsOnlyThoseLines()
     {
-        // Arrange: a file in a sibling directory no grant permits reading
         using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "classified-body");
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request the file outside the permitted location
-        var result = await InvokeAsync(tool, outsideFile);
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 2, ["lineCount"] = 2 });
 
-        // Assert: refused, and the file content never reaches the model
         var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("classified-body", text, StringComparison.Ordinal);
+        Assert.StartsWith("note.txt lines 2-3 of 5", text, StringComparison.Ordinal);
+        Assert.Contains("\n2| line two", text, StringComparison.Ordinal);
+        Assert.Contains("\n3| line three", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line one", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line four", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a file reached through a link that leaves the permitted location is refused.
+    ///     Proves a start line past the end of the file is an honest empty window naming the true
+    ///     total, not a refusal.
     /// </summary>
-    /// <remarks>
-    ///     The escaped file is first read directly through the link to prove the link really
-    ///     bridges the two directories; without that step a broken fixture would make this
-    ///     scenario pass vacuously.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial()
+    public async Task TextFileReadTool_Read_StartLinePastEndOfFile_ReturnsEmptyWindowNamingTotal()
     {
-        // Arrange: a real reparse point inside the permitted root pointing outside it
         using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped-content");
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedPath = Path.Combine(link, "secret.txt");
-        Assert.Equal("escaped-content", await File.ReadAllTextAsync(
-            escapedPath,
-            TestContext.Current.CancellationToken));
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request the escaped file through a path that looks contained
-        var result = await InvokeAsync(tool, escapedPath);
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 10 });
 
-        // Assert: refused on its real location, not on how the path was spelled
         var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("escaped-content", text, StringComparison.Ordinal);
+        Assert.Contains("of 5", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line one", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a missing file is refused with a redirect to the listing tool.
+    ///     Proves a lineCount that runs past the end of the file is clamped to the true total.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_MissingFile_ReturnsDenialRedirectingToList()
+    public async Task TextFileReadTool_Read_LineCountPastEndOfFile_ClampsToTheTotal()
     {
-        // Arrange: a permitted location containing no such file
         using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request a file that does not exist
-        var result = await InvokeAsync(tool, Path.Combine(fixture.Root, "absent.txt"));
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 4, ["lineCount"] = 100 });
 
-        // Assert: refused, and pointed at the tool that would have found the right name
         var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (TargetNotFound)", text, StringComparison.Ordinal);
-        Assert.Contains(TextFileListTool.ToolName, text, StringComparison.Ordinal);
+        Assert.StartsWith("note.txt lines 4-5 of 5", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a directory is refused with a redirect to the listing tool.
+    ///     Proves an invalid paging argument is a refusal, not an exception.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_DirectoryPath_ReturnsDenialRedirectingToList()
+    public async Task TextFileReadTool_Read_InvalidStartLine_ReturnsDenialWithoutThrowing()
     {
-        // Arrange: a permitted directory rather than a file
         using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request the directory itself
-        var result = await InvokeAsync(tool, fixture.Root);
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "note.txt", ["startLine"] = 0 });
 
-        // Assert: refused as malformed, and redirected to the tool that lists a directory
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
-        Assert.Contains(TextFileListTool.ToolName, text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a file beyond the read ceiling is refused with the ceiling named.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_FileLargerThanTheReadCeiling_ReturnsDenialNamingTheCeiling()
-    {
-        // Arrange: a file larger than an eight-byte read ceiling
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "big.txt", new string('a', 64));
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 8)));
-
-        // Act: read the oversized file
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: a refusal naming the ceiling, never a truncated file
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
-        Assert.Contains("8-byte", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("aaaa", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a file exactly at the read ceiling is read rather than refused.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_FileAtTheReadCeiling_IsRead()
-    {
-        // Arrange: a five-byte file and a five-byte read ceiling
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "exact.txt", "12345");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 5)));
-
-        // Act: read the file sitting exactly on the boundary
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: the ceiling is inclusive, so the file is returned
-        Assert.Equal("12345", Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves text beyond the result ceiling is refused rather than truncated.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncatedText()
-    {
-        // Arrange: a file within the read ceiling but beyond the tighter result ceiling
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "wide.txt", new string('b', 50));
-        var limits = new ToolLimits(maxReadBytes: 1024, maxResultCharacters: 10);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, limits));
-
-        // Act: read the file
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: a refusal naming the result ceiling, with no partial content returned
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
-        Assert.Contains("10-character", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("bbbb", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves an empty path is refused rather than throwing at the model.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_EmptyPath_ReturnsDenialWithoutThrowing()
-    {
-        // Arrange: a tool governed by an unrestricted policy, so only the request is at fault
-        var tool = TextFileReadTool.Create(
-            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
-
-        // Act: invoke with an empty path, as a confused model would
-        var result = await InvokeAsync(tool, string.Empty);
-
-        // Assert: a returned refusal, because an exception would end the agent's turn
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a whitespace-only path is refused rather than throwing at the model.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_WhitespacePath_ReturnsDenialWithoutThrowing()
-    {
-        // Arrange: a tool governed by an unrestricted policy
-        var tool = TextFileReadTool.Create(
-            new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
-
-        // Act: invoke with a path consisting only of whitespace
-        var result = await InvokeAsync(tool, "   ");
-
-        // Assert: a returned refusal rather than an exception from the policy
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a bare file name — the path a model actually writes — is read from the
-    ///     workspace.
+    ///     Proves a bare relative name is read from the working directory and the header echoes it.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_BareFileName_ReturnsTheFileContents()
     {
-        // Arrange: a workspace holding one file
         using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "only line");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: ask for the file by name alone
-        var result = await InvokeAsync(tool, "notes.txt");
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
 
-        // Assert: the file's text, not a refusal
-        Assert.Equal("inside-content", Assert.IsType<string>(result));
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("note.txt lines 1-1 of 1", text, StringComparison.Ordinal);
+        Assert.Contains("1| only line", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a name prefixed with the current-directory token is read from the workspace.
+    ///     Proves a missing path argument is a refusal, not a framework error.
     /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_DotSlashFileName_ReturnsTheFileContents()
-    {
-        // Arrange: a workspace holding one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: ask for it with the leading token a model often adds
-        var result = await InvokeAsync(tool, "./notes.txt");
-
-        // Assert: the same file the bare name reaches
-        Assert.Equal("inside-content", Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves a nested relative path is read from the workspace.
-    /// </summary>
-    /// <remarks>
-    ///     The forward slash is deliberate: it is the separator a model writes regardless of the
-    ///     host platform, and it is the separator the listing tool reports names with.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_NestedRelativePath_ReturnsTheFileContents()
-    {
-        // Arrange: a file one level below the workspace root
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "nested");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: ask for it the way a listing would have named it
-        var result = await InvokeAsync(tool, "sub/child.txt");
-
-        // Assert: the nested file's text
-        Assert.Equal("nested", Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves an absolute path inside the workspace is still read.
-    /// </summary>
-    /// <remarks>
-    ///     Interpreting a bare name against the workspace must not withdraw the absolute form,
-    ///     which a host composing paths itself still relies on.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_AbsolutePathInsideRoot_ReturnsTheFileContents()
-    {
-        // Arrange: a workspace holding one file, addressed absolutely
-        using var fixture = new ReparsePointFixture();
-        var path = ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: ask for the file by its absolute location
-        var result = await InvokeAsync(tool, path);
-
-        // Assert: the same content the bare name returns
-        Assert.Equal("inside-content", Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves that omitting the path argument produces a refusal rather than a framework
-    ///     error.
-    /// </summary>
-    /// <remarks>
-    ///     A parameter with no default fails inside the function factory before the tool body is
-    ///     reached, leaving the model an opaque error it cannot act on. A read really does need
-    ///     a path, so the correct answer is a refusal that says which one to supply.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing()
     {
-        // Arrange: a workspace-governed tool, so only the request is at fault
-        using var fixture = new ReparsePointFixture();
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+        var tool = TextFileReadTool.Create(policy);
 
-        // Act: invoke with no arguments at all
         var result = await tool.InvokeAsync(
             new AIFunctionArguments(),
             TestContext.Current.CancellationToken);
 
-        // Assert: a refusal composed by the tool, naming what to supply
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
-        Assert.Contains("workspace root", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a policy refusal echoes the request and names the permitted location.
+    ///     Proves a path outside the read grant is refused, disclosing the permitted location.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_DeniedPath_DenialStatesTheExpectedPathForm()
+    public async Task TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
     {
-        // Arrange: a file outside the workspace
         using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
-        var policy = RootedPolicy(fixture.Root);
-        var tool = TextFileReadTool.Create(policy);
+        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "leaked-body-token");
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request the refused file
-        var result = await InvokeAsync(tool, outsideFile);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = outsideFile });
 
-        // Assert: the request is echoed and the permitted location is enumerated with its level
         var text = Assert.IsType<string>(result);
-        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("leaked-body-token", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a policy refusal discloses the permitted location so a confined model learns
-    ///     where it may read.
+    ///     Proves a file beneath a link escaping the root is refused.
     /// </summary>
-    /// <remarks>
-    ///     The earlier host-path-disclosure rule has been deliberately dropped: naming where the
-    ///     model may work is worth more than concealing paths it is already confined to.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation()
+    public async Task TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial()
     {
-        // Arrange: a file outside the permitted location
         using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
-        var policy = RootedPolicy(fixture.Root);
-        var tool = TextFileReadTool.Create(policy);
+        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped");
+        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
+        var escapedFile = Path.Combine(link, "secret.txt");
+        Assert.Equal("escaped", await System.IO.File.ReadAllTextAsync(
+            escapedFile, TestContext.Current.CancellationToken));
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: request the refused file
-        var result = await InvokeAsync(tool, outsideFile);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = escapedFile });
 
-        // Assert: the permitted location and the echoed request both appear
         var text = Assert.IsType<string>(result);
-        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
-        Assert.Contains(outsideFile, text, StringComparison.Ordinal);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a binary image file is refused as unsupported media, redirecting to the image
-    ///     read tool.
+    ///     Proves a missing file is refused with a plain fact that names no other tool.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_MissingFile_ReturnsDenialNamingNoTool()
+    {
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "absent.txt" });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (TargetNotFound)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("file_list", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a directory is refused with a plain fact that names no other tool.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_DirectoryPath_ReturnsDenialNamingNoTool()
+    {
+        using var fixture = new ReparsePointFixture();
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = fixture.Root });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("file_list", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a single line longer than the read ceiling is refused with recourse rather than
+    ///     silently truncated, since even a one-line window must fit the read ceiling.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", new string('a', 128));
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 16)));
+
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "big.txt" });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("16-byte", text, StringComparison.Ordinal);
+        Assert.Contains("startLine", text, StringComparison.Ordinal);
+        Assert.Contains("lineCount", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("aaaa", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a window beyond the result ceiling is refused rather than truncated.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncated()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", new string('a', 400));
+        var tool = TextFileReadTool.Create(
+            RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 4096, maxResultCharacters: 32)));
+
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an unranged read of a file larger than the read ceiling is refused with recourse:
+    ///     the refusal names the file's total line count and directs the model to page with
+    ///     startLine and lineCount, rather than leaving it no way forward.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_UnrangedLargeFile_ReturnsDenialNamingRecourseAndTotal()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
+
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "big.txt" });
+
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("64-byte", text, StringComparison.Ordinal);
+        Assert.Contains("200 lines", text, StringComparison.Ordinal);
+        Assert.Contains("startLine", text, StringComparison.Ordinal);
+        Assert.Contains("lineCount", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line 42", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a ranged read of a file larger than the read ceiling returns exactly the requested
+    ///     mid-file window rather than a denial. This is the regression test for the windowing
+    ///     defect: the file is far larger than the read ceiling, yet paging to a single line still
+    ///     works because the ceiling bounds the window, not the file.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_RangedWindowInLargeFile_ReturnsThatWindowNotADenial()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "big.txt", ["startLine"] = 120, ["lineCount"] = 1 });
+
+        var text = Assert.IsType<string>(result);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
+        Assert.StartsWith("big.txt lines 120-120 of 200", text, StringComparison.Ordinal);
+        Assert.Contains("120| line 120", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line 119", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("line 121", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a ranged read near the end of a file larger than the read ceiling returns the tail
+    ///     window, clamped to the true total, rather than a denial.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileReadTool_Read_RangedWindowNearEndOfLargeFile_ReturnsTailWindow()
+    {
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
+
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["path"] = "big.txt", ["startLine"] = 198, ["lineCount"] = 10 });
+
+        var text = Assert.IsType<string>(result);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
+        Assert.StartsWith("big.txt lines 198-200 of 200", text, StringComparison.Ordinal);
+        Assert.Contains("198| line 198", text, StringComparison.Ordinal);
+        Assert.Contains("200| line 200", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a binary image is refused as unsupported media and redirected to the image tool.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead()
     {
-        // Arrange: a real PNG header — magic bytes plus a NUL-bearing chunk and a marker
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
+        ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: read the image as if it were text
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "picture.png" });
 
-        // Assert: refused as unsupported media, pointed at the tool that can read it, no bytes leaked
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
         Assert.Contains(ImageReadTool.ToolName, text, StringComparison.Ordinal);
@@ -511,232 +446,88 @@ public class TextFileReadToolTests
     }
 
     /// <summary>
-    ///     Proves a binary image requested by a bare relative name — the form a model actually
-    ///     writes — is refused with the image redirect.
-    /// </summary>
-    /// <remarks>
-    ///     A model names a file relative to the workspace, so the guard must reach the same
-    ///     verdict for <c>picture.png</c> as for its absolute location; a fixture that only ever
-    ///     tested absolute paths would miss the very request a model makes.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_BinaryImageByRelativePath_ReturnsDenialRedirectingToImageRead()
-    {
-        // Arrange: a workspace holding one PNG, addressed by name alone
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: ask for it the way a model phrases it, with no location
-        var result = await InvokeAsync(tool, "picture.png");
-
-        // Assert: the same refusal and redirect the absolute form receives
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains(ImageReadTool.ToolName, text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a binary file whose type no tool in the family can read is refused without a
-    ///     redirect.
+    ///     Proves a non-image binary file is refused without a redirect.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect()
     {
-        // Arrange: bytes containing a NUL under an extension no image tool resolves
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteBytes(
-            fixture.Root,
-            "data.bin",
-            [0x00, 0x01, 0x02, 0x03, 0x00, 0xFF]);
+        ReparsePointFixture.WriteBytes(fixture.Root, "data.bin", [0x01, 0x00, 0x02, 0x00]);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: read the binary file
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "data.bin" });
 
-        // Assert: refused as unsupported media, but with no tool to honestly redirect to
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a mark-less file that is not valid UTF-8 yet contains no NUL is refused by the
-    ///     UTF-8 validation rather than the NUL rule.
+    ///     Proves a byte-order-marked UTF-16 file still reads as text, despite its NUL bytes.
     /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_InvalidUtf8WithoutBom_ReturnsDenial()
-    {
-        // Arrange: 0xC0 is never a valid UTF-8 lead byte; the sequence carries no NUL
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteBytes(
-            fixture.Root,
-            "garbled.bin",
-            [0x41, 0x42, 0xC0, 0xC0, 0x43]);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: read the invalid-UTF-8 file
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: refused as binary, reached through the UTF-8 branch rather than the NUL branch
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a UTF-16 little-endian text file with a byte-order mark still reads correctly.
-    /// </summary>
-    /// <remarks>
-    ///     This is the exact regression the naive "a NUL byte means binary" heuristic would
-    ///     cause: UTF-16 text legitimately contains NUL bytes yet decodes correctly today, so the
-    ///     byte-order-mark check must take precedence.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents()
     {
-        // Arrange: UTF-16 LE content preceded by its byte-order mark
         using var fixture = new ReparsePointFixture();
-        byte[] bytes = [.. Encoding.Unicode.GetPreamble(), .. Encoding.Unicode.GetBytes("utf16-le-content")];
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode.txt", bytes);
+        var bytes = Encoding.Unicode.GetPreamble()
+            .Concat(Encoding.Unicode.GetBytes("hello"))
+            .ToArray();
+        ReparsePointFixture.WriteBytes(fixture.Root, "utf16.txt", bytes);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
-        // Act: read the encoded text file
-        var result = await InvokeAsync(tool, file);
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "utf16.txt" });
 
-        // Assert: the mark decides text, and the decode path returns the content
-        Assert.Equal("utf16-le-content", Assert.IsType<string>(result));
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("hello", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a UTF-16 big-endian text file with a byte-order mark still reads correctly.
+    ///     Builds a multi-line fixture whose bytes exceed a small read ceiling while each individual
+    ///     line stays tiny, so a windowed read of one line fits the ceiling but the whole file does
+    ///     not.
     /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_Utf16BigEndianBomTextFile_ReturnsTheFileContents()
+    /// <param name="lineCount">The number of lines to generate.</param>
+    /// <returns>The fixture text, each line reading <c>line N</c>, with no trailing newline.</returns>
+    private static string LargeFixture(int lineCount)
     {
-        // Arrange: UTF-16 BE content preceded by its byte-order mark
-        using var fixture = new ReparsePointFixture();
-        byte[] bytes =
-        [
-            .. Encoding.BigEndianUnicode.GetPreamble(),
-            .. Encoding.BigEndianUnicode.GetBytes("utf16-be-content")
-        ];
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode-be.txt", bytes);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
+        var builder = new StringBuilder();
+        for (var number = 1; number <= lineCount; number++)
+        {
+            if (number > 1)
+            {
+                builder.Append('\n');
+            }
 
-        // Act: read the encoded text file
-        var result = await InvokeAsync(tool, file);
+            builder.Append("line ").Append(number);
+        }
 
-        // Assert: the big-endian mark path also decides text
-        Assert.Equal("utf16-be-content", Assert.IsType<string>(result));
+        return builder.ToString();
     }
 
     /// <summary>
-    ///     Proves a UTF-32 little-endian text file with a byte-order mark still reads correctly.
+    ///     Composes a policy over one read-write location, optionally with tighter limits.
     /// </summary>
-    /// <remarks>
-    ///     Guards the byte-order-mark ordering: the UTF-16 LE mark <c>FF FE</c> is a prefix of the
-    ///     UTF-32 LE mark <c>FF FE 00 00</c>, so a guard that tested the shorter mark first would
-    ///     misread this file and its trailing NUL bytes as binary.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_Utf32BomTextFile_ReturnsTheFileContents()
-    {
-        // Arrange: UTF-32 LE content preceded by its four-byte byte-order mark
-        using var fixture = new ReparsePointFixture();
-        byte[] bytes = [.. Encoding.UTF32.GetPreamble(), .. Encoding.UTF32.GetBytes("utf32-le-content")];
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "unicode32.txt", bytes);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: read the encoded text file
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: the four-byte mark is recognized before the two-byte one, so the file is text
-        Assert.Equal("utf32-le-content", Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves a plain multi-line UTF-8 text file with no byte-order mark still reads
-    ///     correctly.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_Utf8TextFile_ReturnsTheFileContents()
-    {
-        // Arrange: mark-less UTF-8 with a non-ASCII character, the ordinary text case
-        using var fixture = new ReparsePointFixture();
-        const string content = "first line\nsecond line \u2248 approx\n";
-        byte[] bytes = Encoding.UTF8.GetBytes(content);
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "notes.txt", bytes);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: read the text file
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: valid UTF-8 is text and reads back unchanged
-        Assert.Equal(content, Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Proves a valid UTF-8 file whose multi-byte character straddles the sniff-window
-    ///     boundary is read rather than misclassified as binary.
-    /// </summary>
-    /// <remarks>
-    ///     The file is built from three-byte characters and made larger than the sniff window, so
-    ///     the window edge necessarily cuts one character in half. Reading it correctly proves the
-    ///     boundary mitigation that buffers, rather than rejects, a split trailing sequence.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_LargeValidUtf8_ReadsAcrossWindowBoundary()
-    {
-        // Arrange: 2000 three-byte characters (6000 bytes) — larger than the 4096-byte window,
-        // so the window boundary lands in the middle of a character
-        using var fixture = new ReparsePointFixture();
-        var content = new string('\u2248', 2000);
-        byte[] bytes = Encoding.UTF8.GetBytes(content);
-        var file = ReparsePointFixture.WriteBytes(fixture.Root, "wide-utf8.txt", bytes);
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: read the file whose character is split by the window edge
-        var result = await InvokeAsync(tool, file);
-
-        // Assert: a split character does not make a valid UTF-8 file look binary
-        Assert.Equal(content, Assert.IsType<string>(result));
-    }
-
-    /// <summary>
-    ///     Creates a policy permitting reads and writes only beneath one workspace, and
-    ///     interpreting relative requests against it.
-    /// </summary>
-    /// <remarks>
-    ///     Built through the workspace shorthand deliberately: it is the configuration the
-    ///     documentation recommends, so the tests exercise what a host actually builds.
-    /// </remarks>
     /// <param name="root">The permitted location.</param>
-    /// <param name="limits">The ceilings to apply, or null for the published defaults.</param>
-    /// <returns>The constructed policy.</returns>
+    /// <param name="limits">The tool limits, or null for the defaults.</param>
+    /// <returns>The policy.</returns>
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
+        return limits is null
+            ? new PathPolicy(root, [PathRule.ReadWrite(root)])
+            : new PathPolicy(root, [PathRule.ReadWrite(root)], limits);
     }
 
     /// <summary>
-    ///     Invokes the read tool exactly as a runtime would.
+    ///     Invokes a tool with the supplied arguments, exactly as a runtime would.
     /// </summary>
     /// <param name="tool">The tool to invoke.</param>
-    /// <param name="path">The path argument to supply.</param>
+    /// <param name="arguments">The arguments to supply.</param>
     /// <returns>The result the tool returned.</returns>
-    private static async Task<object?> InvokeAsync(AIFunction tool, string path)
+    private static async Task<object?> InvokeAsync(AIFunction tool, AIFunctionArguments arguments)
     {
-        return await tool.InvokeAsync(
-            new AIFunctionArguments { ["path"] = path },
-            TestContext.Current.CancellationToken);
+        return await tool.InvokeAsync(arguments, TestContext.Current.CancellationToken);
     }
 }
-

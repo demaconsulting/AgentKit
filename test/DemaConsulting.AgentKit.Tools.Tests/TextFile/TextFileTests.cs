@@ -10,30 +10,33 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// </summary>
 /// <remarks>
 ///     These scenarios exercise the family the way an application does: composed through the
-///     AgentKitCore <see cref="ToolPackBuilder"/> under one access policy, then invoked through
-///     the published tool list. They assert the properties that belong to the family as a whole
-///     — one prefix, one policy, refusals that are results — rather than any single tool's
-///     algorithm, which its own unit tests cover.
+///     AgentKitCore <see cref="ToolPackBuilder"/> under one access policy, then invoked through the
+///     published tool list. They assert the properties that belong to the family as a whole — one
+///     prefix, one policy, refusals that are results, containment no tool can breach, and the
+///     search-read-edit loop working end to end by the paths a model actually sends.
 /// </remarks>
 public class TextFileTests
 {
     /// <summary>
-    ///     Proves a composition attaching the family publishes a read, a write and a list tool.
+    ///     Proves a composition attaching the family publishes the seven content tools in order.
     /// </summary>
     [Fact]
-    public void TextFile_Family_ComposedThroughBuilder_PublishesReadWriteAndList()
+    public void TextFile_Family_ComposedThroughBuilder_PublishesTheSevenContentTools()
     {
-        // Arrange: a composition governed by one policy, with the family attached
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
-        var builder = new ToolPackBuilder(policy).Add(new TextFilePack());
+        var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
-        // Act: compose the tool list
-        var tools = builder.Build();
-
-        // Assert: the three tools the family promises, under the one family prefix
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(7, tools.Count);
         Assert.Equal(
-            [TextFileReadTool.ToolName, TextFileWriteTool.ToolName, TextFileListTool.ToolName],
+            [
+                TextFileSearchTool.ToolName,
+                TextFileReadTool.ToolName,
+                TextFileCreateTool.ToolName,
+                TextFileReplaceTool.ToolName,
+                TextFileCutLinesTool.ToolName,
+                TextFileCopyLinesTool.ToolName,
+                TextFilePasteLinesTool.ToolName
+            ],
             tools.Select(tool => tool.Name));
     }
 
@@ -43,17 +46,13 @@ public class TextFileTests
     [Fact]
     public void TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily()
     {
-        // Arrange: a host that declares nothing at all
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
-        var builder = new ToolPackBuilder(policy)
+        var tools = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.None)
-            .Add(new TextFilePack());
+            .Add(new TextFilePack())
+            .Build();
 
-        // Act: compose the tool list
-        var tools = builder.Build();
-
-        // Assert: text file access asks nothing of a host, so nothing is gated away
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(7, tools.Count);
     }
 
     /// <summary>
@@ -62,12 +61,9 @@ public class TextFileTests
     [Fact]
     public void TextFile_Family_EveryTool_CarriesAValidatedNameAndDescription()
     {
-        // Arrange: the family composed under one policy
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
-        // Act / Assert: every name survives the convention's own validation, and no tool is
-        // offered to a model without a description it can choose by
         Assert.All(tools, tool =>
         {
             ToolName.Validate(tool.Name);
@@ -79,39 +75,28 @@ public class TextFileTests
     /// <summary>
     ///     Proves a family tool's result reaches the caller in the form the tool returned it.
     /// </summary>
-    /// <remarks>
-    ///     The guarded construction path is what makes this true; without it the result would
-    ///     arrive as a <see cref="JsonElement"/> wrapping serialized JSON.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFile_Family_ToolResult_ReachesTheCallerUnserialized()
     {
-        // Arrange: the family composed over a permitted location holding a known file
         using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
         var tools = Compose(fixture.Root);
 
-        // Act: read the file through the composed tool
         var result = await InvokeAsync(
-            tools,
-            TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = file });
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = "note.txt" });
 
-        // Assert: plain text, not a JSON wrapping of it
-        Assert.Equal("content", Assert.IsType<string>(result));
+        Assert.IsType<string>(result);
         Assert.IsNotType<JsonElement>(result);
     }
 
     /// <summary>
-    ///     Proves a read-wide, write-narrow policy permits the read and refuses the write of one
-    ///     path.
+    ///     Proves a read-wide, write-narrow policy permits the read and refuses the edit of one path.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheWrite()
+    public async Task TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheEdit()
     {
-        // Arrange: reads permitted beneath the root, writes permitted only outside it
         using var fixture = new ReparsePointFixture();
         var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "original");
         var policy = new PathPolicy(
@@ -119,76 +104,51 @@ public class TextFileTests
             [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
-        // Act: read and then attempt to write the same path
         var readResult = await InvokeAsync(
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = file });
+        var editResult = await InvokeAsync(
             tools,
-            TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = file });
-        var writeResult = await InvokeAsync(
-            tools,
-            TextFileWriteTool.ToolName,
-            new AIFunctionArguments { ["path"] = file, ["content"] = "replacement" });
+            TextFileReplaceTool.ToolName,
+            new AIFunctionArguments { ["path"] = file, ["oldText"] = "original", ["newText"] = "x" });
 
-        // Assert: the two rules are judged independently, as the operator configured them
-        Assert.Equal("original", Assert.IsType<string>(readResult));
+        Assert.Contains("original", Assert.IsType<string>(readResult), StringComparison.Ordinal);
         Assert.Contains(
             "Denied (PathNotPermitted)",
-            Assert.IsType<string>(writeResult),
+            Assert.IsType<string>(editResult),
             StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a path reaching outside the permitted location through a link is refused by
-    ///     every tool in the family.
+    ///     Proves a path reaching outside the permitted location through a link is refused by every
+    ///     editing tool and never surfaced by search.
     /// </summary>
-    /// <remarks>
-    ///     The escaped file is read directly through the link first, so a fixture that failed to
-    ///     create a real reparse point cannot make this scenario pass vacuously.
-    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool()
     {
-        // Arrange: a real reparse point inside the permitted root pointing outside it
         using var fixture = new ReparsePointFixture();
         ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped-content");
         var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
         var escapedFile = Path.Combine(link, "secret.txt");
-        Assert.Equal("escaped-content", await File.ReadAllTextAsync(
-            escapedFile,
-            TestContext.Current.CancellationToken));
+        Assert.Equal("escaped-content", await System.IO.File.ReadAllTextAsync(
+            escapedFile, TestContext.Current.CancellationToken));
         var tools = Compose(fixture.Root);
 
-        // Act: attempt the same escape through each of the three tools
         var readResult = await InvokeAsync(
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = escapedFile });
+        var replaceResult = await InvokeAsync(
             tools,
-            TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = escapedFile });
-        var writeResult = await InvokeAsync(
-            tools,
-            TextFileWriteTool.ToolName,
-            new AIFunctionArguments { ["path"] = escapedFile, ["content"] = "overwrite" });
-        var listResult = await InvokeAsync(
-            tools,
-            TextFileListTool.ToolName,
-            new AIFunctionArguments { ["directory"] = fixture.Root, ["searchPattern"] = null });
+            TextFileReplaceTool.ToolName,
+            new AIFunctionArguments { ["path"] = escapedFile, ["oldText"] = "escaped-content", ["newText"] = "x" });
+        var searchResult = await InvokeAsync(
+            tools, TextFileSearchTool.ToolName, new AIFunctionArguments { ["pattern"] = "escaped-content" });
 
-        // Assert: the read and the write are refused, and the listing never mentions the file
-        Assert.Contains(
-            "Denied (PathNotPermitted)",
-            Assert.IsType<string>(readResult),
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Denied (PathNotPermitted)",
-            Assert.IsType<string>(writeResult),
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "secret.txt",
-            Assert.IsType<string>(listResult),
-            StringComparison.Ordinal);
+        Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(readResult), StringComparison.Ordinal);
+        Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(replaceResult), StringComparison.Ordinal);
+        Assert.Equal("No matches.", Assert.IsType<string>(searchResult));
         Assert.Equal(
             "escaped-content",
-            await File.ReadAllTextAsync(escapedFile, TestContext.Current.CancellationToken));
+            await System.IO.File.ReadAllTextAsync(escapedFile, TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -198,123 +158,112 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing()
     {
-        // Arrange: the family composed over a permitted location, and a path outside it
         using var fixture = new ReparsePointFixture();
         var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tools = Compose(fixture.Root);
 
-        // Act: request the refused file
         var result = await InvokeAsync(
-            tools,
-            TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = outsideFile });
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });
 
-        // Assert: a returned refusal naming its reason, because an exception would end the turn
-        var text = Assert.IsType<string>(result);
-        Assert.StartsWith("Denied (", text, StringComparison.Ordinal);
+        Assert.StartsWith("Denied (", Assert.IsType<string>(result), StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves every refusal the family produces discloses the permitted location.
+    ///     Proves the search-read-edit loop works end to end by the bare relative names a model
+    ///     sends, sharing one workspace across all seven tools.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFile_Family_DenialText_DisclosesPermittedLocation()
+    public async Task TextFile_Family_SearchReadEditLoop_WorksByRelativeNames()
     {
-        // Arrange: the family composed over a permitted location, and a path outside it
         using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tools = Compose(fixture.Root);
-        var permitted = RealPathResolver.Resolve(fixture.Root);
 
-        // Act: collect the refusals of all three tools for locations outside the root
-        var refusals = new[]
+        // Create a file, search it, read it, then edit it — all by bare relative name.
+        await InvokeAsync(
+            tools,
+            TextFileCreateTool.ToolName,
+            new AIFunctionArguments { ["path"] = "notes.txt", ["content"] = "alpha\nbeta\ngamma\n" });
+        var searchResult = await InvokeAsync(
+            tools, TextFileSearchTool.ToolName, new AIFunctionArguments { ["pattern"] = "beta" });
+        var readResult = await InvokeAsync(
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = "notes.txt" });
+        await InvokeAsync(
+            tools,
+            TextFileReplaceTool.ToolName,
+            new AIFunctionArguments { ["path"] = "notes.txt", ["oldText"] = "beta", ["newText"] = "BETA" });
+
+        Assert.Contains("notes.txt:2:beta", Assert.IsType<string>(searchResult), StringComparison.Ordinal);
+        Assert.StartsWith("notes.txt lines 1-3 of 3", Assert.IsType<string>(readResult), StringComparison.Ordinal);
+        Assert.Equal(
+            "alpha\nBETA\ngamma\n",
+            await System.IO.File.ReadAllTextAsync(
+                Path.Combine(fixture.Root, "notes.txt"), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves the owner's proven large-block duplication scenario end to end: a few hundred lines
+    ///     are copied into the default buffer, a new file is created, the block is pasted into it, and
+    ///     a short read confirms it — with the copied lines never entering the assertion by count
+    ///     alone. The source is left byte-identical.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFile_Family_LargeBlockDuplication_CopiesCreatesAndPastes()
+    {
+        using var fixture = new ReparsePointFixture();
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "data"));
+
+        // A non-trivial fixture: 500 numbered lines, each ending with a newline.
+        var builder = new System.Text.StringBuilder();
+        for (var number = 1; number <= 500; number++)
         {
-            Assert.IsType<string>(await InvokeAsync(
-                tools,
-                TextFileReadTool.ToolName,
-                new AIFunctionArguments { ["path"] = outsideFile })),
-            Assert.IsType<string>(await InvokeAsync(
-                tools,
-                TextFileWriteTool.ToolName,
-                new AIFunctionArguments { ["path"] = outsideFile, ["content"] = "x" })),
-            Assert.IsType<string>(await InvokeAsync(
-                tools,
-                TextFileListTool.ToolName,
-                new AIFunctionArguments
-                {
-                    ["directory"] = fixture.Outside,
-                    ["searchPattern"] = null
-                }))
-        };
+            builder.Append("line").Append(number).Append('\n');
+        }
 
-        // Assert: every refusal names the permitted location so the model can re-address
-        Assert.All(refusals, text =>
-            Assert.Contains(permitted, text, StringComparison.Ordinal));
-    }
+        var original = builder.ToString();
+        var largePath = Path.Combine(fixture.Root, "data", "large.txt");
+        await System.IO.File.WriteAllTextAsync(largePath, original, TestContext.Current.CancellationToken);
 
-    /// <summary>
-    ///     Proves a file beyond the policy's read ceiling is refused rather than truncated.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFile_Family_FileBeyondTheReadCeiling_IsRefusedNotTruncated()
-    {
-        // Arrange: the family composed under a policy carrying a sixteen-byte read ceiling
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "big.txt", new string('a', 128));
-        var policy = new PathPolicy(
-            fixture.Root,
-            [PathRule.ReadWrite(fixture.Root)],
-            new ToolLimits(maxReadBytes: 16));
-        var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
+        // The exact 301-line block a copy of lines 200-500 must reproduce.
+        var expectedBlock = new System.Text.StringBuilder();
+        for (var number = 200; number <= 500; number++)
+        {
+            expectedBlock.Append("line").Append(number).Append('\n');
+        }
 
-        // Act: read the oversized file
-        var result = await InvokeAsync(
-            tools,
-            TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = file });
-
-        // Assert: a refusal naming the ceiling, with no part of the file returned
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
-        Assert.Contains("16-byte", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("aaaa", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a path stated the way a model states it is resolved against the workspace by
-    ///     every tool in the family.
-    /// </summary>
-    /// <remarks>
-    ///     The family shares one access policy, so the workspace a bare name is measured from is
-    ///     the same for a listing, a read and a write. A family in which the three disagreed
-    ///     would let an agent list a name it then could not read.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFile_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace()
-    {
-        // Arrange: the family composed over a workspace holding one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var tools = Compose(fixture.Root);
 
-        // Act: list the workspace without naming it, then read the name the listing reported
-        var listing = await InvokeAsync(
+        var copyResult = await InvokeAsync(
             tools,
-            TextFileListTool.ToolName,
-            new AIFunctionArguments());
-        var read = await InvokeAsync(
+            TextFileCopyLinesTool.ToolName,
+            new AIFunctionArguments { ["path"] = "data/large.txt", ["startLine"] = 200, ["endLine"] = 500 });
+        await InvokeAsync(
+            tools,
+            TextFileCreateTool.ToolName,
+            new AIFunctionArguments { ["path"] = "data/extract.txt", ["content"] = string.Empty });
+        var pasteResult = await InvokeAsync(
+            tools,
+            TextFilePasteLinesTool.ToolName,
+            new AIFunctionArguments { ["path"] = "data/extract.txt", ["atLine"] = 1 });
+        var readResult = await InvokeAsync(
             tools,
             TextFileReadTool.ToolName,
-            new AIFunctionArguments { ["path"] = "notes.txt" });
+            new AIFunctionArguments { ["path"] = "data/extract.txt", ["lineCount"] = 5 });
 
-        // Assert: the listing reports the file as a bare relative name (beneath its location
-        // header) and the read accepts that same name as given
-        var listingText = Assert.IsType<string>(listing);
-        Assert.EndsWith("notes.txt", listingText, StringComparison.Ordinal);
-        Assert.Equal("inside-content", Assert.IsType<string>(read));
+        Assert.Contains("Copied 301 lines (200-500)", Assert.IsType<string>(copyResult), StringComparison.Ordinal);
+        Assert.Contains("data/large.txt is unchanged", Assert.IsType<string>(copyResult), StringComparison.Ordinal);
+        Assert.Contains("Pasted 301 lines", Assert.IsType<string>(pasteResult), StringComparison.Ordinal);
+        Assert.Contains("line200", Assert.IsType<string>(readResult), StringComparison.Ordinal);
+
+        // The extract holds exactly the copied block, and the source is byte-identical.
+        Assert.Equal(
+            expectedBlock.ToString(),
+            await System.IO.File.ReadAllTextAsync(
+                Path.Combine(fixture.Root, "data", "extract.txt"), TestContext.Current.CancellationToken));
+        Assert.Equal(
+            original,
+            await System.IO.File.ReadAllTextAsync(largePath, TestContext.Current.CancellationToken));
     }
 
     /// <summary>

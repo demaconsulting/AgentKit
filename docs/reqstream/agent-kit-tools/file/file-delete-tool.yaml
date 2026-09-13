@@ -1,0 +1,71 @@
+---
+# Software Unit Requirements for FileDeleteTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileDeleteTool Requirements
+            requirements:
+              - id: AgentKitTools-File-DeleteTool-ToolName
+                title: >-
+                  The delete tool shall be published under the name file_delete, exposed as a
+                  constant, a valid family-prefixed name even though the bare verb delete is
+                  reserved, and shall carry a description.
+                justification: |
+                  The bare verb delete is reserved by the Agent Framework, so the family prefix is
+                  load-bearing: file_delete is a conforming, non-colliding name where a bare delete
+                  would be refused.
+                tests:
+                  - FileDeleteTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-File-DeleteTool-GuardedConstruction
+                title: >-
+                  The delete tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded delete tool impossible to
+                  build.
+                tests:
+                  - FileDeleteTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-DeleteTool-DeletesFile
+                title: >-
+                  The delete tool shall delete a single permitted file.
+                justification: |
+                  Deleting a named file is the tool's reason to exist.
+                tests:
+                  - FileDeleteTool_Delete_PermittedFile_RemovesIt
+
+              - id: AgentKitTools-File-DeleteTool-RefusesDirectory
+                title: >-
+                  The delete tool shall refuse a directory and never recurse, leaving the directory
+                  and its contents in place.
+                justification: |
+                  Deleting a directory with everything beneath it is a far larger and less reversible
+                  act than deleting one named file, and this increment deliberately does not offer it.
+                tests:
+                  - FileDeleteTool_Delete_DirectoryPath_ReturnsDenialAndLeavesItInPlace
+
+              - id: AgentKitTools-File-DeleteTool-PolicyGoverned
+                title: >-
+                  The delete tool shall consult the write decision alone, refusing a deletion in a
+                  read-only location.
+                tags: [security]
+                justification: |
+                  Removing a file is a write in the strongest sense, so a read-only grant is
+                  genuinely read-only.
+                tests:
+                  - FileDeleteTool_Delete_ReadOnlyLocation_ReturnsDenialAndLeavesTheFile
+
+              - id: AgentKitTools-File-DeleteTool-MissingFile
+                title: >-
+                  The delete tool shall report a missing file rather than treating it as a silent
+                  success, with a plain fact that names no other tool.
+                justification: |
+                  A model that received a bland success could not tell an accomplished deletion from
+                  a mistyped path; a denial states that fact and prescribes no remedy.
+                tests:
+                  - FileDeleteTool_Delete_MissingFile_ReturnsDenialNamingNoTool

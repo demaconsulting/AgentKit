@@ -15,6 +15,16 @@ language: en
 # Project-specific technical terms and tool names
 words:
   - apimark
+  - docstats
+  - inspectable
+  - metacharacter
+  - metacharacters
+  - ordinally
+  - pageable
+  - pasteable
+  - setext
+  - unranged
+  - wordcount
   - buildmark
   - DEMA
   - Dema

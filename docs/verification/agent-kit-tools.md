@@ -16,7 +16,9 @@ that a composition to which no family has been attached is well defined and cont
 and that attaching a family contributes exactly that family's tools — or, where the family declares
 a host capability, contributes them only when the host provides it. The first such family, the
 TextFile family, has its own subsystem and unit verification; see _TextFile Subsystem Verification
-Design_. The Image family, gated on the Vision capability, likewise has its own; see _Image
+Design_. The File family and the Markdown family each likewise have their own subsystem and unit
+verification; see _File Subsystem Verification Design_ and _Markdown Subsystem Verification Design_.
+The Image family, gated on the Vision capability, likewise has its own; see _Image
 Subsystem Verification Design_. The families introduced in subsequent increments are verified the
 same way.
 
@@ -59,10 +61,30 @@ before any family is added and that the package is a peer composed like any othe
 
 Verifies that attaching the TextFile pack contributes that family's tools to a composition, under
 the one family prefix the pack claims. Constructs a real access policy, adds `TextFilePack` to a
-`ToolPackBuilder` governed by it, and asserts the composed list is exactly `text_file_read`,
-`text_file_write` and `text_file_list`. Confirms at the system level that a family is attached as
+`ToolPackBuilder` governed by it, and asserts the composed list is exactly `text_file_search`,
+`text_file_read`, `text_file_create`, `text_file_replace`, `text_file_cut_lines`,
+`text_file_copy_lines` and `text_file_paste_lines`. Confirms at the system level that a family is
+attached as
 one pack rather than tool by tool, and that the package now contributes a capability rather than
 only a composition baseline.
+
+### Composition: The File Family Is Contributed to a Composition
+
+**Test**: `AgentKitTools_SystemComposition_FilePack_ContributesTheFileFamily`
+
+Verifies that attaching the File pack contributes that family's tools to a composition, under
+the one family prefix the pack claims. Constructs a real access policy, adds `FilePack` to a
+`ToolPackBuilder` governed by it, and asserts the composed list is exactly `file_list`,
+`file_copy`, `file_move` and `file_delete`.
+
+### Composition: The Markdown Family Is Contributed to a Composition
+
+**Test**: `AgentKitTools_SystemComposition_MarkdownPack_ContributesTheMarkdownFamily`
+
+Verifies that attaching the Markdown pack contributes that family's tools to a composition,
+under the one family prefix the pack claims. Constructs a real access policy, adds
+`MarkdownPack` to a `ToolPackBuilder` governed by it, and asserts the composed list is exactly
+`markdown_outline`.
 
 ### Composition: The Image Family Is Contributed to a Vision Host
 

@@ -311,7 +311,7 @@ public sealed class PathPolicy
     ///     a relative name would name a location the model cannot actually reach, so output is
     ///     absolute instead. It is the standalone precondition <see cref="EmitRelative"/> applies
     ///     internally, and — unlike the other three helpers — it has no built-in consumer of its own
-    ///     today: the built-in <c>text_file_list</c> tool reaches this same fact through
+    ///     today: the built-in <c>file_list</c> tool reaches this same fact through
     ///     <see cref="EmitRelative"/>. It stays public as part of that same extensibility contract so
     ///     a third-party tool pack can inspect up front — before it has any result path to test —
     ///     whether relative addressing is meaningful at all in the current configuration, for example
@@ -459,8 +459,8 @@ public sealed class PathPolicy
     ///     bounded location to walk, contributes the working directory instead, so a discovery
     ///     listing against an unrestricted read grant still shows the anchor's contents. Duplicates
     ///     are removed so two grants over the same location produce one block. It is public because a
-    ///     package boundary already crosses here: the built-in <c>text_file_list</c> tool
-    ///     (<c>TextFileListTool</c>) consumes it from the separate Tools package to group a discovery
+    ///     package boundary already crosses here: the built-in <c>file_list</c> tool
+    ///     (<c>FileListTool</c>) consumes it from the separate Tools package to group a discovery
     ///     listing under one absolute header per location, and a third-party tool pack sits in
     ///     exactly the same position and needs the same grouping. Tools is only the first consumer,
     ///     not a privileged one, so the exposure follows from that design fact — not from any test or
@@ -487,7 +487,7 @@ public sealed class PathPolicy
     ///     ones: mirror the caller, emit a relative name only when the working directory is granted
     ///     and the result lies within it, and treat a no-argument request as discovery. The evidence
     ///     that these rules belong on the public surface is that a package boundary already crosses
-    ///     here: the built-in <c>text_file_list</c> tool (<c>TextFileListTool</c>) lives in the
+    ///     here: the built-in <c>file_list</c> tool (<c>FileListTool</c>) lives in the
     ///     separate Tools package and consumes Core's dialect rules from outside Core. Tools is not
     ///     privileged — it is simply the first consumer, and a third-party tool pack sits in exactly
     ///     the same position, needing exactly the same rules to stay consistent with the built-in
@@ -963,7 +963,7 @@ public sealed class PathPolicy
     /// </summary>
     /// <remarks>
     ///     It is public because a package boundary already crosses here: the built-in
-    ///     <c>text_file_list</c> tool (<c>TextFileListTool</c>) consumes it from the separate Tools
+    ///     <c>file_list</c> tool (<c>FileListTool</c>) consumes it from the separate Tools
     ///     package so that a custom tool and the policy never disagree about what "no argument"
     ///     means, and a third-party tool pack sits in exactly the same position and needs the same
     ///     agreement. Tools is only the first consumer, not a privileged one, so the exposure follows

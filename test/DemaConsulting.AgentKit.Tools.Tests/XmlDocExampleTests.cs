@@ -23,7 +23,9 @@ public class XmlDocExampleTests
         XmlDocExampleVerifier.VerifyExamples(
             "DemaConsulting.AgentKit.Tools.xml",
             "DemaConsulting.AgentKit.Core",
+            "DemaConsulting.AgentKit.Tools.File",
             "DemaConsulting.AgentKit.Tools.Image",
+            "DemaConsulting.AgentKit.Tools.Markdown",
             "DemaConsulting.AgentKit.Tools.TextFile",
             "Microsoft.Extensions.AI");
     }

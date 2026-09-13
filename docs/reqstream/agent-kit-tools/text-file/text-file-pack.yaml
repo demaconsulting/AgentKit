@@ -1,7 +1,5 @@
 ---
 # Software Unit Requirements for TextFilePack
-#
-# These requirements describe the design-level behavior of the TextFilePack unit.
 
 sections:
   - title: AgentKitTools Requirements
@@ -12,76 +10,70 @@ sections:
             requirements:
               - id: AgentKitTools-TextFile-Pack-FamilyPrefix
                 title: >-
-                  The text file pack shall declare the family prefix text_file, exposed as a
-                  constant on the pack and reported through the pack contract.
+                  The pack shall publish the family prefix text_file as a constant and through the
+                  contract.
                 justification: |
-                  The prefix is the family's identity: two packs claiming one prefix would
-                  publish tools a model cannot tell apart, which the composition refuses.
-                  Publishing it as a constant as well as through the contract lets an
-                  application or a test name the family without a literal that could drift from
-                  the names the tools actually carry.
+                  The prefix is what keeps the family's names from colliding with another library's,
+                  and publishing it both ways keeps the constant and the contract from drifting.
                 tests:
                   - TextFilePack_FamilyPrefix_Constant_IsTextFile
                   - TextFilePack_FamilyPrefix_Contract_ReportsTheDeclaredConstant
 
               - id: AgentKitTools-TextFile-Pack-NoCapabilityRequired
                 title: >-
-                  The text file pack shall require no host capability.
+                  The pack shall require no host capability.
                 justification: |
-                  Reading and writing text asks nothing of the model or the application beyond
-                  what every host already provides, so gating the family behind a declaration
-                  would exclude hosts for no reason and force operators to discover a setting
-                  before ordinary file access works.
+                  Text file access asks nothing of the host, so every composition receives the
+                  family.
                 tests:
                   - TextFilePack_RequiredCapabilities_Pack_RequiresNoHostCapability
 
-              - id: AgentKitTools-TextFile-Pack-RegistersThreeTools
+              - id: AgentKitTools-TextFile-Pack-RegistersSevenTools
                 title: >-
-                  The text file pack shall create the read, write and list tools, in that order,
-                  with no null element.
+                  The pack shall create its seven tools — search, read, create, replace, cut, copy
+                  and paste — in a fixed, documented order, with no null entry.
                 justification: |
-                  The order a model sees its tools in is observable, so it must be the family's
-                  stated order rather than an incidental one. A null element would fail the
-                  composition at build time for a reason no caller could act on, so the pack
-                  honors the contract it is judged against.
+                  The order a model sees the tools in is observable, so it is fixed rather than
+                  incidental.
                 tests:
-                  - TextFilePack_CreateTools_Policy_CreatesTheReadWriteAndListTools
+                  - TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder
                   - TextFilePack_CreateTools_Policy_ReturnsNoNullTool
 
               - id: AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
                 title: >-
-                  Every tool the text file pack creates shall carry the declared family prefix
-                  followed by an underscore.
+                  Every tool the pack creates shall carry the family prefix it declares.
                 justification: |
-                  The collision check a composition performs when a pack is added is only
-                  meaningful if the pack's declaration is true of the names it later publishes.
-                  A tool published outside its declared family would escape that protection and
-                  could collide with another library's name.
+                  The prefix-collision check the builder performs depends on this being true.
                 tests:
                   - TextFilePack_CreateTools_EveryTool_CarriesTheFamilyPrefix
 
               - id: AgentKitTools-TextFile-Pack-RequiresPolicy
                 title: >-
-                  The text file pack shall reject an absent access policy as a programming error
-                  rather than creating tools governed by nothing.
+                  The pack shall require a policy to create its tools.
                 tags: [security]
                 justification: |
-                  A family created without a policy would hand an agent unrestricted file access
-                  while appearing to be correctly composed. Failing at the line that made the
-                  mistake reports it to the developer who can fix it, rather than to a model that
-                  cannot.
+                  A missing policy is a programming error in the composing application, named at the
+                  point it was made.
                 tests:
                   - TextFilePack_CreateTools_NullPolicy_ThrowsArgumentNullException
 
               - id: AgentKitTools-TextFile-Pack-PolicyGovernsCreatedTools
                 title: >-
-                  The access policy supplied to the text file pack shall govern every tool the
-                  pack creates.
+                  The policy the composer supplies shall govern the tools the pack creates.
                 tags: [security]
                 justification: |
-                  An application configures one policy and expects every tool it attached to obey
-                  it. A tool that quietly observed a different policy from its neighbor would
-                  make the configured containment unverifiable, which is the same as not having
-                  it.
+                  No tool in the family can observe a different policy from the one the composition
+                  supplied.
                 tests:
                   - TextFilePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools
+
+              - id: AgentKitTools-TextFile-Pack-SharedBuffer
+                title: >-
+                  The cut and paste tools one composition produces shall share one buffer, and two
+                  separate compositions shall not share buffer slots.
+                justification: |
+                  A buffer allocated per composition gives cut and paste a shared clipboard while
+                  keeping two independently composed tool sets isolated.
+                tests:
+                  - TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition
+                  - TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots

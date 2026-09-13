@@ -83,10 +83,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     var root = Path.GetFullPath("workspace");
 ///     var policy = new PathPolicy(root, [PathRule.ReadOnly(root)]);
 ///
-///     var sections = (string? path) =>
+///     var wordCount = (string? path) =>
 ///     {
 ///         if (PathPolicy.IsDiscoveryRequest(path))
-///             return ToolResult.Structured(new { searchableLocations = policy.DiscoveryRoots() });
+///             return ToolResult.Structured(new { inspectableLocations = policy.DiscoveryRoots() });
 ///
 ///         if (!policy.TryResolveRead(path!, out var realPath, out var denialMessage))
 ///             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
@@ -94,10 +94,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///         return ToolResult.Structured(new { path = policy.EmitRelative(realPath, path) });
 ///     };
 ///
-///     var markdown = GuardedToolFactory.Create(
-///         sections,
-///         name: "markdown_sections",
-///         description: "Lists the headings of a Markdown file. Omit the path to list searchable locations.");
+///     var docstats = GuardedToolFactory.Create(
+///         wordCount,
+///         name: "docstats_wordcount",
+///         description: "Counts the words in a text file. Omit the path to list inspectable locations.");
 ///     </code>
 /// </example>
 public static class GuardedToolFactory

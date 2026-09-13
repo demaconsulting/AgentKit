@@ -13,8 +13,8 @@ The sample ships two author-written tools, each in its own pack. A pack declares
 prefix, and `ToolPackBuilder.Build` verifies that every tool the pack creates begins with that
 prefix — which is why two tools from different families cannot share one pack.
 
-The `markdown_sections` tool is a **path-taking** tool: it lists the headings of a Markdown file
-with their 1-based line numbers. It is written exactly as a shipped tool is — constructed through
+The `docstats_wordcount` tool is a **path-taking** tool: it reports the word, line, and character
+counts of a text file. It is written exactly as a shipped tool is — constructed through
 `GuardedToolFactory`, routing every path through `PathPolicy` for containment, refusing with
 `ToolResult.Denied` rather than throwing, and returning its findings through `ToolResult.Structured`
 so the shape is machine-readable. Crucially, it reports file locations in the **same path dialect the
@@ -39,7 +39,7 @@ var policy = new PathPolicy(workspaceRoot, [PathRule.ReadWrite(workspaceRoot)]);
 
 var builder = new ToolPackBuilder(policy)
     .Add(new TextFilePack())     // shipped
-    .Add(new MarkdownToolPack()) // custom
+    .Add(new DocStatsToolPack()) // custom
     .Add(new ClockToolPack());   // custom
 
 IList<AIFunction> tools = [.. builder.Build()];
@@ -58,7 +58,7 @@ Run the sample from the repository root. Against the GitHub Copilot runtime:
 dotnet run --project samples/custom-tools -- \
   --workspace samples/custom-tools/workspace \
   --provider copilot \
-  --prompt "List the sections of sample.md with their line numbers, then tell me the current UTC time."
+  --prompt "Count the words of sample.md, then tell me the current UTC time."
 ```
 
 Against an Ollama server hosting a tool-calling model:
@@ -67,7 +67,7 @@ Against an Ollama server hosting a tool-calling model:
 dotnet run --project samples/custom-tools -- \
   --workspace samples/custom-tools/workspace \
   --provider ollama --host http://your-ollama-host:11434 --model qwen3.5:9b \
-  --prompt "List the sections of sample.md with their line numbers, then tell me the current UTC time."
+  --prompt "Count the words of sample.md, then tell me the current UTC time."
 ```
 
 Only the `--provider` value changes what the sample does; the tools, the session, and the chat loop
@@ -76,16 +76,16 @@ Ctrl-C, or end-of-input.
 
 ## Demonstrating Containment in a Custom Tool
 
-Because the custom Markdown tool routes its path through `PathPolicy` exactly as a shipped tool does,
+Because the custom docstats tool routes its path through `PathPolicy` exactly as a shipped tool does,
 containment applies to it identically. Point it at a path outside the workspace and watch it refuse:
 
 ```bash
 dotnet run --project samples/custom-tools -- \
   --workspace samples/custom-tools/workspace \
   --provider copilot \
-  --prompt "List the sections of ../outside.md and show me exactly what the tool returns."
+  --prompt "Count the words of ../outside.txt and show me exactly what the tool returns."
 ```
 
-The `markdown_sections` tool returns a `Denied (PathNotPermitted)` result — a returned value, not a
+The `docstats_wordcount` tool returns a `Denied (PathNotPermitted)` result — a returned value, not a
 crash — so the agent's turn continues and the model can act on the refusal. The sibling file
-`outside.md` exists precisely so this is a genuine containment decision rather than a staged one.
+`outside.txt` exists precisely so this is a genuine containment decision rather than a staged one.

@@ -47,7 +47,7 @@ try
     Console.WriteLine(
         $"Workspace: {workspaceRoot} (read-write, relative paths anchor here)\n" +
         $"Provider:  {options.Provider}\n" +
-        "Tools:     markdown_sections (custom), clock_now (custom), text_file_* (shipped)");
+        "Tools:     docstats_wordcount (custom), clock_now (custom), text_file_* (shipped)");
 
     // Build the agent (the one provider-specific step) and always release its runtime resources.
     var setup = await AgentComposition.CreateAgentAsync(

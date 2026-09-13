@@ -1,0 +1,70 @@
+---
+# Software Unit Requirements for TextFileLineBuffers
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: TextFile Requirements
+        sections:
+          - title: TextFileLineBuffers Requirements
+            requirements:
+              - id: AgentKitTools-TextFile-Buffers-DefaultSlot
+                title: >-
+                  The line buffer store shall publish a default slot name for the omitted-name case,
+                  and distinct named slots shall hold independent fragments.
+                justification: |
+                  A single default slot keeps the common cut-then-paste-straight-back case free of a
+                  name to invent, while distinct names let a model hold several fragments at once.
+                tests:
+                  - TextFileLineBuffers_DefaultSlot_IsPublished
+                  - TextFileLineBuffers_DistinctSlots_HoldIndependentFragments
+
+              - id: AgentKitTools-TextFile-Buffers-CaptureAndPaste
+                title: >-
+                  The line buffer store shall return captured text from a slot without consuming it,
+                  so the same fragment can be pasted more than once.
+                justification: |
+                  Paste does not consume the slot, which is what lets a captured fragment be pasted
+                  into more than one place.
+                tests:
+                  - TextFileLineBuffers_Capture_ThenPaste_ReturnsTheCapturedTextWithoutConsuming
+
+              - id: AgentKitTools-TextFile-Buffers-Replace
+                title: >-
+                  The line buffer store shall replace an occupied slot on a later capture into the
+                  same name.
+                justification: |
+                  Re-using a name is a deliberate overwrite — the newest capture wins, exactly as a
+                  clipboard does.
+                tests:
+                  - TextFileLineBuffers_Recapture_ReplacesTheSlot
+
+              - id: AgentKitTools-TextFile-Buffers-Validation
+                title: >-
+                  The line buffer store shall report an empty slot as a miss rather than as empty
+                  text, and shall reject a null or empty slot name and a null capture as programming
+                  errors.
+                justification: |
+                  An empty slot must be distinguishable from an empty capture so the paste tool can
+                  tell the model there is nothing to paste, and a malformed slot name is a bug in the
+                  tool author's code.
+                tests:
+                  - TextFileLineBuffers_EmptySlot_IsAMiss
+                  - TextFileLineBuffers_InvalidArguments_ThrowArgumentExceptions
+
+              - id: AgentKitTools-TextFile-Buffers-PopulatedSlots
+                title: >-
+                  The line buffer store shall list the names of the slots that currently hold
+                  captured text in ordinal order, without removing them, exposing only the slot names
+                  the model itself chose and never file paths or captured content.
+                justification: |
+                  A paste refusal for an empty slot recovers a model best when it can name the slots
+                  that do hold content, so the store reports its populated slot names for that
+                  internal guidance. It is deliberately not a tool: cut and copy already report what
+                  they captured, and exposing anything beyond the model's own slot names would leak
+                  workspace detail into a refusal.
+                tests:
+                  - TextFileLineBuffers_PopulatedSlots_Empty_IsEmpty
+                  - TextFileLineBuffers_PopulatedSlots_OneSlot_NamesIt
+                  - TextFileLineBuffers_PopulatedSlots_SeveralSlots_AreOrderedOrdinally
+                  - TextFileLineBuffers_PopulatedSlots_AfterPaste_StillContainsTheSlot

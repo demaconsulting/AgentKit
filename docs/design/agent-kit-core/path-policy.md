@@ -157,7 +157,7 @@ contributes its resolved location. An unrestricted grant contributes the working
 because there is no bounded location to walk. Duplicates are removed so overlapping grants over
 the same location produce one block.
 
-This helper is public because a package boundary already crosses here: the built-in `text_file_list`
+This helper is public because a package boundary already crosses here: the built-in `file_list`
 tool consumes it from the separate Tools package to group discovery output under one absolute header per
 location, and any third-party tool pack sits in the same position and needs the same grouping. Tools is
 only the first consumer, not a privileged one. Exposing where discovery begins does not change the access
@@ -178,7 +178,7 @@ anchor is always absolute because a relative name cannot truthfully name it.
 
 Reports whether a directory argument means "no directory": null, empty, whitespace, or a
 recognized placeholder. It is public because a package boundary already crosses here: the built-in
-`text_file_list` tool consumes it from the separate Tools package so a tool and the policy never
+`file_list` tool consumes it from the separate Tools package so a tool and the policy never
 disagree about what "no argument" means, and any third-party tool pack — the first consumer being no
 more privileged than the rest — needs the same agreement.
 
