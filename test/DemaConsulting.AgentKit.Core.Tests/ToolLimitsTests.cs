@@ -25,12 +25,14 @@ public class ToolLimitsTests
         var resultCharacters = limits.MaxResultCharacters;
         var binaryBytes = limits.MaxBinaryBytes;
         var attachments = limits.MaxAttachmentsPerTurn;
+        var agentDepth = limits.MaxAgentDepth;
 
         // Assert: the literal published values, so a silent change to a constant fails here
         Assert.Equal(65536, readBytes);
         Assert.Equal(32000, resultCharacters);
         Assert.Equal(8388608, binaryBytes);
         Assert.Equal(4, attachments);
+        Assert.Equal(2, agentDepth);
     }
 
     /// <summary>
@@ -50,6 +52,7 @@ public class ToolLimitsTests
         Assert.Equal(expected.MaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(expected.MaxBinaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(expected.MaxAttachmentsPerTurn, limits.MaxAttachmentsPerTurn);
+        Assert.Equal(expected.MaxAgentDepth, limits.MaxAgentDepth);
     }
 
     /// <summary>
@@ -73,6 +76,7 @@ public class ToolLimitsTests
         Assert.Equal(ToolLimits.DefaultMaxReadBytes, limits.MaxReadBytes);
         Assert.Equal(ToolLimits.DefaultMaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(ToolLimits.DefaultMaxAttachmentsPerTurn, limits.MaxAttachmentsPerTurn);
+        Assert.Equal(ToolLimits.DefaultMaxAgentDepth, limits.MaxAgentDepth);
     }
 
     /// <summary>
@@ -81,20 +85,22 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues()
     {
-        // Arrange: four values that are distinguishable from each other and from the defaults
+        // Arrange: five values that are distinguishable from each other and from the defaults
         const int readBytes = 11;
         const int resultCharacters = 22;
         const int binaryBytes = 33;
         const int attachments = 44;
+        const int agentDepth = 55;
 
         // Act: supply every ceiling positionally, in the documented order
-        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, attachments);
+        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, attachments, agentDepth);
 
         // Assert: each ceiling lands on its own property, so the order cannot have transposed
         Assert.Equal(readBytes, limits.MaxReadBytes);
         Assert.Equal(resultCharacters, limits.MaxResultCharacters);
         Assert.Equal(binaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(attachments, limits.MaxAttachmentsPerTurn);
+        Assert.Equal(agentDepth, limits.MaxAgentDepth);
     }
 
     /// <summary>
@@ -133,8 +139,18 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException()
     {
-        // Act & Assert: every ceiling is validated, including the last
+        // Act & Assert: every ceiling is validated
         Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxAttachmentsPerTurn: -1));
+    }
+
+    /// <summary>
+    ///     Proves that a negative delegation-depth ceiling is rejected.
+    /// </summary>
+    [Fact]
+    public void ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException()
+    {
+        // Act & Assert: every ceiling is validated, including the last
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxAgentDepth: -1));
     }
 
     /// <summary>
@@ -149,12 +165,13 @@ public class ToolLimitsTests
     public void ToolLimits_Constructor_ZeroCeiling_IsAccepted()
     {
         // Act: disable every operation by configuring a ceiling of zero
-        var limits = new ToolLimits(0, 0, 0, 0);
+        var limits = new ToolLimits(0, 0, 0, 0, 0);
 
         // Assert: the zero ceilings are accepted and reported back unchanged
         Assert.Equal(0, limits.MaxReadBytes);
         Assert.Equal(0, limits.MaxResultCharacters);
         Assert.Equal(0, limits.MaxBinaryBytes);
         Assert.Equal(0, limits.MaxAttachmentsPerTurn);
+        Assert.Equal(0, limits.MaxAgentDepth);
     }
 }

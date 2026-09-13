@@ -1,0 +1,53 @@
+---
+# Software Unit Requirements for TodoListTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        sections:
+          - title: TodoListTool Requirements
+            requirements:
+              - id: AgentKitTools-Todo-ListTool-ToolName
+                title: >-
+                  The list tool shall be published under the name todo_list, exposed as a
+                  constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the
+                  only basis it has for choosing it.
+                tests:
+                  - TodoListTool_Create_CarriesTheNameAndDescription
+
+              - id: AgentKitTools-Todo-ListTool-GuardedConstruction
+                title: >-
+                  The list tool shall be constructed only through the guarded construction path
+                  with a task list supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the store at construction makes a list tool with no list to report
+                  impossible to build.
+                tests:
+                  - TodoListTool_Create_NullStore_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Todo-ListTool-EmptyList
+                title: >-
+                  The list tool shall report an empty task list as an empty structured result
+                  rather than as a refusal.
+                justification: |
+                  An empty list is a true and useful answer; a refusal would tell the model
+                  something untrue and invite it to conclude the tool is broken.
+                tests:
+                  - TodoListTool_List_EmptyList_ReportsNoItems
+
+              - id: AgentKitTools-Todo-ListTool-StructuredResult
+                title: >-
+                  The list tool shall report the item count and every field of every item — id,
+                  title, status and note — in the order the steps were written down, keeping an
+                  in-place update at its original position.
+                justification: |
+                  The model has to read individual fields back — an identifier it will pass to
+                  todo_set, a status it will advance — so the result is structured rather than
+                  rendered text. Reporting items in insertion order is what makes the list its
+                  own sequence.
+                tests:
+                  - TodoListTool_List_PopulatedList_ReportsItemsInOrder

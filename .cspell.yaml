@@ -24,6 +24,8 @@ words:
   - pasteable
   - setext
   - unranged
+  - upsert
+  - upserts
   - wordcount
   - buildmark
   - DEMA

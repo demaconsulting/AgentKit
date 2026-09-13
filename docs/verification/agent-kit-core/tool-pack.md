@@ -35,7 +35,7 @@ the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass without error or exception beyond those
+A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. A declaration that does not read back, a policy that does not reach the pack,
 a capability member that is neither zero nor a single bit, and a missing flags attribute each
 constitute a failure.
@@ -96,3 +96,12 @@ host never declared.
 
 Asserts the capability the image tool family requires exists and that declaring it is a real
 declaration rather than the absence of one.
+
+#### AgentKitCore-ToolPack-DeclaredCapabilities: Delegation Is Defined and Independent of Vision
+
+**Test**: `ToolPack_HostCapabilities_Delegation_IsDefinedAndIndependentOfVision`
+
+Asserts the capability the agent tool family requires exists, is distinct from requiring nothing,
+occupies a bit of its own, and composes with vision rather than replacing it: a host declaring
+both satisfies each requirement on its own. This is what keeps an application that can show a
+model an image from being taken to have said it will also start a second agent.

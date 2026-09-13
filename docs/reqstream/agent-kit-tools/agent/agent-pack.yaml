@@ -1,0 +1,153 @@
+---
+# Software Unit Requirements for AgentPack
+#
+# These requirements describe the design-level behavior of the AgentPack unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Agent Requirements
+        sections:
+          - title: AgentPack Requirements
+            requirements:
+              - id: AgentKitTools-Agent-Pack-FamilyPrefix
+                title: >-
+                  The agent pack shall declare the family prefix agent, exposed as a constant
+                  on the pack and reported through the pack contract.
+                justification: |
+                  The prefix is the family's identity: two packs claiming one prefix would
+                  publish tools a model cannot tell apart, which the composition refuses.
+                  Publishing it as a constant as well as through the contract lets an
+                  application or a test name the family without a literal that could drift
+                  from the name the tool actually carries.
+                tests:
+                  - AgentPack_FamilyPrefix_IsPublishedAsConstantAndContract
+
+              - id: AgentKitTools-Agent-Pack-RequiresDelegation
+                title: >-
+                  The agent pack shall require the host to provide the delegation capability.
+                tags: [security]
+                justification: |
+                  Only the application knows its provider, its model and its credentials, so
+                  only the application can start a second agent. Declaring the requirement is
+                  what lets the composition withhold the family from a host that will not
+                  delegate, rather than offering a tool whose every use would fail at call
+                  time.
+                tests:
+                  - AgentPack_RequiredCapabilities_IsDelegation
+
+              - id: AgentKitTools-Agent-Pack-RegistersRunTool
+                title: >-
+                  The agent pack shall create the run tool from the supplied policy as the
+                  single element of the returned collection.
+                justification: |
+                  The pack is the unit of attachment, so it must produce the family's tool
+                  for an application to receive it. The collection form is still used because
+                  the pack contract is a collection and because a family can grow without
+                  changing callers.
+                tests:
+                  - AgentPack_CreateTools_RegistersTheRunTool
+
+              - id: AgentKitTools-Agent-Pack-RequiresPolicy
+                title: >-
+                  The agent pack shall reject an absent access policy as a programming error
+                  rather than creating tools governed by nothing.
+                justification: |
+                  A family created without a policy would hand a delegating agent
+                  unrestricted delegation while appearing to be correctly composed. Failing
+                  at the line that made the mistake reports it to the developer who can fix
+                  it, rather than to a model that cannot.
+                tests:
+                  - AgentPack_CreateTools_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Agent-Pack-RejectsMalformedRegistration
+                title: >-
+                  The agent pack shall reject an absent profiles collection, runner or child
+                  packs collection, a null profile, a duplicate profile name, a null child
+                  pack, an AgentPack listed as a child pack, and two child packs claiming one
+                  family prefix, as programming errors in the composing application.
+                tags: [security]
+                justification: |
+                  Two profiles of one name would make the model's selection ambiguous, and
+                  the tool would silently always choose the first. Listing the agent pack as
+                  a child pack would publish the agent prefix twice, because the family adds
+                  itself to every child composition one level deeper. Two child packs sharing
+                  a prefix would publish tools the child cannot tell apart. Each check is at
+                  construction so the mistake is reported when the application registers the
+                  packs rather than the first time a model happens to delegate.
+                tests:
+                  - AgentPack_Constructor_MissingParts_ThrowArgumentNullException
+                  - AgentPack_Constructor_DuplicateProfileName_ThrowsArgumentException
+                  - AgentPack_Constructor_NullEntries_ThrowArgumentException
+                  - AgentPack_Constructor_AgentPackAsChildPack_ThrowsArgumentException
+                  - AgentPack_Constructor_DuplicateChildPackPrefix_ThrowsArgumentException
+
+              - id: AgentKitTools-Agent-Pack-ChildToolsSubset
+                title: >-
+                  The agent pack shall admit into a child's tools only those tools whose
+                  names appear both in the profile and in the packs the application attached,
+                  so a profile naming an unattached tool contributes nothing.
+                tags: [security]
+                justification: |
+                  Naming a tool is a filter, not a grant. A profile that could conjure a
+                  tool the application never attached would be a way for a profile author to
+                  give a child a capability the application withheld. The subset rule keeps
+                  the profile a filter over what was published rather than a source of tools.
+                tests:
+                  - AgentPack_CreateTools_ProfileNamingAnUnattachedTool_DoesNotConjureIt
+                  - AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached
+
+              - id: AgentKitTools-Agent-Pack-ChildToolsComposedAfresh
+                title: >-
+                  A child agent's tools shall be composed by asking each registered pack to
+                  create a fresh set of tools against the child's policy, so per-composition
+                  state a tool holds — a task list, a cut buffer — belongs to the child
+                  alone and is never shared with the parent or a sibling child.
+                tags: [security]
+                justification: |
+                  This is the family's safety-critical property. A sub-agent writing to its
+                  own task list must not reach its parent's; a real incident had a
+                  sub-agent's twelve-item checklist replace its parent's sixty-eight-item
+                  list because the child's tools were the parent's tools with entries
+                  removed. Asking the packs for a fresh creation per run — rather than
+                  filtering the parent's tools or reusing a per-composition object — is what
+                  makes the isolation hold.
+                tests:
+                  - AgentPack_CreateTools_ChildTools_AreComposedAfreshPerRun
+
+              - id: AgentKitTools-Agent-Pack-PolicyNarrowingRejected
+                title: >-
+                  The agent pack shall reject at composition a profile whose grants would
+                  widen the parent's policy — a location the parent cannot reach, a write
+                  where the parent holds only a read, an unrestricted grant under a rooted
+                  parent, or a deny pattern the parent imposes and the profile drops.
+                tags: [security]
+                justification: |
+                  Delegation is not a route by which an agent acquires reach its operator
+                  did not give it. Every widening shape is a programming error in the
+                  application's configuration, and reporting them at composition — the first
+                  moment both the parent's policy and the profile's grants are known — hands
+                  the mistake to the developer who wrote it rather than to a model at run
+                  time. The deny-pattern check matters because a child grant over the same
+                  root with the parent's exclusions dropped is a strictly wider grant wearing
+                  a narrower shape.
+                tests:
+                  - AgentPack_CreateTools_ProfileGrantingAnUnreachableLocation_Throws
+                  - AgentPack_CreateTools_ProfileRaisingTheAccessLevel_Throws
+                  - AgentPack_CreateTools_ProfileGrantingUnrestrictedReach_Throws
+                  - AgentPack_CreateTools_ProfileDroppingAParentExclusion_Throws
+
+              - id: AgentKitTools-Agent-Pack-PolicyNarrowingAccepted
+                title: >-
+                  The agent pack shall accept a profile whose grants narrow the parent's
+                  policy, reaching the child as its own policy, and shall leave the child on
+                  the parent's policy unchanged when the profile states no grants.
+                justification: |
+                  Most children differ from their parent in what they are told and which
+                  tools they hold, not in where they may work, so a profile stating no
+                  grants inherits the parent's policy — the simplest expression of the
+                  common case. A profile that states narrower grants reaches the child
+                  because narrowing is exactly what the type is for.
+                tests:
+                  - AgentPack_CreateTools_ProfileNarrowingTheGrants_IsAcceptedAndReachesTheChild
+                  - AgentPack_CreateTools_ProfileWithoutGrants_InheritsTheParentPolicy

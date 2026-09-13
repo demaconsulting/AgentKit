@@ -9,7 +9,7 @@ properties. There are no dependencies to substitute — the unit depends only on
 library — so every scenario exercises the real type.
 
 The default-value scenario asserts against **literal numbers** rather than against the published
-constants. Asserting a constant against itself is vacuous, and those four values appear in
+constants. Asserting a constant against itself is vacuous, and those five values appear in
 _ToolLimits Unit Design_, in the requirement text and in the public API surface; this scenario is
 what stops them drifting silently.
 
@@ -25,7 +25,7 @@ Unit tests reside in `ToolLimitsTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or exception beyond those
+A unit test run passes when all eleven scenarios below pass without error or exception beyond those
 explicitly asserted. Any published default that has drifted, any ceiling that fails to take
 effect, any negative ceiling that is accepted, and any zero ceiling that is rejected constitutes
 a failure.
@@ -36,8 +36,8 @@ a failure.
 
 **Test**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`
 
-Reads all four ceilings from the shared default instance and asserts the literal values 65,536,
-32,000, 8,388,608 and 4. Pins the published API surface against silent drift.
+Reads all five ceilings from the shared default instance and asserts the literal values 65,536,
+32,000, 8,388,608, 4 and 2. Pins the published API surface against silent drift.
 
 #### AgentKitCore-ToolLimits-Defaults: Construction With No Arguments Matches the Default
 
@@ -50,7 +50,7 @@ that the default instance and the default construction path cannot diverge.
 
 **Test**: `ToolLimits_Constructor_SingleCeilingOverridden_RetainsOtherDefaults`
 
-Supplies only the binary-content ceiling by name and asserts the other three remain at their
+Supplies only the binary-content ceiling by name and asserts the other four remain at their
 published defaults. This is the behavior that delivers per-ceiling customization without a
 builder.
 
@@ -58,7 +58,7 @@ builder.
 
 **Test**: `ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues`
 
-Supplies four mutually distinguishable values positionally and asserts each lands on its own
+Supplies five mutually distinguishable values positionally and asserts each lands on its own
 property, so a transposed parameter order cannot pass.
 
 #### AgentKitCore-ToolLimits-RejectNegative: A Negative Read Ceiling Is Refused
@@ -84,12 +84,27 @@ Asserts every ceiling is validated.
 
 **Test**: `ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException`
 
+Asserts every ceiling is validated.
+
+#### AgentKitCore-ToolLimits-RejectNegative: A Negative Delegation-Depth Ceiling Is Refused
+
+**Test**: `ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException`
+
 Asserts every ceiling is validated, including the last.
+
+#### AgentKitCore-ToolLimits-DelegationDepth: The Delegation Ceiling Is Carried With the Others
+
+**Tests**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`,
+`ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues`
+
+Asserts the delegation-depth ceiling is published with a default of 2 and is exposed as supplied
+when a host replaces it, so a family that delegates reads its budget from the same object as every
+other ceiling rather than from a constant of its own.
 
 #### AgentKitCore-ToolLimits-RejectNegative: A Ceiling of Zero Is Accepted
 
 **Test**: `ToolLimits_Constructor_ZeroCeiling_IsAccepted`
 
 Boundary condition: zero is the expressible way for a host to disable an operation entirely, so
-it must not be rejected alongside a negative value. Asserts all four zero ceilings are accepted
+it must not be rejected alongside a negative value. Asserts all five zero ceilings are accepted
 and reported back unchanged.

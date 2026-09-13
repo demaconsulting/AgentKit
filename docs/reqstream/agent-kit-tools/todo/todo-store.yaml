@@ -1,0 +1,95 @@
+---
+# Software Unit Requirements for TodoStore
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        sections:
+          - title: TodoStore Requirements
+            requirements:
+              - id: AgentKitTools-Todo-Store-Append
+                title: >-
+                  The task list shall append a new identifier at the end of the list, in the
+                  order the model wrote the steps down, and shall report the new size of the
+                  list.
+                justification: |
+                  The order a model wrote its steps down in is the order it means to do them in,
+                  so appending — rather than sorting or re-ordering — is what makes list order
+                  the plan's sequence.
+                tests:
+                  - TodoStore_Set_NewIdentifier_AppendsTheTask
+
+              - id: AgentKitTools-Todo-Store-UpdateInPlace
+                title: >-
+                  The task list shall update an existing identifier in place, replacing its
+                  title, status and note without changing its position.
+                justification: |
+                  A status change must not reorder the plan under it, so an in-place update is
+                  the only permitted mutation for an identifier the list already holds.
+                tests:
+                  - TodoStore_Set_ExistingIdentifier_UpdatesInPlace
+
+              - id: AgentKitTools-Todo-Store-Remove
+                title: >-
+                  The task list shall report whether a removal hit or missed and shall report the
+                  new size of the list in either case, leaving the list unchanged on a miss.
+                justification: |
+                  Removing a task that is not there is not the same as success — a tool that
+                  believes it tidied nothing up will report a fact — so the store distinguishes
+                  the two outcomes and lets the caller turn a miss into a refusal.
+                tests:
+                  - TodoStore_Remove_KnownAndUnknownIdentifiers_ReportTheOutcome
+
+              - id: AgentKitTools-Todo-Store-Statuses
+                title: >-
+                  The task list shall recognize exactly four statuses — pending, in_progress,
+                  done and blocked — compared ordinally, and shall render them for a refusal that
+                  names the vocabulary.
+                justification: |
+                  Four statuses are the whole life cycle: pending, in_progress and done are the
+                  ordinary path, and blocked exists because a step nobody can reach is not the
+                  same as a step nobody has started. Comparing ordinally means an identifier or a
+                  status means exactly itself; silently accepting a variant like In_Progress
+                  would teach the model a vocabulary this library does not publish.
+                tests:
+                  - TodoStatuses_IsValid_AcceptsExactlyThePublishedVocabulary
+
+              - id: AgentKitTools-Todo-Store-Snapshot
+                title: >-
+                  The task list shall return a stable snapshot of its items so that a later write
+                  cannot mutate a list a caller is still reading.
+                justification: |
+                  Handing out the underlying collection would let one tool's mutation change what
+                  a sibling tool is already reading, which is exactly the concurrent surprise the
+                  store's lock is meant to prevent.
+                tests:
+                  - TodoStore_Items_ReturnsASnapshot
+
+              - id: AgentKitTools-Todo-Store-Validation
+                title: >-
+                  The task list shall reject a null or empty identifier, a null or empty title,
+                  and a status the vocabulary does not hold as programming errors from the tool
+                  units.
+                justification: |
+                  Model-facing validation happens in the set and remove tools, so a store that
+                  receives an unrecognized status or a blank identifier is witnessing a defect in
+                  this library rather than something a model did. Arguing exceptions here names
+                  the defect at the point it was made.
+                tests:
+                  - TodoStore_Set_UnknownStatus_ThrowsArgumentException
+                  - TodoStore_Set_EmptyIdentifierOrTitle_ThrowsArgumentException
+
+              - id: AgentKitTools-Todo-Store-PerAgentIsolation
+                title: >-
+                  The task list shall be reachable only from the pack composition that allocated
+                  it, so no public path lets a caller hand one agent's list to another agent's
+                  tools.
+                tags: [security]
+                justification: |
+                  The store is internal and no public type accepts one; the only construction
+                  path is through the pack's CreateTools, which allocates a fresh store as a
+                  local. That is what keeps a delegated agent's list out of its parent's — the
+                  containment is structural rather than conventional.
+                tests:
+                  - TodoPack_CreateTools_CalledTwice_ProducesIndependentLists

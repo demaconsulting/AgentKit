@@ -50,3 +50,19 @@ sections:
               - ToolPack_HostCapabilities_Enum_IsDeclaredAsFlags
               - ToolPack_HostCapabilities_EveryMember_IsZeroOrASingleBit
               - ToolPack_HostCapabilities_Vision_IsDefinedAndDistinctFromNone
+
+          - id: AgentKitCore-ToolPack-DeclaredCapabilities
+            title: >-
+              Host capabilities shall include the capability to start a further agent, distinct
+              from and independent of the capability to accept image content.
+            tags: [security]
+            justification: |
+              Only the application knows its model provider and its credentials, so only the
+              application can start a second agent on its own behalf. A pack that delegates must
+              therefore be withheld from a host that has not said it can, and that withholding has
+              to be expressible as a capability rather than as a runtime refusal, or the model has
+              already been offered a tool whose every use would fail. It is a separate bit from
+              vision because a host that can show a model an image has said nothing about whether
+              it will start a second agent, and neither declaration may imply the other.
+            tests:
+              - ToolPack_HostCapabilities_Delegation_IsDefinedAndIndependentOfVision

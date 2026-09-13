@@ -26,14 +26,16 @@ receives everything it needs as an argument.
 
 `HostCapabilities` is a flags enumeration:
 
-| Member   | Value | Meaning                                                                    |
-|----------|-------|----------------------------------------------------------------------------|
-| `None`   | `0`   | No capability is required or declared.                                     |
-| `Vision` | `1`   | The host can accept image content in a result and present it to the model. |
+| Member       | Value | Meaning                                                                    |
+|--------------|-------|----------------------------------------------------------------------------|
+| `None`       | `0`   | No capability is required or declared.                                     |
+| `Vision`     | `1`   | The host can accept image content in a result and present it to the model. |
+| `Delegation` | `2`   | The host can create and run a further agent on its own model provider.     |
 
 A capability is a property of the *host* — the application and the model behind it — not of the
 machine. Whether a model can accept image content is the host's to declare, and no library can
-discover it.
+discover it. Whether a second agent can be started is likewise the host's to declare: only the
+application knows its provider, its model and its credentials.
 
 `None` is a real value, not a placeholder for "unset". A pack whose `RequiredCapabilities` is
 `None` requires nothing of its host and is therefore registered by every host, which is the
@@ -42,13 +44,15 @@ natural expression of "always available" and needs no special case in the gating
 `DenialReason`, which deliberately has no zero member — an unspecified denial reason is always a
 bug, whereas an unspecified capability requirement is the common case.
 
-`Vision` exists because the image tool family cannot operate without it. **No other member is
+`Vision` exists because the image tool family cannot operate without it, and `Delegation` because
+the agent tool family cannot. **No other member is
 defined, and that restraint is deliberate.** A speculative capability is public API that must be
 honored forever, and a host that declares one it does not understand silently widens what the
 model is offered. Members are added when a pack needs one, and each new member must be zero or a
 single bit — a member overlapping another would silently satisfy a requirement the host never
 declared, which a unit test enforces reflectively over every member, including members that do
-not exist yet.
+not exist yet. The two defined members are independent: a host that can show a model an image has
+said nothing about whether it will start a second agent, so neither declaration implies the other.
 
 `IToolPack` holds no state of its own; it states what an implementation must provide:
 

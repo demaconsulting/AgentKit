@@ -1,0 +1,57 @@
+---
+# Software Unit Requirements for AgentProfile
+#
+# These requirements describe the design-level behavior of the AgentProfile unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Agent Requirements
+        sections:
+          - title: AgentProfile Requirements
+            requirements:
+              - id: AgentKitTools-Agent-Profile-StatedParts
+                title: >-
+                  A profile shall carry the name, instructions, tool names, grants and
+                  optional description the application supplied, and shall permit an empty
+                  tool list.
+                justification: |
+                  Every part of what a child agent is comes from the application, at
+                  composition time, so the type exposes exactly what the application supplied
+                  and nothing invented on its behalf. An empty tool list is a legitimate
+                  profile — summarizing or judging text the parent passes in the task needs no
+                  tools at all — so it is not treated as a mistake.
+                tests:
+                  - AgentProfile_Constructor_StatedParts_AreKept
+                  - AgentProfile_Constructor_GrantsAndDescription_AreKept
+                  - AgentProfile_Constructor_NoTools_IsPermitted
+
+              - id: AgentKitTools-Agent-Profile-RejectsMalformed
+                title: >-
+                  A profile shall reject an absent name, absent instructions, a tool entry
+                  that is null or empty, or a null grant entry, as a programming error in the
+                  composing application.
+                justification: |
+                  A nameless profile could not be selected, a silent profile has no job, an
+                  empty tool name could never match an attached tool, and a null grant leaves
+                  the child's reach undetermined. Each is a mistake in the application's own
+                  code and is reported at the line that made it, rather than surfacing as a
+                  refusal to a model that has no way to correct it.
+                tests:
+                  - AgentProfile_Constructor_MissingNameOrInstructions_Throws
+                  - AgentProfile_Constructor_EmptyToolName_ThrowsArgumentException
+                  - AgentProfile_Constructor_NullGrant_ThrowsArgumentException
+
+              - id: AgentKitTools-Agent-Profile-Immutable
+                title: >-
+                  A profile shall materialize its tool and grant collections at construction,
+                  so a caller mutating the source collection afterwards cannot change what the
+                  profile admits.
+                justification: |
+                  A lazily evaluated sequence could yield different names each time it was
+                  enumerated, which would make the child's tool set unrepeatable and the
+                  child's grants unpredictable. Materializing at construction is the smallest
+                  change that makes the profile mean exactly one thing for the rest of its
+                  life.
+                tests:
+                  - AgentProfile_Constructor_SourceCollections_AreCopied

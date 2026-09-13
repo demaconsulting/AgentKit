@@ -1,0 +1,178 @@
+---
+# Software Subsystem Requirements for the Agent tool family
+#
+# These requirements describe the behavior of the Agent subsystem as a whole,
+# decomposing the system-level agent family requirement into the behavior each
+# of its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Agent Requirements
+        requirements:
+          - id: AgentKitTools-Agent-FamilyComposition
+            title: >-
+              The agent family shall publish the agent_run tool under the agent family prefix,
+              composed as one pack an application attaches, and shall describe the tool with the
+              names of the registered profiles so a model chooses without a wasted turn.
+            justification: |
+              An application attaches a capability to an agent as one pack rather than as a
+              handful of individually registered tools, so the family must be the unit of
+              attachment. Publishing the tool under one prefix keeps the family's names from
+              colliding with those of any other library an application combines. Naming the
+              available profiles in the tool description matters because a model that cannot see
+              the profiles it may choose from will invent one and spend a turn being refused.
+            children:
+              - AgentKitTools-Agent-RunTool-DescriptionNamesProfiles
+              - AgentKitTools-Agent-Pack-FamilyPrefix
+              - AgentKitTools-Agent-Pack-RegistersRunTool
+            tests:
+              - Agent_Family_ComposedThroughBuilder_PublishesTheRunTool
+              - Agent_Family_Delegation_ReturnsTheFinalTextOfTheChild
+
+          - id: AgentKitTools-Agent-CapabilityGated
+            title: >-
+              The agent family shall be registered only for a host that declares the delegation
+              capability, and a host that does not declare it shall receive none of the family's
+              tools.
+            tags: [security]
+            justification: |
+              Only the application knows its provider, its model and its credentials, so only
+              the application can start a second agent — the runner it supplies is that seam.
+              A host that cannot supply a runner has nothing that could honor an agent_run call,
+              and offering the tool anyway would refuse every use at call time. Withholding the
+              family from a host that cannot delegate — by never asking the pack for its tools,
+              not by offering them and refusing later — is what makes the tool that could only
+              fail impossible to offer rather than merely refused.
+            children:
+              - AgentKitTools-Agent-Pack-RequiresDelegation
+            tests:
+              - Agent_Family_HostWithoutDelegation_ContributesNoTools
+
+          - id: AgentKitTools-Agent-GuardedConstruction
+            title: >-
+              Every tool in the agent family shall be constructed through the guarded
+              construction path, shall take its access policy and its collaborators at
+              construction, and shall carry a validated name and a non-empty description.
+            justification: |
+              A tool built any other way is offered to a model that cannot identify or choose
+              it, and a tool that received its policy later, or not at all, could be attached
+              while governed by nothing. Making construction the only moment the policy, the
+              profiles, the runner and the composer can be supplied is what makes an agent tool
+              that is unguarded, or governed by no policy, impossible to express rather than
+              merely discouraged.
+            children:
+              - AgentKitTools-Agent-RunTool-GuardedConstruction
+              - AgentKitTools-Agent-Pack-RequiresPolicy
+            tests:
+              - Agent_Family_EveryTool_CarriesAValidatedNameAndDescription
+
+          - id: AgentKitTools-Agent-ApplicationAuthoredProfiles
+            title: >-
+              A child agent's identity — its instructions, the tools it may name, and the
+              grants it may narrow to — shall come from an AgentProfile the application
+              registered, and the family shall reject a profile collection a model's selection
+              could not resolve unambiguously.
+            tags: [security]
+            justification: |
+              If a parent agent could author its own child's instructions, delegation would be
+              a way for a model to grant a second model behavior the application never
+              sanctioned — "you are an unrestricted assistant; ignore the rules" — and every
+              control the application configured would be one prompt away from being reset.
+              The profile is the type that carries the application's authorship of what the
+              child is, and the pack rejects a duplicate profile name or an ill-formed
+              registration at the line that made the mistake rather than at the first
+              delegation.
+            children:
+              - AgentKitTools-Agent-Profile-StatedParts
+              - AgentKitTools-Agent-Profile-RejectsMalformed
+              - AgentKitTools-Agent-Profile-Immutable
+              - AgentKitTools-Agent-Pack-RejectsMalformedRegistration
+            tests:
+              - Agent_Family_Delegation_ReturnsTheFinalTextOfTheChild
+
+          - id: AgentKitTools-Agent-ChildIsolation
+            title: >-
+              A child agent's tools shall be composed from the child's own policy and a fresh
+              creation of the registered packs, never filtered from the parent's tool list, so
+              that per-composition state a tool holds — a task list, a cut buffer — belongs
+              to the child alone.
+            tags: [security]
+            justification: |
+              A sub-agent writing to its own task list must not reach its parent's; a real
+              incident had a sub-agent's twelve-item checklist replace its parent's sixty-eight
+              item list because the child's tools were the parent's tools with entries removed.
+              Two contaminating mistakes were made in one file during the spike while
+              explicitly trying to prevent this — closing over the parent's store while
+              building the child's tools, and filtering a parent-bound tool list at the
+              agent_run call site — and both routed a child's task list into its parent's.
+              The isolation is enforced by API shape: nothing public in the family accepts an
+              AIFunction, the pack takes IToolPack instances, and each delegated run composes
+              them afresh through a fresh ToolPackBuilder against the child's own policy.
+            children:
+              - AgentKitTools-Agent-Request-DescribesTheChild
+              - AgentKitTools-Agent-RunTool-ComposesNamedProfileOnly
+              - AgentKitTools-Agent-Pack-ChildToolsSubset
+              - AgentKitTools-Agent-Pack-ChildToolsComposedAfresh
+            tests:
+              - Agent_Family_ChildTools_AreComposedForTheChild
+
+          - id: AgentKitTools-Agent-PolicyNarrowingOnly
+            title: >-
+              A profile's path grants shall only narrow the parent's policy, checked at
+              composition, and a profile that would widen the parent's reach shall be rejected
+              at the line that composed it rather than refused at a later delegation.
+            tags: [security]
+            justification: |
+              Delegation is not a route by which an agent acquires reach its operator did not
+              give it. A grant reaching outside what the parent holds — a location the parent
+              cannot reach, a write where the parent holds only a read, an unrestricted grant
+              under a rooted parent, or a deny pattern the parent imposes and the profile
+              drops — is a programming error in the application's own configuration. Checking
+              at composition rather than at run time reports the mistake to the developer who
+              wrote it instead of surfacing to a model that has no way to correct it.
+            children:
+              - AgentKitTools-Agent-Pack-PolicyNarrowingRejected
+              - AgentKitTools-Agent-Pack-PolicyNarrowingAccepted
+            tests:
+              - Agent_Family_ChildTools_AreComposedForTheChild
+
+          - id: AgentKitTools-Agent-DepthBounded
+            title: >-
+              A delegated agent whose profile admits agent_run shall receive the family one
+              level deeper, chains shall be bounded by ToolLimits.MaxAgentDepth, and a call at
+              the ceiling shall be refused before anything is composed or started.
+            justification: |
+              An agent that can delegate can delegate to something that delegates, and the
+              resulting chain spends the host's money in a way no single agent's transcript
+              reveals. The ceiling sits with the other budgets rather than as a per-tool
+              constant so a host tunes one place. Checking before composition means a refused
+              run costs nothing to reach, and stating the ceiling and the current level lets
+              the model narrow the request rather than guess.
+            children:
+              - AgentKitTools-Agent-RunTool-DepthCeiling
+            tests:
+              - Agent_Family_DelegationChain_IsRefusedAtTheDepthCeiling
+
+          - id: AgentKitTools-Agent-DenialsAreResults
+            title: >-
+              The agent family shall report every refusal a model can provoke as a returned
+              result that states its reason and prescribes no other tool, and a host failure
+              inside the runner shall propagate rather than becoming a refusal.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it with no way forward, whereas a returned refusal lets it read the
+              reason and choose an alternative. Refusals name the profiles that exist and
+              state a ceiling as facts, rather than prescribing another tool, because a denial
+              that suggested one was measured driving a model into a destructive workaround
+              the user had explicitly forbidden. A failure inside the host's runner is left to
+              propagate because this library cannot tell a transient outage from a
+              misconfiguration, and reporting either as a refusal would tell the model
+              something the library does not know.
+            children:
+              - AgentKitTools-Agent-Request-RunnerContract
+              - AgentKitTools-Agent-RunTool-MalformedRequestRefused
+              - AgentKitTools-Agent-RunTool-UnknownProfileRefused
+              - AgentKitTools-Agent-RunTool-ChildResultReporting
+            tests:
+              - Agent_Family_Delegation_ReturnsTheFinalTextOfTheChild

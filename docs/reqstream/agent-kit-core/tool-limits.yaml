@@ -40,10 +40,29 @@ sections:
             justification: |
               A negative ceiling has no meaning and would be interpreted differently by every tool
               that consulted it. Zero, by contrast, is the expressible way for a host to turn an
-              operation off entirely, so the two must not be rejected together.
+              operation off entirely — a tool permitted to attach nothing, or an agent forbidden
+              to delegate — so the two must not be rejected together.
             tests:
               - ToolLimits_Constructor_NegativeMaxReadBytes_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxResultCharacters_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxBinaryBytes_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_ZeroCeiling_IsAccepted
+
+          - id: AgentKitCore-ToolLimits-DelegationDepth
+            title: >-
+              Tool limits shall carry the ceiling on how deep a chain of delegated agents may run,
+              counted from a root agent at depth zero.
+            tags: [security]
+            justification: |
+              Delegation depth is a budget of the same kind as the content ceilings beside it: a
+              host sets it once and every tool observes it. Holding it here rather than as a
+              constant on whichever tool happens to delegate means a host configures all of its
+              agent's budgets in one place, and means the ceiling cannot be quietly different
+              between two families. An agent that can delegate can delegate to something that
+              delegates, so an unbounded chain spends the host's money and time in a way no single
+              agent's transcript reveals.
+            tests:
+              - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
+              - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues

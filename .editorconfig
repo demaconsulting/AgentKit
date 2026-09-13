@@ -93,3 +93,21 @@ dotnet_code_quality_unused_parameters = all:suggestion
 
 # Nullable reference types
 csharp_nullable_reference_types = enable
+
+# Todo and Agent tool families - the todo family's own name is the token S1135 looks for
+#
+# SonarAnalyzer S1135 ("complete the task associated to this 'TODO' comment") matches the bare
+# word TODO in any comment, case-insensitively. The todo tool family publishes todo_list,
+# todo_set and todo_remove, so every sentence of its documentation and every inline comment that
+# names one of its own tools trips the rule; the agent family's documentation names those tools
+# too, because delegation is what gives each agent its own list. There is no way to document
+# either family without writing the name. The rule is turned off for exactly these directories
+# and nowhere else, so a genuine deferred-work marker anywhere else in the repository is still
+# an error. Note that PascalCase identifiers such as TodoPack do not match the rule, so this
+# scope is only about the model-facing tool names.
+[**/{Todo,Agent}/*.cs]
+dotnet_diagnostic.S1135.severity = none
+
+# The system-level tool tests name every family, including the todo family, for the same reason.
+[**/AgentKitToolsTests.cs]
+dotnet_diagnostic.S1135.severity = none

@@ -41,6 +41,20 @@ present visual content to a model — because its tool returns image and PDF con
 non-vision host could not use. Each family this package provides is its own subsystem with its own
 units, requirements, design, verification and review set.
 
+The system contains the **Todo** subsystem: the todo tool family, publishing `todo_list`,
+`todo_set` and `todo_remove` under the `todo` family prefix and attached to an application as one
+pack. It gives an agent one flat, ordered task list of its own, held in memory for exactly as long
+as the composition that created it, so that the steps of a multi-step job are written down rather
+than carried in the model's memory.
+
+The system also contains the **Agent** subsystem: the agent tool family, publishing `agent_run`
+under the `agent` family prefix and attached to an application as one pack. Like the image family
+it is gated on a host capability — it is registered only for a host that declares it can start a
+further agent, because only the application knows its provider, model and credentials. It
+delegates a task to one of the agents the application registered by name, composing that agent's
+tools from the application's own packs against the child's own state rather than from the parent's
+tool list.
+
 ## External Interfaces
 
 The system's public API is the pack type each family publishes; it defines no policy primitive,
@@ -55,21 +69,26 @@ through the AgentKitCore pack contract:
 
 An application attaches a family by adding that family's pack: `TextFilePack` is the type an
 application adds to give an agent the text file family, `FilePack` the type it adds for the
-type-agnostic file family, `MarkdownPack` the type it adds for the Markdown family, and `ImagePack`
+type-agnostic file family, `MarkdownPack` the type it adds for the Markdown family, `TodoPack` the
+type it adds to give an agent a task list of its own, `AgentPack` the type it adds to let an agent
+delegate to another agent the application registered, and `ImagePack`
 is the type it adds to give a vision-capable agent the image family. A composition to which no
 family has been added remains
 well defined — an empty `ToolPackBuilder` built with a valid policy yields an empty tool list — and
 a family whose required capability the host has not declared, such as the image family on a
-non-vision host, contributes no tools because the composition never asks its pack for them.
+non-vision host or the agent family on a host that will not delegate, contributes no tools because
+the composition never asks its pack for them.
 
-| Interface         | Direction        | Format                     | Constraints                       |
-|-------------------|------------------|----------------------------|-----------------------------------|
-| `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family        |
-| `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`      |
-| `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability |
-| `FilePack`        | Outbound         | AgentKitCore pack contract | Prefix `file`; no capability      |
-| `MarkdownPack`    | Outbound         | AgentKitCore pack contract | Prefix `markdown`; no capability  |
-| `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision   |
+| Interface         | Direction        | Format                     | Constraints                          |
+|-------------------|------------------|----------------------------|--------------------------------------|
+| `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family           |
+| `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`         |
+| `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability    |
+| `FilePack`        | Outbound         | AgentKitCore pack contract | Prefix `file`; no capability         |
+| `MarkdownPack`    | Outbound         | AgentKitCore pack contract | Prefix `markdown`; no capability     |
+| `TodoPack`        | Outbound         | AgentKitCore pack contract | Prefix `todo`; no capability         |
+| `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision      |
+| `AgentPack`       | Outbound         | AgentKitCore pack contract | Prefix `agent`; requires Delegation  |
 
 ## Dependencies
 

@@ -138,3 +138,71 @@ sections:
         tests:
           - AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily
           - AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools
+
+      - id: AgentKitTools-TodoFamily-AgentTaskList
+        title: >-
+          The library shall provide a todo family that lets an agent record the steps of a piece of
+          multi-step work, advance and close each step, and drop a step that is no longer part of
+          the work, holding one flat ordered list per agent that no other agent can read or write,
+          publishing every tool under one family prefix and refusing rather than throwing when a
+          request cannot be honored.
+        tags: [system]
+        justification: |
+          An agent working through several phases either writes the plan down or carries it in its
+          own memory, and memory is where a phase goes missing without either the agent or the user
+          being able to see that it happened. A written list is also how a person follows what an
+          agent is doing while it is doing it. The list is deliberately flat and one per agent: a
+          tree, a dependency edge and a replace-the-whole-list tool were each built and measured
+          against live models and each was either unused or paid for without being used, while
+          delegation already expresses the hierarchy a tree was meant to carry. Binding the list to
+          one agent is what keeps a delegated agent's short checklist from replacing the long one
+          its parent is working through. The family only works when the application instructs the
+          agent to use it, which is a measured finding rather than an assumption, so that
+          instruction is published with the family rather than left to be rediscovered.
+        children:
+          - AgentKitTools-Todo-FamilyComposition
+          - AgentKitTools-Todo-GuardedConstruction
+          - AgentKitTools-Todo-PerAgentList
+          - AgentKitTools-Todo-TaskLifecycle
+          - AgentKitTools-Todo-DenialsAreResults
+          - AgentKitTools-Todo-InstructionRequired
+        tests:
+          - AgentKitTools_SystemComposition_TodoPack_ContributesTheTodoFamily
+
+      - id: AgentKitTools-AgentFamily-GuardedDelegation
+        title: >-
+          The library shall provide an agent family that delegates a task to another agent the
+          composing application has registered by name, giving that agent instructions the
+          application wrote, a tool set composed from the application's own packs against the
+          child's own state, and an access policy no wider than the delegating agent's, bounding
+          how deep a chain of delegated agents may run, registering the family only for a host that
+          declares it can start a further agent, and refusing rather than throwing when a request
+          cannot be honored.
+        tags: [system, security]
+        justification: |
+          Delegation is how an agent keeps a long job within one context window, and it is also the
+          most direct route by which an agent could acquire authority its operator never granted.
+          Registering named profiles is what closes that route: the model chooses which agent to
+          start, and the application decides what each of those agents is. A parent that could
+          author its own child's instructions could tell that child to ignore the rules the
+          application configured. A child's tools are composed from the application's packs against
+          the child's own policy rather than filtered from the parent's list, because filtering a
+          parent-bound list hands the child the parent's own per-composition state — the defect that
+          lets a sub-agent's short checklist replace its parent's long one, made twice in one file
+          while trying to prevent it. Narrowing-only grants keep containment a one-way ratchet, the
+          depth ceiling keeps a chain of agents from spending a host's budget invisibly, and gating
+          the family behind a host declaration keeps an application that cannot start a second agent
+          from ever being offered the tool.
+        children:
+          - AgentKitTools-Agent-FamilyComposition
+          - AgentKitTools-Agent-CapabilityGated
+          - AgentKitTools-Agent-GuardedConstruction
+          - AgentKitTools-Agent-ApplicationAuthoredProfiles
+          - AgentKitTools-Agent-ChildIsolation
+          - AgentKitTools-Agent-PolicyNarrowingOnly
+          - AgentKitTools-Agent-DepthBounded
+          - AgentKitTools-Agent-DenialsAreResults
+        tests:
+          - AgentKitTools_SystemComposition_AgentPack_ContributesTheAgentFamily
+          - AgentKitTools_SystemComposition_AgentPackWithoutDelegation_ContributesNoTools
+          - AgentKitTools_SystemComposition_DelegatedAgent_KeepsItsOwnTaskList

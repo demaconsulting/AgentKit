@@ -44,6 +44,17 @@ includes:
   - docs/reqstream/agent-kit-tools/markdown.yaml
   - docs/reqstream/agent-kit-tools/markdown/markdown-outline-tool.yaml
   - docs/reqstream/agent-kit-tools/markdown/markdown-pack.yaml
+  - docs/reqstream/agent-kit-tools/todo.yaml
+  - docs/reqstream/agent-kit-tools/todo/todo-store.yaml
+  - docs/reqstream/agent-kit-tools/todo/todo-list-tool.yaml
+  - docs/reqstream/agent-kit-tools/todo/todo-set-tool.yaml
+  - docs/reqstream/agent-kit-tools/todo/todo-remove-tool.yaml
+  - docs/reqstream/agent-kit-tools/todo/todo-pack.yaml
+  - docs/reqstream/agent-kit-tools/agent.yaml
+  - docs/reqstream/agent-kit-tools/agent/agent-profile.yaml
+  - docs/reqstream/agent-kit-tools/agent/child-agent-request.yaml
+  - docs/reqstream/agent-kit-tools/agent/agent-run-tool.yaml
+  - docs/reqstream/agent-kit-tools/agent/agent-pack.yaml
   - docs/reqstream/agent-kit-tools/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-chat-client.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml

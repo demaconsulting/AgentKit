@@ -34,7 +34,18 @@ public enum HostCapabilities
     /// <summary>
     ///     The host can accept image content in a tool result and present it to the model.
     /// </summary>
-    Vision = 1
+    Vision = 1,
+
+    /// <summary>
+    ///     The host can create and run a further agent on the model provider it is configured for.
+    /// </summary>
+    /// <remarks>
+    ///     Only the application knows its provider, its model and its credentials, so only the
+    ///     application can start a second agent. A host that cannot — or will not — do so declines
+    ///     to declare this, and a delegating family is then never registered rather than being
+    ///     offered and refused on use.
+    /// </remarks>
+    Delegation = 2
 }
 
 /// <summary>

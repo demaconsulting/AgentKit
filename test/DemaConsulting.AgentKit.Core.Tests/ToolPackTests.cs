@@ -145,4 +145,26 @@ public class ToolPackTests
         Assert.True(Enum.IsDefined(vision));
         Assert.NotEqual(HostCapabilities.None, vision);
     }
+
+    /// <summary>
+    ///     Proves that the delegation capability exists, is distinct from requiring nothing, and is
+    ///     a separate bit from vision, so a host can declare either without implying the other.
+    /// </summary>
+    [Fact]
+    public void ToolPack_HostCapabilities_Delegation_IsDefinedAndIndependentOfVision()
+    {
+        // Act: read the capability a delegating pack requires
+        var delegation = HostCapabilities.Delegation;
+
+        // Assert: a real, independent declaration that composes with vision rather than replacing it
+        Assert.True(Enum.IsDefined(delegation));
+        Assert.NotEqual(HostCapabilities.None, delegation);
+        Assert.NotEqual(HostCapabilities.Vision, delegation);
+        Assert.Equal(HostCapabilities.None, delegation & HostCapabilities.Vision);
+
+        // A host that declares both satisfies each requirement on its own
+        var both = HostCapabilities.Vision | HostCapabilities.Delegation;
+        Assert.Equal(delegation, both & delegation);
+        Assert.Equal(HostCapabilities.Vision, both & HostCapabilities.Vision);
+    }
 }

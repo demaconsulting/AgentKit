@@ -1,0 +1,145 @@
+---
+# Software Subsystem Requirements for the Todo tool family
+#
+# These requirements describe the behavior of the Todo subsystem as a whole,
+# decomposing the system-level todo family requirement into the behavior each of
+# its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        requirements:
+          - id: AgentKitTools-Todo-FamilyComposition
+            title: >-
+              The todo family shall publish three tools — list, set and remove — in that order
+              under the todo family prefix, and shall require no host capability.
+            justification: |
+              An application attaches a capability as one pack rather than as three individually
+              registered tools, so the family must be the unit of attachment. Publishing every
+              tool under one prefix keeps this family's names from colliding with those of any
+              other library an application combines, and requiring no host capability means an
+              in-memory task list works without an operator declaring anything first. The order —
+              list, set, remove — matches the order a model learns the tools in: reading the list
+              is the first thing it does with the family, writing to it is the second, and
+              removing from it is the last and least common.
+            children:
+              - AgentKitTools-Todo-Store-Snapshot
+              - AgentKitTools-Todo-ListTool-ToolName
+              - AgentKitTools-Todo-SetTool-ToolName
+              - AgentKitTools-Todo-RemoveTool-ToolName
+              - AgentKitTools-Todo-Pack-FamilyPrefix
+              - AgentKitTools-Todo-Pack-NoCapabilityRequired
+              - AgentKitTools-Todo-Pack-RegistersThreeTools
+            tests:
+              - Todo_Family_ComposedThroughBuilder_PublishesTheFamily
+
+          - id: AgentKitTools-Todo-GuardedConstruction
+            title: >-
+              Every tool in the todo family shall be constructed through the guarded construction
+              path and shall take its task list and access policy at construction.
+            tags: [security]
+            justification: |
+              A tool built any other way has its result flattened into JSON before a provider sees
+              it, and a tool that received its list later — or not at all — could be attached to
+              an agent while writing into nothing. Validating the policy at construction, even
+              though the family never consults it, names a composing-application mistake at the
+              point it was made rather than by a sibling family later.
+            children:
+              - AgentKitTools-Todo-Store-Validation
+              - AgentKitTools-Todo-ListTool-GuardedConstruction
+              - AgentKitTools-Todo-SetTool-GuardedConstruction
+              - AgentKitTools-Todo-RemoveTool-GuardedConstruction
+              - AgentKitTools-Todo-Pack-RequiresPolicy
+            tests:
+              - Todo_Family_EveryTool_CarriesAValidatedNameAndDescription
+
+          - id: AgentKitTools-Todo-PerAgentList
+            title: >-
+              The todo family shall allocate a fresh task list on every CreateTools call and shall
+              share it only among the three tools that call returns, so a delegated agent keeps a
+              list of its own and cannot write into its parent's.
+            tags: [security]
+            justification: |
+              A task list is the working state of one agent run. A delegated agent inherits a
+              parent's goals but not the parent's running plan, and a sub-agent that could reach
+              its parent's list would either overwrite it or leak its own working steps into it.
+              Allocating one store per composition — the store type being internal and no public
+              type accepting one — makes this containment structural rather than conventional.
+            children:
+              - AgentKitTools-Todo-Store-PerAgentIsolation
+              - AgentKitTools-Todo-Pack-IndependentLists
+            tests:
+              - TodoPack_CreateTools_CalledTwice_ProducesIndependentLists
+
+          - id: AgentKitTools-Todo-TaskLifecycle
+            title: >-
+              The todo family shall let a model write a step down, advance it through the four
+              published statuses in place, and drop a step that is no longer part of the work,
+              keeping insertion order as the plan's sequence and defaulting an omitted status to
+              pending.
+            justification: |
+              The list is flat and its order is the sequence a model means to do the steps in, so
+              a status change must not reorder the plan under it. Letting set both add and update
+              means a model that does not know whether it wrote a step down before never has to
+              guess; writing a step down and advancing it are the same call. Defaulting the status
+              to pending recognizes that writing a step down is planning it, not starting it. The
+              four statuses — pending, in_progress, done and blocked — are the whole life cycle;
+              a nested list, a blockedBy edge and a replace-the-whole-list tool were all built,
+              measured and rejected, and the subsystem design document records why.
+            children:
+              - AgentKitTools-Todo-Store-Append
+              - AgentKitTools-Todo-Store-UpdateInPlace
+              - AgentKitTools-Todo-Store-Remove
+              - AgentKitTools-Todo-Store-Statuses
+              - AgentKitTools-Todo-ListTool-StructuredResult
+              - AgentKitTools-Todo-SetTool-DefaultStatus
+              - AgentKitTools-Todo-SetTool-ExistingIdentifierUpdates
+              - AgentKitTools-Todo-SetTool-EveryStatusAccepted
+              - AgentKitTools-Todo-RemoveTool-KnownIdentifier
+            tests:
+              - Todo_Family_MultiPhasePlan_IsRecordedAdvancedAndClosedOut
+
+          - id: AgentKitTools-Todo-DenialsAreResults
+            title: >-
+              The todo family shall report every refusal as a returned result that names its
+              reason, and shall never throw at a model — a missing argument, a status the family
+              does not publish, an identifier the list does not hold and an empty list on a
+              removal are all returned refusals, and an empty list on a read is a true empty
+              answer rather than a refusal.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it, whereas a returned refusal lets it read the reason and choose a
+              permitted alternative. A miss on removal is a statement of fact about the list —
+              naming the identifiers the list does hold — the analogue of the text family's
+              empty-buffer refusal that names the slots which do hold content. Reporting an empty
+              list as an empty result rather than a refusal keeps the model from concluding the
+              tool is broken.
+            children:
+              - AgentKitTools-Todo-ListTool-EmptyList
+              - AgentKitTools-Todo-SetTool-UnknownStatusRefused
+              - AgentKitTools-Todo-SetTool-MissingArgumentsRefused
+              - AgentKitTools-Todo-RemoveTool-UnknownIdentifier
+              - AgentKitTools-Todo-RemoveTool-EmptyList
+              - AgentKitTools-Todo-RemoveTool-MissingIdentifier
+            tests:
+              - Todo_Family_RefusedRequests_AreReturnedValues
+
+          - id: AgentKitTools-Todo-InstructionRequired
+            title: >-
+              The todo family shall publish, as a constant, the instruction an application should
+              give an agent that carries the family, so the wording that produced reliable task
+              tracking cannot drift from the wording that ships.
+            justification: |
+              Attaching the tools is not enough. Against a five-phase task, a soft instruction —
+              "keep track of multi-step work using your task list so progress is visible" —
+              produced use in 1 of 5 runs and left an item stranded in_progress in the run that
+              did use it; an explicit instruction produced use in 3 of 3 runs with all five
+              phases recorded and closed. Publishing the explicit wording as a constant lets an
+              application append it rather than transcribe it; the library deliberately does not
+              inject the text automatically, because silently editing an agent's system prompt is
+              an invisible behavior an application author cannot audit.
+            children:
+              - AgentKitTools-Todo-Pack-SuggestedInstruction
+            tests:
+              - TodoPack_SuggestedInstruction_NamesTheToolsAndTheStatusTransitions

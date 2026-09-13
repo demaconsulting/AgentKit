@@ -1,0 +1,115 @@
+---
+# Software Unit Requirements for AgentRunTool
+#
+# These requirements describe the design-level behavior of the AgentRunTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Agent Requirements
+        sections:
+          - title: AgentRunTool Requirements
+            requirements:
+              - id: AgentKitTools-Agent-RunTool-DescriptionNamesProfiles
+                title: >-
+                  The run tool shall carry the family-qualified name agent_run and a
+                  description that names each registered profile, including a profile's
+                  description where one was supplied, and shall state that no profiles are
+                  registered when the collection is empty.
+                justification: |
+                  The name is the only handle a model has on the tool. Naming the available
+                  profiles in the description is the way a model chooses without a wasted
+                  turn: a model that has to call a tool to find out what it may delegate to
+                  will usually just not delegate. A profile's description accompanies its name
+                  where it has one because a model choosing between profiles by name alone is
+                  guessing.
+                tests:
+                  - AgentRunTool_Create_DescriptionNamesTheAvailableProfiles
+                  - AgentRunTool_Create_NoProfiles_DescriptionStatesThereAreNone
+
+              - id: AgentKitTools-Agent-RunTool-GuardedConstruction
+                title: >-
+                  The run tool shall be constructed only through the guarded construction
+                  path, with the policy, the profiles, the runner, the child-composition seam
+                  and a non-negative depth supplied at construction.
+                justification: |
+                  Every one of these is supplied by the family that owns the tool, so a
+                  missing one is a defect in this library rather than something a composing
+                  application did. Rejecting them at construction reports the defect at the
+                  line that made it, and it makes a run tool that could operate without a
+                  policy, a runner or a composer impossible to build rather than merely a
+                  mistake somebody might notice.
+                tests:
+                  - AgentRunTool_Create_MissingParts_Throw
+
+              - id: AgentKitTools-Agent-RunTool-MalformedRequestRefused
+                title: >-
+                  The run tool shall return a refusal, rather than raise an exception, when
+                  the request omits the profile or the task, or supplies either as whitespace.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must
+                  be told how to correct it. An exception at a tool call ends the agent's
+                  turn and strands it, turning a typo into a failed task, whereas a returned
+                  refusal names what to supply and lets the turn continue.
+                tests:
+                  - AgentRunTool_Run_MissingProfileOrTask_IsRefused
+
+              - id: AgentKitTools-Agent-RunTool-UnknownProfileRefused
+                title: >-
+                  The run tool shall refuse an unknown profile name as TargetNotFound, list
+                  the profiles that are registered, and treat profile names as case-sensitive.
+                justification: |
+                  A statement of fact about the tool's own state — which profiles exist — is
+                  what lets the model correct its selection, on the same basis as the text
+                  family's empty-buffer refusal. It prescribes no other tool and does not
+                  guess at a near-miss. Case is significant because a profile name means
+                  exactly itself and every provider compares the strings a model emits the
+                  same way.
+                tests:
+                  - AgentRunTool_Run_UnknownProfile_IsRefusedAndNamesTheAvailableProfiles
+                  - AgentRunTool_Run_ProfileNameCase_IsSignificant
+
+              - id: AgentKitTools-Agent-RunTool-DepthCeiling
+                title: >-
+                  The run tool shall refuse a call whose child would exceed
+                  ToolLimits.MaxAgentDepth without composing or starting anything, and shall
+                  permit a call whose child sits at or below the ceiling.
+                justification: |
+                  A chain of delegated agents spends the host's money in a way no single
+                  agent's transcript reveals, so the ceiling bounds it. Checking before
+                  composition means a refused run costs nothing to reach and nothing is built
+                  for a run that is going to be refused. Stating the ceiling and the current
+                  level in the refusal lets the model narrow the request rather than guess.
+                tests:
+                  - AgentRunTool_Run_AtTheDepthCeiling_IsRefusedWithoutComposingOrStarting
+                  - AgentRunTool_Run_BelowTheDepthCeiling_IsPermitted
+
+              - id: AgentKitTools-Agent-RunTool-ChildResultReporting
+                title: >-
+                  The run tool shall report a child that produced no text as having finished
+                  without reporting anything, and shall refuse rather than truncate an answer
+                  longer than the policy's result ceiling.
+                justification: |
+                  An agent can legitimately finish having found there was nothing to report,
+                  and telling the parent it failed would invite it to retry work that was
+                  already done. A truncated report is worse than none, because the parent
+                  cannot tell it is reading half an answer; naming the ceiling in the refusal
+                  lets the model narrow the task rather than guess.
+                tests:
+                  - AgentRunTool_Run_ChildSaidNothing_IsReportedAsSuch
+                  - AgentRunTool_Run_OversizedAnswer_IsRefusedRatherThanTruncated
+
+              - id: AgentKitTools-Agent-RunTool-ComposesNamedProfileOnly
+                title: >-
+                  The run tool shall compose the child's tools by calling the internal
+                  child-composition seam with only the selected profile, and shall hand the
+                  runner the request built from the seam's result.
+                tags: [security]
+                justification: |
+                  Every child's tools must come from the child's own state, not from a
+                  parent-bound list filtered here — filtering at this call site is the
+                  contaminating mistake the API shape exists to prevent. Invoking the
+                  seam with the selected profile alone is what keeps the composition scoped
+                  to the child the model chose.
+                tests:
+                  - AgentRunTool_Run_ComposesTheNamedProfileOnly

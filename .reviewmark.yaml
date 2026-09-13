@@ -631,6 +631,167 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Image/ImagePack.cs"          # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImagePackTests.cs"  # unit tests
 
+  # AgentKitTools-Todo Review (one per subsystem)
+  - id: AgentKitTools-Todo
+    title: Review that AgentKitTools Todo Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo.yaml"                     # subsystem requirements
+      - "docs/design/agent-kit-tools/todo.md"                          # subsystem design
+      - "docs/verification/agent-kit-tools/todo.md"                    # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoTests.cs"   # subsystem tests
+
+  # AgentKitTools-Todo-TodoStore Review (one per unit)
+  - id: AgentKitTools-Todo-TodoStore
+    title: Review that AgentKitTools Todo TodoStore Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/todo.md"
+      - "docs/reqstream/agent-kit-tools/todo.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo/todo-store.yaml"          # unit requirements
+      - "docs/design/agent-kit-tools/todo/todo-store.md"               # unit design
+      - "docs/verification/agent-kit-tools/todo/todo-store.md"         # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Todo/TodoStore.cs"          # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoStoreTests.cs"  # unit tests
+
+  # AgentKitTools-Todo-TodoListTool Review (one per unit)
+  - id: AgentKitTools-Todo-TodoListTool
+    title: Review that AgentKitTools Todo TodoListTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/todo.md"
+      - "docs/reqstream/agent-kit-tools/todo.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo/todo-list-tool.yaml"      # unit requirements
+      - "docs/design/agent-kit-tools/todo/todo-list-tool.md"           # unit design
+      - "docs/verification/agent-kit-tools/todo/todo-list-tool.md"     # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Todo/TodoListTool.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoListToolTests.cs"  # unit tests
+
+  # AgentKitTools-Todo-TodoSetTool Review (one per unit)
+  - id: AgentKitTools-Todo-TodoSetTool
+    title: Review that AgentKitTools Todo TodoSetTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/todo.md"
+      - "docs/reqstream/agent-kit-tools/todo.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo/todo-set-tool.yaml"       # unit requirements
+      - "docs/design/agent-kit-tools/todo/todo-set-tool.md"            # unit design
+      - "docs/verification/agent-kit-tools/todo/todo-set-tool.md"      # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Todo/TodoSetTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoSetToolTests.cs"  # unit tests
+
+  # AgentKitTools-Todo-TodoRemoveTool Review (one per unit)
+  - id: AgentKitTools-Todo-TodoRemoveTool
+    title: Review that AgentKitTools Todo TodoRemoveTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/todo.md"
+      - "docs/reqstream/agent-kit-tools/todo.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo/todo-remove-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/todo/todo-remove-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/todo/todo-remove-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Todo/TodoRemoveTool.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoRemoveToolTests.cs"  # unit tests
+
+  # AgentKitTools-Todo-TodoPack Review (one per unit)
+  - id: AgentKitTools-Todo-TodoPack
+    title: Review that AgentKitTools Todo TodoPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/todo.md"
+      - "docs/reqstream/agent-kit-tools/todo.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/todo/todo-pack.yaml"           # unit requirements
+      - "docs/design/agent-kit-tools/todo/todo-pack.md"                # unit design
+      - "docs/verification/agent-kit-tools/todo/todo-pack.md"          # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Todo/TodoPack.cs"           # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoPackTests.cs"  # unit tests
+
+  # AgentKitTools-Agent Review (one per subsystem)
+  - id: AgentKitTools-Agent
+    title: Review that AgentKitTools Agent Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/agent.yaml"                    # subsystem requirements
+      - "docs/design/agent-kit-tools/agent.md"                         # subsystem design
+      - "docs/verification/agent-kit-tools/agent.md"                   # subsystem verification
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentTests.cs"  # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/StubToolPack.cs"  # composition stub pack
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/TemporaryDirectory.cs"  # grant fixture
+
+  # AgentKitTools-Agent-AgentProfile Review (one per unit)
+  - id: AgentKitTools-Agent-AgentProfile
+    title: Review that AgentKitTools Agent AgentProfile Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/agent.md"
+      - "docs/reqstream/agent-kit-tools/agent.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/agent/agent-profile.yaml"      # unit requirements
+      - "docs/design/agent-kit-tools/agent/agent-profile.md"           # unit design
+      - "docs/verification/agent-kit-tools/agent/agent-profile.md"     # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Agent/AgentProfile.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentProfileTests.cs"  # unit tests
+
+  # AgentKitTools-Agent-ChildAgentRequest Review (one per unit)
+  - id: AgentKitTools-Agent-ChildAgentRequest
+    title: Review that AgentKitTools Agent ChildAgentRequest Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/agent.md"
+      - "docs/reqstream/agent-kit-tools/agent.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/agent/child-agent-request.yaml"   # unit requirements
+      - "docs/design/agent-kit-tools/agent/child-agent-request.md"        # unit design
+      - "docs/verification/agent-kit-tools/agent/child-agent-request.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Agent/ChildAgentRequest.cs"    # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/ChildAgentRequestTests.cs"  # unit tests
+
+  # AgentKitTools-Agent-AgentRunTool Review (one per unit)
+  - id: AgentKitTools-Agent-AgentRunTool
+    title: Review that AgentKitTools Agent AgentRunTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/agent.md"
+      - "docs/reqstream/agent-kit-tools/agent.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/agent/agent-run-tool.yaml"     # unit requirements
+      - "docs/design/agent-kit-tools/agent/agent-run-tool.md"          # unit design
+      - "docs/verification/agent-kit-tools/agent/agent-run-tool.md"    # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Agent/AgentRunTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentRunToolTests.cs"  # unit tests
+
+  # AgentKitTools-Agent-AgentPack Review (one per unit)
+  - id: AgentKitTools-Agent-AgentPack
+    title: Review that AgentKitTools Agent AgentPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/agent.md"
+      - "docs/reqstream/agent-kit-tools/agent.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/agent/agent-pack.yaml"         # unit requirements
+      - "docs/design/agent-kit-tools/agent/agent-pack.md"              # unit design
+      - "docs/verification/agent-kit-tools/agent/agent-pack.md"        # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Agent/AgentPack.cs"         # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentPackTests.cs"  # unit tests
+
   # AgentKitAgentsChatClient-Architecture Review (one per system)
   - id: AgentKitAgentsChatClient-Architecture
     title: Review that AgentKitAgentsChatClient Architecture Satisfies Requirements

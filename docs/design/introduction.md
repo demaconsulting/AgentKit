@@ -78,6 +78,24 @@ software items, specifically:
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
+- **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
+  agent writes down, advances and closes out, published as one pack
+- **TodoStore (Unit)** — Holds one agent's flat task list, allocated per composition so that a
+  delegated agent cannot reach its parent's list
+- **TodoListTool (Unit)** — Publishes the `todo_list` tool
+- **TodoSetTool (Unit)** — Publishes the `todo_set` tool
+- **TodoRemoveTool (Unit)** — Publishes the `todo_remove` tool
+- **TodoPack (Unit)** — Publishes the todo family as one pack, and the instruction an application
+  must give an agent for the family to be used at all
+- **Agent (Subsystem)** — The agent tool family: delegation of a task to another agent the
+  application registered by name, published as one capability-gated pack
+- **AgentProfile (Unit)** — One named child agent the application is willing to have started: its
+  instructions, the tool names it admits, and any narrowing of its path grants
+- **ChildAgentRequest (Unit)** — The bundle the library hands the host's runner for one delegated
+  agent, carrying tools composed from the child's own state
+- **AgentRunTool (Unit)** — Publishes the `agent_run` tool
+- **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
+  the registered packs rather than from the parent's tool list
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
   `IChatClient`, installing the image-promoting decorator on every agent unconditionally
 - **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
@@ -135,11 +153,13 @@ introduced when a system in this repository has enough units that architectural 
 between them carry real information.
 
 The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
-guarded tool families built on the AgentKitCore contract. It ships four families today, each its
+guarded tool families built on the AgentKitCore contract. It ships six families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
-`Markdown`, which outlines a document's headings with their line ranges; and
-`Image`, which reads images and PDF documents for a vision-capable agent. All compose through
+`Markdown`, which outlines a document's headings with their line ranges;
+`Image`, which reads images and PDF documents for a vision-capable agent; `Todo`, which gives an
+agent one flat task list of its own; and `Agent`, which delegates a task to another agent the
+application registered. All compose through
 the same guarded construction path and pack contract Core publishes. `AgentKitTools` is a peer of
 the other capability packages an application may attach, depending on `AgentKitCore` but never
 depended upon by another capability package.
@@ -181,6 +201,11 @@ one folder per tool family, each folder holding that family's units:
 
 ```text
 src/DemaConsulting.AgentKit.Tools/
+├── Agent/
+│   ├── AgentPack.cs             — publishes the agent family as one pack, and composes a child
+│   ├── AgentProfile.cs          — one named child agent the application registered
+│   ├── AgentRunTool.cs          — the agent_run tool and the child-composition seam
+│   └── ChildAgentRequest.cs     — what the host's runner is handed for one delegated agent
 ├── File/
 │   ├── FileCopyTool.cs          — the file_copy tool
 │   ├── FileDeleteTool.cs        — the file_delete tool
@@ -194,6 +219,12 @@ src/DemaConsulting.AgentKit.Tools/
 ├── Markdown/
 │   ├── MarkdownOutlineTool.cs   — the markdown_outline tool
 │   └── MarkdownPack.cs          — publishes the Markdown family as one pack
+├── Todo/
+│   ├── TodoListTool.cs          — the todo_list tool
+│   ├── TodoPack.cs              — publishes the todo family as one pack
+│   ├── TodoRemoveTool.cs        — the todo_remove tool
+│   ├── TodoSetTool.cs           — the todo_set tool
+│   └── TodoStore.cs             — one agent's flat task list, allocated per composition
 └── TextFile/
     ├── TextFileBinaryGuard.cs   — shared leading-byte binary detection helper
     ├── TextFileCreateTool.cs    — the text_file_create tool

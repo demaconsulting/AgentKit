@@ -1,0 +1,89 @@
+---
+# Software Unit Requirements for TodoSetTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        sections:
+          - title: TodoSetTool Requirements
+            requirements:
+              - id: AgentKitTools-Todo-SetTool-ToolName
+                title: >-
+                  The set tool shall be published under the name todo_set, exposed as a constant,
+                  and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the
+                  only basis it has for choosing it.
+                tests:
+                  - TodoSetTool_Create_CarriesTheNameAndDescription
+
+              - id: AgentKitTools-Todo-SetTool-GuardedConstruction
+                title: >-
+                  The set tool shall be constructed only through the guarded construction path
+                  with a task list supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the store at construction makes a set tool with no list to write to
+                  impossible to build.
+                tests:
+                  - TodoSetTool_Create_NullStore_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Todo-SetTool-DefaultStatus
+                title: >-
+                  The set tool shall record an omitted or whitespace status as pending and shall
+                  state the identifier, the recorded status and the size of the list in its
+                  result.
+                justification: |
+                  Writing a step down is planning it, not starting it, so the common case — a
+                  model listing the phases of a job up front — needs no status argument at all.
+                  Stating the outcome in the result means the model does not have to call
+                  todo_list to learn what its own write did.
+                tests:
+                  - TodoSetTool_Set_OmittedStatus_RecordsPendingAndReportsTheCount
+
+              - id: AgentKitTools-Todo-SetTool-ExistingIdentifierUpdates
+                title: >-
+                  The set tool shall update a task carrying an existing identifier in place,
+                  keeping the reported count the same and preserving the note the caller
+                  supplied.
+                justification: |
+                  A model that must know whether an item already exists before it may record a
+                  status will sometimes guess wrong, and the refusal costs a turn and teaches it
+                  nothing. Writing a step down and advancing it are the same call, and an
+                  in-place update never reorders the plan under it.
+                tests:
+                  - TodoSetTool_Set_ExistingIdentifier_UpsertsAndKeepsTheCount
+
+              - id: AgentKitTools-Todo-SetTool-EveryStatusAccepted
+                title: >-
+                  The set tool shall record every one of the four published statuses — pending,
+                  in_progress, done and blocked — so a step can run its whole life cycle.
+                justification: |
+                  The vocabulary is what the family publishes, and being able to advance a step
+                  through every status is what makes the list a record of the work rather than
+                  merely a plan.
+                tests:
+                  - TodoSetTool_Set_EveryPublishedStatus_IsRecorded
+
+              - id: AgentKitTools-Todo-SetTool-UnknownStatusRefused
+                title: >-
+                  The set tool shall refuse a status outside the published vocabulary as an
+                  InvalidRequest naming the permitted statuses, and shall not write the list.
+                justification: |
+                  Silently accepting a variant like In_Progress would teach the model a
+                  vocabulary this library does not publish; naming the permitted statuses in the
+                  refusal lets the model recover on its next turn.
+                tests:
+                  - TodoSetTool_Set_UnknownStatus_IsRefusedAndLeavesTheListUnchanged
+
+              - id: AgentKitTools-Todo-SetTool-MissingArgumentsRefused
+                title: >-
+                  The set tool shall refuse a request missing an identifier or a title as an
+                  InvalidRequest, and shall not write the list.
+                justification: |
+                  A malformed request is refused rather than thrown, because an exception raised
+                  during a tool call ends the agent's turn and strands it. Refusing before
+                  writing keeps a half-recorded item out of the plan.
+                tests:
+                  - TodoSetTool_Set_MissingIdentifierOrTitle_IsRefused

@@ -45,6 +45,17 @@ and stall, and the resulting error is not something a model can reason its way o
 enough for a comparison or a short sequence and few enough that the turn stays affordable and
 responsive.
 
+**`MaxAgentDepth` = 2.** This bounds how deep a chain of delegated agents may run: the root agent
+an application starts is at depth zero, so at 2 that agent may start a child and that child may
+start one more, and the grandchild's own attempt to delegate is refused. It sits here rather than
+as a constant on whichever tool happens to delegate because it is the same kind of thing as the
+ceilings above — a budget the host sets once and every tool observes. Delegation spends the
+host''s money and time in a way the root agent''s own context window never reveals, and an agent
+that can delegate can delegate to something that delegates, so an unbounded chain is a runaway
+neither the model nor the user can see. Two levels is enough for the pattern delegation exists to
+serve — a coordinator, a worker, and a specialist the worker consults — while keeping the worst
+case a host can be billed for finite and small.
+
 **These values are provisional.** They are public API defaults and they appear in requirement
 text, so they are to be confirmed by the repository owner before the first tagged release.
 Nothing is published yet, so they remain freely changeable until then.
@@ -59,13 +70,15 @@ An instance is immutable after construction and is safe for concurrent use.
 | `MaxResultCharacters`           | `int`        | Ceiling on the characters a tool result may return to the model.  |
 | `MaxBinaryBytes`                | `int`        | Ceiling on the bytes of binary content a tool may return.         |
 | `MaxAttachmentsPerTurn`         | `int`        | Ceiling on the attachments a tool may add in one turn.            |
+| `MaxAgentDepth`                 | `int`        | Ceiling on how deep a chain of delegated agents may run.          |
 | `Default`                       | `ToolLimits` | Shared instance a host receives when it configures nothing.       |
 | `DefaultMaxReadBytes`           | `const int`  | The published default for `MaxReadBytes`, 65,536.                 |
 | `DefaultMaxResultCharacters`    | `const int`  | The published default for `MaxResultCharacters`, 32,000.          |
 | `DefaultMaxBinaryBytes`         | `const int`  | The published default for `MaxBinaryBytes`, 8,388,608.            |
 | `DefaultMaxAttachmentsPerTurn`  | `const int`  | The published default for `MaxAttachmentsPerTurn`, 4.             |
+| `DefaultMaxAgentDepth`          | `const int`  | The published default for `MaxAgentDepth`, 2.                     |
 
-The four constants exist so that this document, the requirement text and the tests can all name
+The five constants exist so that this document, the requirement text and the tests can all name
 one source of truth rather than repeating literals.
 
 Invariants:
@@ -76,11 +89,12 @@ Invariants:
 
 ### Key Methods
 
-#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAttachmentsPerTurn)
+#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAttachmentsPerTurn, int maxAgentDepth)
 
 The only constructor. Every parameter is optional and defaults to the corresponding published
 constant, which is what delivers per-ceiling customization without a builder: a host writes
-`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other three defaults.
+`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other four defaults. `maxAgentDepth` is last
+so that every existing positional call keeps binding to the parameter it always bound to.
 
 **Preconditions:** every supplied ceiling is zero or greater.
 
@@ -89,7 +103,7 @@ is applied.
 
 **Zero is permitted.** A zero ceiling is the expressible way to disable an operation entirely and
 is a meaningful host configuration, not a mistake. Rejecting it alongside a negative value would
-remove the only way to say "this tool may attach nothing".
+remove the only way to say "this tool may attach nothing", or "this agent may not delegate".
 
 **Throws:** `ArgumentOutOfRangeException` when any ceiling is negative.
 

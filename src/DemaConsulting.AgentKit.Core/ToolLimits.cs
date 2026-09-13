@@ -39,6 +39,18 @@ namespace DemaConsulting.AgentKit.Core;
 ///     model can reason its way out of.
 ///     </para>
 ///     <para>
+///     <see cref="DefaultMaxAgentDepth"/> is 2. It bounds how deep a chain of delegated agents may
+///     run — a root agent at depth zero may start a child, and that child may start one more. It
+///     sits here rather than as a constant on the delegating tool because it is the same kind of
+///     thing as the ceilings above: a budget the host sets once and every tool observes.
+///     Delegation spends the host's money and time in a way the root agent's own context window
+///     never reveals, and an agent that can delegate can delegate to something that delegates,
+///     so an unbounded chain is a runaway the model cannot see and the host did not sanction.
+///     Two levels is enough for the pattern delegation exists to serve — a coordinator, a worker,
+///     and a specialist the worker consults — while keeping the worst case a host can be billed
+///     for finite and small.
+///     </para>
+///     <para>
 ///     <b>These values are provisional.</b> They are public API defaults and they appear in
 ///     requirement text, so they are to be confirmed by the repository owner before the first
 ///     tagged release. Nothing is published yet, so they remain freely changeable until then.
@@ -88,6 +100,16 @@ public sealed class ToolLimits
     public const int DefaultMaxAttachmentsPerTurn = 4;
 
     /// <summary>
+    ///     The default ceiling on how deep a chain of delegated agents may run.
+    /// </summary>
+    /// <remarks>
+    ///     The root agent an application starts is at depth zero, so this value counts the
+    ///     delegated agents beneath it: at 2, a root agent may start a child and that child may
+    ///     start one more, and the grandchild's own attempt to delegate is refused.
+    /// </remarks>
+    public const int DefaultMaxAgentDepth = 2;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ToolLimits"/> class.
     /// </summary>
     /// <remarks>
@@ -110,6 +132,10 @@ public sealed class ToolLimits
     /// <param name="maxAttachmentsPerTurn">
     ///     The ceiling on the attachments a tool may add in one turn. Must not be negative.
     /// </param>
+    /// <param name="maxAgentDepth">
+    ///     The ceiling on how deep a chain of delegated agents may run, counted from a root agent
+    ///     at depth zero. Must not be negative; zero forbids delegation entirely.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     Thrown when any of the supplied ceilings is negative.
     /// </exception>
@@ -117,7 +143,8 @@ public sealed class ToolLimits
         int maxReadBytes = DefaultMaxReadBytes,
         int maxResultCharacters = DefaultMaxResultCharacters,
         int maxBinaryBytes = DefaultMaxBinaryBytes,
-        int maxAttachmentsPerTurn = DefaultMaxAttachmentsPerTurn)
+        int maxAttachmentsPerTurn = DefaultMaxAttachmentsPerTurn,
+        int maxAgentDepth = DefaultMaxAgentDepth)
     {
         // Validate before any assignment so a rejected instance never exists even briefly. A
         // negative ceiling is a programming error in the host's configuration code, not a
@@ -126,11 +153,13 @@ public sealed class ToolLimits
         ArgumentOutOfRangeException.ThrowIfNegative(maxResultCharacters);
         ArgumentOutOfRangeException.ThrowIfNegative(maxBinaryBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(maxAttachmentsPerTurn);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxAgentDepth);
 
         MaxReadBytes = maxReadBytes;
         MaxResultCharacters = maxResultCharacters;
         MaxBinaryBytes = maxBinaryBytes;
         MaxAttachmentsPerTurn = maxAttachmentsPerTurn;
+        MaxAgentDepth = maxAgentDepth;
     }
 
     /// <summary>
@@ -162,4 +191,14 @@ public sealed class ToolLimits
     ///     Gets the ceiling on the attachments a tool may add in one turn.
     /// </summary>
     public int MaxAttachmentsPerTurn { get; }
+
+    /// <summary>
+    ///     Gets the ceiling on how deep a chain of delegated agents may run.
+    /// </summary>
+    /// <remarks>
+    ///     Counted from a root agent at depth zero, so the value is the number of delegated
+    ///     agents that may stack beneath it. Zero forbids delegation entirely, which is the
+    ///     expressible way for a host to attach a delegating family and then withhold its use.
+    /// </remarks>
+    public int MaxAgentDepth { get; }
 }

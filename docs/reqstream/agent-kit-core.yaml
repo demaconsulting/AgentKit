@@ -159,19 +159,23 @@ sections:
       - id: AgentKitCore-ToolLimits-BudgetCeilings
         title: >-
           The library shall define ceilings on the bytes a tool may read, the characters a tool
-          result may return to the model, the bytes of binary content a tool may return, and the
-          attachments a tool may add in one turn, and shall carry those ceilings with the access
-          policy so that every tool observes the same budget.
+          result may return to the model, the bytes of binary content a tool may return, the
+          attachments a tool may add in one turn, and how deep a chain of delegated agents may
+          run, and shall carry those ceilings with the access policy so that every tool observes
+          the same budget.
         tags: [system]
         justification: |
           A tool that returns an unbounded amount of text exhausts the model's context window in
           the middle of a task, and the failure presents as the agent forgetting its instructions
-          rather than as an error anyone can see. Carrying the ceilings with the access policy
-          means every pack a host attaches observes one budget rather than each inventing its own.
+          rather than as an error anyone can see. An agent that delegates without bound spends the
+          host's money and time the same way, and just as invisibly. Carrying every ceiling with
+          the access policy means every pack a host attaches observes one budget rather than each
+          inventing its own.
         children:
           - AgentKitCore-ToolLimits-Defaults
           - AgentKitCore-ToolLimits-Customization
           - AgentKitCore-ToolLimits-RejectNegative
+          - AgentKitCore-ToolLimits-DelegationDepth
           - AgentKitCore-PathPolicy-CarriesLimits
         tests:
           - AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues
@@ -298,6 +302,7 @@ sections:
         children:
           - AgentKitCore-ToolPack-NoCapabilityRequired
           - AgentKitCore-ToolPack-CapabilitiesAreFlags
+          - AgentKitCore-ToolPack-DeclaredCapabilities
           - AgentKitCore-ToolPackBuilder-CapabilityGating
           - AgentKitCore-ToolPackBuilder-DefaultCapabilitiesNone
           - AgentKitCore-ToolPackBuilder-CapabilityDeclarationReplaced

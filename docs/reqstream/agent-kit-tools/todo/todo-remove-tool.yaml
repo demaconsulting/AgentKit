@@ -1,0 +1,79 @@
+---
+# Software Unit Requirements for TodoRemoveTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        sections:
+          - title: TodoRemoveTool Requirements
+            requirements:
+              - id: AgentKitTools-Todo-RemoveTool-ToolName
+                title: >-
+                  The remove tool shall be published under the name todo_remove, exposed as a
+                  constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the
+                  only basis it has for choosing it.
+                tests:
+                  - TodoRemoveTool_Create_CarriesTheNameAndDescription
+
+              - id: AgentKitTools-Todo-RemoveTool-GuardedConstruction
+                title: >-
+                  The remove tool shall be constructed only through the guarded construction
+                  path with a task list supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the store at construction makes a remove tool with no list to remove
+                  from impossible to build.
+                tests:
+                  - TodoRemoveTool_Create_NullStore_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Todo-RemoveTool-KnownIdentifier
+                title: >-
+                  The remove tool shall drop the step carrying the requested identifier and
+                  shall state the identifier and the new size of the list in its result.
+                justification: |
+                  Removal is for a step that is no longer part of the work; a finished step is
+                  marked done with todo_set and kept in the list, so removal is the exception
+                  rather than the ordinary completion path. Stating the outcome in the result
+                  means the model does not have to call todo_list to learn what its own write
+                  did.
+                tests:
+                  - TodoRemoveTool_Remove_KnownIdentifier_DropsItAndReportsTheCount
+
+              - id: AgentKitTools-Todo-RemoveTool-UnknownIdentifier
+                title: >-
+                  The remove tool shall refuse an identifier the list does not hold as
+                  TargetNotFound with a plain statement of fact that names the identifiers the
+                  list does hold, prescribing no other tool and guessing at no identifier.
+                justification: |
+                  A refusal that names the list's own contents lets the model recover from a
+                  near-miss on an identifier it chose itself, and stating the fact rather than
+                  telling the model which tool to call keeps this library out of the business of
+                  authoring an agent's next step — the analogue of the text family's
+                  empty-buffer refusal.
+                tests:
+                  - TodoRemoveTool_Remove_UnknownIdentifier_IsRefusedAndNamesWhatTheListHolds
+
+              - id: AgentKitTools-Todo-RemoveTool-EmptyList
+                title: >-
+                  The remove tool shall refuse a removal against an empty list with a message
+                  stating that the list is empty rather than one ending with an empty
+                  collection.
+                justification: |
+                  A message that ends with "The list holds ''" is the kind of small wrongness
+                  that makes a model doubt the rest of the sentence; naming the fact directly
+                  reads truthfully.
+                tests:
+                  - TodoRemoveTool_Remove_EmptyList_StatesTheListIsEmpty
+
+              - id: AgentKitTools-Todo-RemoveTool-MissingIdentifier
+                title: >-
+                  The remove tool shall refuse a request that names no identifier as an
+                  InvalidRequest, and shall not touch the list.
+                justification: |
+                  A malformed request is refused rather than thrown, because an exception raised
+                  during a tool call ends the agent's turn and strands it.
+                tests:
+                  - TodoRemoveTool_Remove_MissingIdentifier_IsRefused

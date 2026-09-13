@@ -36,6 +36,14 @@ package AgentKitTools {
     view ImageView {
         expose Image;
     }
+
+    view TodoView {
+        expose Todo;
+    }
+
+    view AgentView {
+        expose Agent;
+    }
 }
 
 package AgentKitAgentsChatClient {

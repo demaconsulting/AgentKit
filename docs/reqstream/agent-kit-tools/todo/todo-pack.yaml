@@ -1,0 +1,83 @@
+---
+# Software Unit Requirements for TodoPack
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Todo Requirements
+        sections:
+          - title: TodoPack Requirements
+            requirements:
+              - id: AgentKitTools-Todo-Pack-FamilyPrefix
+                title: >-
+                  The pack shall publish the family prefix todo as a constant and through the
+                  IToolPack contract.
+                justification: |
+                  The prefix is what keeps the family's names from colliding with another
+                  library's, and publishing it both ways keeps the constant and the contract
+                  from drifting.
+                tests:
+                  - TodoPack_FamilyPrefix_IsPublishedAsConstantAndContract
+
+              - id: AgentKitTools-Todo-Pack-NoCapabilityRequired
+                title: >-
+                  The pack shall require no host capability.
+                justification: |
+                  An in-memory task list asks nothing of the host, so every composition receives
+                  the family rather than gating it behind a declaration an operator would have
+                  to know to make.
+                tests:
+                  - TodoPack_RequiredCapabilities_IsNone
+
+              - id: AgentKitTools-Todo-Pack-RegistersThreeTools
+                title: >-
+                  The pack shall create its three tools — list, set and remove — in that fixed
+                  order.
+                justification: |
+                  The order a model sees the tools in is observable in tool selection, so the
+                  order is a contract rather than an incidental collection order. Reading the
+                  list is the first thing a model does with the family, writing to it is the
+                  second, and removing from it is the last and least common.
+                tests:
+                  - TodoPack_CreateTools_RegistersTheFamilyInOrder
+
+              - id: AgentKitTools-Todo-Pack-RequiresPolicy
+                title: >-
+                  The pack shall require a policy to create its tools, even though its tools
+                  never consult one.
+                tags: [security]
+                justification: |
+                  A missing policy is a programming error in the composing application, named
+                  at the point it was made rather than by a sibling family later.
+                tests:
+                  - TodoPack_CreateTools_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Todo-Pack-IndependentLists
+                title: >-
+                  The pack shall allocate a fresh task list on every CreateTools call, so two
+                  compositions of the same pack instance never share a list.
+                tags: [security]
+                justification: |
+                  A delegated agent is composed by a separate CreateTools call and therefore
+                  receives a separate store; that is what keeps a sub-agent's list out of its
+                  parent's. Allocating the store as a local inside CreateTools — never as a
+                  field on the pack and never as a parameter — makes the containment structural
+                  rather than conventional.
+                tests:
+                  - TodoPack_CreateTools_CalledTwice_ProducesIndependentLists
+
+              - id: AgentKitTools-Todo-Pack-SuggestedInstruction
+                title: >-
+                  The pack shall publish, as a public constant, the instruction wording an
+                  application should give an agent that carries the family, and that wording
+                  shall name the todo_set tool and both of the status transitions it asks the
+                  agent to make.
+                justification: |
+                  Attaching the tools is not enough; an application that composes them without
+                  instructing the agent to use them will observe that the model mostly ignores
+                  them. Publishing the measured wording as a constant lets an application
+                  append it rather than transcribe it, and asserting that the constant still
+                  names the tool and the transitions it asks for is what keeps the wording that
+                  ships from drifting from the wording that was measured.
+                tests:
+                  - TodoPack_SuggestedInstruction_NamesTheToolsAndTheStatusTransitions
