@@ -296,6 +296,23 @@ handler that approves exactly those tools and rejects everything else; supply yo
 override that. The adapter does **not** install the image-promoting decorator, because the Copilot
 runtime already delivers a tool-returned image to the model.
 
+**Choosing the model**: pass `model:` to name the Copilot model backing the session:
+
+```csharp
+var agent = CopilotAgentFactory.Create(
+    client,
+    tools,
+    instructions: "You are a document assistant. Use the tools provided.",
+    model: "gpt-5.4-mini");
+```
+
+Omit it and the Copilot runtime applies its own default. The choice is worth making deliberately:
+model capability drives how reliably an agent uses its tools and how accurately it reads an image,
+the same way it does when you pick an Ollama model for an `IChatClient` agent. Select the model
+*through* the factory rather than by building a session configuration yourself — a hand-built
+session forgoes the built-in tool suppression and the default-safe permission handler, producing an
+agent whose every tool call is denied.
+
 **Ownership**: the host owns the `CopilotClient` — whoever constructs and starts it disposes it. The
 factory builds the agent over the client without taking ownership of it and creates nothing
 disposable of its own.

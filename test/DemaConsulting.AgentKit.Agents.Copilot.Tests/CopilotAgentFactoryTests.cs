@@ -7,7 +7,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
 /// <summary>
 ///     Unit tests for <see cref="CopilotAgentFactory"/>: construction-time validation, the
-///     host-supplied permission handler override, and instruction handling.
+///     host-supplied permission handler override, instruction handling, and model selection.
 /// </summary>
 public class CopilotAgentFactoryTests
 {
@@ -102,6 +102,48 @@ public class CopilotAgentFactoryTests
         Assert.NotNull(withInstructions.SystemMessage);
         Assert.Equal("be concise", withInstructions.SystemMessage.Content);
         Assert.Null(withoutInstructions.SystemMessage);
+    }
+
+    /// <summary>
+    ///     Proves a supplied model name is carried onto the session, so an application can choose
+    ///     which Copilot model backs its agent without going around this factory — going around it
+    ///     forfeits the built-in suppression and the default-safe permission handler.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_Model_CarriedOnSession()
+    {
+        // Arrange: a valid tool set and a named model
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act: build the session the factory would hand to the runtime, naming the model
+        var config = CopilotAgentFactory.BuildSessionConfig(
+            tools,
+            instructions: null,
+            onPermissionRequest: null,
+            model: "gpt-5.4-mini");
+
+        // Assert: the session carries exactly the supplied name
+        Assert.Equal("gpt-5.4-mini", config.Model);
+    }
+
+    /// <summary>
+    ///     Proves omitting the model leaves the session's model at its default, so the runtime
+    ///     chooses. This is what makes the parameter purely additive: a caller that says nothing
+    ///     about the model gets precisely the behavior it had before the parameter existed.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_NoModel_LeavesSessionModelAtDefault()
+    {
+        // Arrange: a valid tool set, and an untouched session for the default to compare against
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+        var untouched = new SessionConfig();
+
+        // Act: build the session without naming a model
+        var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+
+        // Assert: the model is whatever a freshly constructed session carries — the factory set
+        // nothing, so the runtime applies its own default
+        Assert.Equal(untouched.Model, config.Model);
     }
 
     /// <summary>

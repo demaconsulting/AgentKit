@@ -88,3 +88,20 @@ sections:
               default it.
             tests:
               - CopilotAgentFactory_BuildSessionConfig_Instructions_CarriedOnSystemMessage
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-SelectsModel
+            title: >-
+              The factory shall back the session with a model the host names, and shall leave the
+              choice of model to the runtime when the host names none.
+            justification: |
+              Which model backs an agent materially changes how reliably it uses its tools and how
+              accurately it reads an image, so the application author — not the library — must make
+              that choice. The choice must be reachable without going around the factory, because a
+              host that built a session itself to reach the setting would lose the derived
+              allow-list, the withheld skills and custom instructions, and the default-safe
+              permission handler, producing an agent that denies every tool call. A host with no
+              opinion names nothing and gets the runtime's own default, so the choice adds nothing
+              an existing application must now account for.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_Model_CarriedOnSession
+              - CopilotAgentFactory_BuildSessionConfig_NoModel_LeavesSessionModelAtDefault

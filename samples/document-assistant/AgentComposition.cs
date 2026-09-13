@@ -256,6 +256,7 @@ public static class AgentComposition
                 workspaceRoot,
                 tools,
                 instructions,
+                options.Model,
                 cancellationToken),
             AgentProvider.Ollama => CreateOllamaAgent(options, tools, instructions),
             _ => throw new CommandLineException($"Unsupported provider '{options.Provider}'."),
@@ -270,16 +271,27 @@ public static class AgentComposition
     ///     factory, so this method returns the client as the cleanup handle: whoever created it
     ///     disposes it. The Copilot adapter suppresses the runtime's built-in tools by deriving the
     ///     session allow-list from exactly these tools.
+    ///     <para>
+    ///     The model is passed through the adapter rather than configured around it. Reaching the
+    ///     session's model setting by building the session directly would mean forgoing the
+    ///     adapter's suppression and its default-safe permission handler — an agent that looks
+    ///     configured but denies every tool call.
+    ///     </para>
     /// </remarks>
     /// <param name="workspaceRoot">The workspace set as the client's working directory.</param>
     /// <param name="tools">The composed tool set; also the source of the suppression allow-list.</param>
     /// <param name="instructions">The system instructions built for this run.</param>
+    /// <param name="model">
+    ///     The Copilot model named by <c>--model</c>, or <see langword="null"/> to let the Copilot
+    ///     runtime choose its own default.
+    /// </param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
     /// <returns>The Copilot agent and the client as its cleanup handle.</returns>
     private static async Task<AgentSetup> CreateCopilotAgentAsync(
         string workspaceRoot,
         IList<AIFunction> tools,
         string instructions,
+        string? model,
         CancellationToken cancellationToken)
     {
         // The host constructs, starts, and disposes the client; the factory takes no ownership.
@@ -300,7 +312,7 @@ public static class AgentComposition
             throw;
         }
 
-        var agent = CopilotAgentFactory.Create(client, tools, instructions, name: AgentName);
+        var agent = CopilotAgentFactory.Create(client, tools, instructions, name: AgentName, model: model);
         return new AgentSetup(agent, client);
     }
 
@@ -328,7 +340,10 @@ public static class AgentComposition
             Timeout = TimeSpan.FromMinutes(10),
         };
 
-        var ollama = new OllamaApiClient(http, options.Model);
+        // Ollama needs a concrete model name on the wire, so an unstated --model resolves to the
+        // sample's own default here rather than being pre-filled on the options — see the remarks
+        // on CommandLineOptions.Model for why that distinction matters to the Copilot branch.
+        var ollama = new OllamaApiClient(http, options.Model ?? CommandLineOptions.DefaultOllamaModel);
         IChatClient chatClient = ollama;
 
         var agent = ChatClientAgentFactory.Create(chatClient, tools, instructions, name: AgentName);

@@ -40,6 +40,15 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     "helpfully" add it here.
 ///     </para>
 ///     <para>
+///     <b>Model selection belongs to the host.</b> Copilot backs a session with a model, and which
+///     model that is materially changes how well a confined agent uses its tools. The factory
+///     therefore lets the host name one, and applies it only when the host does: a host that names
+///     no model gets the runtime's own default, exactly as before this parameter existed. Reaching
+///     the setting must not require going around this factory, because doing so silently forfeits
+///     the built-in suppression, the skill and custom-instruction withholding, and the default-safe
+///     permission handler above.
+///     </para>
+///     <para>
 ///     This factory is a thin adapter. It holds no state and shares no code with the ChatClient
 ///     adapter.
 ///     </para>
@@ -50,6 +59,14 @@ public static class CopilotAgentFactory
     ///     Builds an agent from a Copilot client and a supplied tool list, with the runtime's
     ///     built-in tools suppressed.
     /// </summary>
+    /// <remarks>
+    ///     <paramref name="model"/> is the last parameter rather than sitting beside
+    ///     <paramref name="instructions"/>, where it would read more naturally, so that every
+    ///     existing positional call keeps binding to the parameter it always bound to. Inserting it
+    ///     earlier would shift <paramref name="onPermissionRequest"/> and <paramref name="name"/>
+    ///     and break source compatibility for a released public API; a slightly awkward position is
+    ///     the cheaper price.
+    /// </remarks>
     /// <param name="client">
     ///     The Copilot client the agent runs on. Must not be <see langword="null"/>. The host owns
     ///     the client: it constructs, starts, and disposes it, and this factory builds the agent
@@ -66,6 +83,13 @@ public static class CopilotAgentFactory
     ///     approves exactly the supplied tools by name and rejects everything else.
     /// </param>
     /// <param name="name">The name of the agent, if any.</param>
+    /// <param name="model">
+    ///     The Copilot model to back the session — for example <c>gpt-5.4-mini</c>. When
+    ///     <see langword="null"/>, empty, or whitespace, no model is set and the Copilot runtime
+    ///     applies its own default, which is the behavior every caller that omits this parameter
+    ///     gets. The name is not validated here: an unrecognized name is rejected by the runtime at
+    ///     session time, because only the runtime knows which models the signed-in user may use.
+    /// </param>
     /// <returns>An agent that runs on the supplied client with only the supplied tools available.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="client"/> or <paramref name="tools"/> is <see langword="null"/>, or a
@@ -127,12 +151,13 @@ public static class CopilotAgentFactory
         IList<AIFunction> tools,
         string? instructions = null,
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest = null,
-        string? name = null)
+        string? name = null,
+        string? model = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ValidateTools(tools);
 
-        var config = BuildSessionConfig(tools, instructions, onPermissionRequest);
+        var config = BuildSessionConfig(tools, instructions, onPermissionRequest, model);
 
         // ownsClient: false — the host owns the client's lifetime; see the ownership contract in
         // the type remarks. The SessionConfig overload of AsAIAgent is the only path that carries
@@ -153,6 +178,11 @@ public static class CopilotAgentFactory
     /// <param name="tools">The tools to publish and allow.</param>
     /// <param name="instructions">The system instructions, if any.</param>
     /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
+    /// <param name="model">
+    ///     The Copilot model to back the session, or <see langword="null"/>/blank to leave
+    ///     <c>SessionConfig.Model</c> unset so the runtime applies its own default. Defaulted so a
+    ///     caller that has no opinion about the model need not say so.
+    /// </param>
     /// <returns>The configured session.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
@@ -163,7 +193,8 @@ public static class CopilotAgentFactory
     internal static SessionConfig BuildSessionConfig(
         IList<AIFunction> tools,
         string? instructions,
-        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest)
+        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
+        string? model = null)
     {
         ValidateTools(tools);
 
@@ -181,6 +212,14 @@ public static class CopilotAgentFactory
 
             OnPermissionRequest = onPermissionRequest ?? CreateDefaultPermissionHandler(tools),
         };
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            // Assigned only when the host named a model. Leaving the property untouched otherwise is
+            // what preserves the runtime's own default for every caller that says nothing, so this
+            // parameter is purely additive.
+            config.Model = model;
+        }
 
         if (!string.IsNullOrWhiteSpace(instructions))
         {

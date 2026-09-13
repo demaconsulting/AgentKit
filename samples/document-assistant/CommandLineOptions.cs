@@ -12,7 +12,7 @@ public enum AgentProvider
 {
     /// <summary>
     ///     The GitHub Copilot SDK runtime, used through the logged-in Copilot CLI. Ignores
-    ///     <see cref="CommandLineOptions.Host"/> and <see cref="CommandLineOptions.Model"/>.
+    ///     <see cref="CommandLineOptions.Host"/>; honors <see cref="CommandLineOptions.Model"/>.
     /// </summary>
     Copilot,
 
@@ -137,10 +137,27 @@ public sealed class CommandLineOptions
     public string Host { get; init; } = DefaultOllamaHost;
 
     /// <summary>
-    ///     Gets the Ollama model name. Used only when <see cref="Provider"/> is
-    ///     <see cref="AgentProvider.Ollama"/>. Defaults to <see cref="DefaultOllamaModel"/>.
+    ///     Gets the model name requested with <c>--model</c>, or <see langword="null"/> when none
+    ///     was requested and each provider's own default applies.
     /// </summary>
-    public string Model { get; init; } = DefaultOllamaModel;
+    /// <remarks>
+    ///     <para>
+    ///     One flag serves both providers, because "which model backs this agent" is the same
+    ///     question on either runtime and a second spelling would only invite the reader to think
+    ///     it is a different one. It matters on both: model capability drives how reliably an agent
+    ///     uses its tools and how accurately it reads an image.
+    ///     </para>
+    ///     <para>
+    ///     The property is nullable rather than pre-filled with <see cref="DefaultOllamaModel"/>
+    ///     because the two providers default differently and only one of those defaults belongs to
+    ///     the sample. Ollama needs a concrete model name on the wire, so the sample supplies one;
+    ///     Copilot picks its own, so the sample must be able to say <em>nothing</em> — and a
+    ///     pre-filled Ollama model name would silently become a Copilot model request that the
+    ///     Copilot runtime does not recognize. Each branch resolves its own default from this one
+    ///     nullable value.
+    ///     </para>
+    /// </remarks>
+    public string? Model { get; init; }
 
     /// <summary>
     ///     Gets a value indicating whether vision is enabled. When <see langword="false"/>, the
@@ -201,7 +218,7 @@ public sealed class CommandLineOptions
         var workspaceReadOnly = false;
         var provider = AgentProvider.Copilot;
         var host = DefaultOllamaHost;
-        var model = DefaultOllamaModel;
+        string? model = null;
         var visionEnabled = true;
         string? prompt = null;
 
@@ -347,12 +364,15 @@ public sealed class CommandLineOptions
            --read-only-workspace     Grant the workspace read-only; the session stays writable.
            --provider copilot|ollama Runtime to run the agent on (default: copilot).
            --host <url>              Ollama server URL (default: {DefaultOllamaHost}; ollama only).
-           --model <name>            Ollama model name (default: {DefaultOllamaModel}; ollama only).
+           --model <name>            Model to back the agent (default: the Copilot runtime's own
+                                     choice for --provider copilot, {DefaultOllamaModel} for ollama).
            --no-vision               Omit the image tool and the Vision capability entirely.
            --prompt "<text>"         Run a single prompt and exit (otherwise start an interactive chat).
            --help                    Show this help and exit.
 
          Try:
+           --model gpt-5.4-mini --prompt "Read welcome.txt and summarize it"
+                                                        (choose the model backing the agent)
            --prompt "List every location you can reach and say which you can write to"
            --prompt "Read welcome.txt, then save a summary into the session folder"
                                                         (watch the absolute session path come back)

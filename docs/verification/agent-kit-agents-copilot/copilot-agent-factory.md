@@ -5,10 +5,10 @@ This document describes the unit-level verification strategy for the `CopilotAge
 ### Verification Approach
 
 `CopilotAgentFactory` is verified through unit tests that exercise its session-building seam and its
-construction-time validation, all offline. The host-handler override and the instruction handling are
-asserted against a constructed session configuration; the validation scenarios pin each rejected
-condition; and the null-client refusal is asserted through the public entry point, which validates
-before it would reach the Copilot CLI.
+construction-time validation, all offline. The host-handler override, the instruction handling, and
+the model selection are asserted against a constructed session configuration; the validation
+scenarios pin each rejected condition; and the null-client refusal is asserted through the public
+entry point, which validates before it would reach the Copilot CLI.
 
 Tools are built through the framework's own function factory, and permission requests and decisions
 are constructed directly from the SDK's plain types. No Copilot CLI, credential, or network access is
@@ -26,10 +26,11 @@ Unit tests reside in `CopilotAgentFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all seven scenarios below pass without error or exception beyond those
+A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. Any invalid argument that is accepted, any host handler that is not installed
-verbatim, or any instruction that is not carried onto the session's system message constitutes a
-failure.
+verbatim, any instruction that is not carried onto the session's system message, or any model
+selection that is not carried onto the session — or that is invented when the host named none —
+constitutes a failure.
 
 ### Test Scenarios
 
@@ -66,3 +67,19 @@ host with its own policy governs the session itself rather than layering over th
 Verifies that supplied instructions are carried onto the session's system message, and that a session
 built without instructions carries no system message, so a confined agent is governed as the host
 intended and the factory adds nothing of its own when the host supplies nothing.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-SelectsModel: A Named Model Backs the Session
+
+**Tests**: `CopilotAgentFactory_BuildSessionConfig_Model_CarriedOnSession`,
+`CopilotAgentFactory_BuildSessionConfig_NoModel_LeavesSessionModelAtDefault`
+
+Two paths. With a model named, the session carries exactly that name, so an application can choose
+which Copilot model backs its agent without building a session itself and losing the suppression and
+the default-safe handler. With no model named, the session's model equals that of a freshly
+constructed session configuration — the factory set nothing — so the runtime applies its own default
+and an existing application sees no change.
+
+The unit tests prove the value is carried; they cannot prove the runtime accepts a given name, since
+only the runtime knows which models the signed-in user may use. That acceptance is confirmed by
+running the `document-assistant` sample against Copilot with and without `--model` and observing
+both runs complete a turn.

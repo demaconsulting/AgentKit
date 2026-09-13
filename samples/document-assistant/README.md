@@ -130,7 +130,8 @@ instructions acknowledge it.
 From the repository root. The workspace folder shipped with the sample already contains two text files
 and an image. The session folder is created for you.
 
-Against GitHub Copilot (uses your logged-in Copilot CLI; no host or model flags needed):
+Against GitHub Copilot (uses your logged-in Copilot CLI; no host flag needed, and `--model` is
+optional):
 
 ```pwsh
 dotnet run --project samples/document-assistant -- `
@@ -138,6 +139,20 @@ dotnet run --project samples/document-assistant -- `
   --provider copilot `
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
+
+Add `--model <name>` to choose which Copilot model backs the agent; omit it and the Copilot runtime
+picks its own default:
+
+```pwsh
+dotnet run --project samples/document-assistant -- `
+  --workspace samples/document-assistant/workspace `
+  --provider copilot --model gpt-5.4-mini `
+  --prompt "List the files, read welcome.txt, then describe diagram.png"
+```
+
+The same `--model` flag serves both providers, because "which model backs this agent" is the same
+question on either runtime. It is worth exercising: model capability drives how reliably an agent
+uses its tools and how accurately it reads an image — see *Verifying vision honestly* below.
 
 Against an Ollama server (any tool-and-vision capable model):
 
@@ -161,7 +176,7 @@ end-of-input to leave.
 | `--read-only-workspace` | Grant the workspace read-only; the session folder stays writable. |
 | `--provider copilot\|ollama` | Runtime to run the agent on. Default: `copilot`. |
 | `--host <url>` | Ollama server URL. Default: `http://localhost:11434`. Ollama only. |
-| `--model <name>` | Ollama model name. Default: `qwen3.5:9b`. Ollama only. |
+| `--model <name>` | Model to back the agent. Default: the Copilot runtime's own choice, or `qwen3.5:9b` for Ollama. |
 | `--no-vision` | Omit the image tool and the `Vision` capability entirely. |
 | `--prompt "<text>"` | Run a single prompt and exit. Otherwise start an interactive chat. |
 | `--help` | Show help and exit. |
@@ -227,6 +242,9 @@ guarantees. `image_read` either delivers the exact bytes of a permitted file to 
 text in those bytes is a property of the model, not of the tool. AgentKit guarantees which files an
 agent may touch and in what form it receives them; it cannot and does not guarantee the model's
 perception. A weak OCR result is a reason to choose a stronger model, never a sign the tool failed.
+
+The same applies on Copilot: `--model` selects the model there too, and Copilot models differ from
+one another in OCR accuracy just as Ollama models do.
 
 ## About the fixture image
 

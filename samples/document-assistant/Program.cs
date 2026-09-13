@@ -59,6 +59,7 @@ try
         + "relative paths anchor here)\n" +
         $"Session:   {sessionRoot} (read-write, address it by absolute path)\n" +
         $"Provider:  {options.Provider}\n" +
+        $"Model:     {options.Model ?? "(provider default)"}\n" +
         $"Vision:    {(options.VisionEnabled ? "enabled" : "disabled")}");
 
     // Build the agent (the one provider-specific step) and always release its runtime resources.

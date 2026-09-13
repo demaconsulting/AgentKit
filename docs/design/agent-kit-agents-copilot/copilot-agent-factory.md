@@ -28,10 +28,11 @@ The factory constructs a `SessionConfig` carrying:
 | `EnableSkills`           | `false`                                  | withholds the runtime's injected skills       |
 | `SkipCustomInstructions` | `true`                                   | withholds runtime-discovered instructions     |
 | `SystemMessage`          | the supplied instructions, when any      | governs a confined agent as the host intended |
+| `Model`                  | the supplied model name, when any        | backs the session with the chosen model       |
 
 ### Key Methods
 
-#### Create(CopilotClient client, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name)
+#### Create(CopilotClient client, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name, model)
 
 The single public entry point. Validates its arguments, builds the session configuration, and
 constructs the agent through the SDK's session-config agent-construction path with client ownership
@@ -41,21 +42,30 @@ left to the host.
 
 1. Reject a null `client`.
 2. Validate `tools` (see `ValidateTools`).
-3. Build the session configuration (see `BuildSessionConfig`).
+3. Build the session configuration (see `BuildSessionConfig`), passing the model through.
 4. Construct and return the agent from the client and the session configuration, passing the name
    and declaring that the factory does **not** own the client.
 
 **Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
 `ArgumentException` when `tools` is empty or two tools share a name.
 
-#### BuildSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, handler? onPermissionRequest)
+**Parameter ordering.** `model` is the trailing optional parameter rather than sitting beside
+`instructions`, which is where it reads most naturally. The two goals conflict: inserting it earlier
+would shift `onPermissionRequest` and `name`, breaking source compatibility for every positional
+caller of a released public API. Compatibility wins, and the awkward position is recorded here so a
+later maintainer does not "tidy" it.
+
+#### BuildSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, handler? onPermissionRequest, string? model)
 
 Internal seam producing the `SessionConfig`. It exists as a named, internal method so a test can
 assert the safety-critical property — that `AvailableTools` is derived from the same collection as
 `Tools` — without a live `CopilotClient`, since a `SessionConfig` is a plain constructable object.
 It sets `Tools` and `AvailableTools` from `tools`, installs the supplied handler or the safe default,
 disables skills and runtime custom-instruction discovery, and, when instructions are supplied,
-carries them onto the session's system message with append semantics.
+carries them onto the session's system message with append semantics. When a model name is supplied
+it is assigned to the session's model; when it is absent or blank the property is left untouched so
+the runtime applies its own default, which is what makes the model parameter purely additive. The
+model name is not validated: only the runtime knows which models the signed-in user may use.
 
 **Throws:** `ArgumentNullException` when `tools` is null or contains a null entry;
 `ArgumentException` when `tools` is empty or two tools share a name.
@@ -101,6 +111,14 @@ content the model already received. This absence is intentional and must not be 
 **Default-safe permission handling with host override.** When no handler is supplied the factory
 installs the allow-list-enforcing default; when one is supplied it is installed unchanged, so a host
 with its own policy governs the session itself.
+
+**Model selection is reachable through the factory, not around it.** Which Copilot model backs a
+session materially changes how reliably a confined agent uses its tools and how accurately it reads
+an image, so the host must be able to choose one. It must be able to choose it *here*: a host that
+built a session configuration itself to reach the setting would forfeit the derived allow-list, the
+withheld skills and custom instructions, and the default-safe permission handler — producing an
+agent that looks configured but denies every tool call. Exposing the setting on the factory removes
+the incentive to bypass it.
 
 **Deployment consequence.** `Microsoft.Agents.AI.GitHub.Copilot` carries a RID-specific native
 runtime through its SDK dependency; a self-contained or RID-targeted publish resolves and ships the

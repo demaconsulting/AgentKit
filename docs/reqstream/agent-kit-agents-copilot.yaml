@@ -52,18 +52,26 @@ sections:
         title: >-
           The library shall build a Microsoft Agent Framework agent from a Copilot client and a
           supplied tool list without taking ownership of the client, rejecting a missing client, a
-          malformed tool list, and carrying the supplied instructions.
+          malformed tool list, and carrying the supplied instructions and the supplied choice of
+          model.
         tags: [system]
         justification: |
           The host constructs, starts, and disposes the Copilot client, so the library takes no
           ownership of it and builds the agent with client ownership left to the host — whoever
           created the client disposes it. A missing client or a malformed tool list is a defect in
           the host, refused where the host wrote it. Supplied instructions are carried onto the
-          session so a confined agent is governed as the host intended.
+          session so a confined agent is governed as the host intended, and so is a supplied choice
+          of model: which model backs an agent materially changes how reliably it uses its tools and
+          how accurately it reads an image, so the application author must be able to make that
+          choice through the library rather than around it — going around it means building a
+          session by hand and losing the suppression and the default-safe permission handler. A host
+          that expresses no choice gets the runtime's own default, so the capability adds nothing an
+          existing application must account for.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
           - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
+          - AgentKitAgentsCopilot-CopilotAgentFactory-SelectsModel
         tests:
           - CopilotAgentFactory_Create_NullClient_Throws
 
