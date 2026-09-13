@@ -41,6 +41,10 @@ package AgentKitTools {
         expose Todo;
     }
 
+    view MemoryView {
+        expose Memory;
+    }
+
     view AgentView {
         expose Agent;
     }

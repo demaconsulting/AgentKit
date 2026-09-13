@@ -1,0 +1,270 @@
+---
+# Software Subsystem Requirements for the Memory tool family
+#
+# These requirements describe the behavior of the Memory subsystem as a whole,
+# decomposing the system-level memory family requirement into the behavior each of
+# its units provides.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        requirements:
+          - id: AgentKitTools-Memory-FamilyComposition
+            title: >-
+              The memory family shall publish five tools — file, recall, update, revise and
+              forget — in that order under the memory family prefix, and shall require no host
+              capability.
+            justification: |
+              An application attaches a capability as one pack rather than as five individually
+              registered tools, so the family must be the unit of attachment. Publishing every
+              tool under one prefix keeps this family's names from colliding with those of any
+              other library an application combines. The order — file, recall, update, revise,
+              forget — is the order of the work and is observable in tool selection. No host
+              capability is required because the capability this family really depends on, an
+              embedding backend, is a constructor argument: an application that cannot embed
+              cannot construct the pack at all, so there is nothing left for a capability flag
+              to gate.
+            children:
+              - AgentKitTools-Memory-Pack-FamilyPrefix
+              - AgentKitTools-Memory-Pack-NoCapabilityRequired
+              - AgentKitTools-Memory-Pack-RegistersFiveTools
+              - AgentKitTools-Memory-FileTool-ToolName
+              - AgentKitTools-Memory-RecallTool-ToolName
+              - AgentKitTools-Memory-UpdateTool-ToolName
+              - AgentKitTools-Memory-ReviseTool-ToolName
+              - AgentKitTools-Memory-ForgetTool-ToolName
+            tests:
+              - Memory_Family_ComposedThroughBuilder_PublishesTheFamily
+
+          - id: AgentKitTools-Memory-GuardedConstruction
+            title: >-
+              Every tool in the memory family shall be constructed through the guarded
+              construction path and shall take its store, its embedding generator and the
+              author's controls at construction, and the store shall reject as programming
+              errors the malformed calls its tools refuse before reaching it.
+            tags: [security]
+            justification: |
+              A tool built any other way has its result flattened into JSON before a provider
+              sees it, and a tool that received its store later — or not at all — could be
+              attached to an agent while filing into nothing. Validating the policy at
+              construction, even though the family never consults it, names a composing
+              application's mistake at the point it was made. Model-facing validation happens in
+              the tools, so a store that receives a blank identifier or a repeated one is
+              witnessing a defect in this library rather than something a model did.
+            children:
+              - AgentKitTools-Memory-FileTool-GuardedConstruction
+              - AgentKitTools-Memory-RecallTool-GuardedConstruction
+              - AgentKitTools-Memory-UpdateTool-GuardedConstruction
+              - AgentKitTools-Memory-ReviseTool-GuardedConstruction
+              - AgentKitTools-Memory-ForgetTool-GuardedConstruction
+              - AgentKitTools-Memory-Pack-RequiresPolicy
+              - AgentKitTools-Memory-Store-Validation
+              - AgentKitTools-Memory-Store-DuplicateIdentifier
+            tests:
+              - Memory_Family_EveryTool_CarriesAValidatedNameAndDescription
+
+          - id: AgentKitTools-Memory-DescriptorPayloadModel
+            title: >-
+              The memory family shall hold each memory as a short descriptor that is the only
+              text embedded, a richer never-embedded detail payload, and optional provenance, and
+              shall return all three whole on recall while searching the descriptor alone.
+            justification: |
+              Findability and sufficiency were measured to be in tension: a sentence short enough
+              to embed well cannot answer a question, and a passage long enough to answer one
+              does not embed well. Splitting them lets each do its own job, and returning the
+              payload whole is what makes a found memory a sufficient one — a recall returning
+              only descriptors found the right memory and still could not answer from it.
+              Provenance is optional because a memory whose source is unknown is a real memory,
+              and requiring one would only invite the model to invent a citation.
+            children:
+              - AgentKitTools-Memory-Record-DescriptorPayloadSplit
+              - AgentKitTools-Memory-Record-Provenance
+              - AgentKitTools-Memory-Record-Immutability
+              - AgentKitTools-Memory-Record-Match
+              - AgentKitTools-Memory-FileTool-StoresNewMemory
+              - AgentKitTools-Memory-FileTool-DescriptorOnlyEmbedded
+              - AgentKitTools-Memory-FileTool-Provenance
+              - AgentKitTools-Memory-RecallTool-WholeMatches
+              - AgentKitTools-Memory-RecallTool-DescriptorSearch
+              - AgentKitTools-Memory-Store-Add
+              - AgentKitTools-Memory-Store-Find
+            tests:
+              - Memory_Family_AFact_IsFiledRecalledCorrectedAndForgotten
+
+          - id: AgentKitTools-Memory-NearDuplicateDetection
+            title: >-
+              The memory family shall compare every new descriptor against the vectors already
+              held before storing anything, shall decline to store one whose nearest match
+              reaches the configured threshold, and shall report that non-storage as structured
+              data naming the conflicting memory, its descriptor, its details and the similarity.
+            justification: |
+              Every attempt in the originating spike to have the model notice a contradiction by
+              judgement failed; the arithmetic succeeded, scoring a 12-psi against an 18-psi
+              statement of one fact at 0.965 cosine. The check is nearly free because the vectors
+              it compares are already computed. Reporting the outcome as structured data is a
+              defect fix rather than a style choice: when the same outcome was returned as a
+              prose sentence, the model went on to assert that it had stored the fact. Comparing
+              before storing rather than after is what keeps a detected near-duplicate out of the
+              store.
+            children:
+              - AgentKitTools-Memory-FileTool-NearDuplicateNotStored
+              - AgentKitTools-Memory-FileTool-StructuredNonStorage
+              - AgentKitTools-Memory-FileTool-ThresholdGoverns
+              - AgentKitTools-Memory-Store-CosineSearch
+            tests:
+              - Memory_Family_ContradictingRestatement_IsNotStoredAndNamesTheConflict
+
+          - id: AgentKitTools-Memory-CorrectionWithoutStaleProvenance
+            title: >-
+              The memory family shall let a memory's details be corrected without re-embedding
+              and without altering its descriptor or provenance, shall let its descriptor,
+              details and provenance be replaced together with a recomputed vector, and shall
+              never carry provenance across a replacement that the caller did not state.
+            justification: |
+              Most corrections do not change what a memory is about, and re-embedding is the
+              expensive half of a correction; separating the two operations means the common case
+              costs no round trip to the embedding backend. The separation is also a safety
+              property: a change of descriptor without a recomputed vector would leave a memory
+              findable only under its old meaning, with nothing in the store to show it. The
+              provenance rule is a defect fix. The spike's revision silently preserved the
+              original source document and locator, so a fact revised from a different document
+              went on citing the superseded one — observed with details drawn from a revision
+              document beside a structured field still naming the initial one. Provenance is now
+              stated on the call, and stating nothing clears it, because inheriting silently is
+              the same defect in another form. No policy about whether sources replace,
+              accumulate or require corroboration is imposed; that is the application author's
+              instruction to give.
+            children:
+              - AgentKitTools-Memory-UpdateTool-DetailsOnly
+              - AgentKitTools-Memory-UpdateTool-EchoesUnchangedParts
+              - AgentKitTools-Memory-ReviseTool-ReEmbeds
+              - AgentKitTools-Memory-ReviseTool-SettableProvenance
+              - AgentKitTools-Memory-ReviseTool-NoSilentInheritance
+              - AgentKitTools-Memory-ReviseTool-NotDuplicateChecked
+              - AgentKitTools-Memory-Store-ReplaceInPlace
+            tests:
+              - Memory_Family_UpdateCostsNoEmbeddingCallAndRevisionDoes
+              - Memory_Family_RevisedMemory_IsFoundByItsNewWording
+
+          - id: AgentKitTools-Memory-Forgetting
+            title: >-
+              The memory family shall remove exactly one named memory per call, shall report the
+              size of the store afterwards, and shall publish no way to express a removal of more
+              than one memory at a time.
+            justification: |
+              A bulk removal is an operation whose blast radius the model cannot see before it
+              acts: a query matching more than it meant to erases evidence that nothing will
+              report as missing. Removing one named memory keeps every deletion something the
+              model chose deliberately and something a transcript records unambiguously.
+              Reporting the size of the store afterwards keeps the model from recalling merely to
+              check its own removal.
+            children:
+              - AgentKitTools-Memory-ForgetTool-KnownIdentifier
+              - AgentKitTools-Memory-ForgetTool-SingleMemory
+              - AgentKitTools-Memory-Store-Remove
+            tests:
+              - Memory_Family_AFact_IsFiledRecalledCorrectedAndForgotten
+
+          - id: AgentKitTools-Memory-DenialsAreResults
+            title: >-
+              The memory family shall report every refusal as a returned result that names its
+              reason and prescribes no remedy, shall never throw at a model for a request the
+              model could have made differently, and shall report an empty store on a recall as a
+              true empty answer rather than as a refusal.
+            justification: |
+              An exception raised while a model is calling a tool ends the agent's turn and
+              strands it, whereas a returned refusal lets it read the reason and choose another
+              course. A refusal that prescribes a remedy is a demonstration the model imitates:
+              a denial in this project that helpfully named a replacement tool was followed by a
+              model destroying a file, so denials here state what happened and stop. Reporting an
+              empty recall as an empty result keeps the model from concluding the tool is broken
+              the first time it asks. A failing embedding backend is the exception to the rule
+              and is reported as a fault, because the model can do nothing about it and a refusal
+              would invite it to keep trying.
+            children:
+              - AgentKitTools-Memory-FileTool-MissingArgumentsRefused
+              - AgentKitTools-Memory-FileTool-GeneratorFaultPropagates
+              - AgentKitTools-Memory-RecallTool-MissingQueryRefused
+              - AgentKitTools-Memory-RecallTool-EmptyStore
+              - AgentKitTools-Memory-UpdateTool-UnknownIdentifier
+              - AgentKitTools-Memory-UpdateTool-MissingArgumentsRefused
+              - AgentKitTools-Memory-ReviseTool-UnknownIdentifier
+              - AgentKitTools-Memory-ReviseTool-MissingArgumentsRefused
+              - AgentKitTools-Memory-ForgetTool-UnknownIdentifier
+              - AgentKitTools-Memory-ForgetTool-MissingIdentifier
+              - AgentKitTools-Memory-Store-EmptyResults
+            tests:
+              - Memory_Family_RefusedRequests_AreReturnedValues
+              - Memory_Family_DeniedResults_PrescribeNoRemedy
+
+          - id: AgentKitTools-Memory-AuthorGovernedConfiguration
+            title: >-
+              The memory family shall take its embedding generator, its near-duplicate threshold,
+              its recall count and its persistence from the composing application, shall publish
+              defaults for the two numeric controls, shall reject a control outside the range it
+              can mean, shall offer the model no way to override any of them, and shall refuse to
+              score vectors of mismatched length.
+            tags: [security]
+            justification: |
+              The governing principle of this library is that the application author chooses the
+              settings and the library guarantees the mechanism. Which embedding backend is in
+              use is therefore invisible here, persistence is an interface the author may replace,
+              and both numeric controls are the author's to set. Publishing defaults is what
+              makes the family attachable in one line. Offering the model no override is what
+              makes the controls worth setting: a model that could raise a recall count would be
+              spending a context budget it cannot see, and one that could lower a threshold could
+              overrule the duplicate detection the author configured. Vectors of different
+              lengths produce similarity numbers that look ordinary and mean nothing, so mixing
+              two embedding models in one store is surfaced as the configuration error it is
+              rather than quietly breaking both recall and the threshold.
+            children:
+              - AgentKitTools-Memory-Options-Defaults
+              - AgentKitTools-Memory-Options-IndependentControls
+              - AgentKitTools-Memory-Options-BoundaryValues
+              - AgentKitTools-Memory-Options-Validation
+              - AgentKitTools-Memory-RecallTool-RecallCountGoverns
+              - AgentKitTools-Memory-Pack-InjectedGenerator
+              - AgentKitTools-Memory-Pack-ConfigurationVisible
+              - AgentKitTools-Memory-Store-DimensionGuard
+              - AgentKitTools-Memory-Store-Substitutable
+            tests:
+              - MemoryPack_Options_DefaultOrSupplied_AreVisibleToTheApplication
+
+          - id: AgentKitTools-Memory-PerCompositionMemories
+            title: >-
+              The memory family shall allocate a fresh store on every CreateTools call when the
+              application supplied none, and shall share the application's own store across every
+              composition when it supplied one.
+            tags: [security]
+            justification: |
+              With no store supplied, memories are the working state of one agent run, and a
+              delegated agent that could read or overwrite its parent's memories would either
+              corrupt the parent's evidence or leak its own. Allocating one store per composition
+              makes that containment structural. An application that supplies a store is asking
+              for the opposite — memories that outlive or span agents — and gets exactly that,
+              because sharing or persisting memories is the only reason to supply a store at all.
+            children:
+              - AgentKitTools-Memory-Pack-IndependentStores
+              - AgentKitTools-Memory-Pack-SharedStore
+            tests:
+              - MemoryPack_CreateTools_NoStoreSupplied_ProducesIndependentMemories
+
+          - id: AgentKitTools-Memory-InstructionRequired
+            title: >-
+              The memory family shall publish, as a constant, the instruction an application
+              should give an agent that carries the family, and shall not apply it automatically.
+            justification: |
+              Attaching the tools is not enough. A model reading a document answers from the
+              document it is holding and never thinks to write anything down, because from inside
+              one turn there is no observable difference between knowing something and having
+              just read it; the same effect was measured for the task-list family, where a soft
+              instruction produced use in 1 of 5 runs against 3 of 3 for an explicit one.
+              Publishing the wording as a constant lets an application append it rather than
+              transcribe it, and keeps the text that ships from drifting. It is not injected
+              automatically, because silently editing an agent's system prompt is an invisible
+              behavior an application author cannot audit.
+            children:
+              - AgentKitTools-Memory-Pack-SuggestedInstruction
+            tests:
+              - MemoryPack_SuggestedInstruction_NamesTheFilingAndRecallingTools

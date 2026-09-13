@@ -1,0 +1,81 @@
+---
+# Software Unit Requirements for MemoryForgetTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryForgetTool Requirements
+            requirements:
+              - id: AgentKitTools-Memory-ForgetTool-ToolName
+                title: >-
+                  The forget tool shall be published as memory_forget and shall carry a
+                  description the model can choose it by.
+                justification: |
+                  The name and the description are the model's only means of choosing the tool,
+                  and publishing the name as a constant keeps the name a test asserts from
+                  drifting from the name a model is offered. The description states plainly that
+                  the removal is permanent.
+                tests:
+                  - MemoryForgetTool_Create_RequiresAStoreAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-ForgetTool-GuardedConstruction
+                title: >-
+                  The forget tool shall be constructed through the guarded construction path and
+                  shall require its store.
+                justification: |
+                  A tool built any other way has its result flattened before a provider sees it,
+                  and a tool missing its store could be attached to an agent while removing
+                  nothing. The omission is named at the point the composing application made it.
+                tests:
+                  - MemoryForgetTool_Create_RequiresAStoreAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-ForgetTool-KnownIdentifier
+                title: >-
+                  The forget tool shall remove the memory carrying the stated identifier and
+                  shall report the removal and the size of the store afterwards.
+                justification: |
+                  Stating the size of the store keeps the model from recalling merely to check
+                  its own removal, and reporting the removal as a field rather than as prose
+                  keeps the outcome unambiguous in the same way the file tool's stored flag does.
+                tests:
+                  - MemoryForgetTool_Forget_KnownMemory_RemovesItAndReportsTheStoreSize
+
+              - id: AgentKitTools-Memory-ForgetTool-SingleMemory
+                title: >-
+                  The forget tool shall accept exactly one identifier and shall publish no
+                  parameter by which a set of memories could be named.
+                tags: [security]
+                justification: |
+                  A bulk removal is an operation whose blast radius the model cannot see before
+                  it acts: a query matching more than it meant to erases evidence nothing will
+                  report as missing. What protects an author beyond that is that the family is
+                  attached as a whole — an application unwilling to let an agent forget anything
+                  composes without this pack.
+                tests:
+                  - MemoryForgetTool_Create_PublishesOnlyASingleIdentifierParameter
+
+              - id: AgentKitTools-Memory-ForgetTool-UnknownIdentifier
+                title: >-
+                  The forget tool shall refuse an identifier the store does not hold, removing
+                  nothing, stating the identifier and how many memories are held, and naming no
+                  other tool.
+                justification: |
+                  A model told that a removal succeeded when nothing was removed goes on
+                  believing a fact is gone from a store that still returns it on the next recall.
+                  The refusal states facts and prescribes nothing, because a refusal that
+                  prescribes is a demonstration the model imitates.
+                tests:
+                  - MemoryForgetTool_Forget_UnknownIdentifier_IsARefusalAndRemovesNothing
+
+              - id: AgentKitTools-Memory-ForgetTool-MissingIdentifier
+                title: >-
+                  The forget tool shall refuse a call naming no memory as a returned result,
+                  removing nothing.
+                justification: |
+                  The model supplied the malformed call, so it is refused rather than thrown, and
+                  a removal that named nothing must certainly not be interpreted as a removal of
+                  everything.
+                tests:
+                  - MemoryForgetTool_Forget_MissingIdentifier_IsAReturnedRefusal

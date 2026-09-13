@@ -50,6 +50,16 @@ includes:
   - docs/reqstream/agent-kit-tools/todo/todo-set-tool.yaml
   - docs/reqstream/agent-kit-tools/todo/todo-remove-tool.yaml
   - docs/reqstream/agent-kit-tools/todo/todo-pack.yaml
+  - docs/reqstream/agent-kit-tools/memory.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-options.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-record.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-store.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-file-tool.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-recall-tool.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-update-tool.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-revise-tool.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-forget-tool.yaml
+  - docs/reqstream/agent-kit-tools/memory/memory-pack.yaml
   - docs/reqstream/agent-kit-tools/agent.yaml
   - docs/reqstream/agent-kit-tools/agent/agent-profile.yaml
   - docs/reqstream/agent-kit-tools/agent/child-agent-request.yaml

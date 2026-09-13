@@ -20,6 +20,7 @@ package AgentKitTools {
         part markdown : Markdown;
         part image : Image;
         part todo : Todo;
+        part memory : Memory;
         part agent : Agent;
     }
 }

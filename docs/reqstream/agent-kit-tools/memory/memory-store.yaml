@@ -1,0 +1,135 @@
+---
+# Software Unit Requirements for MemoryStore
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryStore Requirements
+            requirements:
+              - id: AgentKitTools-Memory-Store-Add
+                title: >-
+                  The memory store shall hold a filed memory and shall report how many memories
+                  it holds.
+                justification: |
+                  Holding what was filed is the store's whole reason to exist, and reporting the
+                  size is what lets a tool state the outcome of a write so the model never has to
+                  recall merely to check it.
+                tests:
+                  - InMemoryMemoryStore_AddAsync_NewMemory_IsHeldAndCounted
+
+              - id: AgentKitTools-Memory-Store-DuplicateIdentifier
+                title: >-
+                  The memory store shall reject an identifier it already holds as a programming
+                  error rather than overwriting the memory that carries it.
+                justification: |
+                  Identifiers are assigned by the calling tool, so a collision cannot be
+                  something a model did. Overwriting silently would destroy a memory nobody asked
+                  to remove, and would do it without anything in the transcript recording that it
+                  happened.
+                tests:
+                  - InMemoryMemoryStore_AddAsync_DuplicateIdentifier_ThrowsArgumentException
+
+              - id: AgentKitTools-Memory-Store-Find
+                title: >-
+                  The memory store shall report an identifier it does not hold as a miss rather
+                  than as an error.
+                justification: |
+                  An identifier a model stated wrongly is an ordinary outcome, and the tool turns
+                  it into a refusal the model can read. Raising instead would end the agent's
+                  turn over a typo.
+                tests:
+                  - InMemoryMemoryStore_FindAsync_UnknownIdentifier_ReportsNull
+
+              - id: AgentKitTools-Memory-Store-ReplaceInPlace
+                title: >-
+                  The memory store shall replace a whole memory by identifier, leaving it at the
+                  position it already occupied, and shall report whether the replacement landed.
+                justification: |
+                  Whole-record replacement means an update that keeps the vector and a revision
+                  that recomputes it travel one path, so neither can half-apply. Replacing in
+                  place keeps the order memories were filed in from being disturbed by a
+                  correction to one of them, which is also the store's tie-break between equally
+                  similar matches.
+                tests:
+                  - InMemoryMemoryStore_ReplaceAsync_KnownAndUnknownIdentifiers_ReportTheOutcome
+
+              - id: AgentKitTools-Memory-Store-Remove
+                title: >-
+                  The memory store shall report whether a removal hit or missed, leaving the
+                  store unchanged on a miss.
+                justification: |
+                  Removing a memory that is not there is not the same as success. A tool that
+                  believed it had removed something would tell the model a fact is gone from a
+                  store that still returns it on the next recall.
+                tests:
+                  - InMemoryMemoryStore_RemoveAsync_KnownAndUnknownIdentifiers_ReportTheOutcome
+
+              - id: AgentKitTools-Memory-Store-CosineSearch
+                title: >-
+                  The memory store shall report matches for a supplied vector as cosine
+                  similarity, ordered nearest first, holding no more than the number of matches
+                  requested, and shall never embed anything itself.
+                justification: |
+                  The near-duplicate decision reads only the first match, so ordering is part of
+                  the contract rather than an implementation detail. Cosine — rather than a
+                  distance — is the measure the author's configured threshold is expressed in, so
+                  a store returning anything else would silently change what that threshold
+                  means. The vector arrives already computed because both callers have just
+                  embedded the text they are searching for, and because which embedding backend
+                  is in use is the author's decision and invisible to the store.
+                tests:
+                  - InMemoryMemoryStore_SearchAsync_ReportsCosineSimilarityNearestFirst
+
+              - id: AgentKitTools-Memory-Store-EmptyResults
+                title: >-
+                  The memory store shall report no matches for an empty store and for a request
+                  of zero matches, and shall score a memory with no direction as zero rather than
+                  failing.
+                justification: |
+                  An empty answer is a true answer and the recall tool reports it as one. A
+                  memory whose descriptor embedded to all zeros is degenerate, and reporting it
+                  as maximally distant is both the honest answer and the one that keeps it from
+                  taking every subsequent search down with a division by zero.
+                tests:
+                  - InMemoryMemoryStore_SearchAsync_EmptyStoreOrZeroCount_ReturnsNoMatches
+                  - InMemoryMemoryStore_SearchAsync_ZeroVector_ScoresZero
+
+              - id: AgentKitTools-Memory-Store-DimensionGuard
+                title: >-
+                  The memory store shall refuse a vector whose length differs from the length of
+                  the vectors it already holds, and a vector holding no values at all.
+                tags: [security]
+                justification: |
+                  Mixing the output of two embedding models in one store produces similarity
+                  numbers that look ordinary and mean nothing, which would quietly break both
+                  recall and the near-duplicate threshold with no error for anyone to notice. It
+                  can only happen when an author changes generator against a persisted store, so
+                  it is surfaced as the configuration error it is.
+                tests:
+                  - InMemoryMemoryStore_MismatchedDimension_ThrowsArgumentException
+                  - InMemoryMemoryStore_SearchAsync_EmptyVector_ThrowsArgumentException
+
+              - id: AgentKitTools-Memory-Store-Validation
+                title: >-
+                  The memory store shall reject a null memory, a null or empty identifier and a
+                  negative match count as programming errors from the tool units.
+                justification: |
+                  Model-facing validation happens in the tools, so a store that receives a blank
+                  identifier is witnessing a defect in this library rather than something a model
+                  did. Arguing exceptions here names the defect at the point it was made.
+                tests:
+                  - InMemoryMemoryStore_Validation_NullOrEmptyArguments_Throw
+
+              - id: AgentKitTools-Memory-Store-Substitutable
+                title: >-
+                  The memory store shall be an interface the composing application may implement,
+                  and the family shall use the application's implementation when one is supplied.
+                justification: |
+                  Where memories live is the application author's decision. An author who wants
+                  them in a database, a vector service or a file writes one implementation and
+                  changes nothing else; the in-memory implementation AgentKit ships is a working
+                  default that makes the family attachable in one line, not a recommendation.
+                tests:
+                  - MemoryPack_CreateTools_SuppliedStore_IsSharedAcrossCompositions

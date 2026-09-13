@@ -1,0 +1,121 @@
+---
+# Software Unit Requirements for MemoryPack
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryPack Requirements
+            requirements:
+              - id: AgentKitTools-Memory-Pack-FamilyPrefix
+                title: >-
+                  The memory pack shall publish the family prefix memory, both as a constant and
+                  through the pack contract.
+                justification: |
+                  The prefix is the family's identity and is what keeps its names from colliding
+                  with those of any other library an application combines. Publishing it as a
+                  constant as well as through the contract lets an application name the family
+                  without instantiating it.
+                tests:
+                  - MemoryPack_FamilyPrefix_IsPublishedAsConstantAndContract
+
+              - id: AgentKitTools-Memory-Pack-NoCapabilityRequired
+                title: >-
+                  The memory pack shall require no host capability.
+                justification: |
+                  The capability this family really depends on is an embedding backend, and that
+                  arrives as a constructor argument rather than as a host declaration: an
+                  application that cannot embed cannot construct the pack at all, so there is
+                  nothing left for a capability flag to gate.
+                tests:
+                  - MemoryPack_RequiredCapabilities_IsNone
+
+              - id: AgentKitTools-Memory-Pack-RegistersFiveTools
+                title: >-
+                  The memory pack shall create the file, recall, update, revise and forget tools,
+                  in that order, over one store shared by all five.
+                justification: |
+                  The order a model sees the tools in is observable in tool selection, so it is a
+                  contract rather than an incidental collection order; it is the order of the
+                  work — write something down, find it again, correct what it says, change what
+                  it is about, and finally drop it. One store shared by the five is what makes
+                  them a family rather than five unrelated tools.
+                tests:
+                  - MemoryPack_CreateTools_RegistersTheFamilyInOrder
+
+              - id: AgentKitTools-Memory-Pack-RequiresPolicy
+                title: >-
+                  The memory pack shall require an access policy to create its tools, and shall
+                  not consult it.
+                justification: |
+                  The family touches no files, so it has nothing to judge against a policy; it is
+                  still validated so that a composing application that omitted one is told at the
+                  point it made the mistake rather than by a sibling family later.
+                tests:
+                  - MemoryPack_CreateTools_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Memory-Pack-InjectedGenerator
+                title: >-
+                  The memory pack shall take its embedding generator from the composing
+                  application through the standard abstraction, shall require one, and shall
+                  never inspect which backend it wraps.
+                justification: |
+                  Whether the author picked Ollama, a locally hosted Foundry model or an offline
+                  ONNX model is the author's decision and none of this library's business;
+                  taking the standard abstraction is what keeps AgentKit from ever needing to
+                  know. Requiring one means the family cannot be attached in a state where
+                  nothing could be filed or found.
+                tests:
+                  - MemoryPack_Constructor_NullGenerator_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Memory-Pack-ConfigurationVisible
+                title: >-
+                  The memory pack shall report the controls it is running under, whether they
+                  were supplied or defaulted.
+                justification: |
+                  The threshold in particular is the number that explains why a memory was not
+                  stored, so an application reporting its own configuration should not have to
+                  keep a second copy of it beside the pack and risk the two disagreeing.
+                tests:
+                  - MemoryPack_Options_DefaultOrSupplied_AreVisibleToTheApplication
+
+              - id: AgentKitTools-Memory-Pack-IndependentStores
+                title: >-
+                  The memory pack shall allocate a fresh store on every CreateTools call when the
+                  application supplied none, so no two compositions share memories.
+                tags: [security]
+                justification: |
+                  With no store supplied, memories are the working state of one agent run. A
+                  delegated agent — whose tools are created by a separate call — would otherwise
+                  either corrupt its parent's evidence or leak its own into it. Allocating the
+                  store as a local rather than as a field on the pack makes that containment
+                  structural rather than conventional.
+                tests:
+                  - MemoryPack_CreateTools_NoStoreSupplied_ProducesIndependentMemories
+
+              - id: AgentKitTools-Memory-Pack-SharedStore
+                title: >-
+                  The memory pack shall use the application's own store, unchanged and shared
+                  across compositions, when the application supplied one.
+                justification: |
+                  Sharing or persisting memories is precisely the thing an author supplies a
+                  store in order to do, so quietly wrapping or copying it would defeat the only
+                  reason to supply one.
+                tests:
+                  - MemoryPack_CreateTools_SuppliedStore_IsSharedAcrossCompositions
+
+              - id: AgentKitTools-Memory-Pack-SuggestedInstruction
+                title: >-
+                  The memory pack shall publish, as a constant, the instruction an application
+                  should give an agent carrying the family, naming the filing and recall tools
+                  and the granularity to file at.
+                justification: |
+                  Attaching the tools is not enough: a model answering from a document it is
+                  holding has no reason from inside that turn to write anything down. Publishing
+                  the wording as a constant lets an application append it rather than transcribe
+                  it. Granularity is included because it is the one choice the model makes that
+                  the library cannot make for it, and coarser granularity was measured to be
+                  monotonically better.
+                tests:
+                  - MemoryPack_SuggestedInstruction_NamesTheFilingAndRecallingTools

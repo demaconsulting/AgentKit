@@ -47,6 +47,15 @@ pack. It gives an agent one flat, ordered task list of its own, held in memory f
 as the composition that created it, so that the steps of a multi-step job are written down rather
 than carried in the model's memory.
 
+The system contains the **Memory** subsystem: the memory tool family, publishing `memory_file`,
+`memory_recall`, `memory_update`, `memory_revise` and `memory_forget` under the `memory` family
+prefix and attached to an application as one pack. It gives an agent a searchable record of what it
+has learned — each memory a short embedded descriptor with a richer never-embedded detail payload and
+its provenance — so that a long job can be answered from evidence rather than from whatever survived
+the model's context window. It is the only family that takes a collaborator the application must
+choose: an embedding generator, supplied through the standard `Microsoft.Extensions.AI` abstraction,
+alongside optional controls and optional substitute persistence.
+
 The system also contains the **Agent** subsystem: the agent tool family, publishing `agent_run`
 under the `agent` family prefix and attached to an application as one pack. Like the image family
 it is gated on a host capability — it is registered only for a host that declares it can start a
@@ -70,7 +79,8 @@ through the AgentKitCore pack contract:
 An application attaches a family by adding that family's pack: `TextFilePack` is the type an
 application adds to give an agent the text file family, `FilePack` the type it adds for the
 type-agnostic file family, `MarkdownPack` the type it adds for the Markdown family, `TodoPack` the
-type it adds to give an agent a task list of its own, `AgentPack` the type it adds to let an agent
+type it adds to give an agent a task list of its own, `MemoryPack` the type it adds to give an agent
+a searchable record of what it has learned, `AgentPack` the type it adds to let an agent
 delegate to another agent the application registered, and `ImagePack`
 is the type it adds to give a vision-capable agent the image family. A composition to which no
 family has been added remains
@@ -87,6 +97,7 @@ the composition never asks its pack for them.
 | `FilePack`        | Outbound         | AgentKitCore pack contract | Prefix `file`; no capability         |
 | `MarkdownPack`    | Outbound         | AgentKitCore pack contract | Prefix `markdown`; no capability     |
 | `TodoPack`        | Outbound         | AgentKitCore pack contract | Prefix `todo`; no capability         |
+| `MemoryPack`      | Outbound         | AgentKitCore pack contract | Prefix `memory`; needs a generator   |
 | `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision      |
 | `AgentPack`       | Outbound         | AgentKitCore pack contract | Prefix `agent`; requires Delegation  |
 
@@ -102,6 +113,12 @@ or restating a dependency Core already owns. That abstraction is the one OTS run
 software depends on; its integration is recorded in _OTS Integration Design_
 (`docs/design/ots.md`) and its dedicated _Microsoft.Extensions.AI.Abstractions Design_, where the
 transitive path through Core is documented.
+
+The memory family consumes a second abstraction from that same package —
+`IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application
+supplies. This adds no dependency: the abstraction ships in the package Core already brings, and
+taking it as an argument is precisely what keeps the choice of embedding backend with the
+application rather than with this package.
 
 The dependency runs in exactly one direction: Tools depends on Core, never the reverse, and no
 other capability package depends on Tools. The package is a peer of the other packs an application

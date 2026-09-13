@@ -1,0 +1,91 @@
+---
+# Software Unit Requirements for MemoryRecallTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryRecallTool Requirements
+            requirements:
+              - id: AgentKitTools-Memory-RecallTool-ToolName
+                title: >-
+                  The recall tool shall be published as memory_recall and shall carry a
+                  description the model can choose it by.
+                justification: |
+                  The name and the description are the model's only means of choosing the tool,
+                  and publishing the name as a constant keeps the name a test asserts from
+                  drifting from the name a model is offered.
+                tests:
+                  - MemoryRecallTool_Create_CarriesItsPublishedNameAndDescription
+
+              - id: AgentKitTools-Memory-RecallTool-GuardedConstruction
+                title: >-
+                  The recall tool shall be constructed through the guarded construction path and
+                  shall require its store, its embedding generator and the author's controls.
+                justification: |
+                  A tool built any other way has its result flattened before a provider sees it,
+                  and a tool missing a collaborator could be attached to an agent while searching
+                  nothing. Each omission is named at the point the composing application made it.
+                tests:
+                  - MemoryRecallTool_Create_MissingCollaborator_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Memory-RecallTool-WholeMatches
+                title: >-
+                  The recall tool shall return each match whole — identifier, descriptor, details,
+                  source document, source locator and similarity — as structured data.
+                justification: |
+                  Returning only descriptors or a snippet was the shape that made a recall
+                  useless: the model found the right memory and still could not answer from it.
+                  Structured rather than prose because whatever shape a tool emits is the shape
+                  the model mirrors back, and a list of fielded matches teaches attribution where
+                  a paragraph teaches blurring. Each match carries its own identifier so the
+                  model can act on the memory it means without a second call.
+                tests:
+                  - MemoryRecallTool_Recall_MatchingQuery_ReturnsDescriptorDetailsAndProvenance
+
+              - id: AgentKitTools-Memory-RecallTool-DescriptorSearch
+                title: >-
+                  The recall tool shall compare the query against descriptors alone and never
+                  against detail payloads.
+                justification: |
+                  The details were never embedded, so what a recall matches against is the one
+                  short sentence a memory was filed under. This is why the file tool tells the
+                  model to write a descriptor the way a later question would be asked: the two
+                  texts meet in vector space and nowhere else.
+                tests:
+                  - MemoryRecallTool_Recall_SearchesDescriptorsAndNotDetails
+
+              - id: AgentKitTools-Memory-RecallTool-RecallCountGoverns
+                title: >-
+                  The recall tool shall return no more matches than the count the application
+                  author configured, and shall publish no parameter by which the model can change
+                  it.
+                justification: |
+                  Each match costs real context because it returns a whole payload. The author
+                  configures the count once against their own budget; a model that could raise it
+                  would be spending a budget it cannot see.
+                tests:
+                  - MemoryRecallTool_Recall_RecallCountGovernsHowManyComeBack
+
+              - id: AgentKitTools-Memory-RecallTool-EmptyStore
+                title: >-
+                  The recall tool shall report an empty store as an empty match list rather than
+                  as a refusal, without spending an embedding call to do so.
+                justification: |
+                  A refusal would invite the model to conclude the tool is broken the first time
+                  it asks, which is exactly the moment the store is legitimately empty. The
+                  embedding call is the expensive part of a recall and there is nothing for its
+                  result to be compared against, so skipping it is both cheaper and unobservable.
+                tests:
+                  - MemoryRecallTool_Recall_EmptyStore_ReturnsNoMatchesWithoutEmbedding
+
+              - id: AgentKitTools-Memory-RecallTool-MissingQueryRefused
+                title: >-
+                  The recall tool shall refuse a missing query as a returned result.
+                justification: |
+                  The model supplied the malformed call, so it is refused rather than thrown: a
+                  returned refusal lets the model correct itself, where an exception would end
+                  its turn.
+                tests:
+                  - MemoryRecallTool_Recall_MissingQuery_IsAReturnedRefusal

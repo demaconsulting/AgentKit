@@ -718,6 +718,156 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Todo/TodoPack.cs"           # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Todo/TodoPackTests.cs"  # unit tests
 
+  # AgentKitTools-Memory Review (one per subsystem)
+  - id: AgentKitTools-Memory
+    title: Review that AgentKitTools Memory Satisfies Subsystem Requirements
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory.yaml"                   # subsystem requirements
+      - "docs/design/agent-kit-tools/memory.md"                        # subsystem design
+      - "docs/verification/agent-kit-tools/memory.md"                  # subsystem verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryEmbedding.cs"  # shared embedding helper
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryDenials.cs"    # shared denial helper
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryTests.cs"  # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/StubEmbeddingGenerator.cs"  # offline embedding fixture
+
+  # AgentKitTools-Memory-MemoryOptions Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryOptions
+    title: Review that AgentKitTools Memory MemoryOptions Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-options.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-options.md"         # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-options.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryOptions.cs"    # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryOptionsTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryRecord Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryRecord
+    title: Review that AgentKitTools Memory MemoryRecord Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-record.yaml"     # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-record.md"          # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-record.md"    # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryRecord.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryRecordTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryStore Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryStore
+    title: Review that AgentKitTools Memory MemoryStore Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-store.yaml"      # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-store.md"           # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-store.md"     # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryStore.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryStoreTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryFileTool Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryFileTool
+    title: Review that AgentKitTools Memory MemoryFileTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-file-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-file-tool.md"       # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-file-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryFileTool.cs"   # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryFileToolTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryRecallTool Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryRecallTool
+    title: Review that AgentKitTools Memory MemoryRecallTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-recall-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-recall-tool.md"     # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-recall-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryRecallTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryRecallToolTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryUpdateTool Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryUpdateTool
+    title: Review that AgentKitTools Memory MemoryUpdateTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-update-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-update-tool.md"     # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-update-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryUpdateTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryUpdateToolTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryReviseTool Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryReviseTool
+    title: Review that AgentKitTools Memory MemoryReviseTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-revise-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-revise-tool.md"     # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-revise-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryReviseTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryReviseToolTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryForgetTool Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryForgetTool
+    title: Review that AgentKitTools Memory MemoryForgetTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-forget-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-forget-tool.md"     # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-forget-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryForgetTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryForgetToolTests.cs"  # unit tests
+
+  # AgentKitTools-Memory-MemoryPack Review (one per unit)
+  - id: AgentKitTools-Memory-MemoryPack
+    title: Review that AgentKitTools Memory MemoryPack Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/memory.md"
+      - "docs/reqstream/agent-kit-tools/memory.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/memory/memory-pack.yaml"       # unit requirements
+      - "docs/design/agent-kit-tools/memory/memory-pack.md"            # unit design
+      - "docs/verification/agent-kit-tools/memory/memory-pack.md"      # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryPack.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryPackTests.cs"  # unit tests
+
   # AgentKitTools-Agent Review (one per subsystem)
   - id: AgentKitTools-Agent
     title: Review that AgentKitTools Agent Satisfies Subsystem Requirements

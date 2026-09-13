@@ -1,0 +1,64 @@
+---
+# Software Unit Requirements for MemoryOptions
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryOptions Requirements
+            requirements:
+              - id: AgentKitTools-Memory-Options-Defaults
+                title: >-
+                  The memory controls shall publish a default near-duplicate threshold of 0.88
+                  and a default recall count of 5, both as named constants and as the values a
+                  caller receives when configuring nothing.
+                justification: |
+                  The threshold is a measured starting point: over a seventeen-document technical
+                  corpus, two contradicting statements of one fact scored 0.965 cosine while
+                  unrelated statements sat well below 0.88, so a threshold in the high eighties
+                  catches restatements without merging two different facts about one subject. A
+                  recall count of 5 reflects that each match returns a whole detail payload and
+                  therefore costs real context. Publishing both as constants keeps the numbers
+                  that appear in requirements from drifting from the numbers that ship.
+                tests:
+                  - MemoryOptions_Constructor_NoArguments_UsesThePublishedDefaults
+                  - MemoryOptions_Default_CarriesThePublishedDefaults
+
+              - id: AgentKitTools-Memory-Options-IndependentControls
+                title: >-
+                  The memory controls shall let one control be replaced without restating the
+                  other.
+                justification: |
+                  An author who wants a tighter recall budget should not have to restate a
+                  threshold they were content with, and a builder existing solely to make that
+                  convenient would be more API than the two values justify.
+                tests:
+                  - MemoryOptions_Constructor_OneArgument_LeavesTheOtherAtItsDefault
+
+              - id: AgentKitTools-Memory-Options-BoundaryValues
+                title: >-
+                  The memory controls shall accept a threshold of 0.0 and of 1.0 and a recall
+                  count of zero.
+                justification: |
+                  A threshold of 1.0 admits everything that is not a numerically exact match and
+                  0.0 treats the nearest memory as a duplicate of anything; a recall count of
+                  zero is the expressible way to attach the family and have recall return
+                  nothing. All three are legitimate author configurations rather than mistakes,
+                  and second-guessing them would be the library overruling the author.
+                tests:
+                  - MemoryOptions_Constructor_BoundaryValues_AreAccepted
+
+              - id: AgentKitTools-Memory-Options-Validation
+                title: >-
+                  The memory controls shall reject a threshold that is not a number in the
+                  inclusive range 0.0 to 1.0 and a negative recall count, rather than clamping
+                  them.
+                justification: |
+                  A clamped control is one the author believes they set and did not. A NaN
+                  threshold is the worst case of all: it compares false against everything, so it
+                  would silently disable near-duplicate detection rather than announcing that it
+                  had been misconfigured.
+                tests:
+                  - MemoryOptions_Constructor_ThresholdOutOfRange_ThrowsArgumentOutOfRangeException
+                  - MemoryOptions_Constructor_NegativeRecallCount_ThrowsArgumentOutOfRangeException

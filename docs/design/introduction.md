@@ -87,6 +87,20 @@ software items, specifically:
 - **TodoRemoveTool (Unit)** — Publishes the `todo_remove` tool
 - **TodoPack (Unit)** — Publishes the todo family as one pack, and the instruction an application
   must give an agent for the family to be used at all
+- **Memory (Subsystem)** — The memory tool family: a searchable record of what an agent has learned,
+  each memory a short embedded descriptor with a richer never-embedded payload and its provenance,
+  published as one pack
+- **MemoryOptions (Unit)** — The author's near-duplicate threshold and recall count
+- **MemoryRecord (Unit)** — One memory, and the memory-plus-similarity pair a search returns
+- **MemoryStore (Unit)** — The substitutable persistence contract for memories and its default
+  in-process implementation
+- **MemoryFileTool (Unit)** — Publishes the `memory_file` tool
+- **MemoryRecallTool (Unit)** — Publishes the `memory_recall` tool
+- **MemoryUpdateTool (Unit)** — Publishes the `memory_update` tool
+- **MemoryReviseTool (Unit)** — Publishes the `memory_revise` tool
+- **MemoryForgetTool (Unit)** — Publishes the `memory_forget` tool
+- **MemoryPack (Unit)** — Publishes the memory family as one pack, taking the embedding generator,
+  the author's controls and optional substitute persistence from the composing application
 - **Agent (Subsystem)** — The agent tool family: delegation of a task to another agent the
   application registered by name, published as one capability-gated pack
 - **AgentProfile (Unit)** — One named child agent the application is willing to have started: its
@@ -153,12 +167,13 @@ introduced when a system in this repository has enough units that architectural 
 between them carry real information.
 
 The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
-guarded tool families built on the AgentKitCore contract. It ships six families today, each its
+guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
 `Markdown`, which outlines a document's headings with their line ranges;
 `Image`, which reads images and PDF documents for a vision-capable agent; `Todo`, which gives an
-agent one flat task list of its own; and `Agent`, which delegates a task to another agent the
+agent one flat task list of its own; `Memory`, which gives an agent a searchable record of what it
+has learned; and `Agent`, which delegates a task to another agent the
 application registered. All compose through
 the same guarded construction path and pack contract Core publishes. `AgentKitTools` is a peer of
 the other capability packages an application may attach, depending on `AgentKitCore` but never
@@ -219,6 +234,18 @@ src/DemaConsulting.AgentKit.Tools/
 ├── Markdown/
 │   ├── MarkdownOutlineTool.cs   — the markdown_outline tool
 │   └── MarkdownPack.cs          — publishes the Markdown family as one pack
+├── Memory/
+│   ├── MemoryDenials.cs         — shared refusals the identifier-taking tools compose
+│   ├── MemoryEmbedding.cs       — shared descriptor-to-vector helper; adds no task prefix
+│   ├── MemoryFileTool.cs        — the memory_file tool and near-duplicate detection
+│   ├── MemoryForgetTool.cs      — the memory_forget tool
+│   ├── MemoryOptions.cs         — the author's near-duplicate threshold and recall count
+│   ├── MemoryPack.cs            — publishes the memory family as one pack
+│   ├── MemoryRecallTool.cs      — the memory_recall tool
+│   ├── MemoryRecord.cs          — one memory, and one memory as a search found it
+│   ├── MemoryReviseTool.cs      — the memory_revise tool, with settable provenance
+│   ├── MemoryStore.cs           — the persistence contract and its in-process default
+│   └── MemoryUpdateTool.cs      — the memory_update tool
 ├── Todo/
 │   ├── TodoListTool.cs          — the todo_list tool
 │   ├── TodoPack.cs              — publishes the todo family as one pack

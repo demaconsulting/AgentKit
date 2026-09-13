@@ -1,0 +1,136 @@
+---
+# Software Unit Requirements for MemoryFileTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryFileTool Requirements
+            requirements:
+              - id: AgentKitTools-Memory-FileTool-ToolName
+                title: >-
+                  The file tool shall be published as memory_file and shall carry a description
+                  the model can choose it by.
+                justification: |
+                  The name and the description are the model's only means of choosing the tool,
+                  and publishing the name as a constant keeps the name a test asserts from
+                  drifting from the name a model is offered.
+                tests:
+                  - MemoryFileTool_Create_CarriesItsPublishedNameAndDescription
+
+              - id: AgentKitTools-Memory-FileTool-GuardedConstruction
+                title: >-
+                  The file tool shall be constructed through the guarded construction path and
+                  shall require its store, its embedding generator and the author's controls.
+                justification: |
+                  A tool built any other way has its result flattened before a provider sees it,
+                  and a tool missing a collaborator could be attached to an agent while filing
+                  into nothing. Each omission is named at the point the composing application
+                  made it.
+                tests:
+                  - MemoryFileTool_Create_MissingCollaborator_ThrowsArgumentNullException
+                  - MemoryFileTool_Create_CarriesItsPublishedNameAndDescription
+
+              - id: AgentKitTools-Memory-FileTool-StoresNewMemory
+                title: >-
+                  The file tool shall store a memory whose descriptor is not a near-duplicate,
+                  and shall report that it was stored, the identifier it was given and the size
+                  of the store.
+                justification: |
+                  The identifier is what the model needs to update, revise or forget the memory
+                  later, and stating the size of the store keeps it from recalling merely to
+                  check its own write. Reporting storage as a field rather than as prose is what
+                  makes the non-storage case readable by contrast.
+                tests:
+                  - MemoryFileTool_File_NewDescriptor_StoresTheMemory
+
+              - id: AgentKitTools-Memory-FileTool-DescriptorOnlyEmbedded
+                title: >-
+                  The file tool shall embed the descriptor and nothing else.
+                justification: |
+                  Embedding the details as well would reintroduce exactly the tension the
+                  descriptor/payload split exists to remove, and would make a long payload
+                  degrade the findability of the memory it belongs to. One embedding call per
+                  filed memory is also the whole embedding cost of the family's write path.
+                tests:
+                  - MemoryFileTool_File_OnlyTheDescriptorIsEmbedded
+
+              - id: AgentKitTools-Memory-FileTool-NearDuplicateNotStored
+                title: >-
+                  The file tool shall compare a new descriptor against the nearest stored memory
+                  before storing anything, and shall not store a memory whose nearest match
+                  reaches the configured threshold.
+                justification: |
+                  Checking before storing rather than after is what keeps a detected
+                  near-duplicate out of the store. Only the nearest match is examined because the
+                  store returns matches nearest first, so a nearest match below the threshold
+                  proves every other memory is below it too.
+                tests:
+                  - MemoryFileTool_File_NearDuplicateDescriptor_IsNotStoredAndNamesTheConflict
+
+              - id: AgentKitTools-Memory-FileTool-StructuredNonStorage
+                title: >-
+                  The file tool shall report a near-duplicate as structured data carrying an
+                  unambiguous stored flag, the conflicting memory's identifier, descriptor and
+                  details, the similarity and the threshold applied, and shall name no other tool.
+                justification: |
+                  This is a defect fix. When the same outcome was reported as a prose sentence in
+                  the originating spike, the model went on to assert that it had stored the fact;
+                  a field named stored holding false is not open to that reading. The conflicting
+                  memory is handed over because it is what the model would otherwise have to
+                  search for, and the similarity and threshold are included because they are why
+                  this happened. Naming another tool is excluded because a tool result that
+                  prescribes is a demonstration the model imitates.
+                tests:
+                  - MemoryFileTool_File_NearDuplicateDescriptor_IsNotStoredAndNamesTheConflict
+                  - MemoryFileTool_File_NearDuplicateResult_NamesNoOtherTool
+
+              - id: AgentKitTools-Memory-FileTool-ThresholdGoverns
+                title: >-
+                  The file tool shall decide near-duplication by the threshold the application
+                  author configured, and shall offer the model no way to store a memory the
+                  threshold excluded.
+                justification: |
+                  A control a model can overrule is not a control. An author who wants
+                  near-duplicates stored changes the threshold; there is deliberately no
+                  force-anyway argument, because the first thing a model does when told it may
+                  insist is insist.
+                tests:
+                  - MemoryFileTool_File_ThresholdGovernsTheDecision
+
+              - id: AgentKitTools-Memory-FileTool-Provenance
+                title: >-
+                  The file tool shall hold the source document and locator the model stated, and
+                  shall hold a blank one as an absence.
+                justification: |
+                  A stored empty string would be reported back on every recall as a source that
+                  exists and says nothing, which reads to a model as a citation it can repeat.
+                  An honest absence is both truthful and visibly incomplete.
+                tests:
+                  - MemoryFileTool_File_Provenance_IsHeldAsStated
+
+              - id: AgentKitTools-Memory-FileTool-MissingArgumentsRefused
+                title: >-
+                  The file tool shall refuse a missing descriptor and missing details as returned
+                  results, storing nothing.
+                justification: |
+                  The model supplied the malformed call, so it is refused rather than thrown: a
+                  returned refusal lets the model correct itself, where an exception would end
+                  its turn. A memory holding only a descriptor carries nothing a later answer
+                  could be built from, so details are as required as the descriptor.
+                tests:
+                  - MemoryFileTool_File_MissingArguments_AreReturnedRefusals
+
+              - id: AgentKitTools-Memory-FileTool-GeneratorFaultPropagates
+                title: >-
+                  The file tool shall report an embedding backend that produces no vector as a
+                  fault rather than as a refusal.
+                justification: |
+                  A refusal is for a request the model could have made differently. An embedding
+                  backend that is unreachable or misconfigured is a host fault the model can do
+                  nothing about, and telling it the memory was not stored — while the real
+                  problem is that nothing can be stored at all — invites it to keep trying. The
+                  host is the party that can fix it, so the host is the party told.
+                tests:
+                  - MemoryFileTool_File_GeneratorProducesNothing_ThrowsInvalidOperationException

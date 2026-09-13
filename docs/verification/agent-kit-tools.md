@@ -21,7 +21,8 @@ verification; see _File Subsystem Verification Design_ and _Markdown Subsystem V
 The Image family, gated on the Vision capability, likewise has its own; see _Image
 Subsystem Verification Design_. The Todo family and the Agent family — the latter gated on the
 Delegation capability — likewise have their own; see _Todo Subsystem Verification Design_ and
-_Agent Subsystem Verification Design_. The families introduced in subsequent increments are
+_Agent Subsystem Verification Design_. The Memory family likewise has its own; see _Memory
+Subsystem Verification Design_. The families introduced in subsequent increments are
 verified the same way.
 
 One scenario at this level is genuinely cross-family rather than compositional: a delegated agent
@@ -121,6 +122,17 @@ Verifies that attaching the Todo pack contributes that family's tools to a compo
 one family prefix the pack claims. Constructs a real access policy, adds `TodoPack` to a
 `ToolPackBuilder` governed by it, and asserts the composed list is exactly `todo_list`, `todo_set`
 and `todo_remove`.
+
+### Composition: The Memory Family Is Contributed to a Composition
+
+**Test**: `AgentKitTools_SystemComposition_MemoryPack_ContributesTheMemoryFamily`
+
+Verifies that attaching the Memory pack contributes that family's tools to a composition, under the
+one family prefix the pack claims. Constructs a real access policy and a deterministic offline
+embedding generator, adds `MemoryPack` to a `ToolPackBuilder` governed by that policy, and asserts
+the composed list is exactly `memory_file`, `memory_recall`, `memory_update`, `memory_revise` and
+`memory_forget`. No real embedding backend is involved: the family is composable without one being
+reachable, and which backend an application chose is invisible to this package.
 
 ### Composition: The Agent Family Is Contributed to a Delegating Host
 

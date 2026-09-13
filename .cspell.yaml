@@ -55,6 +55,7 @@ words:
   - NTFS
   - APFS
   - Ollama
+  - ONNX
   - qwen
   - postconditions
   - unserialized

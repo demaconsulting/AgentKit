@@ -1,0 +1,85 @@
+---
+# Software Unit Requirements for MemoryUpdateTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryUpdateTool Requirements
+            requirements:
+              - id: AgentKitTools-Memory-UpdateTool-ToolName
+                title: >-
+                  The update tool shall be published as memory_update and shall carry a
+                  description the model can choose it by.
+                justification: |
+                  The name and the description are the model's only means of choosing the tool,
+                  and publishing the name as a constant keeps the name a test asserts from
+                  drifting from the name a model is offered.
+                tests:
+                  - MemoryUpdateTool_Create_RequiresAStoreAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-UpdateTool-GuardedConstruction
+                title: >-
+                  The update tool shall be constructed through the guarded construction path,
+                  shall require its store, and shall take no embedding generator.
+                justification: |
+                  A tool built any other way has its result flattened before a provider sees it.
+                  Taking no generator is not an omission but the unit's defining property: an
+                  update embeds nothing, and a tool that held a generator it never used would
+                  invite a later change to start using it.
+                tests:
+                  - MemoryUpdateTool_Create_RequiresAStoreAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-UpdateTool-DetailsOnly
+                title: >-
+                  The update tool shall replace a memory's details and shall leave its descriptor,
+                  its provenance and its vector unchanged.
+                justification: |
+                  Most corrections are to a memory that is still about the right thing, and
+                  re-embedding an unchanged descriptor would cost a round trip to produce the
+                  same vector. Leaving the descriptor alone is also a safety property: changing
+                  it without recomputing the vector would leave the memory findable only under
+                  its old meaning, findable by the wrong questions and invisible to the right
+                  ones. Provenance is untouched because details corrected from a different source
+                  are a revision, and a memory citing a document it no longer reflects is the
+                  defect this family exists to avoid.
+                tests:
+                  - MemoryUpdateTool_Update_KnownMemory_ReplacesDetailsAlone
+
+              - id: AgentKitTools-Memory-UpdateTool-EchoesUnchangedParts
+                title: >-
+                  The update tool shall report the descriptor and the provenance the memory still
+                  carries, stating explicitly when it carries none.
+                justification: |
+                  What the memory is still filed under and still cites are the facts most likely
+                  to be wrong in the model's own head after an update. The explicit
+                  source-stated flag is not redundant: an absent field and a field the reader did
+                  not notice look identical in JSON, so an absence is asserted rather than
+                  implied.
+                tests:
+                  - MemoryUpdateTool_Update_ResultEchoesDescriptorAndProvenance
+
+              - id: AgentKitTools-Memory-UpdateTool-UnknownIdentifier
+                title: >-
+                  The update tool shall refuse an identifier the store does not hold, stating the
+                  identifier and how many memories are held, and naming no other tool.
+                justification: |
+                  The size of the store distinguishes the two situations a model confuses: an
+                  identifier it mistyped, and one it invented for a memory that was never stored.
+                  The held identifiers are deliberately not listed, because a store may hold
+                  thousands of machine-assigned identifiers. Naming another tool is excluded
+                  because a refusal that prescribes is a demonstration the model imitates.
+                tests:
+                  - MemoryUpdateTool_Update_UnknownIdentifier_IsARefusalStatingFactsOnly
+
+              - id: AgentKitTools-Memory-UpdateTool-MissingArgumentsRefused
+                title: >-
+                  The update tool shall refuse a missing identifier and missing details as
+                  returned results, leaving the memory unchanged.
+                justification: |
+                  The model supplied the malformed call, so it is refused rather than thrown. An
+                  update with no details has nothing to replace the memory's details with, so
+                  accepting it would either erase the payload or silently do nothing.
+                tests:
+                  - MemoryUpdateTool_Update_MissingArguments_AreReturnedRefusals

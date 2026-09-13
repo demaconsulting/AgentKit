@@ -4,6 +4,7 @@ using DemaConsulting.AgentKit.Tools.Agent;
 using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.Markdown;
+using DemaConsulting.AgentKit.Tools.Memory;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Todo;
 using Microsoft.Extensions.AI;
@@ -140,6 +141,27 @@ public class AgentKitToolsTests
 
         // Assert: the vision requirement is unmet, so the family contributes nothing
         Assert.Empty(tools);
+    }
+
+    /// <summary>
+    ///     Proves that attaching the Memory pack contributes the memory family to a composition,
+    ///     under the one family prefix the pack claims.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_MemoryPack_ContributesTheMemoryFamily()
+    {
+        // Arrange: a policy governing a composition with the memory family attached
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+        var builder = new ToolPackBuilder(policy)
+            .Add(new MemoryPack(new Memory.StubEmbeddingGenerator()));
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: the family's five tools are published, each under the family prefix
+        Assert.Equal(
+            ["memory_file", "memory_recall", "memory_update", "memory_revise", "memory_forget"],
+            tools.Select(tool => tool.Name));
     }
 
     /// <summary>

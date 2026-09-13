@@ -27,6 +27,7 @@ public class XmlDocExampleTests
             "DemaConsulting.AgentKit.Tools.File",
             "DemaConsulting.AgentKit.Tools.Image",
             "DemaConsulting.AgentKit.Tools.Markdown",
+            "DemaConsulting.AgentKit.Tools.Memory",
             "DemaConsulting.AgentKit.Tools.TextFile",
             "DemaConsulting.AgentKit.Tools.Todo",
             "Microsoft.Extensions.AI");

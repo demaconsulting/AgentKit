@@ -1,0 +1,117 @@
+---
+# Software Unit Requirements for MemoryReviseTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Memory Requirements
+        sections:
+          - title: MemoryReviseTool Requirements
+            requirements:
+              - id: AgentKitTools-Memory-ReviseTool-ToolName
+                title: >-
+                  The revise tool shall be published as memory_revise and shall carry a
+                  description the model can choose it by.
+                justification: |
+                  The name and the description are the model's only means of choosing the tool,
+                  and publishing the name as a constant keeps the name a test asserts from
+                  drifting from the name a model is offered. The description states that an
+                  omitted source clears the source, because a model that did not know this would
+                  omit the argument meaning "unchanged" and get "none".
+                tests:
+                  - MemoryReviseTool_Create_RequiresCollaboratorsAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-ReviseTool-GuardedConstruction
+                title: >-
+                  The revise tool shall be constructed through the guarded construction path and
+                  shall require its store and its embedding generator.
+                justification: |
+                  A tool built any other way has its result flattened before a provider sees it,
+                  and a revision without a generator could not recompute the vector that is the
+                  point of the operation. Each omission is named at the point the composing
+                  application made it.
+                tests:
+                  - MemoryReviseTool_Create_RequiresCollaboratorsAndCarriesItsPublishedName
+
+              - id: AgentKitTools-Memory-ReviseTool-ReEmbeds
+                title: >-
+                  The revise tool shall replace a memory's descriptor and details and shall
+                  recompute its vector, keeping its identifier.
+                justification: |
+                  A revision changes what the memory is about, so it must change how the memory
+                  is found; keeping the old vector would leave it findable only under its
+                  previous meaning. The identifier is kept so that an identifier the model has
+                  already read back stays valid across the correction.
+                tests:
+                  - MemoryReviseTool_Revise_KnownMemory_ReplacesDescriptorDetailsAndVector
+
+              - id: AgentKitTools-Memory-ReviseTool-SettableProvenance
+                title: >-
+                  The revise tool shall publish source document and source locator parameters,
+                  shall set the memory's provenance to exactly what the caller states, and shall
+                  report the provenance the memory then carries.
+                tags: [compliance]
+                justification: |
+                  This is a defect fix. The originating spike's revision silently preserved the
+                  original source, so a fact revised from a different document went on citing the
+                  superseded one — observed with details drawn from a revision document beside a
+                  structured field still naming the initial one. The tool knew the memory had
+                  changed, kept data it had every reason to believe was stale, and gave the model
+                  no way to correct it. Reporting the resulting provenance makes what happened
+                  visible rather than assumed. No policy about whether sources replace,
+                  accumulate or require corroboration is imposed: that is the application
+                  author's instruction to give, and the tool's only job is not to silently keep
+                  wrong data.
+                tests:
+                  - MemoryReviseTool_Revise_StatedProvenance_ReplacesTheSupersededSource
+                  - MemoryReviseTool_Create_PublishesProvenanceParameters
+
+              - id: AgentKitTools-Memory-ReviseTool-NoSilentInheritance
+                title: >-
+                  The revise tool shall clear provenance the caller did not state rather than
+                  inheriting the memory's previous provenance, and shall report that the memory
+                  now carries none.
+                tags: [compliance]
+                justification: |
+                  Inheriting silently is the original defect wearing a different hat: the tool
+                  would again be asserting a source for text it knows has been rewritten. An
+                  explicit source-stated flag is reported because an absent field and a field the
+                  reader did not notice look identical in JSON.
+                tests:
+                  - MemoryReviseTool_Revise_OmittedProvenance_ClearsTheSourceAndReportsIt
+
+              - id: AgentKitTools-Memory-ReviseTool-NotDuplicateChecked
+                title: >-
+                  The revise tool shall not apply near-duplicate detection.
+                justification: |
+                  Near-duplicate detection exists to stop a second memory being filed about a
+                  fact already held. A revision names one existing memory and changes it, so
+                  there is no second memory to prevent — and because most corrections keep
+                  wording close to the original, checking would refuse the very corrections the
+                  family exists to make possible, including a memory being refused against
+                  itself.
+                tests:
+                  - MemoryReviseTool_Revise_DescriptorCloseToItsOwn_IsNotRefusedAsADuplicate
+
+              - id: AgentKitTools-Memory-ReviseTool-UnknownIdentifier
+                title: >-
+                  The revise tool shall refuse an identifier the store does not hold before
+                  spending an embedding call, stating the identifier and how many memories are
+                  held.
+                justification: |
+                  Looking the memory up first means a revision naming a wrong identifier costs
+                  nothing at the embedding backend. The refusal states facts and names no other
+                  tool, because a refusal that prescribes is a demonstration the model imitates.
+                tests:
+                  - MemoryReviseTool_Revise_UnknownIdentifier_IsRefusedWithoutEmbedding
+
+              - id: AgentKitTools-Memory-ReviseTool-MissingArgumentsRefused
+                title: >-
+                  The revise tool shall refuse a missing identifier, a missing descriptor and
+                  missing details as returned results, leaving the memory unchanged.
+                justification: |
+                  The model supplied the malformed call, so it is refused rather than thrown. A
+                  revision replaces everything the memory holds, so a revision missing either
+                  half would leave the memory carrying nothing or findable by nothing.
+                tests:
+                  - MemoryReviseTool_Revise_MissingArguments_AreReturnedRefusals
