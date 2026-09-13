@@ -165,4 +165,40 @@ public class MemoryPackTests
         Assert.Contains(MemoryRecallTool.ToolName, MemoryPack.SuggestedInstruction, StringComparison.Ordinal);
         Assert.Contains("per document", MemoryPack.SuggestedInstruction, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    ///     Proves the published instruction tells an agent that the source of a correction decides
+    ///     which tool makes it, and that a revision must cite the new document.
+    /// </summary>
+    /// <remarks>
+    ///     This sentence exists because of an observed failure: offered a conflict raised by a
+    ///     different document, a model repeatedly reached for <c>memory_update</c>, which retains
+    ///     the provenance the memory already carried, leaving corrected text beside a citation of
+    ///     the superseded source. Nothing in the tools can decide which source a corrected memory
+    ///     should cite, so the guidance lives in the instruction — and is pinned here so it cannot
+    ///     be edited away unnoticed.
+    /// </remarks>
+    [Fact]
+    public void MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource()
+    {
+        // Assert: both correction tools are named, each bound to the case it belongs to, and the
+        // consequence of confusing them is stated
+        Assert.Multiple(
+            () => Assert.Contains(
+                MemoryUpdateTool.ToolName,
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                MemoryReviseTool.ToolName,
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                "when it comes from a different document",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                "superseded",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal));
+    }
 }

@@ -1,0 +1,170 @@
+---
+# Live Model Samples
+#
+# Exercises the runnable samples against a REAL model, which the ordinary CI pipeline
+# deliberately does not do: every test in build.yaml is hermetic and offline, so nothing in
+# the merge gate can tell whether an agent actually plans, files, recalls and delegates when a
+# live model is behind it. This workflow answers that question, and it is kept separate for
+# three reasons: it costs model quota, it is non-deterministic, and it needs a credential a
+# pull request from a fork can never have.
+#
+# It NEVER runs on a pull request or an ordinary push. It runs when someone dispatches it, and
+# on a weekly schedule. It cannot break the merge gate, because it is not part of it.
+#
+# When no credential is configured the workflow does not fail: it reports that it was skipped
+# and exits successfully, so a fork or a repository without the secret sees a clean result
+# rather than a red cross it can do nothing about.
+
+name: Live Model Samples
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model to run the samples against (blank for the provider default)'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 6 * * 2'  # 6AM UTC every Tuesday, a day after the weekly build
+
+permissions:
+  contents: read
+
+jobs:
+  live-samples:
+    name: Live Model Samples
+    runs-on: ubuntu-latest
+
+    env:
+      # The Copilot runtime authenticates from the environment. A dedicated secret is used
+      # rather than the automatic workflow token, because the automatic token is not a Copilot
+      # credential and would fail in a way that looks like a broken sample.
+      GH_TOKEN: ${{ secrets.COPILOT_GH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # === CREDENTIAL CHECK ===
+      # Decides, once, whether a live run is possible. Every later step is conditional on this,
+      # so an unconfigured repository produces a successful, clearly explained no-op rather
+      # than a failure.
+
+      - name: Check for credentials
+        id: credentials
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No COPILOT_GH_TOKEN secret is configured; skipping the live-model run."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup dotnet
+        if: steps.credentials.outputs.available == 'true'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Build samples
+        if: steps.credentials.outputs.available == 'true'
+        run: >
+          dotnet build
+          --configuration Release
+          samples/research-assistant/DemaConsulting.AgentKit.Samples.ResearchAssistant.csproj
+          samples/document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj
+
+      # === RESEARCH ASSISTANT ===
+      # Three turns on one session, because the behavior under test spans turns: a plan made in
+      # the first, a contradiction raised in the second, and a question answered from what was
+      # recorded in the third. The offline embedding backend is used deliberately — this job
+      # exists to exercise the MODEL, and a second live service would only add a second way for
+      # it to fail for reasons that have nothing to do with AgentKit.
+
+      - name: Run research-assistant against a live model
+        if: steps.credentials.outputs.available == 'true'
+        timeout-minutes: 25
+        run: >
+          dotnet run --no-build --configuration Release
+          --project samples/research-assistant --
+          --corpus samples/research-assistant/workspace
+          --notes "${{ runner.temp }}/research-notes"
+          --transcript "${{ runner.temp }}/research-transcript.txt"
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --prompt "Plan a review of every document in the corpus and carry the plan out.
+          Delegate the reading of 01-initial-spec.md to a child agent, and record what you learn."
+          --prompt "Now read 02-field-revision.md and correct anything you recorded that it supersedes."
+          --prompt "What is the relief valve set to, and which document is your source for that?"
+
+      # Asserts on the tool names the run actually emitted, not on the model's prose. Prose
+      # varies between runs; a tool name does not. Each assertion below corresponds to a claim
+      # the sample makes about itself, and a claim that cannot be checked is not asserted:
+      # nothing here asserts WHICH correction tool was chosen, because the sample's own
+      # instruction is the only lever on that and its adherence has not been measured.
+      - name: Assert the agent planned, remembered and delegated
+        if: steps.credentials.outputs.available == 'true'
+        shell: bash
+        run: |
+          transcript="${{ runner.temp }}/research-transcript.txt"
+          if [ ! -s "${transcript}" ]; then
+            echo "::error::No tool calls were recorded; the agent used no tools at all."
+            exit 1
+          fi
+
+          echo "Tool calls recorded:"
+          sort "${transcript}" | uniq -c | sort -rn
+
+          failed=0
+          for tool in todo_set memory_file memory_recall agent_run; do
+            if ! grep -qx "${tool}" "${transcript}"; then
+              echo "::error::The agent never called ${tool}."
+              failed=1
+            fi
+          done
+
+          # A correction was asked for in the second turn, so exactly one of the two correction
+          # tools must have been used. Which one is right depends on the source, and that is the
+          # author's instruction rather than a guarantee, so both are accepted here and the
+          # choice is reported for a human to read.
+          if grep -qx "memory_revise" "${transcript}"; then
+            echo "::notice::The correction was made with memory_revise (the instructed tool for a changed source)."
+          elif grep -qx "memory_update" "${transcript}"; then
+            echo "::warning::The correction was made with memory_update, which retains the original provenance."
+          else
+            echo "::error::The agent made no correction at all after being shown the superseding document."
+            failed=1
+          fi
+
+          exit "${failed}"
+
+      # === DOCUMENT ASSISTANT ===
+      # A far smaller check on the other consumption sample: that a composed tool set still
+      # reaches a live model and produces an answer from a real file.
+
+      - name: Run document-assistant against a live model
+        if: steps.credentials.outputs.available == 'true'
+        timeout-minutes: 10
+        run: >
+          dotnet run --no-build --configuration Release
+          --project samples/document-assistant --
+          --workspace samples/document-assistant/workspace
+          --session "${{ runner.temp }}/document-session"
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --prompt "Read welcome.txt and summarize it in one sentence."
+
+      # === ARTIFACTS ===
+      # The transcript and whatever the agent wrote are uploaded so a non-deterministic run can
+      # be read after the fact, which is the only way to understand why one behaved differently
+      # from another.
+
+      - name: Upload live run artifacts
+        if: always() && steps.credentials.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-samples
+          path: |
+            ${{ runner.temp }}/research-transcript.txt
+            ${{ runner.temp }}/research-notes/
+            ${{ runner.temp }}/document-session/
+          if-no-files-found: warn

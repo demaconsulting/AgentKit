@@ -116,10 +116,29 @@ public sealed class MemoryPack : IToolPack
     ///     written against the measured behavior. An application is free to write its own.
     ///     </para>
     ///     <para>
-    ///     Its two imperatives are the two the family needs and the two a model will not supply on
-    ///     its own: file as you read rather than at the end, and recall before answering rather than
-    ///     after deciding you already know. The granularity instruction is included because
-    ///     granularity is the one choice the model makes that the library cannot make for it.
+    ///     Its imperatives are the ones the family needs and a model will not supply on its own:
+    ///     file as you read rather than at the end, recall before answering rather than after
+    ///     deciding you already know, and — the one that costs a correction its provenance when it
+    ///     is missing — correct a fact from a <em>new</em> document with <c>memory_revise</c>,
+    ///     citing that document. The granularity instruction is included because granularity is the
+    ///     one choice the model makes that the library cannot make for it.
+    ///     </para>
+    ///     <para>
+    ///     <b>The revision sentence is here because of an observed failure, not a hypothetical
+    ///     one.</b> Offered a conflict raised by a different document, a model repeatedly chose
+    ///     <c>memory_update</c>, which retains the provenance the memory already carried; the
+    ///     memory then held corrected text beside a citation of the superseded source. It did so
+    ///     even though <c>memory_update</c> reports the source it retained and its own description
+    ///     says a changed source calls for a revision. Nothing in the tools can decide this — which
+    ///     source a corrected memory should cite is the author's policy, not the library's — so the
+    ///     instruction is where it belongs, and an application writing its own instructions should
+    ///     carry this sentence across.
+    ///     </para>
+    ///     <para>
+    ///     <b>No adherence figure is claimed for this text.</b> The task-list family's published
+    ///     1-of-5 versus 3-of-3 comparison was measured for that family's wording; nothing
+    ///     equivalent has been measured for this one, and a number borrowed from a neighbor would
+    ///     be a fabricated one.
     ///     </para>
     ///     <para>
     ///     It is deliberately not applied automatically. This library composes tools; it does not
@@ -130,10 +149,16 @@ public sealed class MemoryPack : IToolPack
     public const string SuggestedInstruction =
         "As you read anything you may need later, write it down with memory_file: one memory per "
         + "document or per section, a single short sentence as the descriptor and the fuller text "
-        + "as the details. Before answering any question, call memory_recall first and answer from "
+        + "as the details, and state the document you read it in. Before answering any question, "
+        + "call memory_recall first and answer from "
         + "what it returns — do not rely on what you think you already know. If memory_file reports "
         + "that a memory was not stored, read the conflicting memory it names and decide whether it "
-        + "is the same fact or a different one.";
+        + "is the same fact or a different one. When you correct something you already filed, the "
+        + "source decides the tool: use memory_update only when the correction comes from the same "
+        + "document the memory already cites, and use memory_revise when it comes from a different "
+        + "document — stating that new document as the source. memory_update keeps the source the "
+        + "memory already had, so using it for a correction drawn from a new document would leave "
+        + "the memory citing a superseded one.";
 
     /// <summary>
     ///     The embedding generator the application supplied.

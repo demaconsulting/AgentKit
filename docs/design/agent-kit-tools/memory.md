@@ -108,6 +108,37 @@ the model asserted that it had stored the fact. `memory_file` now returns struct
 `stored: false`, the conflicting memory's identifier, descriptor and details, the similarity and the
 threshold. A field named `stored` holding `false` is not open to the reading a sentence was.
 
+**The author's instruction, not the tool, decides which source a corrected memory cites.** The tool
+surface makes both corrections possible and makes neither one automatic: `memory_update` leaves
+provenance as it was and reports the source it retained, `memory_revise` sets provenance to exactly
+what the caller states. That is the mechanism, and it is complete. What it cannot do is choose. A
+live model offered a conflict raised by a _different_ document was repeatedly observed picking
+`memory_update` — leaving corrected text beside a citation of the superseded source — and it did so
+even though the update tool reports the source it kept and its own description says a changed source
+calls for a revision. Provenance came out right in every run only when the agent's instructions
+explicitly required the new document to be cited. The correct home for that requirement is therefore
+the instruction an application gives its agent, and `MemoryPack.SuggestedInstruction` carries it so
+an author can append it rather than rediscover it. It is deliberately _not_ enforced in tool
+behavior: whether a corrected memory should cite the new source, keep the first, or hold both is the
+author's policy over their own corpus, and a library that decided it would be governing rather than
+guaranteeing.
+
+**No adherence figure is claimed for the memory instruction.** The task-list family has a measured
+comparison — a soft instruction used in 1 of 5 runs against an explicit one in 3 of 3 — and that
+number belongs to that family's wording. Nothing equivalent has been measured for this family's
+suggested instruction, so none is stated here or anywhere else.
+
+**Recall applies no similarity floor, and an application should say so.** `memory_recall` returns
+the nearest memories the store holds up to the author's configured count, whatever their similarity,
+so a question about a subject never recorded still comes back with matches — whatever was least
+unlike it. This is deliberate: a floor would be a second threshold with no measurement behind it,
+and a recall that returned nothing would tell a model less than a recall that returns weak matches a
+model can read and reject. The consequence belongs in an application's instructions, because both
+failure modes have been seen — a model answering confidently from a nearest match that was not about
+the question, and a model reporting "no matches found" when two low-similarity matches had in fact
+been returned. An agent should be told to read each returned descriptor and judge whether it is
+actually about the question.
+
 **Denials state facts and never prescribe remedies.** This is a project-wide rule learned
 expensively: a denial that helpfully named a replacement tool was once followed by a model
 destroying a file. `MemoryDenials` holds the two refusals more than one tool composes — an

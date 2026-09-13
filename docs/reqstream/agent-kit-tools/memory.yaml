@@ -261,10 +261,14 @@ sections:
               just read it; the same effect was measured for the task-list family, where a soft
               instruction produced use in 1 of 5 runs against 3 of 3 for an explicit one.
               Publishing the wording as a constant lets an application append it rather than
-              transcribe it, and keeps the text that ships from drifting. It is not injected
+              transcribe it, and keeps the text that ships from drifting. It also carries the
+              guidance that a correction drawn from a different document is a revision citing that
+              document, which no tool can decide for the author. It is not injected
               automatically, because silently editing an agent's system prompt is an invisible
               behavior an application author cannot audit.
             children:
               - AgentKitTools-Memory-Pack-SuggestedInstruction
+              - AgentKitTools-Memory-Pack-SuggestedInstructionProvenance
             tests:
               - MemoryPack_SuggestedInstruction_NamesTheFilingAndRecallingTools
+              - MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource

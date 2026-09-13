@@ -28,11 +28,12 @@ project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 9 requirement scenarios below, covering 9 listed test method entries,
+A unit test run passes when all 10 requirement scenarios below, covering 10 listed test method entries,
 pass without error or exception beyond those explicitly asserted. Tools published in the wrong order,
 a host capability required, a pack constructible without an embedding generator, a policy accepted as
-null, two compositions sharing a default store, a supplied store not used, or a published instruction
-that does not name the tools it depends on constitutes a failure.
+null, two compositions sharing a default store, a supplied store not used, a published instruction
+that does not name the tools it depends on, or a published instruction that no longer binds a
+correction to the source it came from constitutes a failure.
 
 #### Test Scenarios
 
@@ -102,3 +103,14 @@ agents.
 
 The listed tests prove the published instruction names both the filing and the recall tool and
 states the granularity to file at.
+
+##### AgentKitTools-Memory-Pack-SuggestedInstructionProvenance: Correction Provenance
+
+**Test**: `MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource`
+
+The listed tests prove the published instruction names both correction tools, binds each to the
+case it belongs to — the update tool to a correction from the source already cited, the revision
+tool to one from a different document — and states the consequence of confusing them, that a
+memory would be left citing a superseded source. The scenario asserts on the published constant
+rather than on a model's behavior: what a model does with the wording is not a property this suite
+can establish, and no adherence figure is claimed for it anywhere.

@@ -4,15 +4,16 @@ Runnable applications that demonstrate AgentKit end to end against live models. 
 self-contained console application; none is a shipped library, so none is packed, published, or
 given an SBOM — they exist to be read and run.
 
-There are two, and they answer two different questions. Read the **document-assistant** sample to
+There are three, and they answer three different questions. Read the **document-assistant** sample to
 learn how to *consume* AgentKit: how an application composes the shipped tool packs onto a policy
-and hands the result to a provider. Read the **custom-tools** sample to learn how to *extend*
-AgentKit: how an application author writes their own guarded tools and publishes them as packs
-alongside the shipped ones.
+and hands the result to a provider. Read the **research-assistant** sample to learn how an agent
+*works across turns*: planning, remembering, and delegating safely. Read the **custom-tools** sample
+to learn how to *extend* AgentKit: how an application author writes their own guarded tools and
+publishes them as packs alongside the shipped ones.
 
-Both samples share the same provider-selection design — a tool set composed once, then a single
+All three share the same provider-selection design — a tool set composed once, then a single
 factory-selection switch choosing the runtime — so a reader who has seen one recognizes the shape
-of the other immediately.
+of the others immediately.
 
 ## [document-assistant](document-assistant/)
 
@@ -25,6 +26,25 @@ visible as they happen. It runs unchanged against the GitHub Copilot runtime and
 
 Read this first if you are attaching AgentKit's ready-made tools to an agent and want to see how a
 policy, its grants, and the pack builder fit together.
+
+## [research-assistant](research-assistant/)
+
+**The agent-infrastructure path.** A console application composing the three families that let an
+agent work across turns rather than within one: `todo` to plan, `memory` to remember, and `agent` to
+delegate. It researches a read-only corpus, writes its conclusions into a separate notes folder, and
+makes the mechanisms observable — a plan written down before work starts, a finding filed with the
+document it came from, a contradicting restatement *refused* as a near-duplicate with the
+conflicting memory named, and a child agent started with a task its parent stated.
+
+Two things in it are worth reading even if you never run it. First, **where the embeddings come
+from**: `MemoryPack` requires an `IEmbeddingGenerator` and never inspects it, so the sample supplies
+one of its own — an offline, dependency-free lexical generator, with `--embeddings ollama` swapping
+in a real model and changing nothing else. Second, **how a child agent is contained**: the packs a
+delegated agent may draw on are listed explicitly and exclude the task list and the memory store, so
+a child cannot reach its parent's plan or record even by accident.
+
+Read this if your agent's work spans turns, or if you are about to give an agent the ability to
+start another one.
 
 ## [custom-tools](custom-tools/)
 

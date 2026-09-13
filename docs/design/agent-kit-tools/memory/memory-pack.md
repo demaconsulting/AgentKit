@@ -20,7 +20,14 @@ The class is sealed and immutable after construction.
 | `_store`     | `IMemoryStore?`       | Null when the application supplied none    |
 
 Two constants are published: `FamilyPrefix`, `memory`, and `SuggestedInstruction`, the instruction
-an application should give an agent that carries the family. `Options` is exposed as a property so
+an application should give an agent that carries the family. That instruction states three things a
+model will not supply on its own: file as you read, recall before answering, and correct a fact
+drawn from a *different* document with `memory_revise` citing that document — reserving
+`memory_update` for a correction from the source a memory already cites. The third is there because
+a live model repeatedly chose the update tool for a changed-source correction, leaving the memory
+citing a superseded document; the subsystem design carries the observation and the reason this is
+instruction rather than tool behavior. No adherence figure is claimed for the wording. `Options` is
+exposed as a property so
 an application can report the configuration it is running under — the threshold in particular is the
 number that explains why a memory was not stored — without keeping a second copy that could
 disagree.

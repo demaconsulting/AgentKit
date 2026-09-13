@@ -119,3 +119,20 @@ sections:
                   monotonically better.
                 tests:
                   - MemoryPack_SuggestedInstruction_NamesTheFilingAndRecallingTools
+
+              - id: AgentKitTools-Memory-Pack-SuggestedInstructionProvenance
+                title: >-
+                  The suggested instruction shall direct that a correction drawn from a different
+                  document is made with the revision tool, citing that document, and that the
+                  update tool is used only for a correction from the source already cited.
+                justification: |
+                  Offered a conflict raised by a new document, a model was repeatedly observed
+                  choosing memory_update, which retains the provenance the memory already carried,
+                  leaving corrected text beside a citation of a superseded source. It did so even
+                  though memory_update reports the source it retained and its description already
+                  says a changed source calls for a revision, so the tool surface alone is not
+                  sufficient. Which source a corrected memory should cite is the author's policy
+                  rather than the library's, so the guidance belongs in the instruction the
+                  library publishes for an author to append, not in tool behavior.
+                tests:
+                  - MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource

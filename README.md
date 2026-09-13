@@ -22,9 +22,11 @@ application configures and a tool cannot omit.
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
 > a GitHub Copilot `CopilotClient`.
 
-Two runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
-end to end: **document-assistant** demonstrates consuming the shipped tools, and **custom-tools**
-demonstrates writing your own guarded tools. See the [Samples](#samples) section below.
+Three runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
+end to end: **document-assistant** demonstrates consuming the shipped tools,
+**research-assistant** demonstrates the planning, memory and delegation families working together,
+and **custom-tools** demonstrates writing your own guarded tools. See the [Samples](#samples)
+section below.
 
 ## Capabilities
 
@@ -189,6 +191,17 @@ of what each demonstrates and when to read it.
   asymmetric, so a refused write enumerates the writable location and the agent recovers. It runs
   unchanged against the GitHub Copilot runtime and any Ollama model, and prints every tool call so
   the containment, capability gating, and built-in suppression are visible as they happen.
+- **[Research Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/research-assistant)**
+  — *the agent-infrastructure path.* A console application composing the `todo`, `memory`, and
+  `agent` families onto one policy: it plans its work as a task list, files what it learns as
+  searchable memories with the document each came from, and delegates the reading of a single
+  document to a child agent. Its corpus is granted read-only and contains a superseding revision, so
+  a contradicting restatement is genuinely refused as a near-duplicate rather than filed twice. It
+  supplies its own offline embedding generator — `MemoryPack` requires one and never inspects it —
+  so it runs from a fresh clone with no server, no credential, and no model binary in the
+  repository; `--embeddings ollama` swaps in a real model and changes nothing else. The packs a
+  delegated agent may draw on are listed explicitly and exclude the task list and the memory store,
+  so a child agent cannot reach its parent's plan or record.
 - **[Custom Tools](https://github.com/demaconsulting/AgentKit/tree/main/samples/custom-tools)**
   — *the extension path.* A console chat application that shows how an application author writes
   their own guarded tools with `GuardedToolFactory` and publishes them as packs, composed alongside

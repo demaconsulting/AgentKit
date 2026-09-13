@@ -9,6 +9,7 @@ needs-review:
   - "README.md"                   # Root README file
   - "samples/README.md"           # Samples index (user-facing)
   - "samples/document-assistant/README.md"  # Document assistant sample README (user-facing)
+  - "samples/research-assistant/README.md"  # Research assistant sample README (user-facing)
   - "samples/custom-tools/README.md"  # Custom tools sample README (user-facing)
   - "requirements.yaml"           # Root requirements file
   - "**/*.cs"                     # All C# source and test files
@@ -48,9 +49,12 @@ reviews:
       - "samples/README.md"                                         # samples index
       - "samples/document-assistant/README.md"                     # document assistant sample readme
       - "samples/document-assistant/**/*.cs"                       # document assistant sample sources
+      - "samples/research-assistant/README.md"                     # research assistant sample readme
+      - "samples/research-assistant/**/*.cs"                       # research assistant sample sources
       - "samples/custom-tools/README.md"                           # custom tools sample readme
       - "samples/custom-tools/**/*.cs"                             # custom tools sample sources
       - "test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/**/*.cs"  # sample composition tests
+      - "test/DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests/**/*.cs"  # research assistant sample tests
       - "test/DemaConsulting.AgentKit.Samples.CustomTools.Tests/**/*.cs"  # custom tools sample composition tests
 
   # Decomposition Review (only one per repository)

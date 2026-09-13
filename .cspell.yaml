@@ -57,6 +57,7 @@ words:
   - Ollama
   - ONNX
   - qwen
+  - nomic
   - postconditions
   - unserialized
   - yamlfix

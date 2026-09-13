@@ -111,3 +111,10 @@ dotnet_diagnostic.S1135.severity = none
 # The system-level tool tests name every family, including the todo family, for the same reason.
 [**/AgentKitToolsTests.cs]
 dotnet_diagnostic.S1135.severity = none
+
+# The research-assistant sample composes the todo family, so its sources, its tests and its
+# instructions all name todo_list, todo_set and todo_remove for the same unavoidable reason the
+# library's own Todo directory does. The scope is the sample and its test project and nowhere
+# else, so a genuine deferred-work marker elsewhere in the repository is still an error.
+[**/{research-assistant,DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests}/*.cs]
+dotnet_diagnostic.S1135.severity = none

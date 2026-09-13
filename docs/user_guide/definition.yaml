@@ -6,6 +6,7 @@ input-files:
   - docs/user_guide/title.txt
   - docs/user_guide/introduction.md
   - docs/user_guide/document-assistant-sample.md
+  - docs/user_guide/research-assistant-sample.md
   - docs/user_guide/custom-tools-sample.md
 template: template.html
 table-of-contents: true
