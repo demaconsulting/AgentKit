@@ -83,15 +83,6 @@ constituent software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
-- **AgentKitSamples (System)** — The repository's runnable demonstration applications, delivered as
-  source rather than as a published package; each is a self-contained console application whose
-  requirements are demonstration requirements
-- **CustomTools (Unit)** — The extension-path sample: an application author writes their own guarded
-  tools and publishes them as packs that compose alongside a shipped pack
-- **DocumentAssistant (Unit)** — The consumption-path sample: an application attaches the shipped tool
-  packs to an agent under a policy that grants a workspace to read and a separate location to write
-- **ResearchAssistant (Unit)** — The agent-infrastructure-path sample: an agent plans, remembers, and
-  delegates safely across turns, with an application-supplied offline embedding backend
 
 The following OTS items are also covered:
 
@@ -121,6 +112,17 @@ The following topics are explicitly excluded from this verification documentatio
 
 - Build pipeline and CI/CD process testing
 - Infrastructure and hosting environment testing
+- The demonstration samples under `samples/`, and their test projects under
+  `test/DemaConsulting.AgentKit.Samples.*.Tests/`
+
+The samples are excluded because they are not software items: a sample is a demonstration
+application contained in no software package, so it has no requirements and therefore no
+verification design. This does not mean the samples are untested — each has its own test
+project, and those tests build and run with every other test under `build.ps1`, which is the
+gate that keeps the samples working. It means only that no sample test is traced to a
+requirement and no sample appears in the traceability results reported here. See the Scope
+section of the design introduction for the full reasoning; it is a deliberate classification
+decision, not a coverage gap to be closed by adding sample requirements.
 
 ## Companion Artifact Structure
 

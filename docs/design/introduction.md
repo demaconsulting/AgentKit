@@ -119,15 +119,6 @@ software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
-- **AgentKitSamples (System)** — The repository's runnable demonstration applications, delivered as
-  source rather than as a published package; each is a self-contained console application whose
-  requirements are demonstration requirements
-- **CustomTools (Unit)** — The extension-path sample: an application author writes their own guarded
-  tools and publishes them as packs that compose alongside a shipped pack
-- **DocumentAssistant (Unit)** — The consumption-path sample: an application attaches the shipped tool
-  packs to an agent under a policy that grants a workspace to read and a separate location to write
-- **ResearchAssistant (Unit)** — The agent-infrastructure-path sample: an agent plans, remembers, and
-  delegates safely across turns, with an application-supplied offline embedding backend
 
 The following OTS items are also covered:
 
@@ -158,6 +149,27 @@ The following topics are explicitly excluded from this design documentation:
 - Deployment, packaging, and distribution mechanisms
 - Infrastructure and hosting environment details
 - Test projects and test infrastructure
+- The demonstration samples under `samples/`, and their test projects under
+  `test/DemaConsulting.AgentKit.Samples.*.Tests/`
+
+The samples exclusion is a deliberate classification decision, not an omission, and it is
+recorded here so that it is not reversed by inspection. A Software System is a "complete
+deliverable product including all components and external interfaces, **contained within a
+software package**", and a Software Package is "one distributable artifact". The samples are
+demonstration applications: none of them is packed, published, given an SBOM, or contained in
+any software package, so no sample is a software system, and nothing within a sample is a
+subsystem or unit of one. They therefore appear nowhere in the software-item tree — no entry
+in the SysML2 model, no requirements under `docs/reqstream/`, no design or verification
+chapter, and no ReviewMark review-set — and `.reviewmark.yaml` excludes `samples/**` and the
+sample test projects from `needs-review` for that reason rather than leaving them uncovered.
+
+The samples are not unverified: each has its own test project, and those tests build and run
+with every other test through `build.ps1`, which is the gate that keeps the samples working.
+What the samples do not have is traceability — no requirement is written against a sample and
+no sample test is counted as requirement evidence. That is the accepted position: their value
+is pedagogical, they are read rather than deployed, and writing "the sample shall demonstrate
+X" requirements adds compliance artifacts without adding a deliverable. An agent tempted to
+add the samples to the tree should read this paragraph as the answer, not as a gap.
 
 ## Software Structure
 
@@ -175,7 +187,7 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
-The repository contains five systems. `AgentKitTools` is a general-purpose capability package of
+The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
@@ -193,21 +205,11 @@ turns a provider into a Microsoft Agent Framework agent carrying a supplied tool
 justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
 Each is flat — one factory class — and the two share no code and never reference each other. The
-`SoftwareStructureView.svg` above renders all five systems.
+`SoftwareStructureView.svg` above renders all four systems.
 
-`AgentKitSamples` is the fifth system: the repository's runnable demonstration applications. It is
-not a shipped library — none of its samples is packed, published, or given an SBOM — but each sample
-is locally-developed software with its own test project, so the collection is modeled as a system
-whose requirements are *demonstration* requirements. A sample requirement states what the sample must
-prove to a reader ("the sample shall demonstrate X"), not a library capability, because the samples'
-purpose is pedagogical: `DocumentAssistant` shows how to consume AgentKit, `ResearchAssistant` shows
-how an agent works across turns, and `CustomTools` shows how to extend AgentKit with author-written
-tools. The system is deliberately flat, its three units sitting directly beneath it: the samples share
-no code and depend on each other in no way, so a "samples" subsystem layer would add a requirements
-file, a design document, a verification document and a review set without carrying any architectural
-information. The samples target `net10.0` only and are not a shipped multi-platform package, so —
-unlike the four library systems — `AgentKitSamples` deliberately has no `platform-requirements.yaml`;
-its absence is a design decision, not an oversight.
+The demonstration samples under `samples/` are not among them. They are runnable examples rather
+than deliverables, belong to no software package, and are excluded from the software-item tree for
+the reasons given under Scope above; the structure view renders only the four shipped systems.
 
 ## Folder Layout
 
@@ -301,9 +303,9 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed
 ```
 
-The demonstration samples live under `samples/`, one folder per sample. Unlike a library unit — one
-class in one file — each sample unit is a whole console application, so its folder holds several
-source files that together form the worked example:
+The demonstration samples live under `samples/`, one folder per sample. They are not software
+items and appear nowhere in the structure above; the layout is recorded only so a reader knows
+where the worked examples are:
 
 ```text
 samples/
@@ -316,8 +318,8 @@ samples/
                              with an application-supplied offline embedding backend
 ```
 
-Each sample folder is a self-contained application; the samples share a common shape by convention
-but no code, so each can be read in isolation.
+Each sample folder is a self-contained console application; the samples share a common shape by
+convention but no code, so each can be read in isolation.
 
 ## Document Conventions
 

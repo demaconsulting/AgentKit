@@ -7,10 +7,6 @@
 # Processed in order; prefix a pattern with '!' to exclude.
 needs-review:
   - "README.md"                   # Root README file
-  - "samples/README.md"           # Samples index (user-facing)
-  - "samples/document-assistant/README.md"  # Document assistant sample README (user-facing)
-  - "samples/research-assistant/README.md"  # Research assistant sample README (user-facing)
-  - "samples/custom-tools/README.md"  # Custom tools sample README (user-facing)
   - "requirements.yaml"           # Root requirements file
   - "**/*.cs"                     # All C# source and test files
   - "docs/reqstream/**/*.yaml"    # Requirements files
@@ -22,6 +18,14 @@ needs-review:
   - "!**/bin/**"                  # Exclude build output
   - "!node_modules/**"           # Exclude npm dependencies
   - "!**/.venv/**"                # Exclude Python virtual environment
+  # The samples are demonstration applications, not deliverables: no sample is packed,
+  # published or contained in any software package, so none of them is a software item
+  # and none appears in the software-item tree (see docs/design/introduction.md, Scope).
+  # They are verified by their own test projects through build.ps1 and are deliberately
+  # outside the review and traceability hierarchy, so their sources, their documentation
+  # and their test projects are excluded here rather than left uncovered.
+  - "!samples/**"                 # Exclude demonstration sample sources and docs
+  - "!test/DemaConsulting.AgentKit.Samples.*/**"  # Exclude sample test projects
 
 # Evidence source: review data and index.json are located in the 'reviews' branch
 # of this repository, accessed through the GitHub public HTTPS raw content access.
@@ -43,19 +47,10 @@ reviews:
     title: Review that README and User Guide are Coherent and Complete
     context:
       - "!docs/design/introduction.md"                              # exclude design intro from user-facing review
+      - "samples/README.md"                                         # samples index (orientation only)
     paths:
       - "README.md"                                                 # project readme
       - "docs/user_guide/**/*.md"                                   # user guide
-      - "samples/README.md"                                         # samples index
-      - "samples/document-assistant/README.md"                     # document assistant sample readme
-      - "samples/document-assistant/**/*.cs"                       # document assistant sample sources
-      - "samples/research-assistant/README.md"                     # research assistant sample readme
-      - "samples/research-assistant/**/*.cs"                       # research assistant sample sources
-      - "samples/custom-tools/README.md"                           # custom tools sample readme
-      - "samples/custom-tools/**/*.cs"                             # custom tools sample sources
-      - "test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/**/*.cs"  # sample composition tests
-      - "test/DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests/**/*.cs"  # research assistant sample tests
-      - "test/DemaConsulting.AgentKit.Samples.CustomTools.Tests/**/*.cs"  # custom tools sample composition tests
 
   # Decomposition Review (only one per repository)
   - id: Decomposition
@@ -1068,90 +1063,6 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
-
-  # AgentKitSamples-Architecture Review (one per system)
-  - id: AgentKitSamples-Architecture
-    title: Review that AgentKitSamples Architecture Satisfies Requirements
-    context:
-      - "README.md"
-      - "docs/user_guide/**/*.md"
-    paths:
-      - "docs/reqstream/agent-kit-samples.yaml"                             # system requirements
-      - "docs/design/introduction.md"                                       # design introduction
-      - "docs/design/agent-kit-samples.md"                                  # system design
-      - "docs/verification/introduction.md"                                 # verification introduction
-      - "docs/verification/agent-kit-samples.md"                            # system verification
-
-  # AgentKitSamples-Design Review (one per system)
-  - id: AgentKitSamples-Design
-    title: Review that AgentKitSamples Design is Consistent and Complete
-    context:
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/design/introduction.md"                                       # design introduction
-      - "docs/design/agent-kit-samples.md"                                  # system design
-      - "docs/design/agent-kit-samples/**/*.md"                             # all system design documents
-      - "docs/design/ots.md"                                                # OTS overview
-
-  # AgentKitSamples-Verification Review (one per system)
-  - id: AgentKitSamples-Verification
-    title: Review that AgentKitSamples Verification is Consistent and Complete
-    context:
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/verification/introduction.md"                                 # verification introduction
-      - "docs/verification/agent-kit-samples.md"                            # system verification
-      - "docs/verification/agent-kit-samples/**/*.md"                       # all verification documents
-      - "docs/verification/ots.md"                                          # OTS overview
-
-  # AgentKitSamples-AllRequirements Review (one per system)
-  - id: AgentKitSamples-AllRequirements
-    title: Review that All AgentKitSamples Requirements are Complete
-    context:
-      - "docs/design/agent-kit-samples.md"
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-samples.yaml"                             # system requirements
-      - "docs/reqstream/agent-kit-samples/**/*.yaml"                        # all Samples requirements files
-
-  # AgentKitSamples-CustomTools Review (one per unit)
-  - id: AgentKitSamples-CustomTools
-    title: Review that AgentKitSamples CustomTools Implementation is Correct
-    context:
-      - "docs/design/agent-kit-samples.md"
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-samples/custom-tools.yaml"               # unit requirements
-      - "docs/design/agent-kit-samples/custom-tools.md"                    # unit design
-      - "docs/verification/agent-kit-samples/custom-tools.md"              # unit verification
-      - "samples/custom-tools/**/*.cs"                                      # unit source
-      - "test/DemaConsulting.AgentKit.Samples.CustomTools.Tests/**/*.cs"   # unit tests
-
-  # AgentKitSamples-DocumentAssistant Review (one per unit)
-  - id: AgentKitSamples-DocumentAssistant
-    title: Review that AgentKitSamples DocumentAssistant Implementation is Correct
-    context:
-      - "docs/design/agent-kit-samples.md"
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-samples/document-assistant.yaml"         # unit requirements
-      - "docs/design/agent-kit-samples/document-assistant.md"              # unit design
-      - "docs/verification/agent-kit-samples/document-assistant.md"        # unit verification
-      - "samples/document-assistant/**/*.cs"                               # unit source
-      - "test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/**/*.cs"  # unit tests
-
-  # AgentKitSamples-ResearchAssistant Review (one per unit)
-  - id: AgentKitSamples-ResearchAssistant
-    title: Review that AgentKitSamples ResearchAssistant Implementation is Correct
-    context:
-      - "docs/design/agent-kit-samples.md"
-      - "docs/reqstream/agent-kit-samples.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-samples/research-assistant.yaml"         # unit requirements
-      - "docs/design/agent-kit-samples/research-assistant.md"              # unit design
-      - "docs/verification/agent-kit-samples/research-assistant.md"        # unit verification
-      - "samples/research-assistant/**/*.cs"                               # unit source
-      - "test/DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests/**/*.cs"  # unit tests
 
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark
