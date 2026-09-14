@@ -55,7 +55,6 @@ constituent software items, specifically:
 - **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
 - **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
   and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
-- **TextLines (Unit)** — Shared helper for line-oriented reading and rewriting used across the family
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
   of files of any type, published as one capability-gated pack

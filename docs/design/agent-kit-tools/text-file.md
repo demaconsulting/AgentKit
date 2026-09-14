@@ -37,6 +37,10 @@ The subsystem contains nine units:
 | `TextFileLineBuffers`    | Stores named cut/paste text slots shared by cut, copy and paste tools    |
 | `TextFilePack`           | Publishes the seven tools as one family under the `text_file` prefix     |
 
+`TextLines` and `TextFileBinaryGuard` are internal shared helpers rather than modeled units, in the
+same way `MemoryEmbedding` and `MemoryDenials` are for the Memory subsystem; both are described
+under *Design* below and are reviewed with this subsystem.
+
 ### Interfaces
 
 The subsystem exposes exactly one public type, `TextFilePack`, plus the name constant each tool unit
@@ -74,6 +78,15 @@ merely discouraged.
 `text_file_cut_lines`, `text_file_copy_lines`, then `text_file_paste_lines`. The order is observable
 in tool selection, so it is a contract rather than an incidental collection order. The helper unit is
 modeled because it is shared state, but it is not a published tool.
+
+**Shared helpers.** `TextLines` is the one place the family decides what a line is. It splits and
+streams text into lines that each keep their own terminator, converts between a line number and a
+character offset, and renders the span phrase a confirmation names — so the line the read tool
+numbers is the same line the cut tool removes and the paste tool restores. `TextFileBinaryGuard` is
+the one place the family decides whether a permitted file is text at all, sniffing a leading window
+for a recognized byte-order mark or valid UTF-8 so that binary content is refused before anything
+tries to decode it as text. Both are `internal static` and hold no state; neither is a modeled unit,
+because each exists only so that several tools of this family reach one decision rather than seven.
 
 **One decision per operation.** Search, read and copy consult the read decision. Create, replace, cut
 and paste consult the write decision. A copy mutates nothing, so it does to the source exactly what

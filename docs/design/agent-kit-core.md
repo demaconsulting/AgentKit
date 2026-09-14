@@ -213,7 +213,8 @@ The system additionally exposes the pack composition API:
   policy. Must return a non-null collection containing no null element, every tool of which
   carries the declared family prefix. Not called at all when the host does not provide the
   required capabilities.
-- **HostCapabilities**: Flags enumeration naming what a host can provide — `None` and `Vision`.
+- **HostCapabilities**: Flags enumeration naming what a host can provide — `None`, `Vision` and
+  `Delegation`.
 - **new ToolPackBuilder(PathPolicy policy)**: Creates a composition governed by `policy`. Throws
   `ArgumentNullException` when the policy is null.
 - **ToolPackBuilder.WithHostCapabilities(HostCapabilities capabilities)**: Declares what the host

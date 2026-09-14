@@ -10,11 +10,12 @@ the factory as a consumer would: they build an agent from a scripted chat client
 list, and assert on the observable outcome. The behavioral guarantee the package exists for — that
 the image-promoting decorator is installed on every agent it builds — is **asserted, not assumed**.
 
-The decorator installation is proven two ways that together leave no gap. A scripted `IChatClient`
-that records the conversation it was handed is wrapped exactly as the factory wraps a client, and a
-tool-returned image is shown to reach that client on a following user message. The wrap itself is
-asserted at the unit level to be an `ImagePromotingChatClient`. The two together establish that an
-agent built by the factory talks to its provider through a functioning image-promoting decorator.
+The decorator is proven in two parts. One scenario builds an agent through `Create` and asks that
+agent for the decorator, so a construction path that stopped wrapping would fail; a second wraps a
+scripted `IChatClient` exactly as the factory wraps one and shows a tool-returned image reaching that
+client on a following user message, so the installed decorator is shown to do the job it is installed
+for. The two together establish that an agent built by the factory talks to its provider through a
+functioning image-promoting decorator.
 
 **What is out of automated scope, stated honestly.** A live end-to-end run against a real
 `IChatClient` provider is not automated: the asymmetry the decorator exists for happens at a
@@ -45,19 +46,30 @@ Verifies that the factory turns a chat client and a tool list into a usable agen
 from a scripted client, one tool, instructions, and a name, and asserts a non-null agent carrying the
 supplied name is returned.
 
+### Image Promotion: The Decorator Is Installed on an Agent the Factory Builds
+
+**Test**: `AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent`
+
+Verifies that an agent built through `Create` actually talks through the decorator, rather than that
+the wrap seam would produce one if called. Builds an agent from a scripted client and one tool, then
+asks the constructed agent's service chain for an `ImagePromotingChatClient` and asserts one is
+found. This is the scenario that pins the construction path: a `Create` that stopped wrapping would
+fail here while the promotion scenario below, which exercises the seam directly, would still pass.
+
 ### Image Promotion: A Tool-Returned Image Reaches the Provider on a User Message
 
 **Test**: `AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage`
 
-Verifies the whole point of the package end to end. Wraps a scripted client exactly as the factory
-does, sends a conversation whose last message is a tool result holding an image as the
-function-invocation loop would after the tool ran, and asserts the client received an extra user
-message carrying the very same image instance. Confirms an agent built by the factory delivers a
-tool-returned image to a provider that would otherwise drop it.
+Verifies that the installed decorator does the job it is installed for. Wraps a scripted client
+exactly as the factory does, sends a conversation whose last message is a tool result holding an
+image as the function-invocation loop would after the tool ran, and asserts the client received an
+extra user message carrying the very same image instance. Paired with the scenario above, it
+confirms an agent built by the factory delivers a tool-returned image to a provider that would
+otherwise drop it.
 
 ## Acceptance Criteria
 
-A system-level test run passes when both scenarios above pass without error or exception beyond those
-explicitly asserted. Any agent that fails to build, any wrong name, any tool-returned image that fails
-to reach the provider on a user message, or any content instance copied rather than carried
-constitutes a failure.
+A system-level test run passes when all three scenarios above pass without error or exception beyond
+those explicitly asserted. Any agent that fails to build, any wrong name, any agent built without the
+image-promoting decorator in its client chain, any tool-returned image that fails to reach the
+provider on a user message, or any content instance copied rather than carried constitutes a failure.

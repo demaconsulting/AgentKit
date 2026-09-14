@@ -52,6 +52,21 @@ sections:
             tests:
               - CopilotAgentFactory_BuildSessionConfig_HostHandler_IsInstalled
 
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
+            title: >-
+              The factory shall build every session with the runtime's skills disabled and its
+              custom instructions skipped.
+            justification: |
+              Skills and custom instructions are channels through which the runtime injects
+              capability and direction the composing application never attached and the untrained
+              user cannot adjudicate. A confined agent must receive only what its host gave it, so
+              both channels are closed on every session the factory builds rather than left at
+              whatever the runtime defaults to. Either one silently reverting to the permissive
+              value would widen the agent without changing anything the host wrote, so both are
+              asserted rather than assumed.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld
+
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
             title: >-
               The factory shall reject a missing Copilot client as a programming error.

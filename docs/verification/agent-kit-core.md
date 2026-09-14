@@ -54,10 +54,15 @@ handed back, and that a reason is supplied.
 
 **Test**: `AgentKitCore_SystemPathContainment_Enumeration_ListsOnlyPermittedFiles`
 
-Verifies that the system applies the same containment decision to listing as to direct access.
-Places one file inside the permitted location and one outside it, and lists the permitted
-location through the public API. Asserts the contained file appears and the outside file does
-not.
+Verifies at the system boundary that a listing of the permitted location reports the files it
+contains and does not reach into a sibling directory outside it. Places one file inside the
+permitted location and one in a sibling directory, and lists the permitted location through the
+public API. Asserts the contained file appears and the sibling file does not. The scenario states
+the containment boundary of a listing only; the narrower guarantee that a file **inside** the
+permitted location which a read would refuse is also excluded is pinned by
+`PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed`, described in _PathPolicy Unit
+Verification Design_, because a sibling directory is never walked and so cannot exercise the
+per-candidate decision.
 
 ### Path Policy: Reading Widely While Writing Narrowly
 
@@ -84,15 +89,15 @@ path outside the permitted location and asserts the message echoes the requested
 permitted location, and marks its access level — the host-path-disclosure rule the earlier
 redaction requirement enforced having been deliberately dropped.
 
-### Path Policy: A Relative Path From a Model Resolves Against the Workspace
+### Path Policy: A Relative Path From a Model Resolves Against the Working Directory
 
-**Test**: `AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkspaceRoot`
+**Test**: `AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkingDirectory`
 
 Verifies that the system reads a path the way a model writes one. Configures a policy for one
-workspace holding a file, requests that file by name alone, and asserts the request is permitted
-and the returned location reads back the file's content. This is the system-level regression for
-a defect in which such a request was refused because the name was measured from the location the
-host process happened to be running from.
+working directory holding a file, requests that file by name alone, and asserts the request is
+permitted and the returned location reads back the file's content. This is the system-level
+regression for a defect in which such a request was refused because the name was measured from the
+location the host process happened to be running from.
 
 ### Path Policy: A Denial Message States How to Recover
 
@@ -113,19 +118,20 @@ loop would, and asserts the client behind it received the image on a following u
 the same content instance. Confirms a host can make image delivery independent of whether its
 provider carries images out of tool results.
 
-### Path Policy: Construction Without Rules Is Rejected
+### Path Policy: Construction Without a Working Directory Is Rejected
 
-**Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutRules_IsRejected`
+**Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected`
 
-Verifies that the system refuses to create a path access policy with either rule missing,
-confirming at the system boundary that an unguarded policy is unrepresentable.
+Verifies that the system refuses to create a path access policy without a working directory, and
+refuses a null grant entry, confirming at the system boundary that an unguarded policy is
+unrepresentable.
 
 ### Tool Limits: The Access Policy Carries the Published Ceilings
 
 **Test**: `AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues`
 
 Verifies that the ceilings a tool observes reach it through the access policy a host actually
-builds. Constructs a real policy from two rooted rules without configuring any ceilings, and
+builds. Constructs a real policy from one rooted rule without configuring any ceilings, and
 asserts it exposes the four published values. Confirms that a host which states no budget still
 operates within a bounded one.
 
@@ -198,8 +204,8 @@ behavior later.
 A system-level test run passes when all seventeen scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
 value, permitted path that should have been refused, relative path resolved against the process
-working directory, escaped file appearing in a listing, denial message containing a host location
-or offering no way forward, tool
+working directory, escaped file appearing in a listing, denial message that fails to echo the
+request, name the permitted locations, or otherwise offer a way forward, tool
 result arriving as serialized JSON rather than as the content the tool produced, tool-returned
 image failing to reach the provider, or tool offered
 to a host that cannot support it constitutes a failure.

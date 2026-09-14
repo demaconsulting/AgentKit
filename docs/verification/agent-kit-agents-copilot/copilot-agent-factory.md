@@ -5,8 +5,9 @@ This document describes the unit-level verification strategy for the `CopilotAge
 ### Verification Approach
 
 `CopilotAgentFactory` is verified through unit tests that exercise its session-building seam and its
-construction-time validation, all offline. The host-handler override, the instruction handling, and
-the model selection are asserted against a constructed session configuration; the validation
+construction-time validation, all offline. The host-handler override, the withheld runtime-injected
+capability, the instruction handling, and the model selection are asserted against a constructed
+session configuration; the validation
 scenarios pin each rejected condition; and the null-client refusal is asserted through the public
 entry point, which validates before it would reach the Copilot CLI.
 
@@ -26,11 +27,11 @@ Unit tests reside in `CopilotAgentFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or exception beyond those
+A unit test run passes when all ten scenarios below pass without error or exception beyond those
 explicitly asserted. Any invalid argument that is accepted, any host handler that is not installed
-verbatim, any instruction that is not carried onto the session's system message, or any model
-selection that is not carried onto the session — or that is invented when the host named none —
-constitutes a failure.
+verbatim, any instruction that is not carried onto the session's system message, any model
+selection that is not carried onto the session — or that is invented when the host named none — or
+any channel of runtime-injected capability left open constitutes a failure.
 
 ### Test Scenarios
 
@@ -83,3 +84,13 @@ The unit tests prove the value is carried; they cannot prove the runtime accepts
 only the runtime knows which models the signed-in user may use. That acceptance is confirmed by
 running the `document-assistant` sample against Copilot with and without `--model` and observing
 both runs complete a turn.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability: Runtime-Injected Capability Is Withheld
+
+**Test**: `CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld`
+
+Verifies that the session the factory builds has the runtime's skills disabled and its custom
+instructions skipped, so a confined agent receives only the capability and direction its host
+attached. Both values are read from the constructed session configuration rather than inferred, so
+either one reverting to the permissive value — which would widen the agent without changing anything
+the host wrote — fails this scenario.

@@ -147,6 +147,29 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves the factory closes both channels of runtime-injected capability on every session
+    ///     it builds: skills are disabled and custom instructions are skipped.
+    /// </summary>
+    /// <remarks>
+    ///     Either value reverting to the permissive one would widen the agent beyond what its host
+    ///     attached without changing anything the host wrote, so both are asserted here rather than
+    ///     left to inspection of the factory.
+    /// </remarks>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld()
+    {
+        // Arrange: a valid tool set
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act: build the session the factory would hand to the runtime
+        var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+
+        // Assert: the agent receives only the capability and direction its host attached
+        Assert.False(config.EnableSkills);
+        Assert.True(config.SkipCustomInstructions);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

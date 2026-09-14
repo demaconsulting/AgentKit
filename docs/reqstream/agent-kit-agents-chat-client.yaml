@@ -41,6 +41,7 @@ sections:
         children:
           - AgentKitAgentsChatClient-ChatClientAgentFactory-DecoratorAlwaysInstalled
         tests:
+          - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
           - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
 
       - id: AgentKitAgentsChatClient-BuiltOnAgentFramework

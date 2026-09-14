@@ -33,13 +33,19 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
-    ///     Proves that the system applies the same containment decision to enumeration as to
-    ///     direct access, so a file outside the permitted location is never listed.
+    ///     Proves that a listing of the permitted location reports the files it contains and does
+    ///     not reach into a sibling directory outside it.
     /// </summary>
+    /// <remarks>
+    ///     This scenario states the containment boundary of a listing only. The narrower guarantee
+    ///     — that a file inside the permitted location which a read would refuse is also excluded —
+    ///     is pinned by <c>PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed</c>, because a
+    ///     sibling directory is never walked and so cannot exercise the per-candidate decision.
+    /// </remarks>
     [Fact]
     public void AgentKitCore_SystemPathContainment_Enumeration_ListsOnlyPermittedFiles()
     {
-        // Arrange: a permitted file inside the location and a secret outside it
+        // Arrange: a permitted file inside the location and a secret in a sibling directory
         using var fixture = new TempDirectoryFixture();
         TempDirectoryFixture.WriteFile(fixture.Root, "inside.txt", "inside-content");
         TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
@@ -51,7 +57,7 @@ public class AgentKitCoreTests
             .Select(Path.GetFileName)
             .ToArray();
 
-        // Assert: the permitted file is listed and the outside file is not
+        // Assert: the permitted file is listed and the sibling file is not
         Assert.Contains("inside.txt", listed);
         Assert.DoesNotContain("secret.txt", listed);
     }

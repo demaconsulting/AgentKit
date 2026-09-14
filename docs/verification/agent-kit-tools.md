@@ -58,8 +58,8 @@ system would prove only that the simulation was written consistently.
 **Test**: `AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools`
 
 Verifies that the package composes through the AgentKitCore pack contract and that a composition to
-which no family has been attached contributes no tools. Constructs a real access policy from two
-unrestricted rules, builds a `ToolPackBuilder` governed by that policy without adding any family,
+which no family has been attached contributes no tools. Constructs a real access policy from one
+unrestricted rule, builds a `ToolPackBuilder` governed by that policy without adding any family,
 and asserts the resulting tool list is empty. Confirms the integration surface is well defined
 before any family is added and that the package is a peer composed like any other AgentKit pack.
 

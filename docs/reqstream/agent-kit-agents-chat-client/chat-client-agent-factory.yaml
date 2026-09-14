@@ -30,10 +30,12 @@ sections:
               decorator describes an image it never received and reports no error. The wrap is
               therefore unconditional and internal: there is no code path that yields an agent whose
               chat client is not image-promoting, and no parameter a caller could set to disable it.
-              A testable seam exposes the wrapped client so the guarantee can be asserted rather than
-              assumed.
+              The guarantee is asserted rather than assumed: one test builds an agent through the
+              public entry point and finds the decorator in that agent's client chain, and a testable
+              seam exposes the wrapped client so what the decorator does can be asserted directly.
             tests:
               - ChatClientAgentFactory_WrapWithImagePromotion_ReturnsImagePromotingClient
+              - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
               - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
 
           - id: AgentKitAgentsChatClient-ChatClientAgentFactory-RejectsNullClient

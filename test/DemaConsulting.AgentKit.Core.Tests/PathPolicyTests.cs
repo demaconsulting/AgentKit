@@ -1110,6 +1110,32 @@ public class PathPolicyTests
     }
 
     /// <summary>
+    ///     Proves that a file matching a grant's deny pattern is excluded from a listing, so a
+    ///     name the operator withheld is not advertised by discovery.
+    /// </summary>
+    /// <remarks>
+    ///     The excluded file lies inside the permitted location, so only the per-candidate read
+    ///     decision can keep it out of the listing: a containment check alone would admit it.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed()
+    {
+        // Arrange: a grant over one location that withholds a protected pattern, holding one
+        // ordinary file and one file matching that pattern
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "notes");
+        TempDirectoryFixture.WriteFile(fixture.Root, "secret.pem", "key-material");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["*.pem"])]);
+
+        // Act: enumerate the permitted location
+        var files = policy.EnumerateFiles(policy.WorkingDirectory, "*").Select(Path.GetFileName).ToArray();
+
+        // Assert: the listing shows what a read would permit and nothing a read would refuse
+        Assert.Contains("notes.txt", files);
+        Assert.DoesNotContain("secret.pem", files);
+    }
+
+    /// <summary>
     ///     Proves that enumerating a refused directory returns nothing rather than throwing.
     /// </summary>
     [Fact]

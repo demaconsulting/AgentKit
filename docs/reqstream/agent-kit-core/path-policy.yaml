@@ -154,6 +154,7 @@ sections:
               from becoming a refusal.
             tests:
               - PathPolicy_EnumerateFiles_PermittedFiles_AreListed
+              - PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed
               - PathPolicy_EnumerateFiles_HiddenDotPrefixedFile_IsListed
               - PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty
               - PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheAnchor

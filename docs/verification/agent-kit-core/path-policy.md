@@ -46,7 +46,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all forty-nine scenarios below pass without error or exception beyond
+A unit test run passes when all fifty scenarios below pass without error or exception beyond
 those explicitly asserted. Any escaping path that is permitted, any excluded file that
 appears in a listing, any relative request resolved against the process working directory, any
 missing working directory accepted, any null grant accepted, any empty grant set permitting access,
@@ -395,6 +395,16 @@ interpretation.
 
 Normal operation: files at the top of the permitted location and nested within it both appear, so
 the filtering is not over-broad.
+
+#### AgentKitCore-PathPolicy-EnumerationFiltered: A File Matching a Deny Pattern Is Not Listed
+
+**Test**: `PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed`
+
+Grants one location while withholding `*.pem`, places an ordinary file and a matching file inside
+it, and enumerates. The withheld file lies **inside** the permitted location, so containment alone
+would admit it and only the per-candidate read decision can exclude it — which is what makes this
+the scenario that pins the exclusion half of the requirement. Asserts the ordinary file appears
+and the withheld one does not.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: A Hidden Dot-Prefixed File Is Listed
 

@@ -70,6 +70,31 @@ public class AgentKitAgentsChatClientTests
     }
 
     /// <summary>
+    ///     Proves that an agent the factory builds actually talks through the image-promoting
+    ///     decorator: the decorator is found in the chat client chain of the constructed agent.
+    /// </summary>
+    /// <remarks>
+    ///     The image-promotion scenario exercises the wrap seam directly and so cannot observe
+    ///     whether <see cref="ChatClientAgentFactory.Create"/> still calls it. This scenario closes
+    ///     that gap by asking the constructed agent itself for the decorator, so removing the wrap
+    ///     from the construction path fails here.
+    /// </remarks>
+    [Fact]
+    public void AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent()
+    {
+        // Arrange: a scripted client and a single tool
+        var client = new ScriptedChatClient();
+        var tools = new List<AIFunction> { MakeTool("tool_one") };
+
+        // Act: build the agent through the factory and ask it for the decorator
+        var agent = ChatClientAgentFactory.Create(client, tools);
+        var decorator = agent.GetService(typeof(ImagePromotingChatClient));
+
+        // Assert: the agent's chat client chain carries the decorator this package exists to install
+        Assert.IsType<ImagePromotingChatClient>(decorator);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name, for exercising the factory.
     /// </summary>
     /// <param name="name">The tool name.</param>
