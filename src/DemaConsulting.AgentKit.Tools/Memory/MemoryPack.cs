@@ -48,6 +48,17 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     arithmetic caught a 12-psi versus 18-psi contradiction at 0.965 cosine.
 ///     </para>
 ///     <para>
+///     <b>It is nonetheless best-effort, because it can only see what the model wrote in the
+///     descriptor.</b> The mechanism is guaranteed — every file is checked — but what it
+///     catches is phrasing-dependent, and an author must not read it as a guarantee that
+///     contradictions are found. Two descriptors written as the same subject collide and the
+///     conflict is raised; the same two facts written as <c>"…for the bilge pump"</c> and
+///     <c>"…per field revision (Revision B)"</c> do not collide and are both stored with
+///     nothing raised, which is the quieter failure and the observed one. This is why
+///     <see cref="SuggestedInstruction"/> spends four sentences on how to phrase a descriptor:
+///     the phrasing is the part of the mechanism the library cannot supply.
+///     </para>
+///     <para>
 ///     <b>The application author governs the settings; this family guarantees the mechanism.</b>
 ///     The embedding backend arrives as an
 ///     <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/>, so whether it is Ollama, a local
@@ -135,6 +146,20 @@ public sealed class MemoryPack : IToolPack
     ///     carry this sentence across.
     ///     </para>
     ///     <para>
+    ///     <b>The descriptor-phrasing sentences are here because of a measured self-defeating
+    ///     failure.</b> Live runs asked a model to file two contradicting statements of one fact.
+    ///     It wrote <c>"Relief valve setting for the bilge pump"</c> for the first and
+    ///     <c>"Relief valve setting per field revision (Revision B)"</c> for the second — both
+    ///     stored, no refusal raised, the store left holding two contradictory values. The
+    ///     descriptors were different because the model had <em>understood</em> that the facts
+    ///     differed and had said so in the only field that is embedded. Detection keys on
+    ///     descriptor similarity, so a model that recognizes a conflict and names the source or
+    ///     revision that distinguishes it defeats detection precisely when a conflict exists.
+    ///     Instructing subject-only descriptors is the lever that restores the collision, and
+    ///     stating the reason rather than the bare rule is deliberate: a rule without a reason gets
+    ///     applied inconsistently by exactly the reasoning that produced the failure.
+    ///     </para>
+    ///     <para>
     ///     <b>No adherence figure is claimed for this text.</b> The task-list family's published
     ///     1-of-5 versus 3-of-3 comparison was measured for that family's wording; nothing
     ///     equivalent has been measured for this one, and a number borrowed from a neighbor would
@@ -149,7 +174,16 @@ public sealed class MemoryPack : IToolPack
     public const string SuggestedInstruction =
         "As you read anything you may need later, write it down with memory_file: one memory per "
         + "document or per section, a single short sentence as the descriptor and the fuller text "
-        + "as the details, and state the document you read it in. Before answering any question, "
+        + "as the details, and state the document you read it in. Write the descriptor as the "
+        + "SUBJECT the memory is about and nothing else — name the thing the fact concerns, never "
+        + "the document it came from, the revision it belongs to, the qualifier that narrows it, "
+        + "or the value it states. Those all belong in the details and in the source parameters. "
+        + "The reason matters more than the rule: only the descriptor is compared when a new "
+        + "memory is checked against the ones you already hold, so two statements of one subject "
+        + "have to read alike for a contradiction between them to be noticed at all. A descriptor "
+        + "that names its source or its revision says where a fact came from rather than what it "
+        + "is about, reads as a different subject, and is filed silently beside the memory it "
+        + "contradicts. Before answering any question, "
         + "call memory_recall first and answer from "
         + "what it returns — do not rely on what you think you already know. If memory_file reports "
         + "that a memory was not stored, read the conflicting memory it names and decide whether it "

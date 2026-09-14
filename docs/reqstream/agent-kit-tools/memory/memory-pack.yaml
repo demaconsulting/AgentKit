@@ -136,3 +136,24 @@ sections:
                   library publishes for an author to append, not in tool behavior.
                 tests:
                   - MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource
+
+              - id: AgentKitTools-Memory-Pack-SuggestedInstructionDescriptor
+                title: >-
+                  The suggested instruction shall direct that a descriptor names the subject of a
+                  memory alone — not its source document, its revision, its qualifier or its
+                  value — and shall state why.
+                justification: |
+                  Only the descriptor is embedded, so near-duplicate detection keys on descriptor
+                  similarity. A model that recognizes a conflict writes a descriptor that
+                  distinguishes it, naming the source or the revision, which defeats the detection
+                  precisely when a conflict exists: in three live runs of the research-assistant
+                  sample the refusal never fired, including a run whose prompts explicitly
+                  demanded a separate new memory of one fact, because the model wrote "Relief
+                  valve setting for the bilge pump" and "Relief valve setting per field revision
+                  (Revision B)" and both were stored. Nothing in tool behavior can decide how a
+                  model phrases a sentence, so the only available lever is the instruction. The
+                  reason is required alongside the rule because this project has repeatedly found
+                  that a rule without a reason is applied inconsistently, and the reasoning that
+                  would override this one is the same reasoning that produced the failure.
+                tests:
+                  - MemoryPack_SuggestedInstruction_RequiresASubjectOnlyDescriptor

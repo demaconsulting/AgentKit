@@ -91,6 +91,43 @@ descriptor, asks the store for the single nearest memory, and declines to store 
 nearest match reaches the author's threshold. The comparison is nearly free: the vectors it compares
 were computed when their memories were filed.
 
+**The detection is best-effort and phrasing-dependent, and a reader must not leave this document
+believing conflicts are reliably caught.** The mechanism is guaranteed — every file is checked
+against the nearest memory held — but what that check can see is one sentence the model chose the
+wording of, and the wording decides the outcome. Two properties compound, and the second was only
+visible in live runs.
+
+_Detection keys on descriptor similarity, and recognizing a conflict is what destroys it._ Only the
+descriptor is embedded. In three live runs of the `research-assistant` sample under a lexical
+generator the near-duplicate refusal did not fire once, including in a run constructed to force it:
+two prompts explicitly demanded a separate new memory of the same fact, and the model wrote
+`"Relief valve setting for the bilge pump"` (12 psi, from `01-initial-spec.md`) and `"Relief valve
+setting per field revision (Revision B)"` (18 psi, from `02-field-revision.md`). Both were stored.
+Nothing malfunctioned: the model had understood that the facts differed and had said so in the only
+field that is compared. A descriptor that names the source, the revision or the qualifier describes
+_where_ a fact came from; a descriptor that names the subject describes _what_ the fact is about.
+Only the second lets two conflicting statements collide, so the better a model understands that two
+facts differ, the less likely the conflict is to be caught — unless the instruction tells it to
+write subject-only descriptors, and tells it why. The converse confirms the mechanism rather than
+excusing it: an earlier live run scored exactly 1.0 and refused correctly, because the descriptor
+was topic-only (`"Relief valve pressure setting"`) with the value carried in the un-embedded
+details. That is the descriptor/payload split working as designed. The spike never exposed this
+because its descriptors were uniformly auto-generated in one shape, so conflicting facts collided by
+construction; live models phrase descriptors freely and distinguish them.
+
+_Descriptor length moves the same conflict across the threshold._ Independently of phrasing, a
+lexical bag-of-words generator scores two descriptors differing in one token out of `n` at exactly
+`(n - 1) / n`, so one conflict measures 0.875 stated in eight tokens and 0.917 stated in twelve —
+below and then above the 0.88 default, on verbosity alone.
+
+_What follows for an author._ Write the instruction, because it is the only lever that exists, and
+`MemoryPack.SuggestedInstruction` carries the wording and the reasoning. Then treat the outcome as
+best-effort anyway: an application author cannot guarantee how a model phrases a descriptor, so the
+expected failure is not a false refusal but the quiet one — both memories stored, the contradiction
+never raised, and nothing in the transcript to show it happened. An application whose correctness
+depends on contradictions being caught needs a check outside this family; near-duplicate detection
+raises what it can see and claims nothing more.
+
 **The threshold is only meaningful inside the vector space the author injected, so 0.88 is a
 starting point to measure against rather than a value to adopt.** The 0.965 above is one embedding
 model's opinion of one pair of sentences on one corpus. Two properties of the mechanism make it
@@ -101,9 +138,13 @@ _Only the descriptor is embedded._ The details payload is never vectorized and n
 two memories whose descriptors are built from the same words score 1.0 against each other however
 much their payloads disagree. A model that files a topic ("relief valve pressure setting") and puts
 the value in the details produces exactly that, and the refusal it triggers is correct but is
-evidence about the descriptor, not about the values. An author who wants the value to participate in
-the comparison must instruct the model to put it in the descriptor — which is instruction, not tool
-behavior, for the reasons given below.
+evidence about the descriptor, not about the values. It is tempting to conclude that the value
+should therefore go into the descriptor so that it participates in the comparison. It should not:
+adding the value makes two statements of one fact differ by a token instead of being identical,
+which lowers their similarity rather than raising it, and the same reasoning taken one step further
+is what produces the source-qualified descriptors described above that never collide at all. The
+subject-only descriptor is the one that gets conflicts caught, and getting it is instruction, not
+tool behavior, for the reasons given below.
 
 _A numeral carries no special weight._ Similarity is whatever the injected generator says it is, and
 nothing in this family knows that two numbers contradict each other. Where two statements of one

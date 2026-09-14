@@ -19,13 +19,21 @@ shows how it *proceeds*.
   memory tools and *no way to read anything*, in a fresh session, so recall is the only thing the
   answer can rest on. See [What the recall turn proves](#what-the-recall-turn-proves-and-what-the-prompts-cannot).
 - **A writable location that is actually written to.** Conclusions go into the notes folder, granted
-  read-write and lying outside the read-only corpus. The instructions require the notes file to be
-  written before the answer is given, because a granted capability that is never exercised
-  demonstrates nothing about the policy governing it.
-- **A contradiction caught by arithmetic rather than judgement.** The corpus deliberately contains
-  a superseding revision. Filing the second, contradicting statement of one fact is *refused*:
-  `memory_file` returns structured data with `stored: false` and names the conflicting memory. A
-  refusal you can see is what keeps a model from reporting that it stored something it did not.
+  read-write and lying outside the read-only corpus. The instructions tell the agent to write its
+  conclusions there before answering, because a granted capability that is never exercised
+  demonstrates nothing about the policy governing it. Observed: notes were written in the run whose
+  prompt asked for a review and summary, and not in narrow single-step runs — the file appears when
+  a turn actually produces conclusions, which is 1 of the 3 live runs measured.
+- **A contradiction that near-duplicate arithmetic *may* catch, depending on how the model phrases
+  its descriptor.** The corpus deliberately contains a superseding revision, and when the second
+  statement is filed under the same *subject* descriptor as the first, `memory_file` refuses it:
+  structured data with `stored: false`, naming the conflicting memory. A refusal you can see is what
+  keeps a model from reporting that it stored something it did not. **It did not fire in 3 of 3 live
+  runs under `--embeddings local`**, because the model wrote `"Relief valve setting for the bilge
+  pump"` and `"Relief valve setting per field revision (Revision B)"` — two descriptors, so no
+  collision, both stored. Only the descriptor is embedded, so a model that understands the facts
+  differ defeats the detection by saying so. See
+  [When the refusal fires, and when it does not](#when-the-refusal-fires-and-when-it-does-not).
 - **A correction that cites the right document.** The agent is told, explicitly, that a correction
   drawn from a *different* document is made with `memory_revise` stating that new document — not
   with `memory_update`, which keeps the source the memory already had. See
@@ -83,6 +91,55 @@ doing so.
 What this still does not prove: that memories survive the process. The store is
 `InMemoryMemoryStore`, so everything filed is gone when the run ends. Durable memory is an
 `IMemoryStore` an application supplies; this sample does not ship one.
+
+## When the refusal fires, and when it does not
+
+The sample is built around a superseded engineering value — 12 psi in Revision A, 18 psi in
+Revision B — and the near-duplicate refusal is the thing worth watching. It is **best-effort and
+phrasing-dependent**, not a guarantee, and the honest measurement is that it did not fire in any of
+the three live runs measured under `--embeddings local`.
+
+**Why not.** Only the descriptor is embedded, so detection compares descriptors. One run was
+constructed specifically to force a refusal: two prompts explicitly demanded a *separate new* memory
+of the same fact. The model complied and wrote descriptors that distinguish the two:
+
+| Descriptor the model wrote | Value | Source | Outcome |
+| -------------------------- | ----- | ------ | ------- |
+| "Relief valve setting for the bilge pump" | 12 psi | `01-initial-spec.md` | stored |
+| "Relief valve setting per field revision (Revision B)" | 18 psi | `02-field-revision.md` | stored |
+
+Those two score **0.40** against each other under this sample's generator — nowhere near the 0.88
+default — so both were stored and the store ended up holding two contradictory relief-valve values
+with nothing raised. Nothing malfunctioned. The model had *understood* that the two facts differed
+and had said so in the only field that is compared. **The better a model understands that a conflict
+exists, the less likely it is to be caught** — which is why the fix is an instruction and not a tool
+change.
+
+The converse confirms the mechanism rather than excusing it. An earlier live run scored exactly
+**1.0** and refused correctly, because the descriptor was topic-only — "Relief valve pressure
+setting" — with the value carried in the un-embedded details.
+
+**Seeing it fire.** Add a prompt that states the descriptor rule, so the two statements land on one
+subject:
+
+```bash
+dotnet run -c Release --project samples/research-assistant -- \
+  --corpus samples/research-assistant/workspace \
+  --prompt "Read 01-initial-spec.md and file what it says about the relief \
+valve. Use the subject alone as the descriptor: no document name, no \
+revision, no value in it." \
+  --prompt "Now read 02-field-revision.md and file what it says about the \
+relief valve, under that same subject descriptor."
+```
+
+This is still not a guarantee: the model writes the descriptor, and no prompt makes it obey. If the
+refusal does not appear, read the `memory_file` arguments the console prints — the descriptors are
+right there, and they are the whole explanation.
+
+**The quieter failure is the expected one.** A refusal is visible. Two contradictory memories filed
+under distinct descriptors are not: there is no refusal, no warning, and nothing in the transcript
+to show the contradiction was missed. An application whose correctness depends on contradictions
+being caught needs a check outside the memory family.
 
 ## Where the embeddings come from
 
@@ -175,6 +232,17 @@ an explicit one produced 3 of 3 with every phase recorded and closed. The sample
 `TodoPack.SuggestedInstruction` verbatim rather than paraphrasing it, so the wording it ships cannot
 drift from the wording that was measured.
 
+**A descriptor names the subject, never the source, the revision or the value.** This is the
+finding that matters most and the one that is self-defeating without an instruction. Detection
+compares descriptors, because only the descriptor is embedded — so a model that recognizes a
+conflict and writes "…per field revision (Revision B)" to distinguish it has defeated the detection
+by understanding the problem correctly. In 3 of 3 live runs that is exactly what happened and
+nothing was refused. The instruction now states the rule *and its reason*, because this project has
+repeatedly found that a rule without a reason gets applied inconsistently — and here the reasoning
+that overrides it is the same reasoning that produced the failure. Source and revision belong in the
+provenance parameters and the details, which are not embedded. `MemoryPack.SuggestedInstruction`
+carries the same guidance for any application.
+
 **A correction from a new document must be a revision that cites it.** This is the live risk.
 `memory_update` keeps the provenance a memory already carried; `memory_revise` sets it. Offered a
 conflict raised by a *new* document, a model frequently picks `memory_update` anyway — leaving
@@ -237,15 +305,24 @@ Tool calls arrive in parallel, so the console shows a block of calls and then a 
 identifier, and each result repeats the tool name of the call it answers:
 
 ```text
-  [tool call <call-id>] memory_file {"descriptor":"Relief valve setting", …}
-  [tool result <call-id>] memory_file -> {"stored":false,"reason":"near_duplicate", …}
+  [tool call <call-id>] memory_file {"descriptor":"Relief valve pressure setting", …}
+  [tool result <call-id>] memory_file ->
+      {
+        "stored": false,
+        "reason": "near_duplicate",
+        "similarity": 1,
+        …
+      }
 ```
 
 Match on the identifier — the provider's own opaque call id, repeated verbatim on both lines — not
 on position. Results are trimmed to one line at 300 characters, with
-one exception: **`memory_*` results are never truncated**, because a `memory_recall` showing one of
-five returned matches makes the demonstration impossible to check by reading. A recall is bounded by
-the author's configured count; a file read is not, which is where the limit still earns its keep.
+one exception: **`memory_*` results are printed whole**, indented one field per line beneath their
+header, because a `memory_recall` showing one of five returned matches makes the demonstration
+impossible to check by reading. Printing a recall whole on one line produced the opposite problem —
+about fourteen hundred characters wrapping into a block — so the content is kept and the shape is
+given back to it. A recall is bounded by the author's configured count; a file read is not, which is
+where the one-line limit still earns its keep.
 
 The startup banner names the model when it can. With `--provider ollama` that is always possible.
 With `--provider copilot` and no `--model`, the runtime resolves a model at session time from what

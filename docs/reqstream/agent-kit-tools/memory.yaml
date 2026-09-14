@@ -269,6 +269,8 @@ sections:
             children:
               - AgentKitTools-Memory-Pack-SuggestedInstruction
               - AgentKitTools-Memory-Pack-SuggestedInstructionProvenance
+              - AgentKitTools-Memory-Pack-SuggestedInstructionDescriptor
             tests:
               - MemoryPack_SuggestedInstruction_NamesTheFilingAndRecallingTools
               - MemoryPack_SuggestedInstruction_DistinguishesRevisionFromUpdateByItsSource
+              - MemoryPack_SuggestedInstruction_RequiresASubjectOnlyDescriptor

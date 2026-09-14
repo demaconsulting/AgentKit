@@ -31,6 +31,18 @@ public static class ChatLoop
     private static readonly string[] ExitWords = ["exit", "quit"];
 
     /// <summary>
+    ///     The serializer settings used to print a memory result whole, one field per line.
+    /// </summary>
+    /// <remarks>
+    ///     Indentation is the whole point: an un-truncated <c>memory_recall</c> is roughly fourteen
+    ///     hundred characters, which is unreadable as one wrapped line and entirely readable as a
+    ///     field per line. Nothing is dropped, because what makes the demonstration checkable is
+    ///     that every returned match is visible.
+    /// </remarks>
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+
+
+    /// <summary>
     ///     Runs the conversation according to the options: the stated prompts in order, or an
     ///     interactive loop.
     /// </summary>
@@ -270,11 +282,16 @@ public static class ChatLoop
     ///     a write into the read-only corpus denied — so it is shown rather than elided.
     ///     </para>
     ///     <para>
-    ///     <b>Memory results are never truncated, and everything else is.</b> A truncated
-    ///     <c>memory_recall</c> was observed showing one of five returned matches, which makes the
-    ///     one demonstration this sample exists for impossible to check by reading. A recall is
-    ///     bounded by the author's configured count and a file read is not, so the limit is applied
-    ///     where unbounded output actually comes from.
+    ///     <b>Memory results are printed whole and indented; everything else is truncated to one
+    ///     line.</b> A truncated <c>memory_recall</c> was observed showing one of five returned
+    ///     matches, which makes the one demonstration this sample exists for impossible to check by
+    ///     reading. Printing it whole then produced the opposite problem — a single line of some
+    ///     fourteen hundred characters that wraps into an unreadable block — so the full content is
+    ///     kept and the shape is given back to it instead: one field per line, indented under the
+    ///     header. Re-truncating would trade a readability problem for the inability to check the
+    ///     demonstration at all, and only the second is fatal. A recall is bounded by the author's
+    ///     configured count and a file read is not, so the one-line limit stays where unbounded
+    ///     output actually comes from.
     ///     </para>
     /// </remarks>
     /// <param name="result">The function result to summarize.</param>
@@ -282,19 +299,48 @@ public static class ChatLoop
     private static void PrintToolResult(FunctionResultContent result, FunctionCallContent? call)
     {
         var name = call?.Name ?? "(unmatched call)";
-        var untruncated = call?.Name?.StartsWith(MemoryPack.FamilyPrefix + "_", StringComparison.Ordinal) == true;
-        var summary = Summarize(result.Result, untruncated);
+        var memoryResult = call?.Name?.StartsWith(MemoryPack.FamilyPrefix + "_", StringComparison.Ordinal) == true;
 
-        Console.WriteLine($"  [tool result {result.CallId}] {name} -> {summary}");
+        if (!memoryResult)
+        {
+            Console.WriteLine($"  [tool result {result.CallId}] {name} -> {Summarize(result.Result)}");
+            return;
+        }
+
+        Console.WriteLine($"  [tool result {result.CallId}] {name} ->");
+        foreach (var line in Expand(result.Result))
+        {
+            Console.WriteLine($"      {line}");
+        }
+    }
+
+    /// <summary>
+    ///     Renders a tool result value as indented lines, keeping every character of it.
+    /// </summary>
+    /// <param name="value">The result value, which may be <see langword="null"/>.</param>
+    /// <returns>The lines to print beneath the header, with no line left blank.</returns>
+    private static IEnumerable<string> Expand(object? value)
+    {
+        var text = value switch
+        {
+            null => "(no result)",
+            string stringValue => stringValue,
+            _ => JsonSerializer.Serialize(value, IndentedJson),
+        };
+
+        return text
+            .ReplaceLineEndings("\n")
+            .Split('\n')
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.TrimEnd());
     }
 
     /// <summary>
     ///     Renders a tool result value as a single-line string for the console.
     /// </summary>
     /// <param name="value">The result value, which may be <see langword="null"/>.</param>
-    /// <param name="untruncated">Whether to print the value whole however long it is.</param>
     /// <returns>A single-line description of the value.</returns>
-    private static string Summarize(object? value, bool untruncated)
+    private static string Summarize(object? value)
     {
         const int maxLength = 300;
 
@@ -308,6 +354,6 @@ public static class ChatLoop
         // Flatten newlines and runs of whitespace so a multi-line body becomes one line.
         text = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-        return untruncated || text.Length <= maxLength ? text : text[..maxLength] + "…";
+        return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
 }

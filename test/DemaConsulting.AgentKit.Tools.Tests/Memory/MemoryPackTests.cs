@@ -201,4 +201,47 @@ public class MemoryPackTests
                 MemoryPack.SuggestedInstruction,
                 StringComparison.Ordinal));
     }
+
+    /// <summary>
+    ///     Proves the published instruction requires a subject-only descriptor and states why.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This sentence answers a failure that is self-defeating without it. Only the descriptor
+    ///     is embedded, so near-duplicate detection keys on descriptor similarity — and a model
+    ///     that has understood that two facts conflict naturally writes descriptors that say so,
+    ///     naming the source or the revision that distinguishes them. In live runs that produced
+    ///     <c>"Relief valve setting for the bilge pump"</c> beside <c>"Relief valve setting per
+    ///     field revision (Revision B)"</c>: both stored, no refusal raised, two contradictory
+    ///     values held at once. The better the model understood the conflict, the less likely it
+    ///     was to be caught.
+    ///     </para>
+    ///     <para>
+    ///     The reason is pinned alongside the rule because a rule without a reason is applied
+    ///     inconsistently, and the reasoning that overrides this one is the same reasoning that
+    ///     caused the failure.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public void MemoryPack_SuggestedInstruction_RequiresASubjectOnlyDescriptor()
+    {
+        // Assert: the rule, what the excluded parts are, where they belong, and the reason
+        Assert.Multiple(
+            () => Assert.Contains(
+                "SUBJECT the memory is about and nothing else",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                "never the document it came from",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                "only the descriptor is compared",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal),
+            () => Assert.Contains(
+                "filed silently beside the memory it",
+                MemoryPack.SuggestedInstruction,
+                StringComparison.Ordinal));
+    }
 }

@@ -121,10 +121,26 @@ public static class AgentComposition
     ///     the memory instruction</b>, and the sample does not imply one.
     ///     </para>
     ///     <para>
-    ///     <b>Five pieces of guidance are the application's own, and each answers something
+    ///     <b>Six pieces of guidance are the application's own, and each answers something
     ///     observed in a live run rather than something imagined.</b>
     ///     </para>
     ///     <list type="number">
+    ///         <item>
+    ///             <description>
+    ///             <b>A descriptor names the subject only.</b> This is the sample's sharpest
+    ///             finding and it is self-defeating without the instruction. In three live runs the
+    ///             near-duplicate refusal never fired — including one run whose two prompts
+    ///             explicitly demanded a separate new memory of the same fact. The model wrote
+    ///             <c>"Relief valve setting for the bilge pump"</c> for the 12-psi statement and
+    ///             <c>"Relief valve setting per field revision (Revision B)"</c> for the 18-psi
+    ///             one, and both were stored. Nothing malfunctioned: only the descriptor is
+    ///             embedded, so detection keys on descriptor similarity, and a model that has
+    ///             <em>understood</em> that two facts differ naturally writes descriptors that say
+    ///             so — defeating detection exactly when a conflict exists. The instruction
+    ///             therefore states the rule and its reason, because a rule without a reason is
+    ///             overridden by precisely the reasoning that produced the failure.
+    ///             </description>
+    ///         </item>
     ///         <item>
     ///             <description>
     ///             <b>A correction from a different document is a revision, and must cite that
@@ -224,7 +240,15 @@ public static class AgentComposition
             + "\n\n"
             + "Always record where a fact came from: state the document and the section or heading "
             + "when you file a memory, because a finding you cannot attribute is one you cannot "
-            + "defend. When a later document contradicts something you have already filed, correct "
+            + "defend. State it in the source parameters and in the details — never in the "
+            + "descriptor. The descriptor names the subject only: 'relief valve pressure setting', "
+            + "not 'relief valve setting per field revision (Revision B)' and not 'relief valve "
+            + "setting is 18 psi'. Only the descriptor is compared against the memories you "
+            + "already hold, so a descriptor that carries the document, the revision or the value "
+            + "reads as a different subject and will be filed silently beside the memory it "
+            + "contradicts. When a later document restates a fact you have already filed, the "
+            + "descriptor you write for it should be the one you already used. "
+            + "When a later document contradicts something you have already filed, correct "
             + "it with " + MemoryReviseTool.ToolName + " and state the NEW document as the source. "
             + "Do not use " + MemoryUpdateTool.ToolName + " for this: it keeps the source the "
             + "memory already had, which would leave your corrected memory citing the superseded "
