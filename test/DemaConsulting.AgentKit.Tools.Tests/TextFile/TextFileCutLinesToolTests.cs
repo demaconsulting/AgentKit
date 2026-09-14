@@ -39,8 +39,8 @@ public class TextFileCutLinesToolTests
     [Fact]
     public async Task TextFileCutLinesTool_Cut_Range_RemovesLinesAndReportsCountBoundsAndNewTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\n");
         var tool = TextFileCutLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(
@@ -66,8 +66,8 @@ public class TextFileCutLinesToolTests
     [Fact]
     public async Task TextFileCutLinesTool_Cut_ThroughEndOfFile_ReportsTheCutReachedTheEnd()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
         var tool = TextFileCutLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(
@@ -88,8 +88,8 @@ public class TextFileCutLinesToolTests
     [Fact]
     public async Task TextFileCutLinesTool_Cut_OutOfRange_ReturnsDenialAndLeavesFileUnchanged()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
         var tool = TextFileCutLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(
@@ -108,8 +108,8 @@ public class TextFileCutLinesToolTests
     [Fact]
     public async Task TextFileCutLinesTool_Cut_ReadOnlyLocation_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = TextFileCutLinesTool.Create(policy, new TextFileLineBuffers());
 

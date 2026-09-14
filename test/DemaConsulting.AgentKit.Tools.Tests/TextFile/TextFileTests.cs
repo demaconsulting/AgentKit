@@ -79,8 +79,8 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_ToolResult_ReachesTheCallerUnserialized()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content");
         var tools = Compose(fixture.Root);
 
         var result = await InvokeAsync(
@@ -97,8 +97,8 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheEdit()
     {
-        using var fixture = new ReparsePointFixture();
-        var file = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "original");
+        using var fixture = new TempDirectoryFixture();
+        var file = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "original");
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
@@ -119,36 +119,35 @@ public class TextFileTests
     }
 
     /// <summary>
-    ///     Proves a path reaching outside the permitted location through a link is refused by every
-    ///     editing tool and never surfaced by search.
+    ///     Proves a path outside the permitted location is refused by every editing tool and
+    ///     never surfaced by search.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool()
+    public async Task TextFile_Family_PathOutsideRoot_IsRefusedByEveryTool()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped-content");
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedFile = Path.Combine(link, "secret.txt");
-        Assert.Equal("escaped-content", await System.IO.File.ReadAllTextAsync(
-            escapedFile, TestContext.Current.CancellationToken));
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(
+            fixture.Outside,
+            "secret.txt",
+            "outside-content");
         var tools = Compose(fixture.Root);
 
         var readResult = await InvokeAsync(
-            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = escapedFile });
+            tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });
         var replaceResult = await InvokeAsync(
             tools,
             TextFileReplaceTool.ToolName,
-            new AIFunctionArguments { ["path"] = escapedFile, ["oldText"] = "escaped-content", ["newText"] = "x" });
+            new AIFunctionArguments { ["path"] = outsideFile, ["oldText"] = "outside-content", ["newText"] = "x" });
         var searchResult = await InvokeAsync(
-            tools, TextFileSearchTool.ToolName, new AIFunctionArguments { ["pattern"] = "escaped-content" });
+            tools, TextFileSearchTool.ToolName, new AIFunctionArguments { ["pattern"] = "outside-content" });
 
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(readResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(replaceResult), StringComparison.Ordinal);
         Assert.Equal("No matches.", Assert.IsType<string>(searchResult));
         Assert.Equal(
-            "escaped-content",
-            await System.IO.File.ReadAllTextAsync(escapedFile, TestContext.Current.CancellationToken));
+            "outside-content",
+            await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -158,8 +157,8 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_DeniedRequest_ReturnsAResultWithoutThrowing()
     {
-        using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tools = Compose(fixture.Root);
 
         var result = await InvokeAsync(
@@ -176,7 +175,7 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_SearchReadEditLoop_WorksByRelativeNames()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tools = Compose(fixture.Root);
 
         // Create a file, search it, read it, then edit it — all by bare relative name.
@@ -211,7 +210,7 @@ public class TextFileTests
     [Fact]
     public async Task TextFile_Family_LargeBlockDuplication_CopiesCreatesAndPastes()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         Directory.CreateDirectory(Path.Combine(fixture.Root, "data"));
 
         // A non-trivial fixture: 500 numbered lines, each ending with a newline.

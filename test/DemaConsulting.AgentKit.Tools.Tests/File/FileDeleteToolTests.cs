@@ -41,8 +41,8 @@ public class FileDeleteToolTests
     public async Task FileDeleteTool_Delete_PermittedFile_RemovesIt()
     {
         // Arrange: a workspace holding a file, addressed by its bare relative name
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var tool = FileDeleteTool.Create(RootedPolicy(fixture.Root));
 
         // Act: delete it
@@ -62,10 +62,10 @@ public class FileDeleteToolTests
     public async Task FileDeleteTool_Delete_DirectoryPath_ReturnsDenialAndLeavesItInPlace()
     {
         // Arrange: a directory holding a file, so a recursive delete would destroy the file too
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var subdirectory = Path.Combine(fixture.Root, "keep");
         Directory.CreateDirectory(subdirectory);
-        ReparsePointFixture.WriteFile(subdirectory, "inside.txt", "content");
+        TempDirectoryFixture.WriteFile(subdirectory, "inside.txt", "content");
         var tool = FileDeleteTool.Create(RootedPolicy(fixture.Root));
 
         // Act: attempt to delete the directory
@@ -86,8 +86,8 @@ public class FileDeleteToolTests
     public async Task FileDeleteTool_Delete_ReadOnlyLocation_ReturnsDenialAndLeavesTheFile()
     {
         // Arrange: a read-only root, so no deletion is permitted
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = FileDeleteTool.Create(policy);
 
@@ -107,7 +107,7 @@ public class FileDeleteToolTests
     [Fact]
     public async Task FileDeleteTool_Delete_MissingFile_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = FileDeleteTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "absent.txt" });

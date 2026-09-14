@@ -86,7 +86,7 @@ owned by `PathPolicy.EnumerateFiles`. A null policy at construction raises `Argu
 a composing-application error.
 
 **Enumeration is a policy call.** The unit never enumerates recursively through `Directory` itself.
-That keeps symbolic links or junctions outside the grants from leaking as listed names.
+That keeps files outside the grants from leaking as listed names.
 
 #### Dependencies
 

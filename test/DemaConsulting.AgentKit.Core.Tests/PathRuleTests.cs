@@ -80,7 +80,7 @@ public class PathRuleTests
     public void PathRule_RootedFactories_CarryTheirAccessLevel()
     {
         // Arrange: one grant from each rooted factory over the same location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
 
         // Act: create a read-only and a read-write grant
         var readOnly = PathRule.ReadOnly(fixture.Root);
@@ -98,7 +98,7 @@ public class PathRuleTests
     public void PathRule_Allows_RootedGrant_PathInsideRoot_ReturnsTrue()
     {
         // Arrange: a grant confined to a temporary root
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = Path.Combine(rule.Root!, "nested", "file.txt");
 
@@ -116,7 +116,7 @@ public class PathRuleTests
     public void PathRule_Allows_RootedGrant_RootItself_ReturnsTrue()
     {
         // Arrange: a grant confined to a temporary root
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadWrite(fixture.Root);
 
         // Act: test the root itself, which a listing operation needs to reach
@@ -133,7 +133,7 @@ public class PathRuleTests
     public void PathRule_Allows_RootedGrant_PathOutsideRoot_ReturnsFalse()
     {
         // Arrange: a grant confined to the root, and a location in the sibling directory
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = RealPathResolver.Resolve(Path.Combine(fixture.Outside, "file.txt"));
 
@@ -156,7 +156,7 @@ public class PathRuleTests
     public void PathRule_Allows_RootedGrant_SiblingWithSharedPrefix_ReturnsFalse()
     {
         // Arrange: a grant confined to the root, and a sibling sharing the root's name prefix
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadOnly(fixture.Root);
         var candidate = rule.Root + "-evil" + Path.DirectorySeparatorChar + "file.txt";
 
@@ -175,7 +175,7 @@ public class PathRuleTests
     public void PathRule_Allows_DenyPatternMatchingDirectorySegment_ReturnsFalse()
     {
         // Arrange: a rooted grant that excludes a repository metadata directory
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadOnly(fixture.Root, [".git"]);
         var candidate = Path.Combine(rule.Root!, ".git", "config");
 
@@ -194,7 +194,7 @@ public class PathRuleTests
     public void PathRule_Allows_DenyPatternMatchingFileName_ReturnsFalse()
     {
         // Arrange: a rooted grant that excludes key material by name
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadWrite(fixture.Root, ["*.key"]);
         var candidate = Path.Combine(rule.Root!, "nested", "server.key");
 
@@ -206,27 +206,26 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that a root that is itself reached through a link still permits its own
-    ///     contents.
+    ///     Proves that a root spelled with relative segments still permits its own contents.
     /// </summary>
     /// <remarks>
-    ///     Containment is judged on real locations, so the root must be resolved when the grant
-    ///     is created; otherwise a legitimately linked working directory would permit nothing.
+    ///     Containment is judged between normalized locations, so the root must be normalized
+    ///     when the grant is created; otherwise a grant spelled relatively would permit nothing.
     /// </remarks>
     [Fact]
-    public void PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath()
+    public void PathRule_Rooted_RootWithRelativeSegments_AllowsContainedPath()
     {
-        // Arrange: a grant whose configured root is a link pointing at the outside directory
-        using var fixture = new ReparsePointFixture();
-        var link = fixture.CreateDirectoryLink("linked-root", fixture.Outside);
-        var rule = PathRule.ReadOnly(link);
+        // Arrange: a grant whose configured root detours through a parent segment
+        using var fixture = new TempDirectoryFixture();
+        var detour = Path.Combine(fixture.Root, "..", "outside");
+        var rule = PathRule.ReadOnly(detour);
         var candidate = RealPathResolver.Resolve(Path.Combine(fixture.Outside, "file.txt"));
 
-        // Act: test a location inside the link's real target
+        // Act: test a location inside the grant's normalized root
         var allowed = rule.Allows(candidate);
 
-        // Assert: the grant resolved its root and permits the target's real contents
-        Assert.NotEqual(Path.GetFullPath(link), rule.Root);
+        // Assert: the grant normalized its root and permits that location's contents
+        Assert.Equal(RealPathResolver.Resolve(fixture.Outside), rule.Root);
         Assert.True(allowed);
     }
 
@@ -261,7 +260,7 @@ public class PathRuleTests
     public void PathRule_ReadOnly_NullDenyPattern_ThrowsArgumentException()
     {
         // Arrange: a valid root with an invalid pattern list
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
 
         // Act & Assert: the malformed grant is refused at construction
         Assert.Throws<ArgumentException>(() => PathRule.ReadOnly(fixture.Root, [null!]));
@@ -274,7 +273,7 @@ public class PathRuleTests
     public void PathRule_Describe_RootedGrant_NamesLocationAndLevel()
     {
         // Arrange: a read-only grant over a temporary root
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var rule = PathRule.ReadOnly(fixture.Root);
 
         // Act: describe the grant as a denial would

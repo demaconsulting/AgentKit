@@ -9,21 +9,22 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 public class AgentKitCoreTests
 {
     /// <summary>
-    ///     Proves that the system judges access by the real location of a path, refusing a file
-    ///     that is only reachable by following a link out of the permitted location.
+    ///     Proves that the system judges access by the normalized location of a path, refusing a
+    ///     file reached by climbing out of the permitted location.
     /// </summary>
     [Fact]
-    public void AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied()
+    public void AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied()
     {
-        // Arrange: a system configured for one location, with a link escaping it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
+        // Arrange: a system configured for one location, with a secret outside it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var policy = CreateRootedPolicy(fixture.Root);
-        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
 
         // Act: request the escaping path through the public API
-        var permitted = policy.TryResolveRead(requested, out var realPath, out var denialMessage);
+        var permitted = policy.TryResolveRead(
+            "../outside/secret.txt",
+            out var realPath,
+            out var denialMessage);
 
         // Assert: the system refuses and hands back no location
         Assert.False(permitted);
@@ -33,16 +34,15 @@ public class AgentKitCoreTests
 
     /// <summary>
     ///     Proves that the system applies the same containment decision to enumeration as to
-    ///     direct access, so an escaped file is never listed.
+    ///     direct access, so a file outside the permitted location is never listed.
     /// </summary>
     [Fact]
-    public void AgentKitCore_SystemPathContainment_EnumerationAcrossLink_ExcludesEscapedFile()
+    public void AgentKitCore_SystemPathContainment_Enumeration_ListsOnlyPermittedFiles()
     {
-        // Arrange: a permitted file inside the location and a secret reachable through a link
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "inside.txt", "inside-content");
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
+        // Arrange: a permitted file inside the location and a secret outside it
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "inside.txt", "inside-content");
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: list the permitted location through the public API
@@ -51,7 +51,7 @@ public class AgentKitCoreTests
             .Select(Path.GetFileName)
             .ToArray();
 
-        // Assert: the permitted file is listed and the escaped file is not
+        // Assert: the permitted file is listed and the outside file is not
         Assert.Contains("inside.txt", listed);
         Assert.DoesNotContain("secret.txt", listed);
     }
@@ -63,8 +63,8 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_ReadWideWriteNarrow_AllowsReadDeniesWrite()
     {
         // Arrange: an unrestricted read grant paired with a read-write grant confined to one place
-        using var fixture = new ReparsePointFixture();
-        var target = ReparsePointFixture.WriteFile(fixture.Outside, "reference.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        var target = TempDirectoryFixture.WriteFile(fixture.Outside, "reference.txt", "content");
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.Unrestricted(AccessLevel.ReadOnly), PathRule.ReadWrite(fixture.Root)]);
@@ -86,7 +86,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_DeniedPath_ReturnsDenialWithoutThrowing()
     {
         // Arrange: a system confined to one location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
 
@@ -112,7 +112,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations()
     {
         // Arrange: a system confined to one location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
 
@@ -134,8 +134,8 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_RelativePathFromModel_ResolvesAgainstWorkingDirectory()
     {
         // Arrange: a system configured for one working directory, holding one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: request the file the way a model would name it
@@ -155,7 +155,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover()
     {
         // Arrange: a system confined to one working directory
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: request a relative path that escapes the working directory
@@ -208,7 +208,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected()
     {
         // Act & Assert: the anchor is required, and a null grant entry is a programming error
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         Assert.ThrowsAny<ArgumentException>(
             () => new PathPolicy(null!, [PathRule.Unrestricted(AccessLevel.ReadWrite)]));
         Assert.Throws<ArgumentNullException>(
@@ -223,7 +223,7 @@ public class AgentKitCoreTests
     public void AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues()
     {
         // Arrange: a system configured for one location, with no opinion about ceilings
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
 
         // Act: build the policy a host would build and read the ceilings it carries
         var policy = CreateRootedPolicy(fixture.Root);
@@ -273,7 +273,7 @@ public class AgentKitCoreTests
     public async Task AgentKitCore_SystemGuardedTool_DeniedPath_ReturnsDenialResultNotException()
     {
         // Arrange: a tool governed by a policy confined to one location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         var function = GuardedToolFactory.Create(
             (Func<string, Task<object>>)(path => Task.FromResult(

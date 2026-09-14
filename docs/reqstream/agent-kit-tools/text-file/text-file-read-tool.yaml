@@ -44,17 +44,14 @@ sections:
 
               - id: AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
                 title: >-
-                  The read tool shall refuse a request whose real location lies outside the permitted
-                  read location, including one that reaches outside through a link, without disclosing
-                  the file's content.
+                  The read tool shall refuse a request whose location lies outside the permitted
+                  read location, without disclosing the file's content.
                 tags: [security]
                 justification: |
-                  A path that looks contained can still reach outside it through a reparse point;
-                  judging the request on the location it actually reaches keeps an agent inside what
-                  its operator granted.
+                  Judging the request against the permitted locations keeps an agent inside what
+                  its operator granted, and a refused read must disclose nothing of the content.
                 tests:
                   - TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial
-                  - TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial
 
               - id: AgentKitTools-TextFile-ReadTool-RangedPaging
                 title: >-

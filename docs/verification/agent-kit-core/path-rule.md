@@ -12,8 +12,7 @@ Unit Design_.
 
 Candidate locations are built from the grant's own `Root` property, which is the resolved location
 it actually holds. This matches the documented contract — `Allows` takes a location that has already
-been resolved — and keeps the tests independent of whether the host's temporary directory is itself
-reached through a link.
+been resolved — and keeps the tests independent of how the host's temporary directory is spelled.
 
 The suite also verifies the permission-only part of the model. A `PathRule` carries an
 `AccessLevel` of `ReadOnly` or `ReadWrite`, created through the `ReadOnly`, `ReadWrite`, and
@@ -27,9 +26,7 @@ Unit tests reside in `PathRuleTests.cs` within the `DemaConsulting.AgentKit.Core
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **File system**: A temporary directory tree created per test through `ReparsePointFixture`;
-  one scenario additionally creates a real directory link, using `cmd.exe /c mklink /J` on
-  Windows and a directory symbolic link on Linux and macOS
+- **File system**: A temporary directory tree created per test through `TempDirectoryFixture`
 - **Mocking**: None; `RealPathResolver` is exercised as a real dependency
 - **Isolation**: Each test constructs its own grant and its own fixture; no state is shared
 
@@ -113,13 +110,13 @@ that patterns apply to enclosing names and not only to the last one.
 A read-write grant excluding `*.key` refuses a contained location matching the pattern, verifying
 that patterns override containment.
 
-#### AgentKitCore-PathRule-RootResolvedAtConstruction: A Root Reached Through a Link Permits Its Contents
+#### AgentKitCore-PathRule-RootNormalizedAtConstruction: A Root Spelled With Relative Segments Permits Its Contents
 
-**Test**: `PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath`
+**Test**: `PathRule_Rooted_RootWithRelativeSegments_AllowsContainedPath`
 
-Creates a real directory link and grants the linked location. Asserts that the grant's `Root` differs
-from the link's own path — proving resolution occurred — and that a location inside the link's real
-target is permitted. Verifies that a legitimately linked working directory remains usable.
+Grants a location spelled through a redundant parent-directory detour. Asserts that the grant's
+`Root` is the normalized location — proving normalization occurred — and that a location inside it
+is permitted. Verifies that a location configured the way a person writes one remains usable.
 
 #### AgentKitCore-PathRule-RejectInvalidRule: Null Root Throws ArgumentNullException
 

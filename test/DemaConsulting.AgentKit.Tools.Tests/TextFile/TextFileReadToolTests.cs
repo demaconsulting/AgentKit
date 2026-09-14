@@ -72,8 +72,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_PermittedFile_ResultIsPlainTextNotJsonElement()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
@@ -89,8 +89,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_PermittedFile_ReturnsNumberedContentWithHeader()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
@@ -108,8 +108,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_EmptyFile_ReturnsZeroLineHeaderNotDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "empty.txt", string.Empty);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "empty.txt", string.Empty);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "empty.txt" });
@@ -126,8 +126,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_RangedWindow_ReturnsOnlyThoseLines()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -150,8 +150,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_StartLinePastEndOfFile_ReturnsEmptyWindowNamingTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -171,8 +171,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_LineCountPastEndOfFile_ClampsToTheTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -190,8 +190,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_InvalidStartLine_ReturnsDenialWithoutThrowing()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", FiveLines);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -209,8 +209,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_BareFileName_ReturnsTheFileContents()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "only line");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "only line");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "note.txt" });
@@ -245,8 +245,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "leaked-body-token");
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "leaked-body-token");
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = outsideFile });
@@ -257,34 +257,13 @@ public class TextFileReadToolTests
     }
 
     /// <summary>
-    ///     Proves a file beneath a link escaping the root is refused.
-    /// </summary>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial()
-    {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped");
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedFile = Path.Combine(link, "secret.txt");
-        Assert.Equal("escaped", await System.IO.File.ReadAllTextAsync(
-            escapedFile, TestContext.Current.CancellationToken));
-        var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
-
-        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = escapedFile });
-
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     ///     Proves a missing file is refused with a plain fact that names no other tool.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFileReadTool_Read_MissingFile_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "absent.txt" });
@@ -302,7 +281,7 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_DirectoryPath_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = fixture.Root });
@@ -321,8 +300,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", new string('a', 128));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.txt", new string('a', 128));
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 16)));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "big.txt" });
@@ -342,8 +321,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncated()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", new string('a', 400));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", new string('a', 400));
         var tool = TextFileReadTool.Create(
             RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 4096, maxResultCharacters: 32)));
 
@@ -362,8 +341,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_UnrangedLargeFile_ReturnsDenialNamingRecourseAndTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "big.txt" });
@@ -387,8 +366,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_RangedWindowInLargeFile_ReturnsThatWindowNotADenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
 
         var result = await InvokeAsync(
@@ -411,8 +390,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_RangedWindowNearEndOfLargeFile_ReturnsTailWindow()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.txt", LargeFixture(200));
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
 
         var result = await InvokeAsync(
@@ -433,8 +412,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_BinaryImageFile_ReturnsDenialRedirectingToImageRead()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteBytes(fixture.Root, "picture.png", PngHeaderBytes);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "picture.png" });
@@ -452,8 +431,8 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_BinaryNonImageFile_ReturnsDenialWithoutRedirect()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteBytes(fixture.Root, "data.bin", [0x01, 0x00, 0x02, 0x00]);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteBytes(fixture.Root, "data.bin", [0x01, 0x00, 0x02, 0x00]);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "data.bin" });
@@ -470,11 +449,11 @@ public class TextFileReadToolTests
     [Fact]
     public async Task TextFileReadTool_Read_Utf16BomTextFile_ReturnsTheFileContents()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var bytes = Encoding.Unicode.GetPreamble()
             .Concat(Encoding.Unicode.GetBytes("hello"))
             .ToArray();
-        ReparsePointFixture.WriteBytes(fixture.Root, "utf16.txt", bytes);
+        TempDirectoryFixture.WriteBytes(fixture.Root, "utf16.txt", bytes);
         var tool = TextFileReadTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "utf16.txt" });

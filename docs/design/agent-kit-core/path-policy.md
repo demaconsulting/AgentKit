@@ -208,12 +208,12 @@ is what guarantees reads and writes differ only in which grants they consult.
    as given; every relative request is interpreted against `WorkingDirectory` first, and a unique
    bare-segment alias denotes the matching grant's root only as a fallback, when that
    working-directory interpretation does not resolve to an existing path.
-2. Resolve the candidate through the unchanged per-component reparse-point walk.
+2. Normalize the candidate through `RealPathResolver`, making it absolute with relative segments
+   collapsed.
 3. For a read, test the resolved location against every grant. For a write, test it only against
    read-write grants.
 4. On refusal, build a denial that echoes the request, states any working-directory
-   interpretation, names the real location when it differs from what has already been reported,
-   and enumerates the permitted locations with access levels.
+   interpretation, and enumerates the permitted locations with access levels.
 
 #### BuildCandidate(string? path, out bool wasRelative, out string interpretedAbsolute)
 
@@ -229,18 +229,16 @@ directory, because only that case is reported as an interpretation in a denial. 
 successful aliases are not reported as "interpreted as" values. The absolute location reported for a
 working-directory interpretation is lexically normalized before it is handed to a denial (`.` and
 `..` collapsed), while the candidate handed to the resolver is the un-normalized combined path, so
-containment is unchanged. The normalization is lexical only — links are not resolved, because this
-value reports how the request was _read_; where a link actually leads is reported separately by
-`BuildDenial`.
+containment is unchanged. The normalization is lexical only, because this value reports how the
+request was _read_.
 
 #### NormalizeInterpretedPath(string interpreted)
 
 Private helper that lexically normalizes the absolute location a relative request was interpreted
 as, so a denial reports a navigable path rather than one still carrying `.` or `..` segments. It
 collapses those segments against the already-absolute input via `Path.GetFullPath` and touches
-neither the file system nor any link: this value reports how the request was _read_, and the
-location a link actually leads to is reported separately by `BuildDenial`, which names the
-resolved real location only when it differs. Only the reported value is normalized; the candidate
+the file system not at all: this value reports how the request was _read_. Only the reported value
+is normalized; the candidate
 handed to the resolver is
 unchanged. Because the path is caller-controlled, normalization can throw on malformed input; a
 denial must never throw, so the same resolution-class failures `IsResolutionFailure` recognizes fall
@@ -251,8 +249,8 @@ back to the un-normalized value.
 Private helper that probes whether a working-directory-combined candidate names an existing file or
 directory — the existence check that decides whether the bare-segment alias is even considered. It
 is an existence check only; it never opens or reads the path, and it governs candidate selection
-only, never containment: a probed path that exists is still subject to the unchanged per-component
-reparse walk and grant test. The probe runs unconditionally, on the working directory whether or not
+only, never containment: a probed path that exists is still subject to the unchanged normalization
+and grant test. The probe runs unconditionally, on the working directory whether or not
 it is granted, so selection stays purely about addressing and never re-couples addressing to
 permission. Any failure to determine existence is treated as "does not exist" (the same
 resolution-class exceptions `IsResolutionFailure` recognizes), so the probe can never throw out of
@@ -269,7 +267,7 @@ same bare segment matches two or more distinct grants, it is ambiguous and is no
 through to the working-directory-relative interpretation and is then denied, with the same-named
 locations enumerated, rather than silently guessing the wrong target.
 
-#### BuildDenial(string reason, string? path, bool wasRelative, string interpretedAbsolute, string? resolvedReal)
+#### BuildDenial(string reason, string? path, bool wasRelative, string interpretedAbsolute)
 
 Private helper constructing a denial in the order the model needs to recover:
 
@@ -277,19 +275,11 @@ Private helper constructing a denial in the order the model needs to recover:
 2. The absolute location a relative request was interpreted as, only when the request was joined
    to the working directory, reported in canonical (lexically normalized) form with `.` and `..`
    collapsed.
-3. The real location the request resolved to, only when it differs from the location already
-   reported above it and only when a real location is known at all — resolution failure supplies
-   none.
-4. The permitted locations, each with its access level, or a statement that no locations are
+3. The permitted locations, each with its access level, or a statement that no locations are
    permitted.
 
-**Why the real location is named.** A path spelled inside a permitted location that nevertheless
-resolves outside it is denied for a reason no other part of the message discloses, so an author
-who mounted data beneath a granted folder would read the denial as a defect. Stating where the
-path actually resolved to names the fact that decided the outcome. It is omitted whenever the
-resolved location matches what the reader has already been shown, so a denial with nothing extra
-to say adds nothing and discloses no location a link-free request did not already name. The line
-states a fact and prescribes no remedy; whether to grant the target is the author's decision.
+**Denials state facts and prescribe no remedy.** The message says what was asked, how it was
+read, and what is permitted; what to do about a refusal is the reader's decision.
 
 ### Error Handling
 
@@ -326,58 +316,24 @@ grant over that folder is valid: a relative request resolves there and is denied
 permits it. A policy with a read-only working directory is also valid. There is no implicit access
 and no special case that treats the anchor differently from any other location.
 
-**The resolution steps must stay in this order.** Build an absolute candidate, run the
-per-component reparse-point walk, then test containment. Making the path absolute before the walk
-rather than after it is what ensures a relative path that reaches outside through a link is
-refused exactly as an absolute one is: the walk sees the same fully-qualified path either way.
-**The walk itself must not be weakened or replaced** — a leaf-only or deepest-existing-ancestor
-resolution has been proven not to detect an escape; see _RealPathResolver Unit Design_.
-`RealPathResolver` is deliberately untouched by the path model change, and its regression tests
-must continue to pass unmodified.
+**The resolution steps must stay in this order.** Build an absolute candidate, normalize it, then
+test containment. Making the path absolute before normalizing rather than after is what ensures a
+relative path climbing out of a granted location with `..` is refused exactly as an absolute one
+is: the containment test sees the same fully-qualified path either way.
 
-**The real location must itself be granted.** This is the containment rule, stated plainly:
-_resolve to the real location, then require that real location to be granted._ A link or mount
-placed under a granted folder that resolves elsewhere is denied unless its target is separately
-granted. Being reachable by traversal from a granted location confers nothing; only a grant
-confers anything. The escape hatch is a grant: an application author who wants the target
-included adds it to the policy.
+**Containment is a decision about paths, and links are not a boundary.** A symbolic link, a
+junction or a mount inside a granted location is neither followed nor detected, so a path that
+leaves a granted location through one is judged as it is spelled. This is stated for users in the
+README and is not a gap the library claims to close.
 
-This follows the established convention for confinement mechanisms rather than inventing a
-reading of its own:
-
-- OpenBSD's `unveil` requires both the link and its target to be unveiled.
-- Linux Landlock checks the resolved inode, so a link resolving outside the permitted set is
-  denied even when the traversed path appears to sit under an allowed directory.
-- Deno's read permission is checked against the resolved path.
-- `chroot`, jails and containers place nothing implicitly in scope; an outside location must be
-  explicitly mounted in.
-- Apache requires `FollowSymLinks` as an opt-in, and nginx offers `disable_symlinks`.
-- Archive extraction follows the same shape — resolve, then verify the result lies within the
-  destination — and the Zip-Slip and Tar-Slip vulnerability class is what getting it wrong
-  produces.
-
-**The trade-off this carries, recorded honestly.** Landlock pins its rules to inodes and is
-therefore immune to time-of-check/time-of-use substitution. AgentKit is path-based, like
-`unveil`, so a TOCTOU window exists in principle: a path resolved and permitted could in
-principle be replaced by a link before the operation that follows. A security review established
-that this is not reachable by the agent itself — no shipped tool can create a reparse point, and
-`file_move` and `file_copy` refuse directory sources — so mounting it would require a cooperating
-external process already holding write access inside a granted location. The window is recorded
-rather than claimed closed.
-
-**An unresolvable path is a denial, including a link that cannot be decoded.** Every way the
-per-component walk can fail arrives here as a resolution-class exception and becomes a denial,
-because denying what cannot be understood is the fail-safe reading. That includes a component the
-file system marks as a link but for which the platform reports no target: it is a redirection
-whose destination is unknown, not an ordinary entry, and permitting it would mean judging
-containment on the link's own path. See _RealPathResolver Unit Design_. The practical consequence
-is stated rather than hidden: an entry carrying a link kind this platform cannot decode is
-refused even where the operating system's own I/O would have followed it transparently. Denying
-the unknown is the posture this control is built on.
+**An unresolvable path is a denial.** Every way normalization can fail — text no platform can
+interpret as a path, a result longer than the platform permits — arrives here as a
+resolution-class exception and becomes a denial, because denying what cannot be understood is the
+fail-safe reading for input a model controls.
 
 **Enumeration and access must remain one decision.** Recursive enumeration provided by the
-operating system follows directory junctions and symbolic links and will surface files outside
-the permitted location; this was established experimentally. `EnumerateFiles` therefore filters
+operating system surfaces every file beneath a directory, including files outside
+the permitted location. `EnumerateFiles` therefore filters
 every candidate through `TryResolveRead` — the same method used for direct access, not a parallel
 re-implementation of containment. A future change must not introduce a second containment check
 for listings: a listing that is broader than what access permits discloses files the operator
@@ -388,12 +344,10 @@ string? denialMessage`. The message deliberately includes permitted locations an
 because a confined model needs the map of where it may work. It must not report an
 interpretation-only denial, and it must not add an interpretation line for absolute input or for a
 successful last-segment alias. The interpreted location is reported in canonical form — lexical
-normalization only, with `.` and `..` collapsed and no link resolution — and normalizing the
-reported value must not change the candidate that is resolved. When the resolved real location
-differs from the location already reported, the denial names it, so a request that looks contained
-but leads elsewhere does not read as a defect. **Denials state facts and never prescribe
-remedies**: the message says where the path led and what is permitted, and leaves what to do about
-it to the reader.
+normalization only, with `.` and `..` collapsed — and normalizing the
+reported value must not change the candidate that is resolved. **Denials state facts and never
+prescribe remedies**: the message says what was asked, how it was read, and what is permitted, and
+leaves what to do about it to the reader.
 
 **Output dialect must mirror input dialect without lying.** Absolute input fixes absolute output.
 Relative or discovery input is only relative-eligible. A relative result is allowed only when the
@@ -409,7 +363,7 @@ working-directory interpretation does not resolve to an existing path. This elim
 wrong-target case where a request for a folder inside the working directory would have returned a
 different granted location sharing the final folder name. The deciding existence probe
 (`CombinedPathExists`) governs candidate **selection** only, never containment: every candidate,
-aliased or not, still passes the unchanged reparse walk and grant test. The probe runs
+aliased or not, still passes the unchanged normalization and grant test. The probe runs
 unconditionally — on the working directory whether or not it is granted — so selection stays purely
 about addressing, and it must never throw out of `BuildCandidate`: any failure to determine
 existence is treated as "does not exist" and falls back to the alias, the same fail-safe reading

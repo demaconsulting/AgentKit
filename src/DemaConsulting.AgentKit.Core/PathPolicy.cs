@@ -37,21 +37,17 @@ namespace DemaConsulting.AgentKit.Core;
 ///     </para>
 ///     <para>
 ///     <b>The resolution order is part of the contract.</b> A requested path is first made absolute
-///     against the working directory, then resolved through
-///     <see cref="RealPathResolver.Resolve"/>'s per-component reparse-point walk, and only then
-///     tested for containment. Making the path absolute first is what lets a relative path be
-///     expressed at all; doing it before the walk is what ensures a relative path that reaches
-///     outside a granted location through a link is refused exactly as an absolute one is.
+///     against the working directory, then normalized through
+///     <see cref="RealPathResolver.Resolve"/>, and only then tested for containment. Making the
+///     path absolute first is what lets a relative path be expressed at all; normalizing before
+///     the containment test is what ensures a relative path climbing out of a granted location
+///     with <c>..</c> is refused exactly as an absolute one is.
 ///     </para>
 ///     <para>
-///     <b>The real location must itself be granted.</b> Containment is judged on where a path
-///     actually leads, not on how it is spelled, so a link or mount inside a granted location
-///     whose target lies elsewhere is denied unless that target is separately granted. This is
-///     the established convention for confinement mechanisms, and the escape hatch is the one
-///     they all offer: the application author adds a grant for the target. A denial names the
-///     real location when it differs from the spelling, so the cause is evident; see
-///     <em>PathPolicy Unit Design</em> for the convention this follows and the trade-off it
-///     carries.
+///     <b>Containment is judged on normalized paths.</b> A symbolic link, junction or mount
+///     inside a granted location is neither followed nor detected, so a path that leaves a
+///     granted location through one is judged on the location it is spelled as. Links are not a
+///     protection boundary here; see the note in the README.
 ///     </para>
 ///     <para>
 ///     <b>Denial is a return value, not an exception.</b> A refused path is reported by returning
@@ -153,9 +149,9 @@ public sealed class PathPolicy
     /// <remarks>
     ///     Recursion is required because a caller asks for a subtree, and inaccessible entries
     ///     are ignored so that one unreadable directory does not turn a listing into a failure.
-    ///     Note that recursion deliberately does <em>not</em> imply trust: the operating system
-    ///     will happily descend through a link that leaves the permitted location, which is
-    ///     precisely why every candidate is filtered afterwards.
+    ///     Note that recursion deliberately does <em>not</em> imply trust: every candidate the
+    ///     enumeration surfaces is filtered afterwards by the same decision a direct access
+    ///     makes.
     /// </remarks>
     private static readonly EnumerationOptions RecursiveEnumeration = new()
     {
@@ -402,8 +398,8 @@ public sealed class PathPolicy
     /// <remarks>
     ///     <para>
     ///     <b>Enumeration and access share one decision.</b> Recursive enumeration by the operating
-    ///     system follows directory junctions and symbolic links, and will therefore surface files
-    ///     that lie outside every permitted location. Every candidate is passed through
+    ///     system surfaces every file beneath the directory, including files that lie outside every
+    ///     permitted location. Every candidate is passed through
     ///     <see cref="TryResolveRead"/> — the very method used for direct access — so a listing can
     ///     never advertise a file that a read would refuse. This is a design invariant: the
     ///     filtering must remain the same code path as direct access, never a parallel
@@ -452,8 +448,8 @@ public sealed class PathPolicy
             return [];
         }
 
-        // Filter every candidate through the single read decision. The enumeration itself may
-        // have crossed a link out of a permitted location; this is where that is undone.
+        // Filter every candidate through the single read decision, so that a listing can never
+        // advertise a file a direct read would refuse.
         return ListCandidates(realDirectory, searchPattern)
             .Select(candidate => TryResolveRead(candidate, out var real, out _) ? real : null)
             .Where(real => real is not null)
@@ -647,10 +643,11 @@ public sealed class PathPolicy
     ///     candidate (an absent request denotes the working directory; every relative request is
     ///     interpreted against the working directory first, with a bare segment matching one
     ///     grant's last path segment aliased to that grant only as a fallback, when the
-    ///     working-directory interpretation does not name an existing path), resolved through the
-    ///     per-component reparse-point walk, and only then tested for containment. Making the path
-    ///     absolute before the walk is what ensures a relative path that reaches outside a granted
-    ///     location through a link is refused exactly as an absolute one is.
+    ///     working-directory interpretation does not name an existing path), normalized into an
+    ///     absolute location with <c>.</c> and <c>..</c> collapsed, and only then tested for
+    ///     containment. Making the path absolute before normalizing is what ensures a relative
+    ///     path climbing out of a granted location with <c>..</c> is refused exactly as an
+    ///     absolute one is.
     ///     </para>
     /// </remarks>
     /// <param name="path">The requested path; may be null, which denotes the working directory.</param>
@@ -674,21 +671,22 @@ public sealed class PathPolicy
         string resolved;
         try
         {
-            // The unchanged per-component reparse-point walk. It must run on the absolute form,
-            // and it must not be replaced by a cheaper resolution; see RealPathResolver.
+            // Normalize the absolute form so that containment is judged between two paths
+            // spelled the same way; see RealPathResolver for what this does and does not do.
             resolved = RealPathResolver.Resolve(candidate);
         }
         catch (Exception exception) when (IsResolutionFailure(exception))
         {
-            // A path whose real location cannot be determined is refused. Denying the unknown
-            // is the fail-safe reading, and it keeps the promise that no exception escapes.
+            // A caller-supplied path the platform cannot express as a location - malformed
+            // text, or a result longer than the platform permits - is refused. Denying the
+            // unknown is the fail-safe reading, and it keeps the promise that no exception
+            // escapes.
             realPath = null;
             denialMessage = BuildDenial(
                 "could not be resolved to a real location",
                 path,
                 wasRelative,
-                interpretedAbsolute,
-                resolvedReal: null);
+                interpretedAbsolute);
             return false;
         }
 
@@ -704,7 +702,7 @@ public sealed class PathPolicy
         // enumerate what is permitted so the model can re-address rather than guess.
         realPath = null;
         var reason = ClassifyDenial(resolved, requireWrite);
-        denialMessage = BuildDenial(reason, path, wasRelative, interpretedAbsolute, resolved);
+        denialMessage = BuildDenial(reason, path, wasRelative, interpretedAbsolute);
         return false;
     }
 
@@ -833,14 +831,12 @@ public sealed class PathPolicy
     /// </summary>
     /// <remarks>
     ///     Normalization is lexical only — it collapses "." and ".." against the already-absolute
-    ///     input and does not touch the file system. It deliberately does not resolve links: this
-    ///     line reports how the request was <em>read</em>, and the location a link actually leads
-    ///     to is reported separately by <see cref="BuildDenial"/>, which names the resolved real
-    ///     location only when it differs. Only the reported value is normalized; the candidate
-    ///     handed to the resolver is unchanged, so containment is unaffected. Because the path is
-    ///     caller-controlled, normalization can throw on malformed input (invalid characters, an
-    ///     over-long result); a denial must never throw, so the same resolution-class failures
-    ///     <see cref="IsResolutionFailure"/> recognizes fall back to the un-normalized value.
+    ///     input and does not touch the file system. Only the reported value is normalized; the
+    ///     candidate handed to the resolver is unchanged, so containment is unaffected. Because
+    ///     the path is caller-controlled, normalization can throw on malformed input (invalid
+    ///     characters, an over-long result); a denial must never throw, so the same
+    ///     resolution-class failures <see cref="IsResolutionFailure"/> recognizes fall back to
+    ///     the un-normalized value.
     /// </remarks>
     /// <param name="interpreted">The working-directory-combined absolute path to normalize for a denial.</param>
     /// <returns>The lexically normalized path, or the original value when normalization fails.</returns>
@@ -866,7 +862,7 @@ public sealed class PathPolicy
     /// <remarks>
     ///     The probe is an existence check only — it never opens or reads the path — and it
     ///     decides candidate selection only, never containment: a probed path that exists is still
-    ///     subject to the unchanged per-component reparse walk and grant test. Any failure to
+    ///     subject to the unchanged normalization and grant test. Any failure to
     ///     determine existence is treated as "does not exist" so the probe can never throw out of
     ///     <see cref="BuildCandidate"/>; falling back to the alias for an indeterminate path is the
     ///     same fail-safe reading used for a genuinely missing one.
@@ -925,46 +921,25 @@ public sealed class PathPolicy
 
     /// <summary>
     ///     Builds a denial message stating what was asked for, how it was interpreted when that
-    ///     happened, where it actually resolved to when that differs, and which locations are
-    ///     permitted.
+    ///     happened, and which locations are permitted.
     /// </summary>
     /// <remarks>
-    ///     <para>
-    ///     The four parts appear in order: the requested input echoed verbatim; the interpreted
+    ///     The three parts appear in order: the requested input echoed verbatim; the interpreted
     ///     absolute location, present only when a relative request was joined to the working
     ///     directory, so an interpretation is never reported that did not occur and the
-    ///     interpretation is never reported on its own; the real location the request resolved
-    ///     to, present only when it differs from the location already reported; and the
-    ///     permitted locations, each with its access level, or a statement that none are
-    ///     permitted.
-    ///     </para>
-    ///     <para>
-    ///     <b>Why the real location is named.</b> A path that is spelled inside a permitted
-    ///     location and yet resolves outside it is denied for a reason nothing else in the
-    ///     message discloses, and an author who mounted data beneath a granted folder would
-    ///     otherwise read the denial as a defect. Naming where the path actually resolved to
-    ///     states the fact that decided the outcome. It is omitted whenever the resolved
-    ///     location matches what the reader already sees, so a denial that has nothing extra to
-    ///     say adds nothing, and it discloses no location a link-free request did not already
-    ///     name. The line states a fact and prescribes nothing: what to do about it — whether
-    ///     to add a grant for the target — is the author's decision, not the message's.
-    ///     </para>
+    ///     interpretation is never reported on its own; and the permitted locations, each with
+    ///     its access level, or a statement that none are permitted.
     /// </remarks>
     /// <param name="reason">The reason phrase for the denial.</param>
     /// <param name="path">The caller's requested path; may be null.</param>
     /// <param name="wasRelative">Whether the request was interpreted against the working directory.</param>
     /// <param name="interpretedAbsolute">The absolute location the request was interpreted as.</param>
-    /// <param name="resolvedReal">
-    ///     The real location the request resolved to, or <see langword="null"/> when resolution
-    ///     itself failed and no real location is known.
-    /// </param>
     /// <returns>The constructed denial message.</returns>
     private string BuildDenial(
         string reason,
         string? path,
         bool wasRelative,
-        string interpretedAbsolute,
-        string? resolvedReal)
+        string interpretedAbsolute)
     {
         var builder = new StringBuilder();
         builder.Append("Denied: ").Append(reason).Append('.');
@@ -979,15 +954,7 @@ public sealed class PathPolicy
             builder.Append('\n').Append("Interpreted as: ").Append(interpretedAbsolute);
         }
 
-        // (c) Where it really leads, only when a link or mount moved it somewhere the reader
-        // has not already been shown; otherwise the line would repeat what is above it.
-        if (resolvedReal is not null &&
-            !string.Equals(resolvedReal, interpretedAbsolute, PathComparison))
-        {
-            builder.Append('\n').Append("Resolved to: ").Append(resolvedReal);
-        }
-
-        // (d) What is actually permitted, enumerated with access levels.
+        // (c) What is actually permitted, enumerated with access levels.
         if (_grants.Length == 0)
         {
             builder.Append('\n').Append("No locations are permitted.");

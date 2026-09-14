@@ -144,7 +144,7 @@ public class ImagePackTests
     public async Task ImagePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools()
     {
         // Arrange: a pack whose tools are created from a policy rooted at one location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var permitted = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var refused = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);

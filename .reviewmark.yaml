@@ -187,7 +187,7 @@ reviews:
       - "docs/verification/agent-kit-core/real-path-resolver.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Core/RealPathResolver.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/RealPathResolverTests.cs"  # unit tests
-      - "test/DemaConsulting.AgentKit.Core.Tests/ReparsePointFixture.cs"    # reparse-point test fixture
+      - "test/DemaConsulting.AgentKit.Core.Tests/TempDirectoryFixture.cs"   # temporary-directory test fixture
 
   # AgentKitCore-ToolLimits Review (one per unit)
   - id: AgentKitCore-ToolLimits
@@ -316,7 +316,7 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileBinaryGuard.cs"         # shared binary-detection helper
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileTests.cs"        # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextLinesTests.cs"       # shared line model helper tests
-      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/ReparsePointFixture.cs"  # reparse-point test fixture
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TempDirectoryFixture.cs"  # temporary-directory test fixture
 
   # AgentKitTools-TextFile-TextFileSearchTool Review (one per unit)
   - id: AgentKitTools-TextFile-TextFileSearchTool

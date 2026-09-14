@@ -200,7 +200,7 @@ public sealed class PathRule
     /// <remarks>
     ///     Exposed so that callers and tests can see which location a rule actually resolved
     ///     to, which may differ from the location supplied at construction when that location
-    ///     was itself reached through a link.
+    ///     was relative or carried <c>.</c> or <c>..</c> segments.
     /// </remarks>
     public string? Root { get; }
 
@@ -288,8 +288,8 @@ public sealed class PathRule
     /// </summary>
     /// <remarks>
     ///     The location is resolved to its real location at construction time. Resolving once,
-    ///     up front, means a permitted location that is itself reached through a link still
-    ///     permits its own contents, and it keeps the per-request cost to a single resolution
+    ///     up front, means every request is compared against one settled spelling of the
+    ///     permitted location, and it keeps the per-request cost to a single resolution
     ///     of the candidate path.
     /// </remarks>
     /// <param name="root">

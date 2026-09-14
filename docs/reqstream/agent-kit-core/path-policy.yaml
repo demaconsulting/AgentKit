@@ -11,7 +11,7 @@ sections:
           - id: AgentKitCore-PathPolicy-WorkingDirectoryRequired
             title: >-
               A path policy shall require a working directory when it is created, by every
-              construction path it offers, and shall report it at its real file system location.
+              construction path it offers, and shall report it as a normalized absolute location.
             justification: |
               The working directory is the single anchor a relative path is resolved against, and
               nothing else — it carries no permission. It is required rather than defaulted because
@@ -19,11 +19,11 @@ sections:
               process-global any code can change and every agent in the process shares, yet one
               application may run several agents or sub-agents each needing a different anchor. A
               missing working directory is therefore a programming error the constructor rejects
-              rather than a value it guesses. Resolving it once at creation keeps every later
-              comparison a comparison of real locations.
+              rather than a value it guesses. Normalizing it once at creation keeps every later
+              comparison a comparison between locations spelled the same way.
             tests:
               - PathPolicy_Constructor_MissingWorkingDirectory_ThrowsArgumentException
-              - PathPolicy_WorkingDirectory_ReachedThroughLink_IsReportedAsItsRealLocation
+              - PathPolicy_WorkingDirectory_SpelledWithRelativeSegments_IsReportedNormalized
 
           - id: AgentKitCore-PathPolicy-GrantsValidated
             title: >-
@@ -109,22 +109,19 @@ sections:
 
           - id: AgentKitCore-PathPolicy-DenyEscapedPath
             title: >-
-              A path policy shall deny a request whose real location lies outside every permitted
-              location, whether the request was stated absolutely or relatively, and including a
-              request that reaches outside through a link.
+              A path policy shall deny a request whose normalized location lies outside every
+              permitted location, whether the request was stated absolutely or relatively.
             tags: [security]
             justification: |
-              This is the decision the whole library exists to make. A request that reaches outside
-              through a link is indistinguishable from a permitted one by inspection of the requested
-              text, so the decision must be made on the real location. Accepting relative requests
-              must not weaken that: a relative path is made absolute against the working directory
-              before the same link resolution and the same containment test are applied, so a
-              relative escape and an absolute one reach the same decision.
+              This is the decision the whole library exists to make. A request carrying parent
+              segments can name a location outside a permitted one while still reading as
+              contained, so the decision must be made on the normalized location. Accepting
+              relative requests must not weaken that: a relative path is made absolute against the
+              working directory before the same normalization and the same containment test are
+              applied, so a relative escape and an absolute one reach the same decision.
             tests:
-              - PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial
               - PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied
               - PathPolicy_TryResolveRead_RelativeParentTraversal_ReturnsDenial
-              - PathPolicy_TryResolveRead_RelativePathBeneathLinkOutsideRoot_ReturnsDenial
               - PathPolicy_TryResolveRead_AbsolutePathOutsideRoot_ReturnsDenial
 
           - id: AgentKitCore-PathPolicy-RealPathReported
@@ -140,8 +137,8 @@ sections:
 
           - id: AgentKitCore-PathPolicy-EnumerationFiltered
             title: >-
-              A path policy shall exclude from directory enumeration every file whose real location
-              it would deny, shall list every file it would permit, and shall enumerate its working
+              A path policy shall exclude from directory enumeration every file whose location it
+              would deny, shall list every file it would permit, and shall enumerate its working
               directory when no directory is named.
             justification: |
               Listing is how an agent discovers what it may work on. A listing that is broader than
@@ -150,7 +147,6 @@ sections:
               agent asks about a workspace it has not seen, and answering it with the working
               directory is what keeps that question from becoming a refusal.
             tests:
-              - PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile
               - PathPolicy_EnumerateFiles_PermittedFiles_AreListed
               - PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty
               - PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheAnchor
@@ -171,18 +167,11 @@ sections:
             title: >-
               A path policy shall deny a request whose location cannot be determined.
             justification: |
-              A model can supply text that no platform can interpret as a path, and the file
-              system can present a component it marks as a link while reporting no target for it.
-              Denying what cannot be understood is the fail-safe reading and keeps the
-              non-throwing contract intact for input the model controls. The undecodable-link
-              case is the one route by which an unresolved component could previously have been
-              carried into a containment decision.
+              A model can supply text that no platform can interpret as a path. Denying what
+              cannot be understood is the fail-safe reading and keeps the non-throwing contract
+              intact for input the model controls.
             tests:
               - PathPolicy_TryResolveRead_MalformedPath_ReturnsDenial
-              # Windows-only evidence: a component the file system marks as a link but for which
-              # the platform reports no target has no equivalent on POSIX platforms, where every
-              # link is a symbolic link and is always decoded.
-              - "windows@PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial"
 
           - id: AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
             title: >-
@@ -213,27 +202,6 @@ sections:
               - PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim
               - PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses
               - PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause
-
-          - id: AgentKitCore-PathPolicy-DenialNamesRealLocation
-            title: >-
-              A denial reported by a path policy shall name the real location the request
-              resolved to when that location differs from the one already reported, and shall
-              omit it otherwise.
-            tags: [security]
-            justification: |
-              The containment rule is: resolve to the real location, then require that real
-              location to be granted. A link or mount placed under a granted folder that resolves
-              elsewhere is therefore denied, which an application author who created it reads as
-              a defect unless the denial says where the path actually leads. Naming the real
-              location states the fact that decided the outcome. It is omitted when it matches
-              what the reader has already been shown, so a denial with nothing extra to say adds
-              nothing and discloses no location a link-free request did not already name, and it
-              is unavailable when resolution itself failed. The line states a fact and prescribes
-              no remedy; whether to grant the target is the author's decision, consistent with
-              the project rule that denials never tell the reader what to do.
-            tests:
-              - PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation
-              - PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation
 
           - id: AgentKitCore-PathPolicy-DialectMirroring
             title: >-

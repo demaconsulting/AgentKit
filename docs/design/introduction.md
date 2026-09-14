@@ -25,8 +25,8 @@ This document covers the detailed design of the AgentKit system and its constitu
 software items, specifically:
 
 - **AgentKitCore (System)** — The contract package every other AgentKit package depends upon
-- **RealPathResolver (Unit)** — Reports the real file system location a path reaches, resolving
-  symbolic links and directory junctions at every path component
+- **RealPathResolver (Unit)** — Reports the absolute, normalized location a path denotes, with
+  relative segments collapsed
 - **PathRule (Unit)** — One access grant, unrestricted or confined to a location, carrying an
   access level and its own denied patterns
 - **PathPolicy (Unit)** — Holds the one working directory relative paths are anchored to and the
@@ -224,7 +224,7 @@ src/DemaConsulting.AgentKit.Core/
 │                                 containment decision, and the limits it carries
 ├── PathRule.cs                 — one access grant: unrestricted or rooted, read-only or
 │                                 read-write
-├── RealPathResolver.cs         — the real location a path reaches
+├── RealPathResolver.cs         — the normalized absolute location a path denotes
 ├── ToolLimits.cs               — the ceilings every governed tool observes
 ├── ToolName.cs                 — the family-prefix naming convention
 ├── ToolPack.cs                 — the pack contract and host capabilities

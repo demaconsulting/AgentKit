@@ -37,8 +37,8 @@ public class FileMoveToolTests
     public async Task FileMoveTool_Move_RelativePaths_MovesTheFileAndRemovesTheSource()
     {
         // Arrange: a workspace with a source file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var tool = FileMoveTool.Create(RootedPolicy(fixture.Root));
 
         // Act: move using bare relative names
@@ -60,9 +60,9 @@ public class FileMoveToolTests
     public async Task FileMoveTool_Move_ExistingDestinationWithoutOverwrite_ReturnsDenialAndLeavesBoth()
     {
         // Arrange: a source and an existing destination
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "source");
-        ReparsePointFixture.WriteFile(fixture.Root, "existing.txt", "kept");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "source");
+        TempDirectoryFixture.WriteFile(fixture.Root, "existing.txt", "kept");
         var tool = FileMoveTool.Create(RootedPolicy(fixture.Root));
 
         // Act: move over the existing destination without permitting the overwrite
@@ -86,8 +86,8 @@ public class FileMoveToolTests
     public async Task FileMoveTool_Move_ReadOnlySource_ReturnsDenialAndLeavesItInPlace()
     {
         // Arrange: reads permitted beneath the root, writes permitted only in a sibling location
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
@@ -115,7 +115,7 @@ public class FileMoveToolTests
     [Fact]
     public async Task FileMoveTool_Move_MissingSource_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = FileMoveTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(

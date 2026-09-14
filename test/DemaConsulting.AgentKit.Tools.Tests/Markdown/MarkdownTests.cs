@@ -55,8 +55,8 @@ public class MarkdownTests
     [Fact]
     public async Task Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", "# Title\n\n## Section\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", "# Title\n\n## Section\n");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tools = new ToolPackBuilder(policy).Add(new MarkdownPack()).Build();
 

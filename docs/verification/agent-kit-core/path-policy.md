@@ -4,13 +4,14 @@ This document describes the unit-level verification strategy for the `PathPolicy
 
 ### Verification Approach
 
-`PathPolicy` is verified through unit tests that exercise the policy against a **real file system
-containing a real reparse point**. `RealPathResolver` and `PathRule` are used as real dependencies
+`PathPolicy` is verified through unit tests that exercise the policy against a **real file
+system**. `RealPathResolver` and `PathRule` are used as real dependencies
 rather than substitutes — both are documented dependencies in _PathPolicy Unit Design_, and
 substituting either would remove exactly the behavior the tests exist to confirm.
 
 The suite verifies the current path model from an agent's viewpoint. A policy has one required
-`WorkingDirectory`, resolved to a real location and used only as the anchor for relative requests,
+`WorkingDirectory`, normalized to an absolute location and used only as the anchor for relative
+requests,
 and zero or more `Grants`, each a `PathRule` carrying an `AccessLevel`. The working directory and
 grants are deliberately orthogonal: the anchor may be granted read-write, granted read-only, or
 granted nothing at all. An empty grant set is valid and permits nothing.
@@ -23,11 +24,10 @@ decision. A separate group covers dialect mirroring for emitted names: relative 
 relative output only when the working directory is granted and the result lies within it; otherwise
 the emitted name is absolute.
 
-Two scenarios are written as contrasts rather than as plain assertions, so that they cannot quietly
-become vacuous: the naive-prefix scenario asserts that a text-based check _would_ accept the request
-before asserting the policy refuses it, and the enumeration scenario asserts that a raw recursive
-listing _does_ surface the escaped file before asserting the policy's listing does not. Denial
-scenarios verify the new disclosure behavior: the request is echoed, a relative interpretation is
+One scenario is written as a contrast rather than as a plain assertion, so that it cannot quietly
+become vacuous: the naive-prefix scenario asserts that a text-based check _would_ accept the
+request before asserting the policy refuses it. Denial
+scenarios verify the disclosure behavior: the request is echoed, a relative interpretation is
 reported only when one occurred and in canonical (lexically normalized) form with `.` and `..`
 collapsed, and the permitted locations are enumerated with access levels or reported as empty.
 
@@ -37,29 +37,17 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **File system**: A temporary directory tree created per test through `ReparsePointFixture`,
+- **File system**: A temporary directory tree created per test through `TempDirectoryFixture`,
   with real files written into both granted locations and locations outside them
-- **Reparse points**: A directory junction created by `cmd.exe /c mklink /J` on Windows, and a
-  directory symbolic link on Linux and macOS. A Windows symbolic link is deliberately not used;
-  see _RealPathResolver Unit Verification Design_ for why
 - **Unresolvable input**: A path containing an embedded null character provides a portable,
-  deterministic way to exercise the "location cannot be determined" path without constructing a
-  cyclic link. One further scenario exercises the same path through a component the file system
-  marks as a link but for which the platform reports no target
-- **Windows-conditional scenario**: The undecodable-link scenario needs a reparse point carrying a
-  tag nothing on the system decodes, which only Windows has; every link a POSIX file system can
-  express is a symbolic link and is always decoded. It is created by the fixture without elevation
-  and without any external subsystem, declares an explicit skip condition on POSIX platforms, and
-  the requirement it serves carries a Windows source filter so the Linux and macOS runs are not
-  counted as evidence
+  deterministic way to exercise the "location cannot be determined" path
 - **Mocking**: None
 - **Isolation**: Each test constructs its own policy and its own fixture; no state is shared
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifty-three scenarios below pass without error or exception beyond
-those explicitly asserted, excepting the undecodable-link scenario on Linux and macOS, which is
-skipped with its reason recorded. Any escaping path that is permitted, any escaped file that
+A unit test run passes when all forty-seven scenarios below pass without error or exception beyond
+those explicitly asserted. Any escaping path that is permitted, any excluded file that
 appears in a listing, any relative request resolved against the process working directory, any
 missing working directory accepted, any null grant accepted, any empty grant set permitting access,
 any read-only grant authorizing a write, any denial that fails to echo and enumerate as specified,
@@ -67,36 +55,21 @@ or any exception escaping a refusal constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitCore-PathPolicy-DenyEscapedPath: A File Beneath a Link Outside the Root Is Refused
-
-**Test**: `PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial`
-
-The enumeration-independent escape scenario. A secret is written outside the permitted location and
-a directory link is created inside it. The request text appears contained, but its real location is
-outside every grant, so the policy refuses it and hands back no location.
-
 #### AgentKitCore-PathPolicy-DenyEscapedPath: A Request Passing a Naive Prefix Check Is Still Refused
 
 **Test**: `PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied`
 
 The naive-prefix-check scenario. Asserts first that the requested path text genuinely begins with
 the granted location followed by a separator — so a string comparison would accept it — and then
-that the policy refuses it anyway. Pins the reason containment cannot be decided on requested text.
+that the policy refuses it anyway, because the parent segments it carries name a location outside
+every grant. Pins the reason containment cannot be decided on requested text.
 
 #### AgentKitCore-PathPolicy-DenyEscapedPath: A Relative Path Climbing Out of the Working Directory Is Refused
 
 **Test**: `PathPolicy_TryResolveRead_RelativeParentTraversal_ReturnsDenial`
 
 Asserts that accepting relative requests does not weaken containment: the escape is made absolute
-against the working directory, resolved to its real location, and refused.
-
-#### AgentKitCore-PathPolicy-DenyEscapedPath: A Relative Path Beneath a Link Outside the Root Is Refused
-
-**Test**: `PathPolicy_TryResolveRead_RelativePathBeneathLinkOutsideRoot_ReturnsDenial`
-
-The scenario that pins the resolution order. The per-component reparse-point walk runs only after
-the relative request has been made absolute against the working directory, so a relative escape and
-the absolute spelling of the same request reach the same decision.
+against the working directory, normalized, and refused.
 
 #### AgentKitCore-PathPolicy-RealPathReported: A Permitted Read Returns Its Real Location
 
@@ -119,19 +92,6 @@ and no location.
 Boundary condition: a path containing an embedded null character cannot be interpreted by any
 platform. It is refused with a reason rather than allowed to throw, confirming the fail-safe reading
 for input a model controls.
-
-#### AgentKitCore-PathPolicy-UnresolvablePathDenied: A Link the Platform Cannot Decode Is Refused
-
-**Test**: `PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial`
-
-Security control, and the Windows-conditional scenario. An entry inside the granted root is marked
-as a reparse point carrying a tag nothing on the system decodes, and a path through it is
-requested. Asserts the request is refused, that no location is handed back, and that the reason
-given is that the location could not be determined. This is the end-to-end form of the resolver's
-fail-safe refusal: before the resolver distinguished "not a link" from "a link whose target cannot
-be read", the unresolved component was carried through and this request was **permitted**, with the
-link's own path handed back as though it were a real location. Confirmed to fail against the
-implementation as it stood before this change.
 
 #### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: A Read-Write Working Directory Handles Relative Work
 
@@ -228,13 +188,13 @@ Normal operation: the host's ceilings are the ceilings the governed tools observ
 Error path: "unbounded" is not a sensible default, so an explicitly absent set of ceilings is the
 same kind of programming error as an absent grant collection.
 
-#### AgentKitCore-PathPolicy-WorkingDirectoryRequired: A Linked Working Directory Is Reported at Its Real Location
+#### AgentKitCore-PathPolicy-WorkingDirectoryRequired: A Working Directory Spelled With Relative Segments Is Normalized
 
-**Test**: `PathPolicy_WorkingDirectory_ReachedThroughLink_IsReportedAsItsRealLocation`
+**Test**: `PathPolicy_WorkingDirectory_SpelledWithRelativeSegments_IsReportedNormalized`
 
-Boundary condition: the working directory is named through a genuine reparse point. The policy holds
-the link's target rather than the link, so every later comparison is real location against real
-location.
+Boundary condition: the working directory is named through a redundant parent-directory detour. The
+policy holds the normalized location, so every later comparison is made between locations spelled
+the same way.
 
 #### AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory: Current-Directory Prefix Resolves Beneath the Anchor
 
@@ -354,26 +314,6 @@ locations are listed with access levels.
 Asserts an absolute refusal still echoes the requested location and enumerates grants, but does not
 claim an interpretation occurred.
 
-#### AgentKitCore-PathPolicy-DenialNamesRealLocation: A Link Escape Names Where the Path Really Leads
-
-**Test**: `PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation`
-
-The denial-clarity scenario for the containment rule. A secret is written outside the permitted
-location and a directory link is created inside it, so the request is spelled inside the grant but
-resolves outside it. Asserts the denial carries `Resolved to:` naming the resolved real location of
-the outside file. This is the case an application author who mounts data under a granted folder
-will meet, and without this clause the denial reads as a defect. The scenario asserts only that the
-fact is stated; the message deliberately prescribes no remedy.
-
-#### AgentKitCore-PathPolicy-DenialNamesRealLocation: A Link-Free Denial Names No Real Location
-
-**Test**: `PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation`
-
-The complement, and the guard against the clause becoming unconditional. An ordinary absolute
-request outside the grant, involving no link at all, is refused; asserts the denial contains no
-`Resolved to:` clause. Emitting it always would repeat the line above it and would disclose a
-resolved location for requests where no redirection occurred.
-
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Bare Segment Under Empty Grants Produces the Worked Example
 
 **Test**: `PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample`
@@ -437,14 +377,6 @@ still echoes the requested text, and still enumerates the permitted location.
 A write aliased to a read-only grant is denied because it is read-only, and the denial omits the
 `Interpreted as:` line entirely, because the alias branch performs no working-directory
 interpretation.
-
-#### AgentKitCore-PathPolicy-EnumerationFiltered: Enumeration Across a Link Excludes the Escaped File
-
-**Test**: `PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile`
-
-The enumeration-escape scenario. Raw recursive listing proves the operating system follows the link
-and surfaces the outside file; policy enumeration excludes it while still including a legitimately
-contained file.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: Permitted Files Are Listed
 

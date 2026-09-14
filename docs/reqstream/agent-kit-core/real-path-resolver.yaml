@@ -8,62 +8,15 @@ sections:
     sections:
       - title: RealPathResolver Requirements
         requirements:
-          - id: AgentKitCore-RealPathResolver-ComponentWalk
-            title: >-
-              The RealPathResolver shall report the real location of a path whose enclosing
-              directory is reached through a link, even when the path itself is not a link.
-            justification: |
-              A file sitting beneath a directory junction is an ordinary file and reports no link
-              target of its own, so an escape is only detectable by examining every enclosing
-              directory in turn. Without this behavior the containment decision made by the rest
-              of the library would be based on a location the operation never touches.
-            tests:
-              - RealPathResolver_Resolve_PathBeneathDirectoryLink_ReturnsRealTargetOutsideRoot
-              - RealPathResolver_Resolve_LeafResolutionAlone_DoesNotDetectEscape
-
-          - id: AgentKitCore-RealPathResolver-LinkTargetAncestors
-            title: >-
-              The RealPathResolver shall report the real location of a link whose target is
-              itself reached through another link.
-            justification: |
-              The platform follows a chain of links to its end but does not canonicalize the
-              ancestors of the target it reports, so a target may name a location reached
-              through a further link. Accepting such a target unchanged leaves an unresolved
-              link inside the value every containment decision is made from, and two links
-              created inside a permitted location - one pointing out of it, one recording a
-              target spelled through the first - are then enough to make an access outside the
-              permitted location read as contained. Resolving the target itself is what keeps
-              the reported location real all the way down, and so what keeps path containment a
-              usable risk control measure (IEC 62304 clause 5.3.3).
-            tests:
-              # POSIX-only evidence: Windows normalizes a junction's target when the junction is
-              # created, and a Windows symbolic link needs a privilege an unelevated session does
-              # not hold, so the arrangement cannot be created there. The source filters keep the
-              # Windows run, where the test is skipped, from being counted as evidence.
-              - "ubuntu@RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot"
-              - "macos@RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot"
-
-          - id: AgentKitCore-RealPathResolver-LinkTarget
-            title: >-
-              The RealPathResolver shall report the target location of a path that is itself a
-              link.
-            justification: |
-              An agent may name a link directly rather than something beneath it. Reporting the
-              link's own location would leave the containment decision judging the alias instead
-              of the location that will actually be read or written.
-            tests:
-              - RealPathResolver_Resolve_DirectoryLinkItself_ReturnsLinkTarget
-
           - id: AgentKitCore-RealPathResolver-NonExistentPath
             title: >-
-              The RealPathResolver shall report a location for a path that does not yet exist, by
-              resolving the portion of the path that does exist.
+              The RealPathResolver shall report a location for a path that does not yet exist.
             justification: |
               A write decision must be made before the file exists. Refusing to report a location
               for a path that has not been created would make it impossible to decide whether a
               new file would be created inside or outside the permitted location.
             tests:
-              - RealPathResolver_Resolve_NonExistentFileBeneathLink_ReturnsRealTargetLocation
+              - RealPathResolver_Resolve_NonExistentPath_ReturnsLocationItWouldOccupy
 
           - id: AgentKitCore-RealPathResolver-Normalization
             title: >-
@@ -73,33 +26,11 @@ sections:
               Callers and models supply paths in whatever form is convenient, including relative
               spellings and redundant parent segments. Containment can only be decided between two
               locations expressed the same way, so every reported location must be absolute and
-              free of relative segments.
+              free of relative segments, and a parent segment must not survive into the value the
+              decision is made from.
             tests:
               - RealPathResolver_Resolve_RelativeSegments_ReturnsNormalizedAbsolutePath
-              - RealPathResolver_Resolve_PathWithNoLinks_ReturnsSamePath
-
-          - id: AgentKitCore-RealPathResolver-UndecodableLink
-            title: >-
-              The RealPathResolver shall refuse a path containing a component that the file
-              system marks as a link but for which the platform reports no target.
-            justification: |
-              The link attribute and the link target answer different questions: the attribute
-              says a redirection is recorded, the target says where it leads, and the target is
-              available only for the link kinds the platform decodes. Consulting the target
-              alone conflates "not a link" with "a link whose target cannot be read", and
-              carrying such a component through unchanged returns a location that is not real.
-              The containment decision built on it is promised a real location and deliberately
-              does not resolve, so it would judge the link's own path rather than what the link
-              reaches - a fail-open in the containment risk control measure (IEC 62304 clause
-              5.3.3). Every other failure of resolution already denies; refusing this one makes
-              denying the unknown uniform.
-            tests:
-              # Windows-only evidence: a reparse point carrying a tag the platform does not
-              # decode has no equivalent on POSIX platforms, where every link is a symbolic link
-              # and is always decoded. The source filters keep the Linux and macOS runs, where
-              # the tests are skipped, from being counted as evidence.
-              - "windows@RealPathResolver_Resolve_ComponentIsUndecodableLink_ThrowsIOException"
-              - "windows@RealPathResolver_Resolve_UndecodableLinkItself_ThrowsIOException"
+              - RealPathResolver_Resolve_NormalizedPath_ReturnsSamePath
 
           - id: AgentKitCore-RealPathResolver-RejectInvalidPath
             title: >-

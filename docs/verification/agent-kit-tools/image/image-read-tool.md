@@ -13,15 +13,15 @@ content result through the guarded factory is exercised rather than bypassed. In
 constructed tool is essential: a hand-built delegate would prove nothing about how the tool as
 registered marshals its result.
 
-The scenario covering a link that escapes the permitted location uses a genuine reparse point,
-reusing the fixture defined in the TextFile tests — an internal type in the same assembly — rather
-than a copy, because containment is a security control and a simulation would prove only that the
-simulation was written consistently. The relative-path and denial scenarios verify the current
+The scenario covering a path outside the permitted location uses real directories, reusing the
+fixture defined in the TextFile tests — an internal type in the same assembly — rather than a copy,
+because containment is a security control and a simulation would prove only that the simulation was
+written consistently. The relative-path and denial scenarios verify the current
 policy model as this tool observes it: the working directory anchors bare names, grants carry the
 read permission, and policy refusals disclose the refused request and permitted locations.
 
-Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared reparse-point fixture from
-`TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
+Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared temporary-directory fixture
+from `TextFile/TempDirectoryFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 #### Test Environment
 
@@ -30,13 +30,11 @@ Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared reparse-p
 - **Dependencies**: No external services or network access required
 - **File system**: Each scenario creates and deletes its own temporary tree containing a permitted
   root and a sibling directory outside it, writing binary files directly
-- **Reparse points**: A directory junction on Windows, a symbolic link elsewhere; a failure to
-  create one fails the test rather than skipping it
 - **Isolation**: Each test constructs its own policy, tool and tree; no state is shared
 
 #### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass without error or exception beyond
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond
 those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does not
 read, a relative name that is not read from the working directory, a refused file whose content
 leaks, a PDF routed through the image result path, a truncated result where a refusal was required,
@@ -100,14 +98,6 @@ shape.
 
 Error path: a file in a sibling directory no read-capable grant permits is refused as
 `PathNotPermitted`, before anything is learned about the file.
-
-##### AgentKitTools-Image-ReadTool-DenyOutsideRoot: A File Beneath a Link Outside the Root Is Refused
-
-**Test**: `ImageReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial`
-
-Security control: a real reparse point bridges the permitted root to a sibling directory. The
-escaped file is first read through the link on disk, so a fixture that failed to create the link
-fails the scenario rather than making it pass vacuously.
 
 ##### AgentKitTools-Image-ReadTool-UnsupportedTypeDenied: An Unsupported Type Redirects to the Text File Read Tool
 

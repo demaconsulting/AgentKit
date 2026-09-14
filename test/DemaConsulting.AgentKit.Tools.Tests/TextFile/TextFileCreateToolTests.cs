@@ -36,7 +36,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_NewFile_WritesTheContentAndReportsTheLineCount()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -57,7 +57,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_EmptyContent_ReportsZeroLines()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -75,8 +75,8 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_ExistingFile_ReturnsDenialAndLeavesItUnchanged()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "existing.txt", "original");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "existing.txt", "original");
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -99,8 +99,8 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_ExistingFile_DenialPrescribesNoRemedy()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "existing.txt", "original");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "existing.txt", "original");
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -124,7 +124,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_EmptyContent_CreatesAnEmptyFile()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -142,7 +142,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_MissingContent_ReturnsDenialWithoutThrowing()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "new.txt" });
@@ -158,7 +158,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_MissingParentDirectory_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileCreateTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -177,7 +177,7 @@ public class TextFileCreateToolTests
     [Fact]
     public async Task TextFileCreateTool_Create_ReadOnlyLocation_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = TextFileCreateTool.Create(policy);
 

@@ -37,8 +37,8 @@ public class FileCopyToolTests
     public async Task FileCopyTool_Copy_RelativePaths_CopiesTheFileContent()
     {
         // Arrange: a workspace with a source file, addressed the way a model addresses it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "original");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "original");
         var tool = FileCopyTool.Create(RootedPolicy(fixture.Root));
 
         // Act: copy using bare relative names
@@ -60,9 +60,9 @@ public class FileCopyToolTests
     public async Task FileCopyTool_Copy_ExistingDestinationWithoutOverwrite_ReturnsDenialAndLeavesItUnchanged()
     {
         // Arrange: a source and an existing destination
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "source");
-        ReparsePointFixture.WriteFile(fixture.Root, "existing.txt", "kept");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "source");
+        TempDirectoryFixture.WriteFile(fixture.Root, "existing.txt", "kept");
         var tool = FileCopyTool.Create(RootedPolicy(fixture.Root));
 
         // Act: copy over the existing destination without permitting the overwrite
@@ -84,9 +84,9 @@ public class FileCopyToolTests
     public async Task FileCopyTool_Copy_ExistingDestinationWithOverwrite_ReplacesIt()
     {
         // Arrange: a source and an existing destination
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "source");
-        ReparsePointFixture.WriteFile(fixture.Root, "existing.txt", "old");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "source");
+        TempDirectoryFixture.WriteFile(fixture.Root, "existing.txt", "old");
         var tool = FileCopyTool.Create(RootedPolicy(fixture.Root));
 
         // Act: copy with overwrite permitted
@@ -113,8 +113,8 @@ public class FileCopyToolTests
     public async Task FileCopyTool_Copy_ReadOnlySourceToWritableDestination_IsPermitted()
     {
         // Arrange: reads permitted beneath the root, writes permitted only in a sibling location
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var destination = Path.Combine(fixture.Outside, "copy.txt");
         var policy = new PathPolicy(
             fixture.Root,
@@ -143,8 +143,8 @@ public class FileCopyToolTests
     public async Task FileCopyTool_Copy_DestinationOutsideWriteGrant_ReturnsDenial()
     {
         // Arrange: a read-only root, so no write is permitted anywhere within it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = FileCopyTool.Create(policy);
 
@@ -165,7 +165,7 @@ public class FileCopyToolTests
     [Fact]
     public async Task FileCopyTool_Copy_MissingSource_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = FileCopyTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(

@@ -77,13 +77,12 @@ sections:
               The image family shall judge each request with the policy's read decision,
               interpreting a path a model states relative to the workspace, returning the
               permitted content — an image as image content and a PDF as binary
-              content — and refusing a request that reaches outside the permitted location,
-              including one that reaches outside through a link.
+              content — and refusing a request whose location lies outside the permitted location.
             tags: [security]
             justification: |
               An operator grants an agent access to a location, and that grant is meaningless
-              unless every read consults the rule belonging to it. Judging a request by the
-              location it actually reaches, rather than by how its path was spelled, is what
+              unless every read consults the rule belonging to it. Judging every request against
+              the permitted locations is what
               stops an agent from stepping outside the location its operator granted. The family
               shares the access policy the text file family uses, so a name a listing reported is
               directly usable here; a family that read names differently would make a discovered

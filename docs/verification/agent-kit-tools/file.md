@@ -7,8 +7,8 @@ This document describes the subsystem-level verification strategy for the File t
 The subsystem is verified through integration tests that exercise the family the way an application
 does: composed through the AgentKitCore `ToolPackBuilder` under one access policy, then invoked
 through the published tool list by name and argument dictionary, exactly as an agent runtime invokes
-it. Nothing is mocked. The access policy and file system are real, and reparse-point scenarios use
-real links, because the properties under verification belong to the real host boundary.
+it. Nothing is mocked. The access policy and file system are real, because the properties under
+verification belong to the real host boundary.
 
 The scenarios here assert what belongs to the family as a whole: the list, copy, move, delete and
 pack units. They verify that files are handled as entities regardless of type, with safe mutation
@@ -28,8 +28,6 @@ project.
 - **Dependencies**: No external services, databases, or network access required
 - **File system**: Each scenario creates and deletes its own temporary directory tree when files are
   needed
-- **Reparse points**: Link-escape scenarios use the shared real reparse-point fixture and fail if
-  the link cannot be created
 - **Isolation**: Each test constructs its own policy, composition and temporary state; no state is
   shared
 
@@ -37,7 +35,7 @@ project.
 
 A subsystem test run passes when all 5 requirement scenarios below, covering 6 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing tool, a wrong
-family prefix, an ignored policy decision, a link escape, a thrown refusal, incorrect relative-path
+family prefix, an ignored policy decision, a containment escape, a thrown refusal, incorrect relative-path
 behavior, unsafe mutation, or a ceiling violation returned as truncated content constitutes a
 failure.
 
@@ -61,9 +59,9 @@ tools.
 
 #### AgentKitTools-File-PolicyGoverned: Policy Governed
 
-**Test**: `File_Family_PathBeneathLinkOutsideRoot_IsNeverReachableByAnyTool`
+**Test**: `File_Family_PathOutsideRoot_IsNeverReachableByAnyTool`
 
-The listed tests prove a file reachable only through a link outside the permitted root is never
+The listed tests prove a file outside the permitted root is never
 listed, copied, moved or deleted — no tool in the family can breach containment.
 
 #### AgentKitTools-File-DenialsAreResults: Denials Are Results

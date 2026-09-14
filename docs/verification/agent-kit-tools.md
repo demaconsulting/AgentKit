@@ -48,8 +48,8 @@ System tests reside in `AgentKitToolsTests.cs` within the
 No external interface is simulated at the system level. The composition scenarios run against the
 in-memory AgentKitCore pack contract, so there is nothing to substitute. The file-system interface
 the TextFile family exercises is not simulated either: its subsystem and unit tests use a real
-temporary directory tree containing a real reparse point, because path containment is a security
-control and a simulated link would prove only that the simulation was written consistently.
+temporary directory tree, because path containment is a security control and a simulated file
+system would prove only that the simulation was written consistently.
 
 ## System-Level Test Scenarios
 

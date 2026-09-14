@@ -1,6 +1,6 @@
 package AgentKitCore {
     part def RealPathResolver {
-        doc /* Resolves a path to its real file system location, following symbolic links and directory junctions at every path component so that access is judged on the location actually reached. */
+        doc /* Resolves a path to an absolute, normalized location, with relative segments collapsed, so that containment is judged between locations spelled the same way. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Core/RealPathResolver.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Core.Tests/RealPathResolverTests.cs */

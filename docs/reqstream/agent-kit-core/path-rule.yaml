@@ -66,18 +66,18 @@ sections:
               - PathRule_Allows_DenyPatternMatchingFileName_ReturnsFalse
               - PathRule_Allows_DenyPatternMatchingDirectorySegment_ReturnsFalse
 
-          - id: AgentKitCore-PathRule-RootResolvedAtConstruction
+          - id: AgentKitCore-PathRule-RootNormalizedAtConstruction
             title: >-
-              A path rule confined to a location shall judge containment against the real location of
-              that location, so a permitted location that is itself reached through a link still
-              permits its own contents.
+              A path rule confined to a location shall judge containment against the normalized
+              absolute form of that location, so a location spelled relatively or with relative
+              segments still permits its own contents.
             justification: |
-              Operators routinely point an agent at a location that is itself a link, for example a
-              checkout reached through a convenience alias. Comparing a resolved candidate against an
-              unresolved permitted location would refuse everything and make such a configuration
-              unusable.
+              Hosts routinely configure a location the way a person writes one, relative to where
+              the application runs or carrying a parent segment. Comparing a normalized candidate
+              against an unnormalized permitted location would refuse everything and make such a
+              configuration unusable.
             tests:
-              - PathRule_Rooted_RootReachedThroughLink_AllowsContainedPath
+              - PathRule_Rooted_RootWithRelativeSegments_AllowsContainedPath
 
           - id: AgentKitCore-PathRule-Describe
             title: >-

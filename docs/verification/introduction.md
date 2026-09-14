@@ -24,8 +24,8 @@ This document covers the verification design for the AgentKit system and its
 constituent software items, specifically:
 
 - **AgentKitCore (System)** — The contract package every other AgentKit package depends upon
-- **RealPathResolver (Unit)** — Reports the real file system location a path reaches, resolving
-  symbolic links and directory junctions at every path component
+- **RealPathResolver (Unit)** — Reports the absolute, normalized location a path denotes, with
+  relative segments collapsed
 - **PathRule (Unit)** — One access rule, unrestricted or confined to a location, carrying its own
   denied patterns
 - **PathPolicy (Unit)** — Anchors relative paths to one required working directory and permits

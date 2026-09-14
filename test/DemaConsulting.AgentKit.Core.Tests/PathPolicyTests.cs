@@ -16,50 +16,33 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 ///     <para>
 ///     Where the scenario is about containment, request paths are built from a grant's resolved root
 ///     so the tests describe what a caller holds after resolution, and so a host whose temporary
-///     directory is itself reached through a link does not perturb the expectations.
+///     directory is spelled differently from the path handed in does not perturb the expectations.
 ///     </para>
 /// </remarks>
 public class PathPolicyTests
 {
     // ---------------------------------------------------------------------------------------------
-    // Containment (regression): the reparse-point walk and deny logic are unchanged.
+    // Containment (regression): the normalization and deny logic are unchanged.
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    ///     Proves that a file reached through a link out of the permitted location is refused.
-    /// </summary>
-    [Fact]
-    public void PathPolicy_TryResolveRead_FileBeneathLinkOutsideRoot_ReturnsDenial()
-    {
-        // Arrange: a policy confined to the root, and a secret reachable only through a link
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = CreateRootedPolicy(fixture.Root);
-        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
-
-        // Act: ask the policy to resolve the escaping path
-        var permitted = policy.TryResolveRead(requested, out var realPath, out var denialMessage);
-
-        // Assert: the request is refused and no location is handed back
-        Assert.False(permitted);
-        Assert.Null(realPath);
-        Assert.NotNull(denialMessage);
-    }
-
-    /// <summary>
-    ///     Proves that a path which passes a naive string prefix check is still refused once its
-    ///     real location is known.
+    ///     Proves that a path which passes a naive string prefix check is still refused once it
+    ///     is normalized.
     /// </summary>
     [Fact]
     public void PathPolicy_TryResolveRead_NaivePrefixCheckWouldPass_StillDenied()
     {
-        // Arrange: a request whose text is contained by the root but whose target is not
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
+        // Arrange: a request whose text starts inside the root but whose location is not
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var policy = CreateRootedPolicy(fixture.Root);
-        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
+        var requested = Path.Combine(
+            policy.WorkingDirectory,
+            "sub",
+            "..",
+            "..",
+            "outside",
+            "secret.txt");
 
         // Act: evaluate the naive check and the real policy decision
         var naiveCheckPasses = requested.StartsWith(
@@ -73,60 +56,14 @@ public class PathPolicyTests
     }
 
     /// <summary>
-    ///     Gets a value indicating whether this platform can express a link whose kind the
-    ///     platform itself does not decode.
-    /// </summary>
-    /// <remarks>
-    ///     Consulted by xUnit as a skip condition; see the matching condition on
-    ///     <see cref="RealPathResolverTests"/> for why only Windows has such a case.
-    /// </remarks>
-    public static bool SupportsUndecodableLinks => OperatingSystem.IsWindows();
-
-    /// <summary>
-    ///     Proves that a path passing through an entry marked as a link whose target the platform
-    ///     declines to report is refused rather than permitted at the link's own location.
-    /// </summary>
-    /// <remarks>
-    ///     The end-to-end form of the resolver's fail-safe refusal. Before the resolver
-    ///     distinguished "not a link" from "a link I cannot resolve", the unresolved component was
-    ///     carried through and this request was <em>permitted</em>, with the link's own path handed
-    ///     back as though it were a real location.
-    /// </remarks>
-    [Fact(
-        Skip = "Windows-only: a reparse point carrying a tag the platform does not decode has " +
-               "no equivalent on POSIX platforms, where every link is a symbolic link and is " +
-               "always decoded.",
-        SkipUnless = nameof(SupportsUndecodableLinks))]
-    public void PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial()
-    {
-        // Arrange: an entry inside the granted root marked as a link nothing can decode
-        using var fixture = new ReparsePointFixture();
-        var policy = CreateRootedPolicy(fixture.Root);
-        fixture.CreateUndecodableReparsePoint("mount");
-        var requested = Path.Combine(policy.WorkingDirectory, "mount", "secret.txt");
-
-        // Act: ask the policy for a path that passes through it
-        var permitted = policy.TryResolveRead(requested, out var realPath, out var denial);
-
-        // Assert: refused, with no location handed back and the unknown stated as the reason
-        Assert.False(permitted);
-        Assert.Null(realPath);
-        Assert.NotNull(denial);
-        Assert.Contains(
-            "could not be resolved to a real location",
-            denial,
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
     ///     Proves that a relative path climbing out of the working directory is refused.
     /// </summary>
     [Fact]
     public void PathPolicy_TryResolveRead_RelativeParentTraversal_ReturnsDenial()
     {
         // Arrange: a secret in the sibling directory outside the working directory
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: climb out of the working directory with a relative path
@@ -139,36 +76,14 @@ public class PathPolicyTests
     }
 
     /// <summary>
-    ///     Proves that a relative path reaching outside through a link is refused exactly as an
-    ///     absolute one is.
-    /// </summary>
-    [Fact]
-    public void PathPolicy_TryResolveRead_RelativePathBeneathLinkOutsideRoot_ReturnsDenial()
-    {
-        // Arrange: a secret outside the working directory, reachable through a link inside it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = CreateRootedPolicy(fixture.Root);
-
-        // Act: ask for the escaping path relatively, as a model would after a listing
-        var permitted = policy.TryResolveRead("junction/secret.txt", out var realPath, out var denial);
-
-        // Assert: refused, exactly as the absolute spelling of the same request is
-        Assert.False(permitted);
-        Assert.Null(realPath);
-        Assert.NotNull(denial);
-    }
-
-    /// <summary>
     ///     Proves that a permitted path is reported together with its real location.
     /// </summary>
     [Fact]
     public void PathPolicy_TryResolveRead_PermittedPath_ReturnsRealPath()
     {
         // Arrange: a policy confined to the root, and an ordinary file inside it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(policy.WorkingDirectory, "notes.txt");
 
@@ -188,7 +103,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_DeniedPath_ReturnsFalseWithoutThrowing()
     {
         // Arrange: a policy confined to the root, and a location outside it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(fixture.Outside, "elsewhere.txt");
 
@@ -209,7 +124,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_MalformedPath_ReturnsDenial()
     {
         // Arrange: a policy confined to the root, and a path no platform can resolve
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         const string malformed = "a\0b";
 
@@ -234,8 +149,8 @@ public class PathPolicyTests
     public void PathPolicy_WorkingDirectoryGrantedReadWrite_RelativeRequestsSucceed()
     {
         // Arrange: the one common shape — the working directory is also a read-write grant
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: read a bare name, write a bare name, and ask whether output would be relative
@@ -259,8 +174,8 @@ public class PathPolicyTests
     public void PathPolicy_WorkingDirectoryGrantedReadOnly_RelativeWriteDenied()
     {
         // Arrange: the working directory is granted, but read-only
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
 
         // Act: read a bare name, then attempt to write one
@@ -287,8 +202,8 @@ public class PathPolicyTests
     public void PathPolicy_WorkingDirectoryGrantedNothing_RelativeReadDenied_NamesNoLocations()
     {
         // Arrange: an anchor with an empty grant set
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = new PathPolicy(fixture.Root, []);
 
         // Act: ask for a file that really is beneath the anchor
@@ -308,7 +223,7 @@ public class PathPolicyTests
     public void PathPolicy_UngrantedWorkingDirectory_RelativeReadDenied_EnumeratesElsewhere()
     {
         // Arrange: anchor at Root (ungranted); grant Outside instead
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideReal = RealPathResolver.Resolve(fixture.Outside);
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
 
@@ -333,10 +248,10 @@ public class PathPolicyTests
     public void PathPolicy_TwoGrants_CrossLocationTask_ReadOnlyReadsAndReadWriteWrites()
     {
         // Arrange: work is read-only, session is read-write, anchored at work
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var work = Path.Combine(fixture.Root, "work");
         var session = Path.Combine(fixture.Root, "session");
-        ReparsePointFixture.WriteFile(work, "input.txt", "source");
+        TempDirectoryFixture.WriteFile(work, "input.txt", "source");
         Directory.CreateDirectory(session);
         var policy = new PathPolicy(
             work,
@@ -365,11 +280,11 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveWrite_ReadableButNotWritablePath_ReturnsDenial()
     {
         // Arrange: reads are unrestricted, writes confined to the root
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.Unrestricted(AccessLevel.ReadOnly), PathRule.ReadWrite(fixture.Root)]);
-        var requested = ReparsePointFixture.WriteFile(fixture.Outside, "readable.txt", "content");
+        var requested = TempDirectoryFixture.WriteFile(fixture.Outside, "readable.txt", "content");
 
         // Act: read and then attempt to write the same outside location
         var readPermitted = policy.TryResolveRead(requested, out _, out _);
@@ -407,7 +322,7 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_NullGrants_ThrowsArgumentNullException()
     {
         // Act & Assert: a null grant set is a programming error
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         Assert.Throws<ArgumentNullException>(() => new PathPolicy(fixture.Root, null!));
     }
 
@@ -418,7 +333,7 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_NullGrantEntry_ThrowsArgumentNullException()
     {
         // Act & Assert: a half-built grant set cannot be used
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         Assert.Throws<ArgumentNullException>(
             () => new PathPolicy(fixture.Root, [null!]));
     }
@@ -430,7 +345,7 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_EmptyGrants_IsValidAndPermitsNothing()
     {
         // Arrange & Act: a policy that grants nothing
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, []);
 
         // Assert: it constructs, exposes its anchor, and refuses even its own anchor
@@ -446,7 +361,7 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_NoLimits_UsesDefaultLimits()
     {
         // Arrange & Act: construct a policy without stating any ceilings
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         // Assert: the shared default instance, not a copy of it
@@ -460,7 +375,7 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_CustomLimits_ExposesSuppliedLimits()
     {
         // Arrange: a host that tightens the binary-content ceiling
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var limits = new ToolLimits(maxBinaryBytes: 1024);
 
         // Act: construct a policy carrying those ceilings
@@ -478,26 +393,26 @@ public class PathPolicyTests
     public void PathPolicy_Constructor_NullLimits_ThrowsArgumentNullException()
     {
         // Act & Assert: ceilings are required whenever they are stated explicitly
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         Assert.Throws<ArgumentNullException>(
             () => new PathPolicy(fixture.Root, [PathRule.Unrestricted(AccessLevel.ReadWrite)], null!));
     }
 
     /// <summary>
-    ///     Proves that a working directory reached through a link is held at its real location.
+    ///     Proves that a working directory spelled with relative segments is held normalized.
     /// </summary>
     [Fact]
-    public void PathPolicy_WorkingDirectory_ReachedThroughLink_IsReportedAsItsRealLocation()
+    public void PathPolicy_WorkingDirectory_SpelledWithRelativeSegments_IsReportedNormalized()
     {
-        // Arrange: a link inside the fixture pointing at a sibling directory
-        using var fixture = new ReparsePointFixture();
-        var link = fixture.CreateDirectoryLink("alias", fixture.Outside);
+        // Arrange: an anchor spelled through a redundant parent-directory detour
+        using var fixture = new TempDirectoryFixture();
+        var detour = Path.Combine(fixture.Root, "..", "root");
 
-        // Act: name the link as the working directory
-        var policy = new PathPolicy(link, [PathRule.ReadWrite(link)]);
+        // Act: name the detour as the working directory
+        var policy = new PathPolicy(detour, [PathRule.ReadWrite(detour)]);
 
-        // Assert: the real location is what the policy holds, not the link's own path
-        Assert.Equal(RealPathResolver.Resolve(fixture.Outside), policy.WorkingDirectory);
+        // Assert: the normalized location is what the policy holds
+        Assert.Equal(RealPathResolver.Resolve(fixture.Root), policy.WorkingDirectory);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -511,8 +426,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_DotSlashFileName_ResolvesBeneathTheAnchor()
     {
         // Arrange: a working directory holding one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: ask for the file with the leading current-directory token a model often adds
@@ -530,8 +445,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_NestedRelativePath_ResolvesBeneathTheAnchor()
     {
         // Arrange: a file one level below the working directory
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "nested");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "child.txt", "nested");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: ask for it the way a model writes a nested path
@@ -549,8 +464,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_RelativePath_IsNotResolvedAgainstTheProcessDirectory()
     {
         // Arrange: a working directory that is deliberately not the process working directory
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: ask for the file by name alone
@@ -569,8 +484,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_AbsolutePathInsideRoot_ReturnsRealPath()
     {
         // Arrange: a working directory holding one file, addressed absolutely
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "inside-content");
         var policy = CreateRootedPolicy(fixture.Root);
         var requested = Path.Combine(policy.WorkingDirectory, "notes.txt");
 
@@ -589,8 +504,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_AbsolutePathOutsideRoot_ReturnsDenial()
     {
         // Arrange: a file in the sibling directory outside the working directory
-        using var fixture = new ReparsePointFixture();
-        var requested = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside");
+        using var fixture = new TempDirectoryFixture();
+        var requested = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: ask for it by its absolute location
@@ -613,7 +528,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_OmittedPath_ResolvesToTheAnchor(string? path)
     {
         // Arrange: a working directory a model has not yet named
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: resolve the omitted request
@@ -635,7 +550,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_PlaceholderPath_ResolvesToTheAnchor(string path)
     {
         // Arrange: a working directory a model has not yet named
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: resolve the placeholder request
@@ -653,7 +568,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveWrite_BareFileName_ResolvesBeneathTheAnchor()
     {
         // Arrange: a working directory and a file that does not exist yet
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: ask to write the file by name alone
@@ -676,7 +591,7 @@ public class PathPolicyTests
     public void PathPolicy_EmitRelative_MirrorsTheCallerAndTheResultLocation()
     {
         // Arrange: a granted anchor and a result inside it, plus one outside it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = CreateRootedPolicy(fixture.Root);
         var inside = Path.Combine(policy.WorkingDirectory, "notes.txt");
         var outside = RealPathResolver.Resolve(Path.Combine(fixture.Outside, "x.txt"));
@@ -702,7 +617,7 @@ public class PathPolicyTests
     public void PathPolicy_EmitRelative_UngrantedAnchor_IsAlwaysAbsolute()
     {
         // Arrange: the anchor is not among the grants
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
 
         // Act & Assert: nothing is relative-eligible when the anchor is ungranted
@@ -718,7 +633,7 @@ public class PathPolicyTests
     public void PathPolicy_DiscoveryRoots_ListOneLocationPerGrant()
     {
         // Arrange: a rooted grant and an unrestricted grant
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadWrite(fixture.Root), PathRule.Unrestricted(AccessLevel.ReadOnly)]);
@@ -742,8 +657,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_LastSegmentAlias_ResolvesToTheGrant()
     {
         // Arrange: anchor at Root (ungranted); grant Outside, whose final segment is "outside"
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "file.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "file.txt", "content");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
 
         // Act: name the grant by its final folder name alone
@@ -763,7 +678,7 @@ public class PathPolicyTests
     {
         // Arrange: two grants whose final segment is the same word "shared", neither of which is
         // the anchor-relative interpretation of the input (so the fallthrough is genuinely denied)
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var firstShared = Path.Combine(fixture.Outside, "a", "shared");
         var secondShared = Path.Combine(fixture.Outside, "b", "shared");
         Directory.CreateDirectory(firstShared);
@@ -794,9 +709,9 @@ public class PathPolicyTests
     {
         // Arrange: the working directory contains a real "docs" subfolder, AND a second granted
         // location also ends in "docs". The model asks for "docs" meaning its own subfolder.
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "docs"), "a.txt", "inside");
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Outside, "docs"), "b.txt", "elsewhere");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "docs"), "a.txt", "inside");
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Outside, "docs"), "b.txt", "elsewhere");
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadOnly(fixture.Root), PathRule.ReadOnly(Path.Combine(fixture.Outside, "docs"))]);
@@ -818,9 +733,9 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_BareSegmentNotUnderWorkingDirectory_FallsBackToAlias()
     {
         // Arrange: the working directory has no "work" subfolder; a granted location ends in "work"
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var grantedWork = Path.Combine(fixture.Outside, "work");
-        ReparsePointFixture.WriteFile(grantedWork, "input.txt", "source");
+        TempDirectoryFixture.WriteFile(grantedWork, "input.txt", "source");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(grantedWork)]);
 
         // Act: name the grant by its final folder name alone
@@ -841,8 +756,8 @@ public class PathPolicyTests
     {
         // Arrange: the working directory (itself granted) contains a real "notes" subfolder; no
         // grant ends in "notes"
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "notes"), "n.txt", "inside");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "notes"), "n.txt", "inside");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
 
         // Act: name the bare segment "notes"
@@ -863,9 +778,9 @@ public class PathPolicyTests
     {
         // Arrange: a granted location ends in "shared"; the request "sub/shared" contains a
         // separator and must be joined to the working directory, not aliased
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var grantedShared = Path.Combine(fixture.Outside, "shared");
-        ReparsePointFixture.WriteFile(grantedShared, "s.txt", "elsewhere");
+        TempDirectoryFixture.WriteFile(grantedShared, "s.txt", "elsewhere");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(grantedShared)]);
 
         // Act: a non-bare relative request whose final segment matches the grant
@@ -891,7 +806,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_RelativeDenial_EchoesInterpretsAndEnumerates()
     {
         // Arrange: a granted read-only anchor, and a request that climbs out of it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
 
         // Act: a relative request that escapes the anchor
@@ -917,8 +832,8 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_AbsoluteDenial_HasNoInterpretationClause()
     {
         // Arrange: a granted anchor and an absolute request outside it
-        using var fixture = new ReparsePointFixture();
-        var requested = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "x");
+        using var fixture = new TempDirectoryFixture();
+        var requested = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "x");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: an absolute request outside the anchor
@@ -931,62 +846,6 @@ public class PathPolicyTests
     }
 
     /// <summary>
-    ///     Proves that a denial for a path that is spelled inside a permitted location but leads
-    ///     outside it names the real location the path resolved to.
-    /// </summary>
-    /// <remarks>
-    ///     An author who mounts data beneath a granted folder sees a request that looks contained
-    ///     being refused, and without the real location the denial reads as a defect. The message
-    ///     states where the path actually leads and stops there: what to do about it is the
-    ///     author's decision.
-    /// </remarks>
-    [Fact]
-    public void PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation()
-    {
-        // Arrange: a secret outside the root, reachable through a link inside it
-        using var fixture = new ReparsePointFixture();
-        var secret = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = CreateRootedPolicy(fixture.Root);
-        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
-
-        // Act: ask for the contained-looking path
-        policy.TryResolveRead(requested, out _, out var denial);
-
-        // Assert: the denial names where the path really leads, and prescribes nothing
-        Assert.NotNull(denial);
-        Assert.Contains(
-            $"Resolved to: {RealPathResolver.Resolve(secret)}",
-            denial,
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves that a denial for a path that leads exactly where it is spelled says nothing
-    ///     about a real location, because there is nothing further to state.
-    /// </summary>
-    /// <remarks>
-    ///     The clause exists to explain a redirection. Emitting it unconditionally would repeat
-    ///     the line above it and would disclose a resolved location for requests where no
-    ///     redirection occurred.
-    /// </remarks>
-    [Fact]
-    public void PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation()
-    {
-        // Arrange: a granted anchor and an ordinary absolute request outside it
-        using var fixture = new ReparsePointFixture();
-        var requested = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "x");
-        var policy = CreateRootedPolicy(RealPathResolver.Resolve(fixture.Root));
-
-        // Act: an absolute request that involves no link at all
-        policy.TryResolveRead(RealPathResolver.Resolve(requested), out _, out var denial);
-
-        // Assert: the denial carries no resolved-location clause
-        Assert.NotNull(denial);
-        Assert.DoesNotContain("Resolved to:", denial, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     ///     Proves the worked example: <c>file_list("work")</c> under an ungranted anchor is no longer
     ///     baffling — it names the input, the interpretation, and the empty grant set.
     /// </summary>
@@ -994,7 +853,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample()
     {
         // Arrange: an ungranted anchor and the bare word "work"
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, []);
 
         // Act: the model asks to list "work"
@@ -1014,7 +873,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_OmittedDenial_EchoesAStandIn()
     {
         // Arrange: an ungranted anchor so that even the anchor itself is refused
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, []);
 
         // Act: resolve with no path at all
@@ -1035,7 +894,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_RelativeParentTraversalDenial_InterpretedPathIsNormalized()
     {
         // Arrange: a granted read-only anchor, and a request that climbs out of it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
 
         // Act: a relative request that escapes the anchor via a parent segment
@@ -1055,7 +914,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_DotSlashDenial_InterpretedPathIsNormalized()
     {
         // Arrange: a granted read-only anchor, and a "./"-prefixed escaping request
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
 
         // Act: a relative request that begins with "./" and then escapes the anchor
@@ -1080,7 +939,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_NestedTraversalDenial_InterpretedPathIsNormalized()
     {
         // Arrange: a granted read-only anchor, and a nested traversal request that escapes it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         const string requested = "a/../../b/outside.md";
         var expected = Path.GetFullPath(Path.Combine(policy.WorkingDirectory, requested));
@@ -1103,7 +962,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim()
     {
         // Arrange: an ungranted anchor and a plain relative name with nothing to collapse
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, []);
 
         // Act: the model asks for a plain relative segment
@@ -1126,7 +985,7 @@ public class PathPolicyTests
     public void PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses()
     {
         // Arrange: a granted read-only anchor, and a relative path whose normalization throws
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         const string malformed = "../a\0b";
 
@@ -1151,7 +1010,7 @@ public class PathPolicyTests
     {
         // Arrange: anchor at Root (nothing named "outside" beneath it); grant Outside read-only,
         // whose final segment is "outside" so the bare segment aliases to it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
 
         // Act: a write to the bare alias, which resolves to a read-only grant
@@ -1169,44 +1028,15 @@ public class PathPolicyTests
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    ///     Proves that enumeration excludes a file only reachable by leaving the permitted location.
-    /// </summary>
-    [Fact]
-    public void PathPolicy_EnumerateFiles_LinkToOutsideRoot_ExcludesEscapedFile()
-    {
-        // Arrange: a secret outside the root, reachable through a link inside it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
-        ReparsePointFixture.WriteFile(fixture.Root, "inside.txt", "inside-content");
-        fixture.CreateDirectoryLink("junction", fixture.Outside);
-        var policy = CreateRootedPolicy(fixture.Root);
-
-        // Act: enumerate raw, then through the policy
-        var rawFiles = Directory
-            .EnumerateFiles(policy.WorkingDirectory, "*", SearchOption.AllDirectories)
-            .Select(Path.GetFileName)
-            .ToArray();
-        var policyFiles = policy
-            .EnumerateFiles(policy.WorkingDirectory, "*")
-            .Select(Path.GetFileName)
-            .ToArray();
-
-        // Assert: raw enumeration crosses the link; the policy's enumeration does not
-        Assert.Contains("secret.txt", rawFiles);
-        Assert.DoesNotContain("secret.txt", policyFiles);
-        Assert.Contains("inside.txt", policyFiles);
-    }
-
-    /// <summary>
     ///     Proves that enumeration lists permitted files at any depth.
     /// </summary>
     [Fact]
     public void PathPolicy_EnumerateFiles_PermittedFiles_AreListed()
     {
         // Arrange: two contained files, one of them nested
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "top.txt", "top");
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "nested"), "deep.txt", "deep");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "top.txt", "top");
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "nested"), "deep.txt", "deep");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: enumerate the permitted subtree
@@ -1224,8 +1054,8 @@ public class PathPolicyTests
     public void PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty()
     {
         // Arrange: a populated directory outside the permitted location
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: enumerate the directory outside the permitted location
@@ -1242,8 +1072,8 @@ public class PathPolicyTests
     public void PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheAnchor()
     {
         // Arrange: a working directory holding one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "top.txt", "top");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "top.txt", "top");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: enumerate with no directory supplied
@@ -1260,9 +1090,9 @@ public class PathPolicyTests
     public void PathPolicy_EnumerateFiles_RelativeDirectory_ListsThatDirectory()
     {
         // Arrange: one file in a subdirectory and one outside it but still in the workspace
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "deep.txt", "deep");
-        ReparsePointFixture.WriteFile(fixture.Root, "top.txt", "top");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(Path.Combine(fixture.Root, "sub"), "deep.txt", "deep");
+        TempDirectoryFixture.WriteFile(fixture.Root, "top.txt", "top");
         var policy = CreateRootedPolicy(fixture.Root);
 
         // Act: enumerate the subdirectory by its relative name

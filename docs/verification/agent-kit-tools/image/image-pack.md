@@ -14,8 +14,8 @@ creates the pack's tool from a policy rooted at one location, then reads one per
 refused path through the created tool. A pack that captured a policy and then ignored it would pass
 a reference check and fail this one.
 
-Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared reparse-point fixture from
-`TextFile/ReparsePointFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
+Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-directory fixture from
+`TextFile/TempDirectoryFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 #### Test Environment
 

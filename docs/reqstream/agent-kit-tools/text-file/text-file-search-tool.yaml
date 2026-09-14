@@ -33,8 +33,7 @@ sections:
                 title: >-
                   The search tool shall draw every candidate file from the access policy's own
                   enumeration, so a search never discloses the content, the path, or the existence of
-                  a file the policy would refuse, including one reachable only through a link outside
-                  the grants, and shall skip a binary file rather than search it.
+                  a file the policy would refuse, and shall skip a binary file rather than search it.
                 tags: [security]
                 justification: |
                   This is the single most important security property of the family: a search that
@@ -42,7 +41,7 @@ sections:
                   it exists. Drawing candidates from the policy's per-candidate-filtered enumeration
                   is what makes enumeration and access reach the same conclusion.
                 tests:
-                  - TextFileSearchTool_Search_FileBeneathLinkOutsideRoot_IsNeverSurfaced
+                  - TextFileSearchTool_Search_FileThePolicyRefuses_IsNeverSurfaced
                   - TextFileSearchTool_Search_BinaryFile_IsSkipped
 
               - id: AgentKitTools-TextFile-SearchTool-Scoped

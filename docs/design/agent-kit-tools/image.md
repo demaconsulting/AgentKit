@@ -87,9 +87,9 @@ same containment decision.
 
 **One decision per read.** The read tool consults `TryResolveRead`, and nothing in the subsystem
 consults the write decision, combines the two, or re-implements either. The decision is made on the
-path's real location, so a link that reaches outside the permitted location is refused without the
-tool having to know links exist, and it is made before anything is learned about the file, so a
-refused path never discloses whether it exists.
+path's normalized location, so a request outside the permitted location is refused without the
+tool having to reason about containment, and it is made before anything is learned about the file,
+so a refused path never discloses whether it exists.
 
 **The type is decided from the extension.** `ImageMediaTypes` maps an extension to the media type
 the family reads it as, because the media type is what a provider is told the content is and a

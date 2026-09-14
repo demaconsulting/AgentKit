@@ -47,8 +47,8 @@ public class TextFilePasteLinesToolTests
         int endLine)
     {
         // Arrange: cut and paste sharing one buffer, exactly as the pack composes them
-        using var fixture = new ReparsePointFixture();
-        var path = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", content);
+        using var fixture = new TempDirectoryFixture();
+        var path = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", content);
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var cut = TextFileCutLinesTool.Create(policy, buffers);
@@ -74,8 +74,8 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_OmittedAtLine_AppendsToEndAndReportsSpanAndNewTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var cut = TextFileCutLinesTool.Create(policy, buffers);
@@ -107,8 +107,8 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_AtLine_ReportsTheInsertedSpanAndNewTotal()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\nfive\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\nfour\nfive\n");
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var cut = TextFileCutLinesTool.Create(policy, buffers);
@@ -136,8 +136,8 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_EmptyBuffer_ReturnsDenialNamingTheBuffer()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content\n");
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(paste, new AIFunctionArguments { ["path"] = "note.txt" });
@@ -157,8 +157,8 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_MissingFile_RefusesNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "source.txt", "captured\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "source.txt", "captured\n");
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var copy = TextFileCopyLinesTool.Create(policy, buffers);
@@ -188,8 +188,8 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_EmptyDefaultSlot_NoOtherSlotPopulated_StatesTheFactNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content\n");
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(paste, new AIFunctionArguments { ["path"] = "note.txt" });
@@ -215,9 +215,9 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_EmptySlot_AnotherSlotPopulated_NamesThatSlot()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "large.txt", "keep\nblock\n");
-        ReparsePointFixture.WriteFile(fixture.Root, "extract.txt", "head\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "large.txt", "keep\nblock\n");
+        TempDirectoryFixture.WriteFile(fixture.Root, "extract.txt", "head\n");
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var copy = TextFileCopyLinesTool.Create(policy, buffers);
@@ -257,9 +257,9 @@ public class TextFilePasteLinesToolTests
     [Fact]
     public async Task TextFilePasteLines_NamedBuffer_RelocatesToAnotherFile()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "source.txt", "keep\nmove me\n");
-        ReparsePointFixture.WriteFile(fixture.Root, "target.txt", "head\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "source.txt", "keep\nmove me\n");
+        TempDirectoryFixture.WriteFile(fixture.Root, "target.txt", "head\n");
         var buffers = new TextFileLineBuffers();
         var policy = RootedPolicy(fixture.Root);
         var cut = TextFileCutLinesTool.Create(policy, buffers);

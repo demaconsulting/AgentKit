@@ -41,8 +41,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_UniqueMatch_ReplacesItAndReportsSpanAndDelta()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -65,8 +65,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_MultiLineNewText_ReportsTheWholeSpan()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -93,8 +93,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_EmptyNewText_ReportsTheRemovalPosition()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\ngamma\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -121,8 +121,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_NotFound_ReturnsDenialSayingNotFound()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "alpha\nbeta\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -142,8 +142,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_AppearsMultipleTimes_ReturnsDenialNamingCountAndAsksForContext()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "x\nx\nx\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "x\nx\nx\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -165,8 +165,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_EmptyNewText_DeletesTheMatchedText()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "keep\nremove me\nkeep\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "keep\nremove me\nkeep\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -189,8 +189,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_SurroundingContext_InsertsBetweenLines()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "first\nthird\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "first\nthird\n");
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -213,7 +213,7 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_MissingFile_ReturnsDenialNamingNoTool()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileReplaceTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -233,8 +233,8 @@ public class TextFileReplaceToolTests
     [Fact]
     public async Task TextFileReplaceTool_Replace_ReadOnlyLocation_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = TextFileReplaceTool.Create(policy);
 

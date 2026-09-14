@@ -38,9 +38,9 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_Range_CapturesReportsAndLeavesSourceByteIdentical()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string original = "one\ntwo\nthree\nfour\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", original);
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", original);
         var tool = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(
@@ -65,13 +65,13 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_WholeFile_CapturesAll()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string original = "alpha\nbeta\ngamma\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", original);
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", original);
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        var destination = ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
+        var destination = TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
 
         var result = await InvokeAsync(
             copy,
@@ -91,13 +91,13 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_ThenPasteAtLine_ReproducesContentExactly()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string original = "one\ntwo\nthree\nfour\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", original);
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", original);
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        var destination = ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", "head\n");
+        var destination = TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", "head\n");
 
         await InvokeAsync(
             copy,
@@ -115,12 +115,12 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_ThenPasteTwice_ProducesTwoCopies()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        var destination = ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", "tail\n");
+        var destination = TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", "tail\n");
 
         await InvokeAsync(
             copy,
@@ -139,12 +139,12 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_RecaptureSameSlot_ReplacesContent()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        var destination = ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
+        var destination = TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
 
         await InvokeAsync(
             copy,
@@ -165,15 +165,15 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_ThenCutSameSlot_CutReplacesTheCopiedSlot()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string copySource = "a1\na2\na3\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "copy-source.txt", copySource);
-        ReparsePointFixture.WriteFile(fixture.Root, "cut-source.txt", "b1\nb2\n");
+        TempDirectoryFixture.WriteFile(fixture.Root, "copy-source.txt", copySource);
+        TempDirectoryFixture.WriteFile(fixture.Root, "cut-source.txt", "b1\nb2\n");
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var cut = TextFileCutLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        var destination = ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
+        var destination = TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
 
         await InvokeAsync(
             copy,
@@ -204,13 +204,13 @@ public class TextFileCopyLinesToolTests
         int startLine,
         int endLine)
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string original = "one\ntwo\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", original);
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", original);
         var buffers = new TextFileLineBuffers();
         var copy = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), buffers);
         var paste = TextFilePasteLinesTool.Create(RootedPolicy(fixture.Root), buffers);
-        ReparsePointFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
+        TempDirectoryFixture.WriteFile(fixture.Root, "dest.txt", string.Empty);
 
         var result = await InvokeAsync(
             copy,
@@ -234,9 +234,9 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_ReadOnlyLocation_Succeeds()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         const string original = "one\ntwo\n";
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", original);
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", original);
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         var tool = TextFileCopyLinesTool.Create(policy, new TextFileLineBuffers());
 
@@ -257,8 +257,8 @@ public class TextFileCopyLinesToolTests
     [Fact]
     public async Task TextFileCopyLinesTool_Copy_NonPermittedPath_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        var outside = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "one\ntwo\n");
+        using var fixture = new TempDirectoryFixture();
+        var outside = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "one\ntwo\n");
         var tool = TextFileCopyLinesTool.Create(RootedPolicy(fixture.Root), new TextFileLineBuffers());
 
         var result = await InvokeAsync(

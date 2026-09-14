@@ -124,9 +124,9 @@ Creates a read-write grant confined to one location.
 **Algorithm:** reject a missing location, resolve `root` to its real location through
 `RealPathResolver`, validate and copy the denied patterns.
 
-Resolving the location once, at construction, means a permitted location that is itself reached
-through a link still permits its own contents — operators routinely point an agent at a checkout
-reached through a convenience alias. It also keeps the per-request cost to a single resolution of
+Resolving the location once, at construction, means every request is compared against one settled
+spelling of the permitted location — hosts routinely configure a location relative to where the
+application runs. It also keeps the per-request cost to a single resolution of
 the candidate path.
 
 **Throws:** `ArgumentNullException` for a null location; `ArgumentException` for an empty or

@@ -5,7 +5,7 @@ This document describes the unit-level verification strategy for the `TextFileSe
 #### Verification Approach
 
 Nothing is mocked or stubbed. Each scenario uses real `PathPolicy` enumeration and real files; grep
-output, search options, binary skips and link escapes are checked through `InvokeAsync`. This keeps
+output, search options, binary skips and refused candidates are checked through `InvokeAsync`. This keeps
 verification at the same boundary the runtime or composing application uses, rather than proving a
 substitute behaves consistently with itself.
 
@@ -49,11 +49,11 @@ The listed tests prove a missing policy is a programming error rather than a den
 
 ##### AgentKitTools-TextFile-SearchTool-PolicyFiltered: Policy Filtered
 
-**Test**: `TextFileSearchTool_Search_FileBeneathLinkOutsideRoot_IsNeverSurfaced`
+**Test**: `TextFileSearchTool_Search_FileThePolicyRefuses_IsNeverSurfaced`
 
 **Test**: `TextFileSearchTool_Search_BinaryFile_IsSkipped`
 
-The listed tests prove a file reachable only through a link outside the grants is never surfaced by
+The listed tests prove a file the policy would refuse is never surfaced by
 a search — not its content, not its path, not its existence; a binary file is skipped rather than
 searched or disclosed.
 

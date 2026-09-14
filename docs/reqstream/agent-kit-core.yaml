@@ -7,34 +7,31 @@
 sections:
   - title: AgentKitCore Requirements
     requirements:
-      - id: AgentKitCore-PathContainment-ResolveLinks
+      - id: AgentKitCore-PathContainment-NormalizedLocation
         title: >-
-          The library shall judge path access by the real file system location of the requested
-          path, making a relative path absolute against the working directory before resolving
-          symbolic links and directory junctions at every path component.
+          The library shall judge path access by the normalized absolute location of the requested
+          path, making a relative path absolute against the working directory and collapsing
+          relative segments before deciding containment.
         tags: [system, security]
         justification: |
-          A path string that looks contained within a permitted location can still reach outside
-          it when a reparse point sits anywhere along the path. Judging access on the requested
-          string rather than on the location it actually reaches would let an agent read or write
-          outside the location its operator granted, which is the primary threat this library
-          exists to control. A relative path is made absolute against the working directory first,
-          so that the same link resolution and the same containment decision apply whether the
-          agent wrote a bare file name or a fully qualified one.
+          A path carrying parent segments can name a location outside a permitted one while still
+          reading as contained, so the decision must be made on the normalized location rather
+          than on the requested string. A relative path is made absolute against the working
+          directory first, so that the same normalization and the same containment decision apply
+          whether the agent wrote a bare file name or a fully qualified one. Containment is a
+          decision about paths only: a symbolic link, junction or mount is neither followed nor
+          detected, so a path that leaves a permitted location through one is judged as it is
+          spelled.
         children:
-          - AgentKitCore-RealPathResolver-ComponentWalk
-          - AgentKitCore-RealPathResolver-LinkTarget
-          - AgentKitCore-RealPathResolver-LinkTargetAncestors
           - AgentKitCore-RealPathResolver-Normalization
           - AgentKitCore-RealPathResolver-NonExistentPath
           - AgentKitCore-RealPathResolver-RejectInvalidPath
-          - AgentKitCore-RealPathResolver-UndecodableLink
-          - AgentKitCore-PathRule-RootResolvedAtConstruction
+          - AgentKitCore-PathRule-RootNormalizedAtConstruction
           - AgentKitCore-PathPolicy-DenyEscapedPath
           - AgentKitCore-PathPolicy-RealPathReported
           - AgentKitCore-PathPolicy-RelativePathAgainstWorkingDirectory
         tests:
-          - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+          - AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
 
       - id: AgentKitCore-PathAccess-WorkspaceBase
         title: >-
@@ -66,18 +63,17 @@ sections:
       - id: AgentKitCore-PathContainment-EnumerationFiltered
         title: >-
           The library shall apply the same containment decision to directory enumeration as to
-          direct path access, so a file reachable only by leaving a permitted location is never
-          listed.
+          direct path access, so a file whose location a read would refuse is never listed.
         tags: [system, security]
         justification: |
-          Recursive directory enumeration provided by the operating system follows links out of
-          a permitted location. A listing that advertises such a file discloses its existence and
-          invites the agent to request it, so enumeration must reach the same conclusion as direct
-          access rather than applying a weaker check of its own.
+          Recursive directory enumeration provided by the operating system surfaces every file
+          beneath a directory. A listing that advertises a file the policy would refuse discloses
+          its existence and invites the agent to request it, so enumeration must reach the same
+          conclusion as direct access rather than applying a weaker check of its own.
         children:
           - AgentKitCore-PathPolicy-EnumerationFiltered
         tests:
-          - AgentKitCore_SystemPathContainment_EnumerationAcrossLink_ExcludesEscapedFile
+          - AgentKitCore_SystemPathContainment_Enumeration_ListsOnlyPermittedFiles
 
       - id: AgentKitCore-PathAccess-IndependentReadWrite
         title: >-
@@ -122,9 +118,8 @@ sections:
       - id: AgentKitCore-PathAccess-DenialDisclosure
         title: >-
           The library shall state in a denial the request it received, the location it interpreted
-          a relative request as, the real location the request resolved to when that differs, and
-          the permitted locations with their access levels, so a confined model learns where it
-          may work instead of guessing.
+          a relative request as, and the permitted locations with their access levels, so a
+          confined model learns where it may work instead of guessing.
         tags: [system]
         justification: |
           A denial that only refuses is useless to the agent receiving it: told nothing but "no",
@@ -133,13 +128,11 @@ sections:
           a confined model the truthful map of where it may work is worth more than concealing
           paths it is already confined to. A denial therefore echoes the request, states the
           interpretation when and only when a relative request was interpreted so a silent
-          wrong-target cannot pass unnoticed, names the real location when a link or mount moved
-          the request somewhere the reader has not already been shown, and enumerates the
-          permitted locations with their levels. Each grant contributes its own description to
-          that enumeration. A denial states facts and prescribes no remedy.
+          wrong-target cannot pass unnoticed, and enumerates the permitted locations with their
+          levels. Each grant contributes its own description to that enumeration. A denial states
+          facts and prescribes no remedy.
         children:
           - AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
-          - AgentKitCore-PathPolicy-DenialNamesRealLocation
           - AgentKitCore-PathRule-Describe
         tests:
           - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations

@@ -7,8 +7,8 @@ This document describes the subsystem-level verification strategy for the Markdo
 The subsystem is verified through integration tests that exercise the family the way an application
 does: composed through the AgentKitCore `ToolPackBuilder` under one access policy, then invoked
 through the published tool list by name and argument dictionary, exactly as an agent runtime invokes
-it. Nothing is mocked. The access policy and file system are real, and reparse-point scenarios use
-real links, because the properties under verification belong to the real host boundary.
+it. Nothing is mocked. The access policy and file system are real, because the properties under
+verification belong to the real host boundary.
 
 The scenarios here assert what belongs to the family as a whole: the outline tool and
 `MarkdownPack`. They verify that Markdown section structure is read only from permitted files. The
@@ -28,8 +28,6 @@ Subsystem tests reside in `Markdown/MarkdownTests.cs` within the
 - **Dependencies**: No external services, databases, or network access required
 - **File system**: Each scenario creates and deletes its own temporary directory tree when files are
   needed
-- **Reparse points**: Link-escape scenarios use the shared real reparse-point fixture and fail if
-  the link cannot be created
 - **Isolation**: Each test constructs its own policy, composition and temporary state; no state is
   shared
 
@@ -37,7 +35,7 @@ Subsystem tests reside in `Markdown/MarkdownTests.cs` within the
 
 A subsystem test run passes when all 4 requirement scenarios below, covering 4 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing tool, a wrong
-family prefix, an ignored policy decision, a link escape, a thrown refusal, incorrect relative-path
+family prefix, an ignored policy decision, a containment escape, a thrown refusal, incorrect relative-path
 behavior, unsafe mutation, or a ceiling violation returned as truncated content constitutes a
 failure.
 
@@ -60,11 +58,11 @@ The listed tests prove every tool in the family carries a valid name and a descr
 **Test**: `Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult`
 
 The listed tests prove the family's structured result reaches the caller as a JSON element the guard
-serialized, and that a link-escaping file is never outlined.
+serialized, and that a file outside the permitted location is never outlined.
 
 #### AgentKitTools-Markdown-Outline: Outline
 
 **Test**: `Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult`
 
 The listed tests prove the family's structured result reaches the caller as a JSON element the guard
-serialized, and that a link-escaping file is never outlined.
+serialized, and that a file outside the permitted location is never outlined.

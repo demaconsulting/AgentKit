@@ -52,44 +52,39 @@ public class FileTests
     }
 
     /// <summary>
-    ///     Proves a file reachable only through a link outside the permitted root is never listed,
-    ///     copied, moved or deleted — no tool in the family can breach containment.
+    ///     Proves a file outside the permitted root is never listed, copied, moved or deleted —
+    ///     no tool in the family can breach containment.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task File_Family_PathBeneathLinkOutsideRoot_IsNeverReachableByAnyTool()
+    public async Task File_Family_PathOutsideRoot_IsNeverReachableByAnyTool()
     {
-        // Arrange: a real reparse point inside the permitted root pointing outside it
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "escaped-content");
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedFile = Path.Combine(link, "secret.txt");
-
-        // The escaped file is read directly through the link first, so a fixture that failed to
-        // create the link fails the scenario rather than passing vacuously.
-        Assert.Equal("escaped-content", await System.IO.File.ReadAllTextAsync(
-            escapedFile,
-            TestContext.Current.CancellationToken));
+        // Arrange: a file in the sibling directory no grant permits
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(
+            fixture.Outside,
+            "secret.txt",
+            "outside-content");
         var tools = Compose(fixture.Root);
 
-        // Act: attempt every family operation against the escaped file, and list the root
+        // Act: attempt every family operation against the outside file, and list the root
         var listResult = await InvokeAsync(
             tools, FileListTool.ToolName, new AIFunctionArguments { ["directory"] = fixture.Root });
         var copyResult = await InvokeAsync(
             tools,
             FileCopyTool.ToolName,
-            new AIFunctionArguments { ["source"] = escapedFile, ["destination"] = "copy.txt" });
+            new AIFunctionArguments { ["source"] = outsideFile, ["destination"] = "copy.txt" });
         var deleteResult = await InvokeAsync(
-            tools, FileDeleteTool.ToolName, new AIFunctionArguments { ["path"] = escapedFile });
+            tools, FileDeleteTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });
 
-        // Assert: the listing never mentions the escaped file, the copy and delete are refused, and
-        // the escaped file still exists untouched
+        // Assert: the listing never mentions the outside file, the copy and delete are refused,
+        // and the outside file still exists untouched
         Assert.DoesNotContain("secret.txt", Assert.IsType<string>(listResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(copyResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(deleteResult), StringComparison.Ordinal);
         Assert.Equal(
-            "escaped-content",
-            await System.IO.File.ReadAllTextAsync(escapedFile, TestContext.Current.CancellationToken));
+            "outside-content",
+            await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -99,8 +94,8 @@ public class FileTests
     [Fact]
     public async Task File_Family_DeniedRequest_ReturnsAResultWithoutThrowing()
     {
-        using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var tools = Compose(fixture.Root);
 
         var result = await InvokeAsync(
@@ -119,8 +114,8 @@ public class FileTests
     public async Task File_Family_CopyThenDelete_ByRelativeNames_WorksEndToEnd()
     {
         // Arrange: a workspace with one file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "content");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "content");
         var tools = Compose(fixture.Root);
 
         // Act: copy the file, then delete the original

@@ -146,7 +146,7 @@ public class ImageTests
     public async Task Image_Family_ToolResult_ReachesTheCallerUnserialized()
     {
         // Arrange: the family composed over a permitted location holding a known image
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tools = Compose(fixture.Root);
 
@@ -170,7 +170,7 @@ public class ImageTests
     public async Task Image_Family_PermittedImage_IsReturnedAsImageContent()
     {
         // Arrange: the family composed over a permitted location holding a known image
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tools = Compose(fixture.Root);
 
@@ -195,7 +195,7 @@ public class ImageTests
     public async Task Image_Family_PathOutsideRoot_IsRefused()
     {
         // Arrange: the family composed over a permitted location, and an image outside it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tools = Compose(fixture.Root);
 
@@ -220,7 +220,7 @@ public class ImageTests
     public async Task Image_Family_DeniedRequest_ReturnsAResultWithoutThrowing()
     {
         // Arrange: the family composed over a permitted location, and a path outside it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tools = Compose(fixture.Root);
 
@@ -243,7 +243,7 @@ public class ImageTests
     public async Task Image_Family_DenialText_DisclosesPermittedLocation()
     {
         // Arrange: the family composed over a permitted location, and a path outside it
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tools = Compose(fixture.Root);
         var permitted = RealPathResolver.Resolve(fixture.Root);
@@ -268,7 +268,7 @@ public class ImageTests
     public async Task Image_Family_UnsupportedType_IsRefusedWithRedirectWhereUseful()
     {
         // Arrange: the family composed over a permitted location holding a vector-text file
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "diagram.svg", SampleBytes);
         var tools = Compose(fixture.Root);
 
@@ -292,7 +292,7 @@ public class ImageTests
     public async Task Image_Family_FileBeyondTheBinaryCeiling_IsRefusedNotTruncated()
     {
         // Arrange: the family composed under a policy carrying a sixteen-byte binary ceiling
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "big.png", new byte[128]);
         var policy = new PathPolicy(
             fixture.Root,
@@ -328,7 +328,7 @@ public class ImageTests
     public async Task Image_Family_RelativePathFromAModel_IsResolvedAgainstTheWorkspace()
     {
         // Arrange: the family composed over a workspace holding one image
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tools = Compose(fixture.Root);
 

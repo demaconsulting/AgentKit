@@ -8,8 +8,8 @@ The `ImageReadTool` class publishes the `image_read` tool.
 
 To return the visual content of one file the access policy permits the agent to read — an image or
 a PDF — as a caption followed by the content itself, and to refuse, in a way the agent can act on,
-every request it cannot honor: a path outside the permitted location, a path that reaches outside
-through a link, a directory, a type the family cannot read, a file that does not exist, or a file
+every request it cannot honor: a path outside the permitted location, a directory, a type the
+family cannot read, a file that does not exist, or a file
 too large to return.
 
 The unit does no containment reasoning of its own and decides no media type of its own. It asks the
@@ -62,9 +62,9 @@ governed by the supplied policy for the rest of its life.
 2. `policy.TryResolveRead(path, …)` — a refusal is returned as `PathNotPermitted` carrying the
    policy's own message unchanged. **A relative path is interpreted against the workspace here**,
    using the same policy the text file family uses, so a name a text file listing reported is
-   directly usable. This step resolves every
-   path component, so a link that escapes
-   the permitted location is refused here without this unit knowing links exist
+   directly usable. This step normalizes the
+   path, so a request outside
+   the permitted location is refused here without this unit reasoning about containment
 3. An existing directory is refused as `InvalidRequest`, stating the fact and prescribing nothing
 4. `ImageMediaTypes.TryResolveMediaType` — an unsupported type is refused through
    `ImageMediaTypes.DenyUnsupportedType`, which names a sibling reader only where doing so states

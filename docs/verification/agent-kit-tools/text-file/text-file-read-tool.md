@@ -27,7 +27,7 @@ Unit tests reside in `TextFile/TextFileReadToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 12 requirement scenarios below, covering 24 listed test method
+A unit test run passes when all 12 requirement scenarios below, covering 23 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -64,10 +64,8 @@ it.
 
 **Test**: `TextFileReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial`
 
-**Test**: `TextFileReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial`
-
-The listed tests prove a path outside the read grant is refused, disclosing the permitted location;
-a file beneath a link escaping the root is refused.
+The listed test proves a path outside the read grant is refused, disclosing the permitted location,
+and without disclosing the file's content.
 
 ##### AgentKitTools-TextFile-ReadTool-RangedPaging: Ranged Paging
 

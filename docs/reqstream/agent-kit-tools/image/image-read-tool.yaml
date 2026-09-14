@@ -68,18 +68,16 @@ sections:
 
               - id: AgentKitTools-Image-ReadTool-DenyOutsideRoot
                 title: >-
-                  The read tool shall refuse a request whose real location lies outside the
-                  permitted read location, including one that reaches outside through a link.
+                  The read tool shall refuse a request whose location lies outside the
+                  permitted read location.
                 tags: [security]
                 justification: |
-                  This is the primary threat the library exists to control: a path that looks
-                  contained can still reach outside it when a reparse point sits anywhere along
-                  it. Judging the request on the location it actually reaches keeps an agent
-                  inside what its operator granted, and the decision is made before anything is
+                  This is the primary threat the library exists to control. Judging the request
+                  against the permitted locations keeps an agent inside what its operator
+                  granted, and the decision is made before anything is
                   learned about the file, so a refused path never reveals whether it exists.
                 tests:
                   - ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial
-                  - ImageReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial
 
               - id: AgentKitTools-Image-ReadTool-UnsupportedTypeDenied
                 title: >-

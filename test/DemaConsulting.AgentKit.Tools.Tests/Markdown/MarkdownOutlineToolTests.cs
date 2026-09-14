@@ -61,8 +61,8 @@ public class MarkdownOutlineToolTests
     public async Task MarkdownOutlineTool_Outline_KnownFile_ReportsSectionsWithLineRanges()
     {
         // Arrange: a workspace holding the known fixture
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", Markdown);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", Markdown);
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root));
 
         // Act: outline the file by its bare relative name
@@ -87,8 +87,8 @@ public class MarkdownOutlineToolTests
     [Fact]
     public async Task MarkdownOutlineTool_Outline_MaxDepth_FiltersDeeperHeadings()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", Markdown);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", Markdown);
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root));
 
         // Act: outline to depth 2, excluding the level-3 subsection
@@ -113,8 +113,8 @@ public class MarkdownOutlineToolTests
     [Fact]
     public async Task MarkdownOutlineTool_Outline_FileWithoutHeadings_ReturnsEmptyOutline()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "plain.md", "just text\nno headings\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "plain.md", "just text\nno headings\n");
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "plain.md" });
@@ -133,8 +133,8 @@ public class MarkdownOutlineToolTests
     [Fact]
     public async Task MarkdownOutlineTool_Outline_LargeDocument_ReportsHeadingsNotADenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", LargeDocument());
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", LargeDocument());
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "guide.md" });
@@ -154,8 +154,8 @@ public class MarkdownOutlineToolTests
     [Fact]
     public async Task MarkdownOutlineTool_Outline_PathOutsideGrants_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        var outsideFile = ReparsePointFixture.WriteFile(fixture.Outside, "secret.md", "# Secret");
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.md", "# Secret");
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = outsideFile });
@@ -171,7 +171,7 @@ public class MarkdownOutlineToolTests
     [Fact]
     public async Task MarkdownOutlineTool_Outline_MissingFile_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "absent.md" });

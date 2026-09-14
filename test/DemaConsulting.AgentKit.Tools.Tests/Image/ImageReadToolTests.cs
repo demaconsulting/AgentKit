@@ -82,7 +82,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_SupportedImage_ResultIsContentListNotJsonElement()
     {
         // Arrange: a permitted image file
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -102,7 +102,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_SupportedImage_ReturnsDataContentWithMediaType()
     {
         // Arrange: a permitted PNG whose bytes identify it unambiguously
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -131,7 +131,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_PermittedPdf_ReturnsBinaryContentWithPdfMediaType()
     {
         // Arrange: a permitted PDF whose bytes identify it unambiguously
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "document.pdf", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -159,7 +159,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_PathOutsideTheReadRoot_ReturnsDenial()
     {
         // Arrange: an image in a sibling directory no grant permits reading
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -172,36 +172,6 @@ public class ImageReadToolTests
     }
 
     /// <summary>
-    ///     Proves a file reached through a link that leaves the permitted location is refused.
-    /// </summary>
-    /// <remarks>
-    ///     The escaped file is first read directly through the link to prove the link really
-    ///     bridges the two directories; without that step a broken fixture would make this
-    ///     scenario pass vacuously.
-    /// </remarks>
-    /// <returns>A task that completes when the scenario has been verified.</returns>
-    [Fact]
-    public async Task ImageReadTool_Read_FileBeneathLinkOutsideRoot_ReturnsDenial()
-    {
-        // Arrange: a real reparse point inside the permitted root pointing outside it
-        using var fixture = new ReparsePointFixture();
-        WriteBytes(fixture.Outside, "secret.png", SampleBytes);
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedPath = Path.Combine(link, "secret.png");
-        Assert.Equal(SampleBytes, await System.IO.File.ReadAllBytesAsync(
-            escapedPath,
-            TestContext.Current.CancellationToken));
-        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
-
-        // Act: request the escaped file through a path that looks contained
-        var result = await InvokeAsync(tool, escapedPath);
-
-        // Assert: refused on its real location, not on how the path was spelled
-        var text = Assert.IsType<string>(result);
-        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     ///     Proves an unsupported type is refused with a redirect to the text file read tool.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
@@ -209,7 +179,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_UnsupportedType_ReturnsDenialRedirectingToTextFileRead()
     {
         // Arrange: a permitted but vector-text file this family cannot read
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "diagram.svg", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -232,7 +202,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_DirectoryPath_ReturnsDenial()
     {
         // Arrange: a permitted directory rather than a file
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
         // Act: request the directory itself
@@ -254,7 +224,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_MissingFile_ReturnsDenial()
     {
         // Arrange: a permitted location containing no such file
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
         // Act: request a supported-type file that does not exist
@@ -276,7 +246,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling()
     {
         // Arrange: a file larger than an eight-byte binary ceiling
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "big.png", new byte[64]);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxBinaryBytes: 8)));
 
@@ -297,7 +267,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_FileAtTheBinaryCeiling_IsRead()
     {
         // Arrange: an eight-byte file and an eight-byte binary ceiling
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var file = WriteBytes(fixture.Root, "exact.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxBinaryBytes: 8)));
 
@@ -357,7 +327,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_BareFileName_ReturnsTheImageContent()
     {
         // Arrange: a workspace holding one image
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
@@ -379,7 +349,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_MissingPathArgument_ReturnsDenialWithoutThrowing()
     {
         // Arrange: a workspace-governed tool, so only the request is at fault
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
 
         // Act: invoke with no arguments at all
@@ -402,7 +372,7 @@ public class ImageReadToolTests
     public async Task ImageReadTool_Read_DeniedPath_DenialDisclosesPermittedLocation()
     {
         // Arrange: a file outside the permitted location
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var outsideFile = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var policy = RootedPolicy(fixture.Root);
         var tool = ImageReadTool.Create(policy);

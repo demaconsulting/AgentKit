@@ -100,7 +100,7 @@ Access failures while reading a candidate file are caught by explicit classifica
 candidate to be skipped. Cancellation is not classified, so it propagates through the async search.
 
 **Enumeration is the security boundary.** The implementation never calls recursive directory APIs to
-find candidates. A file behind a link outside the grants is not listed as a candidate, so its path,
+find candidates. A file the policy would refuse is not listed as a candidate, so its path,
 content and existence stay undisclosed.
 
 #### Dependencies

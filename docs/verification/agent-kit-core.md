@@ -27,43 +27,37 @@ System tests reside in `AgentKitCoreTests.cs` within the
   promotion scenario uses a scripted `IChatClient` that contacts nothing; see
   _ImagePromotingChatClient Unit Verification Design_ for why a real provider would not observe
   the behavior under test
-- **File system**: The path-containment scenarios require a writable temporary directory and the
-  ability to create a real reparse point within it — a directory junction created by
-  `cmd.exe /c mklink /J` on Windows, and a directory symbolic link on Linux and macOS. A Windows
-  symbolic link is deliberately not used, because it requires a privilege an unelevated developer
-  session does not hold and would therefore pass on the elevated CI runner while failing on every
-  workstation
+- **File system**: The path-containment scenarios require a writable temporary directory
 - **Isolation**: Each test method constructs its own policy, tool, or temporary directory tree;
   no state is shared between tests
 
 ## External Interface Simulation
 
 The path-containment scenarios touch one external interface — the host file system — and it is
-deliberately **not** simulated. The behavior under verification is exactly the operating system's
-own link resolution and directory enumeration, so a simulated file system would verify the
-simulation rather than the control. Each scenario instead creates a disposable temporary tree
-containing a genuine reparse point and removes it afterwards, deleting directory links before the
-recursive delete because a recursive delete over a tree containing a junction fails.
+deliberately **not** simulated. The decision under verification is made about real paths and the
+listing it filters comes from the real operating system, so a simulated file system would verify
+the simulation rather than the control. Each scenario instead creates a disposable temporary tree
+and removes it afterwards.
 
 ## System-Level Test Scenarios
 
-### Path Containment: A File Beneath a Directory Link Is Denied
+### Path Containment: A Relative Escape Is Denied
 
-**Test**: `AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied`
+**Test**: `AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied`
 
-Verifies that the system judges access by the location a path actually reaches. Configures a
-policy confined to one location, creates a genuine directory link inside it pointing at a sibling
-directory, and requests a file through that link. Asserts the request is refused, that no location
-is handed back, and that a reason is supplied.
+Verifies that the system judges access by the normalized location a path denotes. Configures a
+policy confined to one location and requests a file in a sibling directory by climbing out of the
+permitted location with a parent segment. Asserts the request is refused, that no location is
+handed back, and that a reason is supplied.
 
-### Path Containment: Enumeration Across a Link Excludes the Escaped File
+### Path Containment: Enumeration Lists Only Permitted Files
 
-**Test**: `AgentKitCore_SystemPathContainment_EnumerationAcrossLink_ExcludesEscapedFile`
+**Test**: `AgentKitCore_SystemPathContainment_Enumeration_ListsOnlyPermittedFiles`
 
 Verifies that the system applies the same containment decision to listing as to direct access.
-Places one file inside the permitted location and one outside it, links the two, and lists the
-permitted location through the public API. Asserts the contained file appears and the escaped
-file does not.
+Places one file inside the permitted location and one outside it, and lists the permitted
+location through the public API. Asserts the contained file appears and the outside file does
+not.
 
 ### Path Policy: Reading Widely While Writing Narrowly
 

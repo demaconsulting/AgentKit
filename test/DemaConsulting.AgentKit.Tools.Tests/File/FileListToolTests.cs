@@ -55,9 +55,9 @@ public class FileListToolTests
     public async Task FileListTool_List_TypeAgnostic_ReportsFilesOfEveryType()
     {
         // Arrange: a workspace holding a text file and a binary-typed file
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "text");
-        ReparsePointFixture.WriteBytes(fixture.Root, "picture.png", [0x89, 0x50, 0x4E, 0x47]);
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "text");
+        TempDirectoryFixture.WriteBytes(fixture.Root, "picture.png", [0x89, 0x50, 0x4E, 0x47]);
         var tool = FileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list the workspace
@@ -77,8 +77,8 @@ public class FileListToolTests
     public async Task FileListTool_List_OmittedDirectory_ListsEveryPermittedLocationIncludingEmpty()
     {
         // Arrange: a populated workspace and a granted-but-empty second location
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "text");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "text");
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadWrite(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
@@ -101,7 +101,7 @@ public class FileListToolTests
     public async Task FileListTool_List_EmptyDirectory_ReturnsNoFilesMatchedNotADenial()
     {
         // Arrange: a permitted but empty workspace, listed by its own name
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = FileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list the empty directory
@@ -121,9 +121,9 @@ public class FileListToolTests
     public async Task FileListTool_List_GlobPattern_RestrictsToMatchingFiles()
     {
         // Arrange: a workspace with two file types
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "notes.txt", "text");
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", "# Guide");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", "text");
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", "# Guide");
         var tool = FileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list only the Markdown files, using a recursive glob
@@ -145,7 +145,7 @@ public class FileListToolTests
     public async Task FileListTool_List_DirectoryOutsideGrants_ReturnsDenial()
     {
         // Arrange: a workspace, and a sibling location outside the grant
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = FileListTool.Create(RootedPolicy(fixture.Root));
 
         // Act: list the outside directory

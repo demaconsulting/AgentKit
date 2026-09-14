@@ -7,9 +7,9 @@ This document describes the subsystem-level verification strategy for the Image 
 The subsystem is verified through integration tests that exercise the family the way an application
 does: composed through the AgentKitCore `ToolPackBuilder` under one access policy and a declared
 host capability, then invoked through the published tool list by name and argument dictionary,
-exactly as an agent runtime invokes it. Nothing is mocked. The access policy, the file system and
-the reparse points are all real, because the properties under verification — that a link cannot be
-used to escape, that image content reaches a caller as content rather than as serialized JSON, and
+exactly as an agent runtime invokes it. Nothing is mocked. The access policy and the file system
+are real, because the properties under verification — that a path outside the permitted location
+cannot be read, that image content reaches a caller as content rather than as serialized JSON, and
 that a non-vision host is never even asked for the family — are properties of the real thing and a
 test double would prove only that the double behaves.
 
@@ -28,8 +28,8 @@ pack that was consulted and returned nothing and a pack that was never consulted
 list.
 
 Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate recording decorator in
-`Image/RecordingToolPack.cs` and the shared reparse-point test fixture reused from
-`TextFile/ReparsePointFixture.cs`, all within the `DemaConsulting.AgentKit.Tools.Tests` project.
+`Image/RecordingToolPack.cs` and the shared temporary-directory test fixture reused from
+`TextFile/TempDirectoryFixture.cs`, all within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 ### Test Environment
 
@@ -39,10 +39,6 @@ Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate record
 - **File system**: Each scenario that reads a file creates its own temporary directory tree — a
   permitted root and a sibling directory outside it — writing binary files directly, and deletes it
   afterwards
-- **Reparse points**: Created by the shared fixture using a directory junction on Windows
-  (`cmd.exe /c mklink /J`, which needs no elevation) and a symbolic link elsewhere. Failure to
-  create a link **fails** the test rather than skipping it, so a missing safety control can never
-  appear as coverage
 - **Isolation**: Each test constructs its own policy, composition and temporary tree; no state is
   shared between tests
 

@@ -41,8 +41,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_Match_ReportsPathLineContent()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(
             fixture.Root, "client.cs", "using System;\nprivate const int RetryLimit = 3;\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
@@ -59,8 +59,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_WithContextLines_ShowsSurroundingLines()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "before\ntarget\nafter\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "before\ntarget\nafter\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -80,8 +80,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_LiteralByDefault_MatchesMetacharactersAsText()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "a.b\n" + "axb\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "a.b\n" + "axb\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         // "a.b" as a literal matches only "a.b", not "axb"
@@ -99,8 +99,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_RegexMode_MatchesTheExpression()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "a.b\n" + "axb\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "a.b\n" + "axb\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -119,8 +119,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_InvalidRegex_ReturnsDenialWithoutThrowing()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "text\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "text\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -138,8 +138,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_MaxMatches_CapsTheReportedMatches()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "hit\nhit\nhit\nhit\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "hit\nhit\nhit\nhit\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -158,8 +158,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_NoMatch_ReturnsNoMatchesNotADenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "nothing here\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "nothing here\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["pattern"] = "absent" });
@@ -175,7 +175,7 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_EmptyDirectory_ReturnsNoMatches()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["pattern"] = "anything" });
@@ -191,8 +191,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_IgnoreCase_MatchesRegardlessOfCase()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "Hello World\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "Hello World\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -204,24 +204,23 @@ public class TextFileSearchToolTests
     }
 
     /// <summary>
-    ///     Proves a file reachable only through a link outside the grants is never surfaced by a
-    ///     search — not its content, not its path, not its existence.
+    ///     Proves a file the policy would refuse is never surfaced by a search — not its content,
+    ///     not its path, not its existence — because every candidate comes from the policy's own
+    ///     enumeration.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task TextFileSearchTool_Search_FileBeneathLinkOutsideRoot_IsNeverSurfaced()
+    public async Task TextFileSearchTool_Search_FileThePolicyRefuses_IsNeverSurfaced()
     {
-        // Arrange: a real reparse point inside the permitted root pointing outside it, with a file
-        // whose content would match the search
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "TOP-SECRET-TOKEN");
-        var link = fixture.CreateDirectoryLink("escape", fixture.Outside);
-        var escapedFile = Path.Combine(link, "secret.txt");
-        Assert.Equal("TOP-SECRET-TOKEN", await System.IO.File.ReadAllTextAsync(
-            escapedFile, TestContext.Current.CancellationToken));
-        var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
+        // Arrange: a file inside the searched location that the grant's deny pattern refuses
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "secret.txt", "TOP-SECRET-TOKEN");
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root, ["secret.txt"])]);
+        var tool = TextFileSearchTool.Create(policy);
 
-        // Act: search for the exact token the escaped file contains
+        // Act: search for the exact token the refused file contains
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["pattern"] = "TOP-SECRET-TOKEN" });
 
         // Assert: the search surfaces nothing — not the content, path, or existence of the file
@@ -237,8 +236,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_DirectoryOutsideGrants_ReturnsDenial()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "token");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "token");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -256,9 +255,9 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_FilePattern_RestrictsToMatchingFiles()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "target\n");
-        ReparsePointFixture.WriteFile(fixture.Root, "guide.md", "target\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "target\n");
+        TempDirectoryFixture.WriteFile(fixture.Root, "guide.md", "target\n");
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 
         var result = await InvokeAsync(
@@ -279,8 +278,8 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_MatchInsideLargeFile_IsReported()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "big.txt", LargeFileWithTokenOnLine(300, 250, "beacon"));
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "big.txt", LargeFileWithTokenOnLine(300, 250, "beacon"));
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxReadBytes: 64)));
 
         var result = await InvokeAsync(tool, new AIFunctionArguments { ["pattern"] = "beacon" });
@@ -296,9 +295,9 @@ public class TextFileSearchToolTests
     [Fact]
     public async Task TextFileSearchTool_Search_BinaryFile_IsSkipped()
     {
-        using var fixture = new ReparsePointFixture();
+        using var fixture = new TempDirectoryFixture();
         // A file with a NUL byte and text that would otherwise match.
-        ReparsePointFixture.WriteBytes(
+        TempDirectoryFixture.WriteBytes(
             fixture.Root, "data.bin", [0x74, 0x6F, 0x6B, 0x65, 0x6E, 0x00, 0x74, 0x6F, 0x6B, 0x65, 0x6E]);
         var tool = TextFileSearchTool.Create(RootedPolicy(fixture.Root));
 

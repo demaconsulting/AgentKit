@@ -70,16 +70,15 @@ sections:
               The text file family shall judge each request with the policy decision matching the
               operation — the read decision for search, read and copy, the write decision for create,
               replace, cut and paste — interpreting a path a model states relative to the
-              workspace, and refusing a request that reaches outside a permitted location through a
-              link.
+              workspace, and refusing a request whose location lies outside a permitted location.
             tags: [security]
             justification: |
               An operator commonly wants an agent that reads widely but writes into one working
               directory, and that configuration is meaningless unless each tool consults the rule
               belonging to the operation it performs. Copy mutates nothing, so it consults the read
-              decision exactly as read does, permitting a copy from a read-only grant. Judging a
-              request by the location it actually reaches, rather than by how its path was spelled,
-              is what stops an agent from stepping outside the location its operator granted.
+              decision exactly as read does, permitting a copy from a read-only grant. Judging every
+              request against the permitted locations is what stops an agent from stepping outside
+              the location its operator granted.
             children:
               - AgentKitTools-TextFile-ReadTool-RelativePath
               - AgentKitTools-TextFile-ReadTool-DenyOutsideRoot
@@ -92,7 +91,7 @@ sections:
               - AgentKitTools-TextFile-PasteTool-PolicyGoverned
             tests:
               - TextFile_Family_ReadWideWriteNarrow_PermitsTheReadAndRefusesTheEdit
-              - TextFile_Family_PathBeneathLinkOutsideRoot_IsRefusedByEveryTool
+              - TextFile_Family_PathOutsideRoot_IsRefusedByEveryTool
 
           - id: AgentKitTools-TextFile-NavigationAndPaging
             title: >-

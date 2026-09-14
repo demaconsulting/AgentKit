@@ -21,7 +21,7 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <b>Enumeration goes through <see cref="PathPolicy.EnumerateFiles"/> and never through
 ///     <see cref="Directory.EnumerateFiles(string, string, SearchOption)"/> or
 ///     <see cref="Directory.GetFiles(string, string)"/>.</b> Recursive enumeration performed by
-///     the operating system follows directory junctions and symbolic links, so an implementation
+///     the operating system surfaces every file beneath a directory, so an implementation
 ///     that enumerated directly would advertise files lying outside every permitted location even
 ///     though reading them is refused. Disclosing that such a file exists — and inviting the
 ///     agent to ask for it — is itself the leak. The policy filters every candidate through the

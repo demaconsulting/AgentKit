@@ -111,8 +111,8 @@ an application's own tools — are built against:
 - **Path policy**: one required working directory that a relative path is anchored to (and nothing
   else — it carries no permission), plus zero or more access grants, each unrestricted or confined
   to a location and each carrying an access level (read-only or read-write) and its own denied
-  patterns, with all containment decisions resolving symbolic links and directory junctions at
-  every path component
+  patterns, with all containment decisions made on the normalized absolute location a path
+  denotes
 - **Tool limits**: ceilings on bytes read, result size returned to the model, binary content
   returned, attachments per turn, and how deep a chain of delegated agents may run (two levels
   beneath the root agent by default; zero forbids delegation entirely), carried with the policy so
@@ -162,7 +162,9 @@ grant the working directory whatever access it should have — it receives none 
 > and nothing else warns you the switch happened.
 
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
-but AgentKit does not replace OS-level isolation for untrusted code. Because the image family
+but AgentKit does not replace OS-level isolation for untrusted code. Symbolic links, directory
+junctions and other reparse points are not a protection boundary: a path that reaches outside a
+granted location through a link is not detected. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tool only when the host
 declares that capability; a host that does not is never offered `image_read`.
 

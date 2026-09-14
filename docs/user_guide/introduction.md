@@ -114,8 +114,9 @@ advertise a file that access would refuse; at this level, a listing that names n
 enumerates the working directory — a tool is free to build a broader listing on top of that
 decision, and `file_list` does, as described under *Composing a Tool List* below.
 
-Every containment decision resolves symbolic links and directory junctions at every path component,
-so a path that merely looks contained cannot reach outside the location the operator granted.
+Every containment decision is made on the normalized absolute location a path denotes, with `.`
+and `..` segments collapsed, so a path that merely spells its way out of the granted location is
+refused. Symbolic links and other reparse points are not followed and not detected.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted

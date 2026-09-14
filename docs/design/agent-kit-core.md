@@ -15,8 +15,8 @@ chooses. Core is deliberately slow-moving, because every other package inherits 
 
 The system consists of:
 
-- **RealPathResolver Unit**: Reports the real file system location of a path, following
-  symbolic links and directory junctions at every path component
+- **RealPathResolver Unit**: Reports the absolute, normalized location of a path, with relative
+  segments collapsed
 - **PathRule Unit**: One access grant — unrestricted or confined to a location — carrying an
   access level and its own denied patterns
 - **PathPolicy Unit**: Holds the one working directory relative paths are anchored to and the
@@ -79,9 +79,9 @@ The system exposes the following public API to external consumers.
 
 The path-safety API:
 
-- **RealPathResolver.Resolve(string path)**: Returns the real, absolute, normalized location of
+- **RealPathResolver.Resolve(string path)**: Returns the absolute, normalized location of
   `path`. Throws `ArgumentNullException` for a null path, `ArgumentException` for an empty or
-  invalid path, and `IOException` for a cyclic or over-deep link chain.
+  invalid path, and `IOException` when the platform cannot express the normalized result.
 - **AccessLevel.ReadOnly**, **AccessLevel.ReadWrite**: Permission levels a grant can carry.
   `ReadWrite` implies read; there is no write-only level.
 - **PathRule.Unrestricted(AccessLevel access, IEnumerable&lt;string&gt;? denyPatterns)**: Creates a
@@ -286,18 +286,17 @@ restraint.
 
 The measure is segregated into three units whose responsibilities do not overlap:
 
-- **RealPathResolver** establishes _where a path actually leads_, resolving symbolic links and
-  directory junctions at every path component, and refusing any path it cannot establish a real
-  location for — including a component the file system marks as a link but for which the platform
-  reports no target. Isolating this makes the one algorithm whose correctness the whole control
-  depends on separately reviewable and separately testable.
+- **RealPathResolver** establishes _one spelling for a location_, making a path absolute and
+  collapsing relative segments, so that containment is a comparison between two values expressed
+  the same way. Links are not followed and not detected; containment rests on paths alone.
+  Isolating this keeps the normalization separately reviewable and separately testable.
 - **PathRule** establishes _what a location grants_, carrying an access level that is permission
   only: read-only or read-write. It has no addressing meaning and cannot silently change where a
   relative path resolves.
 - **PathPolicy** makes _the single decision_, and both direct access and directory enumeration
   are routed through it so that a listing can never advertise a file that access would refuse. It
   also holds _the one location a relative request means_, so that a bare file name a model states
-  is made absolute against the working directory before the link resolution and the containment
+  is made absolute against the working directory before the normalization and the containment
   test are applied. That anchor grants no permission; the application grants it, or does not
   grant it, exactly as it grants any other location.
 
@@ -345,8 +344,8 @@ application cannot present the model with two tools it cannot tell apart.
    that interpretation wins whenever it names an existing path; a unique bare segment matching one
    grant's last path segment is read as that grant's location only as a fallback, when the
    working-directory interpretation does not resolve to an existing path
-3. **Resolution**: Every component of the now-absolute path is examined, so that symbolic links
-   and directory junctions are replaced by their real targets. This happens after step 2 so that
+3. **Resolution**: The now-absolute path is normalized, so that `.` and `..` segments are
+   collapsed. This happens after step 2 so that
    a relative escape and an absolute one reach the same decision
 4. **Decision**: The real location is offered to every grant for a read, or only to read-write
    grants for a write. Each grant applies its denied patterns first and then its location

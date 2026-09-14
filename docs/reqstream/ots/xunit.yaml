@@ -20,7 +20,7 @@ sections:
               - ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
               - ToolName_Validate_BareAgentFrameworkName_IsRejected
               - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
-              - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+              - AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
           - id: AgentKit-OTS-xUnit-Report
             title: xUnit shall record test results in TRX output files.
             justification: |
@@ -33,4 +33,4 @@ sections:
               - ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName
               - ToolName_Validate_BareAgentFrameworkName_IsRejected
               - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
-              - AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+              - AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied

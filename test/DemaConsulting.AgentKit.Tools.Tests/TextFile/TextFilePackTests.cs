@@ -120,8 +120,8 @@ public class TextFilePackTests
     [Fact]
     public async Task TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition()
     {
-        using var fixture = new ReparsePointFixture();
-        var path = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        using var fixture = new TempDirectoryFixture();
+        var path = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
         var cut = tools.Single(tool => tool.Name == TextFileCutLinesTool.ToolName);
@@ -146,8 +146,8 @@ public class TextFilePackTests
     [Fact]
     public async Task TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots()
     {
-        using var fixture = new ReparsePointFixture();
-        ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\n");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
 
         var first = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
@@ -170,9 +170,9 @@ public class TextFilePackTests
     [Fact]
     public async Task TextFilePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools()
     {
-        using var fixture = new ReparsePointFixture();
-        var permitted = ReparsePointFixture.WriteFile(fixture.Root, "note.txt", "permitted");
-        var refused = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
+        using var fixture = new TempDirectoryFixture();
+        var permitted = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "permitted");
+        var refused = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.txt", "secret");
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
         var readTool = new TextFilePack().CreateTools(policy)
             .Single(tool => tool.Name == TextFileReadTool.ToolName);

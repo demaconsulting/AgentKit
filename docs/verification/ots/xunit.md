@@ -47,10 +47,10 @@ appears in the TRX output, confirming that discovery and execution cover asynchr
 
 **Requirement coverage**: `AgentKit-OTS-xUnit-Execute`, `AgentKit-OTS-xUnit-Report`.
 
-#### AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+#### AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
 
 **Scenario**: xUnit discovers and runs this test on every platform and target framework in the CI
-matrix; the test verifies that a file reachable only through a directory link is denied.
+matrix; the test verifies that a file reached by climbing out of the permitted location is denied.
 
 **Expected**: xUnit executes the test, the test passes, and the result appears in the TRX output
 attributed to the platform and framework that produced it, which is what lets the platform
@@ -63,8 +63,8 @@ requirements filter results by source.
 - **`AgentKit-OTS-xUnit-Execute`**: ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName,
   ToolName_Validate_BareAgentFrameworkName_IsRejected,
   AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent,
-  AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+  AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
 - **`AgentKit-OTS-xUnit-Report`**: ToolName_Create_FamilyAndVerb_ProducesUnderscoreSeparatedName,
   ToolName_Validate_BareAgentFrameworkName_IsRejected,
   AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent,
-  AgentKitCore_SystemPathContainment_FileBeneathDirectoryLink_IsDenied
+  AgentKitCore_SystemPathContainment_RelativeEscape_IsDenied
