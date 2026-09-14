@@ -59,8 +59,8 @@ package (`build/DemaConsulting.ApiMark.MSBuild.targets`, which forwards both pro
 `PublicAndProtected`, and `All`, and the severities `Warning` and `Error`.
 
 `Error` rather than `Warning` is deliberate. The documentation debt is closed — coverage is **0
-undocumented of 102 checked** across the four assemblies (Core 0 of 72, Tools 0 of 26, Copilot 0 of
-2, ChatClient 0 of 2) — so nothing has to be tolerated, and a warning in a build nobody reads
+undocumented of 216 checked** across the four assemblies (Core 0 of 75, Tools 0 of 137, Copilot 0
+of 2, ChatClient 0 of 2) — so nothing has to be tolerated, and a warning in a build nobody reads
 would be indistinguishable from no enforcement at all.
 
 The debt this closed was the 2 items previously recorded here: the implicit default constructors on
@@ -78,8 +78,12 @@ up and reachable in each of them rather than silently inert.
 
 The blind spot above is recorded from observation, not inference. With `ImagePack`'s explicit
 constructor removed so that the constructor reverted to being implicit, the Tools build failed with
-`1 undocumented API item(s) found` and `ApiMark.Tool exited with code 1`, and restoring the
-constructor returned it to 0. That transition is the load-bearing evidence: it is a change from
+`Error: 1 undocumented API item(s) found (--enforce-docs-severity Error).` and
+`ApiMark.Tool exited with code 1`, and restoring the constructor returned it to 0. The failing
+build also names the member it objected to — `[Undocumented] Method:
+DemaConsulting.AgentKit.Tools.Image.ImagePack.ImagePack()` — which `0.5.0` reports and
+`0.5.0-beta.3` did not, so a future failure identifies its own cause without a re-run at higher
+verbosity. That transition is the load-bearing evidence: it is a change from
 green to red and back, with the count tracking the change exactly, rather than a tool noticing a
 condition that was already present. No `CS1591` and no analyzer diagnostic appeared at any point
 during it, because an implicit constructor is invisible to both — so ApiMark was the only check
@@ -87,15 +91,39 @@ that objected. An earlier attempt to demonstrate the same property by removing t
 from an *explicit* constructor proves nothing about this tool, because the compiler raises `CS1591`
 first and fails the build before the coverage check is reached.
 
-This pins a **prerelease** version, `0.5.0-beta.3`, which is a deliberate exception to the
-convention previously recorded here of pinning stable versions of every tool: documentation-
-coverage enforcement does not exist in the 0.4.10 stable release, and shipping an API reference
-with unenforced gaps was judged the worse outcome. The pin should move to `0.5.0` once it is
-stable. The version is recorded in the four project files, which is the only place it is recorded:
-`.versionmark.yaml` captures versions from `dotnet tool list`, and the ApiMark **CLI** is
-deliberately absent from `.config/dotnet-tools.json`, so ApiMark has no VersionMark entry to
-update. (`.versionmark.yaml`'s version patterns already accept prerelease suffixes, so no
-convention there is violated by the prerelease pin.)
+This pins the stable release `0.5.0`. Enforcement was originally adopted on the prerelease
+`0.5.0-beta.3` as a deliberate exception to the convention of pinning stable versions of every
+tool, because documentation-coverage enforcement does not exist in the `0.4.10` stable release and
+shipping an API reference with unenforced gaps was judged the worse outcome. That exception is now
+closed: `0.5.0` is the stable release of the same line, so the convention holds again with no
+prerelease carve-out. The version is recorded in the four project files, which is the only place it
+is recorded: `.versionmark.yaml` captures versions from `dotnet tool list`, and the ApiMark **CLI**
+is deliberately absent from `.config/dotnet-tools.json`, so ApiMark has no VersionMark entry to
+update.
+
+Moving from `0.5.0-beta.3` to `0.5.0` skips `beta.4` and `beta.5`, so it was verified as a real
+upgrade rather than a label change. The build that produced the current reference reports
+`ApiMark.Tool version 0.5.0+740f0c2f7a64e5ad677ed6b2ab23e7cd5c952c76`, loading its task assembly
+from the `DemaConsulting.ApiMark.MSBuild` `0.5.0` folder of the NuGet global packages cache, so the
+version that executed is known
+rather than assumed — a check that matters here because a `--no-restore` build can resolve a
+cached older package while the project file claims a newer one. Every one of the 229 generated
+pages is byte-identical to the output `0.5.0-beta.3` produced from the same sources, and the
+FileAssert assertions over that output pass unchanged.
+
+The MSBuild integration did change in one respect. `0.5.0` defaults `ApiMarkReferencePaths` to the
+resolved `@(ReferencePath)` items when the property is not set explicitly, so a doc comment
+inherited from a type in a referenced assembly resolves without configuration; the opt-out is
+`ApiMarkDisableReferencePathsHarvest=true`. This repository sets neither property, so the
+harvesting is active, and it is harmless and welcome here: the identical output confirms no page
+depended on an inherited doc comment that previously failed to resolve, and any future use of
+documentation inheritance across the four packages will now resolve rather than render empty. The
+tiers and
+severities this repository relies on are unchanged — the tool's help still documents
+`--enforce-docs` accepting `Public`, `PublicAndProtected`, and `All`, and
+`--enforce-docs-severity` accepting `Warning` and `Error`. (`.versionmark.yaml`'s version patterns
+accept prerelease suffixes, so neither the earlier prerelease pin nor this stable one violates any
+convention there.)
 
 The ApiMark CLI tool remains deliberately *not* added to `.config/dotnet-tools.json`. Its
 `--validate` self-test covers only version and help display; it does not self-test generation, so

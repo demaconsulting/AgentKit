@@ -12,8 +12,8 @@ example renders as a fenced code block a reader can copy, and that the behaviora
 in `<remarks>` survive into the generated pages.
 
 Beyond generation, ApiMark is relied upon to **enforce** documentation coverage. The four shipped
-projects set `ApiMarkEnforceDocs=Public` and `ApiMarkEnforceDocsSeverity=Error` (ApiMark
-`0.5.0-beta.3`), so a public member without an XML doc summary fails the build rather than shipping
+projects set `ApiMarkEnforceDocs=Public` and `ApiMarkEnforceDocsSeverity=Error` (ApiMark `0.5.0`),
+so a public member without an XML doc summary fails the build rather than shipping
 a reference with a hole in it.
 
 ### Verification Approach
