@@ -217,6 +217,7 @@ jobs:
           --no-build
           --no-restore
           --configuration Release
+          --output packages
           --property:PackageVersion=${{ inputs.version }}
 
       # === UPLOAD ARTIFACTS ===
@@ -234,14 +235,8 @@ jobs:
         with:
           name: packages-${{ matrix.os }}
           path: |
-            src/DemaConsulting.AgentKit.Core/bin/Release/*.nupkg
-            src/DemaConsulting.AgentKit.Core/bin/Release/*.snupkg
-            src/DemaConsulting.AgentKit.Tools/bin/Release/*.nupkg
-            src/DemaConsulting.AgentKit.Tools/bin/Release/*.snupkg
-            src/DemaConsulting.AgentKit.Agents.ChatClient/bin/Release/*.nupkg
-            src/DemaConsulting.AgentKit.Agents.ChatClient/bin/Release/*.snupkg
-            src/DemaConsulting.AgentKit.Agents.Copilot/bin/Release/*.nupkg
-            src/DemaConsulting.AgentKit.Agents.Copilot/bin/Release/*.snupkg
+            packages/*.nupkg
+            packages/*.snupkg
 
   # Runs CodeQL security and quality analysis, gathering results to include
   # in the code quality report.
