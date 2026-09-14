@@ -120,8 +120,9 @@ sections:
           - id: AgentKitTools-Agent-PolicyNarrowingOnly
             title: >-
               A profile's path grants shall only narrow the parent's policy, checked at
-              composition, and a profile that would widen the parent's reach shall be rejected
-              at the line that composed it rather than refused at a later delegation.
+              composition, and a profile that would widen the application's own composition
+              shall be rejected at the line that composed it rather than refused at a later
+              delegation.
             tags: [security]
             justification: |
               Delegation is not a route by which an agent acquires reach its operator did not
@@ -130,10 +131,14 @@ sections:
               under a rooted parent, or a deny pattern the parent imposes and the profile
               drops — is a programming error in the application's own configuration. Checking
               at composition rather than at run time reports the mistake to the developer who
-              wrote it instead of surfacing to a model that has no way to correct it.
+              wrote it instead of surfacing to a model that has no way to correct it. A child
+              is a different case: it holds a narrower policy by design, so a sibling profile
+              that policy no longer covers is simply absent from the child rather than a
+              mistake anybody made.
             children:
               - AgentKitTools-Agent-Pack-PolicyNarrowingRejected
               - AgentKitTools-Agent-Pack-PolicyNarrowingAccepted
+              - AgentKitTools-Agent-Pack-ChildProfilesFilteredToReach
             tests:
               - Agent_Family_ChildTools_AreComposedForTheChild
 
@@ -173,6 +178,7 @@ sections:
               - AgentKitTools-Agent-RunTool-RunnerContract
               - AgentKitTools-Agent-RunTool-MalformedRequestRefused
               - AgentKitTools-Agent-RunTool-UnknownProfileRefused
+              - AgentKitTools-Agent-RunTool-CompositionFailureRefused
               - AgentKitTools-Agent-RunTool-ChildResultReporting
             tests:
               - Agent_Family_Delegation_ReturnsTheFinalTextOfTheChild

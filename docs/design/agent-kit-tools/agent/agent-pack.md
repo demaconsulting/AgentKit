@@ -111,13 +111,28 @@ The `ChildToolComposer` implementation; the whole isolation mechanism.
 
 **Algorithm:** builds the child's policy from `BuildChildPolicy`, constructs a fresh
 `ToolPackBuilder` on that policy under `_hostCapabilities`, adds every pack in `_childPacks` to
-it, adds a new `AgentPack` one depth deeper — carrying the same profiles, runner, child packs
-and host capabilities, so a child whose profile admits `agent_run` can delegate in turn — calls
-`Build`, and returns the composed tools filtered by the profile's declared names.
+it, adds a new `AgentPack` one depth deeper — carrying the runner, the child packs, the host
+capabilities and the profiles `Reachable` reports for the child's own policy, so a child whose
+profile admits `agent_run` can delegate in turn — calls `Build`, and returns the composed tools
+filtered by the profile's declared names.
 
 **Every tool here is new.** The packs are asked for tools again rather than reusing the parent's,
 so each child gets its own per-composition state. The parent's tools are not consulted, filtered,
 or in scope.
+
+##### private Reachable(PathPolicy policy)
+
+Selects the registered profiles a child holding `policy` could still delegate to: those every one
+of whose grants that policy covers. A child holds a narrower policy by design, so a sibling
+profile it can no longer reach is not a configuration error — the application's own composition
+already judged every profile against the policy the application configured — and is simply absent
+from the child. A model naming one of the others receives the ordinary unknown-profile refusal
+from `AgentRunTool`.
+
+Filtering here, rather than validating only the delegated-to profile, is what keeps the property
+at every depth. A child carrying the full registration would raise the same widening failure the
+moment it composed a grandchild, because its pack would re-judge every sibling against the
+narrowed policy it holds.
 
 ##### private BuildChildPolicy(PathPolicy policy, AgentProfile profile)
 
@@ -128,13 +143,21 @@ differently from its parent would misread every path the parent passed it in a t
 
 ##### private ValidateNarrowing(PathPolicy policy, AgentProfile profile)
 
-Enforces "grants may only narrow." Every grant the profile states must be covered by some grant
-the parent holds. Being covered means three things at once: the location is one the parent can
-reach, the access level is no higher than the parent's, and every deny pattern the covering
-parent grant imposes is carried by the child's grant too. The third is easy to overlook and is
-the one that matters most — a child grant over the same root with the parent's exclusions
-dropped is a strictly wider grant wearing a narrower shape. The first widening grant is named,
-because reporting them all would not help a developer who has one profile to fix.
+Enforces "grants may only narrow" at the application's own composition. Every grant the profile
+states must be covered by some grant the parent holds, which is the test `Narrows` applies. Being
+covered means three things at once: the location is one the parent can reach, the access level is
+no higher than the parent's, and every deny pattern the covering parent grant imposes is carried
+by the child's grant too. The third is easy to overlook and is the one that matters most — a
+child grant over the same root with the parent's exclusions dropped is a strictly wider grant
+wearing a narrower shape. The profile is named in the message, because that is the one the
+developer has to fix.
+
+##### private Narrows(PathPolicy policy, AgentProfile profile)
+
+Reports whether the policy covers every grant the profile states. Both the parent-level rejection
+in `ValidateNarrowing` and the child-level filter in `Reachable` are written in terms of it, so
+the two cannot disagree about what "narrower" means. A profile stating no grants narrows
+vacuously: it inherits the policy it is judged against.
 
 ##### private Covers(PathRule held, PathRule wanted)
 
@@ -156,7 +179,8 @@ application's mistake at the line that made it.
 
 `InvalidOperationException` is raised in `CreateTools` when a registered profile's grants would
 widen the parent's policy. Its message names the profile so the developer knows which one to
-fix.
+fix. The exception belongs to the application's own composition; a child never raises it over a
+sibling profile, because a child carries only the profiles its own policy covers.
 
 The pack is not reachable from a model's tool call, so no runtime refusal arises here.
 

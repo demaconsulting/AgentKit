@@ -32,13 +32,14 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass without error or exception
+A unit test run passes when all twenty-one scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
-rather than composed against the child's policy, a widening profile accepted at composition, a
-narrowing profile refused, or a profile stating no grants that fails to inherit the parent's
-policy each constitute a failure.
+rather than composed against the child's policy, a widening profile accepted at the
+application's own composition, a narrowing profile refused, a delegation refused or thrown over
+a sibling profile the child cannot reach, or a profile stating no grants that fails to inherit
+the parent's policy each constitute a failure.
 
 #### Test Scenarios
 
@@ -186,3 +187,31 @@ Normal operation: a profile that states no grants leaves the child on the parent
 unchanged, so the common case — most children differ from their parent in what they are
 told and which tools they hold, not in where they may work — reaches the child without
 restatement.
+
+##### AgentKitTools-Agent-Pack-ChildProfilesFilteredToReach: Delegating to the Narrower of Two Profiles Succeeds
+
+**Test**: `AgentPack_CreateTools_DelegatingToTheNarrowerOfTwoProfiles_Succeeds`
+
+The scenario the defect made unusable: two profiles are registered under a parent that covers
+both — a reviewer read-only inside the workspace and an editor read-write over all of it — and
+the run delegates to the narrower one. The scenario asserts the call returns rather than
+throwing, and that the stub's recorded child policy permits a read inside the reviewer's
+directory while refusing one at the editor's wider location, so the fix is not a widening.
+
+##### AgentKitTools-Agent-Pack-ChildProfilesFilteredToReach: A Grandchild Is Composed at Depth
+
+**Test**: `AgentPack_CreateTools_GrandchildDelegation_Succeeds`
+
+Proves the property holds at every depth rather than only for the first child: the reviewer's
+profile admits `agent_run`, the scenario invokes the child's own run tool, and asserts a
+grandchild request arrives at depth two on a policy that still refuses the editor's location.
+Validating only the delegated-to profile would pass the first delegation and fail here.
+
+##### AgentKitTools-Agent-Pack-ChildProfilesFilteredToReach: An Unreachable Sibling Draws the Ordinary Refusal
+
+**Test**: `AgentPack_CreateTools_ChildNamingAnUnreachableSiblingProfile_IsRefused`
+
+Error path: the child names the sibling profile its own policy cannot cover and receives the
+unknown-profile refusal naming the profiles it does have. The absent profile is a fact about
+the child's own state, stated the way every other refusal in the family is stated, and it is
+what confirms the child cannot reach through a sibling to something its parent narrowed away.

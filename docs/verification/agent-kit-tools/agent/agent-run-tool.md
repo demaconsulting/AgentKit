@@ -43,10 +43,11 @@ where a policy needs a working directory.
 
 #### Acceptance Criteria
 
-A unit test run passes when all fourteen scenarios below pass without error or exception beyond
+A unit test run passes when all fifteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool description that omits a registered profile, a missing
 required constructor argument accepted, an unknown or malformed profile that reaches the
-runner, a call at the depth ceiling that composes or starts anything, a child answer that is
+runner, a composition failure that escapes the tool call, a call at the depth ceiling that
+composes or starts anything, a child answer that is
 truncated rather than refused, a null answer reported as a failure, a composed profile
 different from the one the model named, a request that fails to describe the child the host must
 build, a cancellation token the runner did not observe, or a runner exception silently converted
@@ -101,6 +102,15 @@ exactly itself, and every provider compares the strings a model emits the same w
 Error path: an omitted, empty or whitespace `profile` or `task` is refused as `InvalidRequest`
 rather than raising an exception. The parameters carry defaults so an omitted argument is
 refused by the tool rather than by the function factory.
+
+##### AgentKitTools-Agent-RunTool-CompositionFailureRefused: A Composition Failure Is Refused Rather Than Thrown
+
+**Test**: `AgentRunTool_Run_ComposerThrowing_IsRefusedRatherThanThrown`
+
+Error path: the composition seam is a stub that raises an `InvalidOperationException`, standing
+for any defect behind a delegate this unit does not own. The scenario asserts a returned
+refusal naming the profile and stating the reason, because an exception raised while a model is
+calling a tool ends the agent's turn and strands it with no way forward.
 
 ##### AgentKitTools-Agent-RunTool-DepthCeiling: A Call at the Depth Ceiling Is Refused Without Composing or Starting
 

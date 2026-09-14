@@ -330,7 +330,20 @@ public static class AgentRunTool
         }
 
         // The child's tools, composed from the child's own state. Never the parent's list filtered.
-        var tools = composer(profile);
+        // Composition is expected to succeed — the child's pack carries only profiles its own policy
+        // covers — but a refusal, not an exception, is what a model can act on, so a composition
+        // failure is reported as one rather than ending the agent's turn.
+        IReadOnlyList<AIFunction> tools;
+        try
+        {
+            tools = composer(profile);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return ToolResult.Denied(
+                DenialReason.InvalidRequest,
+                "The '" + profile.Name + "' agent could not be composed: " + exception.Message);
+        }
 
         var request = new ChildAgentRequest(
             profile.Name,

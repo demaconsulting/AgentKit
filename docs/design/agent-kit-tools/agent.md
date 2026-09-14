@@ -84,6 +84,15 @@ rooted parent, or a deny pattern the parent imposes and the profile drops — th
 `InvalidOperationException`. Checking at composition rather than at run time reports the mistake
 to the developer who wrote it rather than to a model that has no way to correct it.
 
+**The rule is about the application's own composition, not about a child's.** A child holds a
+narrower policy by design, so a sibling profile whose grants that narrower policy no longer covers
+is not a configuration error — the application's registration was already judged against the
+policy the application configured. Each child therefore carries only the registered profiles its
+own policy still covers, and a model naming one of the others receives the ordinary
+unknown-profile refusal. Re-imposing the developer-error rule on a child would make delegating to
+the narrowest profile fail as soon as any sibling stated wider grants, which is exactly the case
+narrowing exists to serve.
+
 **Delegation is gated on the host's capability.** `AgentPack` declares
 `HostCapabilities.Delegation`, so a host that has not declared it receives none of the family's
 tools — and receives none because the composition never asks the pack for them, exactly the way

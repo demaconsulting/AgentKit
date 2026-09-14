@@ -69,6 +69,20 @@ sections:
                   - AgentRunTool_Run_UnknownProfile_IsRefusedAndNamesTheAvailableProfiles
                   - AgentRunTool_Run_ProfileNameCase_IsSignificant
 
+              - id: AgentKitTools-Agent-RunTool-CompositionFailureRefused
+                title: >-
+                  The run tool shall report a failure raised while composing the child as a
+                  returned refusal naming the profile and stating the reason, rather than
+                  letting it escape the tool call.
+                justification: |
+                  An exception raised while a model is calling a tool ends the agent's turn
+                  and strands it with no way forward. Composition is expected to succeed,
+                  because a child carries only the profiles its own policy covers, but the
+                  seam is a delegate this unit does not own and a defect behind it must not
+                  become an unhandled exception in front of a model.
+                tests:
+                  - AgentRunTool_Run_ComposerThrowing_IsRefusedRatherThanThrown
+
               - id: AgentKitTools-Agent-RunTool-DepthCeiling
                 title: >-
                   The run tool shall refuse a call whose child would exceed

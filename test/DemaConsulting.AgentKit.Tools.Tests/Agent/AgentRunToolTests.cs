@@ -89,6 +89,31 @@ public class AgentRunToolTests
     }
 
     /// <summary>
+    ///     Proves a composition that fails is reported as a refusal rather than ending the agent's
+    ///     turn with an unhandled exception, so no path through a model-invoked call throws.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentRunTool_Run_ComposerThrowing_IsRefusedRatherThanThrown()
+    {
+        // Arrange: a seam that fails, standing for any composition error reached at run time
+        ChildToolComposer failing = _ => throw new InvalidOperationException("the stated reason");
+        var profiles = new[] { new AgentProfile("reviewer", "Review.", []) };
+        var tool = AgentRunTool.Create(Policy(), profiles, FixedAnswer, failing, depth: 0);
+
+        // Act: delegate
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Review it." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a returned refusal stating the fact, not an exception out of the tool call
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(
+            "Denied (InvalidRequest): The 'reviewer' agent could not be composed: the stated reason",
+            text);
+    }
+
+    /// <summary>
     ///     Proves an unknown profile is refused with a plain statement of fact naming the profiles
     ///     that do exist, and that the refusal prescribes no other tool.
     /// </summary>

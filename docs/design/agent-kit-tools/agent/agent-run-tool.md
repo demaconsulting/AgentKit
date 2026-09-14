@@ -105,7 +105,9 @@ registered profile, and the five captured values for the rest of its life.
    built for it.
 5. The child's tools are composed by calling the `ChildToolComposer` seam with the selected
    profile. The seam is invoked with the profile alone; no tool list is passed in, and no
-   filtering of the tool's own captured state occurs.
+   filtering of the tool's own captured state occurs. An `InvalidOperationException` out of the
+   seam is turned into an `InvalidRequest` refusal naming the profile and stating the reason,
+   because a refusal is what a model can act on where an exception would end the agent's turn.
 6. A `ChildAgentRequest` is constructed from the profile's name and instructions, the composed
    tools, the task, and the child's depth, and handed to the host's runner alongside the
    cancellation token.
@@ -151,8 +153,9 @@ misconfigured credential look the same from inside this library.
 
 Everything a model controls produces a returned refusal, never an exception: `InvalidRequest` for
 a malformed request, `TargetNotFound` for an unknown profile, `InvalidRequest` for a depth
-overrun, and `ResourceTooLarge` for an oversized answer. Each refusal states a fact and
-prescribes no other tool, on the same basis as the text family's empty-buffer refusal.
+overrun, `InvalidRequest` for a composition that failed, and `ResourceTooLarge` for an oversized
+answer. Each refusal states a fact and prescribes no other tool, on the same basis as the text
+family's empty-buffer refusal.
 
 The only exceptions this unit raises are at construction: `ArgumentNullException` for a missing
 policy, profiles collection, runner or composer, and `ArgumentOutOfRangeException` for a negative

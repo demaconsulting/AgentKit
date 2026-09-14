@@ -137,6 +137,32 @@ sections:
                   - AgentPack_CreateTools_ProfileGrantingUnrestrictedReach_Throws
                   - AgentPack_CreateTools_ProfileDroppingAParentExclusion_Throws
 
+              - id: AgentKitTools-Agent-Pack-ChildProfilesFilteredToReach
+                title: >-
+                  The agent pack shall carry into a child only the registered profiles the
+                  child's own policy covers, so delegating to a narrower profile succeeds
+                  whatever grants a sibling profile states, at any delegation depth, and a
+                  profile the child cannot reach is absent from it rather than reported as a
+                  configuration error.
+                tags: [security]
+                justification: |
+                  The widening rule is about the application's own composition, where a
+                  profile reaching past the configured policy is a developer's mistake. A
+                  child holds a narrower policy by design, so a sibling profile that policy no
+                  longer covers is not a mistake anybody made; re-judging it there made
+                  delegating to the narrowest profile fail as soon as any sibling stated wider
+                  grants — exactly the case narrowing exists to serve — and threw out of a
+                  model-invoked call. Filtering the list the child carries, rather than
+                  validating only the delegated-to profile, is what keeps the property at
+                  every depth: a child holding the full registration would fail the same way
+                  when it composed a grandchild. Nothing is widened, because the filter admits
+                  only profiles the child's own policy already covers, and an unreachable
+                  profile a model names draws the ordinary unknown-profile refusal.
+                tests:
+                  - AgentPack_CreateTools_DelegatingToTheNarrowerOfTwoProfiles_Succeeds
+                  - AgentPack_CreateTools_GrandchildDelegation_Succeeds
+                  - AgentPack_CreateTools_ChildNamingAnUnreachableSiblingProfile_IsRefused
+
               - id: AgentKitTools-Agent-Pack-PolicyNarrowingAccepted
                 title: >-
                   The agent pack shall accept a profile whose grants narrow the parent's

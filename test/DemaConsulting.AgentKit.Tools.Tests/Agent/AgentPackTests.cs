@@ -384,6 +384,141 @@ public class AgentPackTests
     }
 
     /// <summary>
+    ///     Proves delegating to the narrowest of several registered profiles succeeds even though a
+    ///     sibling profile states grants the child's own policy no longer covers, and that the child
+    ///     cannot reach the sibling's wider location. A sibling a child cannot reach is not a
+    ///     configuration error; it is simply a profile that child cannot delegate to.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_DelegatingToTheNarrowerOfTwoProfiles_Succeeds()
+    {
+        // Arrange: a parent holding the whole workspace read-write, a reviewer confined read-only to
+        // a directory inside it, and an editor stating the parent's own full grant
+        using var workspace = new TemporaryDirectory();
+        var inner = Directory.CreateDirectory(Path.Combine(workspace.Path, "notes")).FullName;
+
+        var policy = new PathPolicy(workspace.Path, [PathRule.ReadWrite(workspace.Path)]);
+        var reviewer = new AgentProfile("reviewer", "You review notes.", ["notes_read"], [PathRule.ReadOnly(inner)]);
+        var editor = new AgentProfile("editor", "You edit the workspace.", ["notes_write"], [PathRule.ReadWrite(workspace.Path)]);
+
+        var pack = new StubToolPack("notes", "read", "write");
+        var tools = new AgentPack([reviewer, editor], FixedAnswer, [pack]).CreateTools(policy).ToList();
+
+        // Act: delegate to the narrower profile
+        var result = await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Read the notes." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the run completed rather than throwing over the sibling's wider grant
+        Assert.NotNull(result);
+
+        // Assert: the child was composed against the narrowed policy and cannot reach the editor's
+        // location outside it
+        var childPolicy = Assert.Single(pack.Policies);
+        Assert.Equal(AccessLevel.ReadOnly, Assert.Single(childPolicy.Grants).Access);
+        Assert.True(childPolicy.TryResolveRead(Path.Combine(inner, "note.txt"), out _, out _));
+        Assert.False(childPolicy.TryResolveRead(Path.Combine(workspace.Path, "outside.txt"), out _, out _));
+    }
+
+    /// <summary>
+    ///     Proves a child whose profile admits delegation can compose a grandchild without the same
+    ///     sibling-profile failure reappearing one level down.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_GrandchildDelegation_Succeeds()
+    {
+        // Arrange: a reviewer that may itself delegate, alongside a wider editor sibling
+        using var workspace = new TemporaryDirectory();
+        var inner = Directory.CreateDirectory(Path.Combine(workspace.Path, "notes")).FullName;
+
+        var policy = new PathPolicy(workspace.Path, [PathRule.ReadWrite(workspace.Path)]);
+        var reviewer = new AgentProfile(
+            "reviewer",
+            "You review notes and may delegate.",
+            ["notes_read", AgentRunTool.ToolName],
+            [PathRule.ReadOnly(inner)]);
+        var editor = new AgentProfile("editor", "You edit the workspace.", ["notes_write"], [PathRule.ReadWrite(workspace.Path)]);
+
+        var children = new List<ChildAgentRequest>();
+        Func<ChildAgentRequest, CancellationToken, Task<string?>> runner = (request, _) =>
+        {
+            children.Add(request);
+            return Task.FromResult<string?>("done");
+        };
+
+        var pack = new StubToolPack("notes", "read", "write");
+        var tools = new AgentPack([reviewer, editor], runner, [pack]).CreateTools(policy).ToList();
+
+        // Act: delegate, then have the child delegate in turn
+        await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Read the notes." },
+            TestContext.Current.CancellationToken);
+
+        var childRunTool = Assert.Single(children[0].Tools, tool => tool.Name == AgentRunTool.ToolName);
+        var result = await childRunTool.InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Read them again." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a grandchild was composed at the greater depth, on the same narrowed policy
+        Assert.NotNull(result);
+        Assert.Equal(2, children.Count);
+        Assert.Equal(2, children[1].Depth);
+        Assert.Equal(2, pack.Policies.Count);
+        Assert.False(pack.Policies[1].TryResolveRead(Path.Combine(workspace.Path, "outside.txt"), out _, out _));
+    }
+
+    /// <summary>
+    ///     Proves a profile the child's own policy no longer covers is simply absent from the child,
+    ///     so a model naming it receives the ordinary unknown-profile refusal rather than reaching a
+    ///     location its parent narrowed away.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildNamingAnUnreachableSiblingProfile_IsRefused()
+    {
+        // Arrange: as above, a narrow reviewer that may delegate and a wider editor
+        using var workspace = new TemporaryDirectory();
+        var inner = Directory.CreateDirectory(Path.Combine(workspace.Path, "notes")).FullName;
+
+        var policy = new PathPolicy(workspace.Path, [PathRule.ReadWrite(workspace.Path)]);
+        var reviewer = new AgentProfile(
+            "reviewer",
+            "You review notes and may delegate.",
+            ["notes_read", AgentRunTool.ToolName],
+            [PathRule.ReadOnly(inner)]);
+        var editor = new AgentProfile("editor", "You edit the workspace.", ["notes_write"], [PathRule.ReadWrite(workspace.Path)]);
+
+        ChildAgentRequest? child = null;
+        Func<ChildAgentRequest, CancellationToken, Task<string?>> runner = (request, _) =>
+        {
+            child ??= request;
+            return Task.FromResult<string?>("done");
+        };
+
+        var tools = new AgentPack([reviewer, editor], runner, [new StubToolPack("notes", "read", "write")])
+            .CreateTools(policy)
+            .ToList();
+
+        await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Read the notes." },
+            TestContext.Current.CancellationToken);
+
+        // Act: the child names the sibling its own policy cannot cover
+        Assert.NotNull(child);
+        var childRunTool = Assert.Single(child.Tools, tool => tool.Name == AgentRunTool.ToolName);
+        var result = await childRunTool.InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "editor", ["task"] = "Edit the workspace." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the ordinary unknown-profile refusal, stating which profiles exist
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("No profile is named 'editor'", text, StringComparison.Ordinal);
+        Assert.Contains("'reviewer'", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Builds a permissive policy for scenarios where containment is not the subject.
     /// </summary>
     /// <returns>A policy granting unrestricted read-write access with default limits.</returns>

@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def AgentPack {
-        doc /* Publishes the agent family as one pack under the agent family prefix, requires the host's delegation capability, holds the profiles and the runner the application registered, validates that no profile widens the parent's policy, and composes each child from a fresh creation of the registered child packs against the child's own policy. */
+        doc /* Publishes the agent family as one pack under the agent family prefix, requires the host's delegation capability, holds the profiles and the runner the application registered, validates at the application's own composition that no profile widens the parent's policy, carries into each child only the profiles the child's own narrowed policy still covers, and composes each child from a fresh creation of the registered child packs against the child's own policy. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/Agent/AgentPack.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentPackTests.cs */

@@ -316,6 +316,11 @@ public sealed class AgentPack : IToolPack
     ///     The profile's declared names are then applied as a filter. A name nothing published
     ///     contributes nothing: a profile cannot conjure a tool the application never attached.
     ///     </para>
+    ///     <para>
+    ///     The pack added one level deeper carries only the profiles the child's own policy still
+    ///     covers. A child holds a narrower policy by design, so a sibling profile it can no longer
+    ///     reach is absent from it rather than a configuration error reported at run time.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The parent composition's policy, which the child's may only narrow.</param>
     /// <param name="profile">The profile whose grants and declared names shape the child.</param>
@@ -330,15 +335,37 @@ public sealed class AgentPack : IToolPack
             builder.Add(pack);
         }
 
-        // One level deeper, carrying the same registrations: a child whose profile admits agent_run
-        // can delegate in turn, and its own ceiling check sees the greater depth.
-        builder.Add(new AgentPack(_profiles, _runner, _childPacks, _hostCapabilities, _depth + 1));
+        // One level deeper, carrying only the registrations the child's own policy still covers: a
+        // child whose profile admits agent_run can delegate in turn, and its own ceiling check sees
+        // the greater depth. A sibling profile this child can no longer reach is not a configuration
+        // error — the application's own composition already judged it — so it is simply absent, and
+        // a model naming it gets the ordinary unknown-profile refusal.
+        builder.Add(new AgentPack(Reachable(childPolicy), _runner, _childPacks, _hostCapabilities, _depth + 1));
 
         var composed = builder.Build();
 
         // The profile is a filter over what was published, never a source of tools.
         var admitted = new HashSet<string>(profile.Tools, StringComparer.Ordinal);
         return [.. composed.Where(tool => admitted.Contains(tool.Name))];
+    }
+
+    /// <summary>
+    ///     Selects the registered profiles a child holding the supplied policy could still delegate
+    ///     to.
+    /// </summary>
+    /// <remarks>
+    ///     A child legitimately holds a narrower policy than its parent, so a sibling profile whose
+    ///     grants that policy no longer covers is not a mistake anyone made: the application's own
+    ///     composition already judged every profile against the policy the application configured.
+    ///     Filtering here rather than validating only the delegated-to profile is what keeps the
+    ///     property at every depth — a child carrying the full list would raise the same widening
+    ///     failure the moment it composed a grandchild.
+    /// </remarks>
+    /// <param name="policy">The child's own policy.</param>
+    /// <returns>The profiles that policy covers, in registration order.</returns>
+    private List<AgentProfile> Reachable(PathPolicy policy)
+    {
+        return [.. _profiles.Where(profile => Narrows(policy, profile))];
     }
 
     /// <summary>
@@ -381,12 +408,7 @@ public sealed class AgentPack : IToolPack
     /// </exception>
     private static void ValidateNarrowing(PathPolicy policy, AgentProfile profile)
     {
-        // The first grant the policy does not cover is the one named; reporting them all would not
-        // help a developer who has one profile to fix.
-        var widening = profile.Grants
-            .FirstOrDefault(grant => !policy.Grants.Any(held => Covers(held, grant)));
-
-        if (widening is not null)
+        if (!Narrows(policy, profile))
         {
             throw new InvalidOperationException(
                 "The '" + profile.Name + "' profile states a grant that this composition's "
@@ -394,6 +416,25 @@ public sealed class AgentPack : IToolPack
                 + "than the agent that delegates to it has. A profile's grants may only "
                 + "narrow.");
         }
+    }
+
+    /// <summary>
+    ///     Determines whether every grant a profile states is covered by a grant the policy holds.
+    /// </summary>
+    /// <remarks>
+    ///     The single test both the parent-level rejection and the child-level filter are written
+    ///     in terms of, so the two can never disagree about what "narrower" means. A profile stating
+    ///     no grants narrows vacuously: it inherits the policy it is judged against.
+    /// </remarks>
+    /// <param name="policy">The policy the profile is judged against.</param>
+    /// <param name="profile">The profile to judge.</param>
+    /// <returns>
+    ///     <see langword="true"/> when the policy covers every grant the profile states; otherwise
+    ///     <see langword="false"/>.
+    /// </returns>
+    private static bool Narrows(PathPolicy policy, AgentProfile profile)
+    {
+        return profile.Grants.All(grant => policy.Grants.Any(held => Covers(held, grant)));
     }
 
     /// <summary>
