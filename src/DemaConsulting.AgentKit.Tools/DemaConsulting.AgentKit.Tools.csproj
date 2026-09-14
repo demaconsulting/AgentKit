@@ -74,7 +74,7 @@
   <ItemGroup>
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
-    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.0-beta.3" PrivateAssets="All" />
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.0" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.5" PrivateAssets="All" />
     <PackageReference Include="Polyfill" Version="11.3.0" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
