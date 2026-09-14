@@ -11,6 +11,20 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 public class RealPathResolverTests
 {
     /// <summary>
+    ///     Gets a value indicating whether this platform can create a link whose recorded
+    ///     target is itself a path through another link.
+    /// </summary>
+    /// <remarks>
+    ///     Consulted by xUnit as a skip condition. Windows cannot express that arrangement
+    ///     unprivileged: a junction's target is normalized when the junction is created, and a
+    ///     symbolic link — which would preserve the spelling — requires a privilege an
+    ///     unelevated session does not hold. The condition is written as "not Windows" rather
+    ///     than as a probe so that a platform which silently lost symbolic-link support would
+    ///     fail the test rather than quietly skip it.
+    /// </remarks>
+    public static bool SupportsLinkTargetsSpelledThroughLinks => !OperatingSystem.IsWindows();
+
+    /// <summary>
     ///     Proves that a file whose enclosing directory is reached through a directory link is
     ///     reported at its real location outside the allowed root.
     /// </summary>
@@ -64,6 +78,60 @@ public class RealPathResolverTests
         Assert.Null(leafTarget);
         Assert.True(IsBeneath(realRoot, Path.GetFullPath(requested)));
         Assert.False(IsBeneath(realRoot, resolved));
+    }
+
+    /// <summary>
+    ///     Proves that a link whose target is spelled through <em>another</em> link is still
+    ///     reported at its real location outside the allowed root.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Regression guard for a containment escape. The platform follows a chain of links to
+    ///     its end but does not canonicalize the <em>ancestors</em> of the target it reports, so
+    ///     accepting a link target verbatim leaves an unresolved link in the result. Both links
+    ///     here are created <em>inside</em> the root, which is exactly what an agent holding a
+    ///     read-write grant over its own workspace can do, and before the resolver re-walked
+    ///     substituted targets the resolved location still read as contained while the file
+    ///     read was outside.
+    ///     </para>
+    ///     <para>
+    ///     <b>Why this scenario is POSIX-only.</b> It needs a link whose recorded target is
+    ///     itself a path through another link. Windows stores a junction's target already
+    ///     normalized at creation, so the second link cannot be expressed there, and a Windows
+    ///     symbolic link — which does preserve the spelling — requires
+    ///     <c>SeCreateSymbolicLinkPrivilege</c>, which an unelevated developer session does not
+    ///     hold. The test therefore declares an explicit skip condition rather than asserting
+    ///     something weaker on Windows: a test that cannot fail is worse than one that is
+    ///     visibly not run, and the skip is recorded with its reason in the test results.
+    ///     Linux and macOS runs supply the evidence, and the requirement names them.
+    ///     </para>
+    /// </remarks>
+    [Fact(
+        Skip = "POSIX-only: Windows normalizes a junction's target at creation, and a Windows " +
+               "symbolic link needs SeCreateSymbolicLinkPrivilege, so a link target spelled " +
+               "through another link cannot be created on Windows.",
+        SkipUnless = nameof(SupportsLinkTargetsSpelledThroughLinks))]
+    public void RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot()
+    {
+        // Arrange: a secret outside the root, and two links inside the root - the first
+        // pointing out of the root, the second targeting a path spelled through the first
+        using var fixture = new ReparsePointFixture();
+        ReparsePointFixture.WriteFile(
+            Path.Combine(fixture.Outside, "b"),
+            "secret.txt",
+            "outside-content");
+        fixture.CreateDirectoryLink("a", fixture.Outside);
+        var indirect = fixture.CreateDirectoryLink("y", Path.Combine(fixture.Root, "a", "b"));
+        var requested = Path.Combine(indirect, "secret.txt");
+
+        // Act: resolve the path that reaches the outside file through both links
+        var resolved = RealPathResolver.Resolve(requested);
+
+        // Assert: the reported location is the real outside file, not the contained-looking
+        // path the first link's target is spelled with
+        Assert.Equal("outside-content", File.ReadAllText(resolved));
+        Assert.True(IsBeneath(RealPathResolver.Resolve(fixture.Outside), resolved));
+        Assert.False(IsBeneath(RealPathResolver.Resolve(fixture.Root), resolved));
     }
 
     /// <summary>

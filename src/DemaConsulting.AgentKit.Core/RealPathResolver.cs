@@ -20,6 +20,23 @@ namespace DemaConsulting.AgentKit.Core;
 public static class RealPathResolver
 {
     /// <summary>
+    ///     The greatest number of nested link substitutions a single resolution may perform
+    ///     before the path is declared unresolvable.
+    /// </summary>
+    /// <remarks>
+    ///     Resolving a link's target re-walks that target, and the target may itself be reached
+    ///     through further links, so the substitution is recursive and a cyclic arrangement of
+    ///     links - which no single call to <see cref="FileSystemInfo.ResolveLinkTarget(bool)"/>
+    ///     can detect, because each individual chain terminates - would otherwise recurse
+    ///     without end. The limit matches the resolution depth POSIX platforms themselves apply
+    ///     before refusing to follow any more links, so a path this implementation refuses is a
+    ///     path the operating system would also refuse to open. Exceeding it is reported as the
+    ///     same <see cref="IOException"/> the platform raises for an over-deep chain, which
+    ///     callers already treat as a denial.
+    /// </remarks>
+    private const int MaxLinkDepth = 40;
+
+    /// <summary>
     ///     Resolves a path to its real, absolute location, following symbolic links and
     ///     directory junctions at every path component.
     /// </summary>
@@ -57,11 +74,24 @@ public static class RealPathResolver
     ///     existing ancestor</b> — both have been proven not to detect an escape.
     ///     </para>
     ///     <para>
+    ///     <b>Why a link's target is itself resolved.</b> The platform follows a chain of links
+    ///     to its end but does <b>not</b> canonicalize the <em>ancestors</em> of the target it
+    ///     reports, so a target may name a location that is itself reached through a further
+    ///     reparse point. Accepting such a target verbatim leaves an unresolved link in the
+    ///     result, and a containment check over that result can be made to pass for a location
+    ///     that is physically elsewhere: a link inside a permitted location pointing outside it,
+    ///     plus a second link whose target is spelled through the first, is enough to escape.
+    ///     The substituted target is therefore resolved by this same method before the walk
+    ///     continues beneath it, which makes the returned location real all the way down.
+    ///     </para>
+    ///     <para>
     ///     <b>Cost and non-existent components.</b> Resolution performs at most one metadata
     ///     probe per existing component, all served from the operating system's directory
-    ///     cache. Components that do not yet exist — for example a file that is about to be
-    ///     created — cannot be reparse points and are appended unchanged, so a not-yet-existing
-    ///     path beneath a junction is still reported at its real destination.
+    ///     cache. Re-walking a substituted target costs additional probes only when a reparse
+    ///     point is actually encountered, and the nesting is bounded by the platform's own link
+    ///     resolution depth. Components that do not yet exist — for example a file that is
+    ///     about to be created — cannot be reparse points and are appended unchanged, so a
+    ///     not-yet-existing path beneath a junction is still reported at its real destination.
     ///     </para>
     ///     <para>
     ///     This method is stateless and thread-safe. It reads file system metadata but never
@@ -89,9 +119,52 @@ public static class RealPathResolver
     /// </exception>
     public static string Resolve(string path)
     {
+        // Start the resolution at depth zero; the depth exists only to bound the recursive
+        // re-walk of link targets and is not part of the public contract.
+        return ResolveBounded(path, 0);
+    }
+
+    /// <summary>
+    ///     Resolves a path to its real, absolute location while tracking how many link
+    ///     substitutions have already been made on the way here.
+    /// </summary>
+    /// <remarks>
+    ///     Every substituted link target is resolved through this method again, so that the
+    ///     target's own ancestors are made real rather than trusted. That recursion is what
+    ///     makes the returned location real all the way down, and <paramref name="depth"/> is
+    ///     what keeps it finite: a cycle spread across two or more links cannot be detected by
+    ///     the platform's own chain following, because each individual chain terminates.
+    /// </remarks>
+    /// <param name="path">The path to resolve; must be non-null and non-empty.</param>
+    /// <param name="depth">
+    ///     The number of link substitutions already performed. Zero for a caller's original
+    ///     request, incremented once per substituted target.
+    /// </param>
+    /// <returns>The real, absolute, normalized location of <paramref name="path"/>.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="path"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="path"/> is an empty string or is not a valid path.
+    /// </exception>
+    /// <exception cref="IOException">
+    ///     Thrown when a link chain is cyclic or exceeds the platform's resolution depth.
+    /// </exception>
+    private static string ResolveBounded(string path, int depth)
+    {
         // Reject a missing path outright: this is a programming error in the caller, not a
         // policy decision, so it is surfaced as an exception rather than a resolved value.
         ArgumentException.ThrowIfNullOrEmpty(path);
+
+        // Refuse a path that has already been redirected more times than the platform itself
+        // would follow. This is the fail-safe end of a cyclic arrangement of links, and is
+        // reported as the same exception the platform raises for an over-deep single chain so
+        // that callers need not distinguish the two.
+        if (depth > MaxLinkDepth)
+        {
+            throw new IOException(
+                $"The path '{path}' could not be resolved: too many levels of symbolic links.");
+        }
 
         // Make the path absolute and collapse relative segments. This is a prerequisite for
         // the walk below, not a substitute for it: GetFullPath does not follow reparse points.
@@ -124,7 +197,11 @@ public static class RealPathResolver
             var target = Probe(accumulated)?.ResolveLinkTarget(returnFinalTarget: true);
             if (target is not null)
             {
-                accumulated = target.FullName;
+                // Resolve the target rather than trusting it: the platform follows the chain
+                // but leaves the target's own ancestors unresolved, and an unresolved ancestor
+                // here is exactly what lets a containment check pass for a location that is
+                // physically elsewhere.
+                accumulated = ResolveBounded(target.FullName, depth + 1);
             }
         }
 

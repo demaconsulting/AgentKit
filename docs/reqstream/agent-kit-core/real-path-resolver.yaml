@@ -21,6 +21,28 @@ sections:
               - RealPathResolver_Resolve_PathBeneathDirectoryLink_ReturnsRealTargetOutsideRoot
               - RealPathResolver_Resolve_LeafResolutionAlone_DoesNotDetectEscape
 
+          - id: AgentKitCore-RealPathResolver-LinkTargetAncestors
+            title: >-
+              The RealPathResolver shall report the real location of a link whose target is
+              itself reached through another link.
+            justification: |
+              The platform follows a chain of links to its end but does not canonicalize the
+              ancestors of the target it reports, so a target may name a location reached
+              through a further link. Accepting such a target unchanged leaves an unresolved
+              link inside the value every containment decision is made from, and two links
+              created inside a permitted location - one pointing out of it, one recording a
+              target spelled through the first - are then enough to make an access outside the
+              permitted location read as contained. Resolving the target itself is what keeps
+              the reported location real all the way down, and so what keeps path containment a
+              usable risk control measure (IEC 62304 clause 5.3.3).
+            tests:
+              # POSIX-only evidence: Windows normalizes a junction's target when the junction is
+              # created, and a Windows symbolic link needs a privilege an unelevated session does
+              # not hold, so the arrangement cannot be created there. The source filters keep the
+              # Windows run, where the test is skipped, from being counted as evidence.
+              - "ubuntu@RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot"
+              - "macos@RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot"
+
           - id: AgentKitCore-RealPathResolver-LinkTarget
             title: >-
               The RealPathResolver shall report the target location of a path that is itself a

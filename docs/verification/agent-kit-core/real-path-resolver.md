@@ -29,14 +29,23 @@ project.
 - **Failure policy**: When link creation fails the fixture fails the test with the operating
   system's error text. It never skips, because a skipped test produces no evidence in the test
   results while the requirement continues to appear covered
+- **Platform-conditional scenario**: One scenario needs a link whose recorded target is itself a
+  path through another link. Windows cannot express that unprivileged — a junction's target is
+  normalized when the junction is created, and a symbolic link, which does preserve the
+  spelling, requires a privilege an unelevated session does not hold. That scenario therefore
+  declares an explicit skip condition naming this reason, and the requirement it serves carries
+  Linux and macOS source filters so the evidence comes only from platforms that actually ran it.
+  This is distinct from the fixture's failure policy above: the scenario is visibly not run
+  rather than silently passing, and the requirement is not credited by the Windows run
 - **Mocking**: None; introducing any would invalidate the verification
 - **Isolation**: Each test constructs and disposes its own fixture; no state is shared
 
 ### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass without error or unexpected exception.
-Any unexpected exception type, any resolved location that differs from the one specified, and any
-failure to create or tear down the reparse point constitutes a failure.
+A unit test run passes when all nine scenarios below pass without error or unexpected exception,
+excepting the platform-conditional scenario on Windows, which is skipped with its reason
+recorded. Any unexpected exception type, any resolved location that differs from the one
+specified, and any failure to create or tear down the reparse point constitutes a failure.
 
 ### Test Scenarios
 
@@ -60,6 +69,20 @@ file beneath a junction is not itself a reparse point; the requested path text *
 the real root, so a text-based check would accept it; and the resolver nonetheless reports a
 location outside the root. If a future change replaces the walk with leaf-only or
 deepest-ancestor resolution, this scenario fails and states the reason.
+
+#### AgentKitCore-RealPathResolver-LinkTargetAncestors: A Target Spelled Through Another Link Resolves Outside
+
+**Test**: `RealPathResolver_Resolve_LinkTargetReachedThroughAnotherLink_ReturnsRealTargetOutsideRoot`
+
+The regression guard for a containment escape, and the only scenario that is platform-conditional.
+Creates two links **inside** the root — the first pointing at the outside directory, the second
+recording a target spelled through the first — and resolves a file reached through both. Asserts
+that the resolved location reads back the outside file's content, lies beneath the outside
+directory's real location, and is not at or beneath the real root. Before link targets were
+themselves resolved, the reported location read as contained while the file read was outside,
+which is a working defeat of the containment control. The scenario runs on Linux and macOS and is
+skipped, with its reason recorded, on Windows, where the arrangement cannot be created without a
+privilege an unelevated session lacks.
 
 #### AgentKitCore-RealPathResolver-LinkTarget: A Directory Link Resolves to Its Target
 

@@ -24,6 +24,7 @@ sections:
         children:
           - AgentKitCore-RealPathResolver-ComponentWalk
           - AgentKitCore-RealPathResolver-LinkTarget
+          - AgentKitCore-RealPathResolver-LinkTargetAncestors
           - AgentKitCore-RealPathResolver-Normalization
           - AgentKitCore-RealPathResolver-NonExistentPath
           - AgentKitCore-RealPathResolver-RejectInvalidPath
