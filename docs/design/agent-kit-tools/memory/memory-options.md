@@ -29,8 +29,9 @@ The threshold is a measured starting point — over a seventeen-document technic
 contradicting statements of one fact scored 0.965 cosine while unrelated statements sat well below
 0.88 — not a constant of nature; an author whose corpus is narrower should expect to raise it. The
 recall count reflects that each match returns a whole detail payload and therefore costs real
-context. Both values are provisional and are to be confirmed by the repository owner before the
-first tagged release.
+context. Both are defaults and both are overridable: an author supplies their own through the
+optional parameters of the `MemoryOptions` constructor and passes the result as the `options`
+argument to `MemoryPack`.
 
 `Default` is a shared instance rather than a factory method, because the type is immutable and
 sharing it is therefore free of risk.

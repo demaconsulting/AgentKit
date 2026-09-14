@@ -50,9 +50,9 @@ neither the model nor the user can see. Two levels is enough for the pattern del
 serve — a coordinator, a worker, and a specialist the worker consults — while keeping the worst
 case a host can be billed for finite and small.
 
-**These values are provisional.** They are public API defaults and they appear in requirement
-text, so they are to be confirmed by the repository owner before the first tagged release.
-Nothing is published yet, so they remain freely changeable until then.
+**Every ceiling is a default, and every one is overridable.** A host that wants different budgets
+supplies them through the optional parameters of the `ToolLimits` constructor and hands the result
+to the three-argument `PathPolicy` constructor; a host that configures nothing receives `Default`.
 
 An instance is immutable after construction and is safe for concurrent use.
 
@@ -123,10 +123,6 @@ clamped into something plausible.
 that consume it are responsible for observing it. Separating the statement from the enforcement
 means a host configures one object rather than one setting per tool, and it keeps this unit free
 of any dependency on what a tool actually does.
-
-**The defaults are provisional pending the repository owner's confirmation** before the first
-tagged release. They are recorded here, in the type's own documentation and in the requirement
-text so that the decision is made on the reasoning above rather than on taste.
 
 ### Dependencies
 

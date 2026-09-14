@@ -29,9 +29,10 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     "just include everything" spends the budget the answer itself needs.
 ///     </para>
 ///     <para>
-///     <b>These values are provisional.</b> They are public API defaults and they appear in
-///     requirement text, so they are to be confirmed by the repository owner before the first
-///     tagged release.
+///     <b>Both values here are defaults, and both are overridable.</b> An author supplies their
+///     own through the optional parameters of this type's constructor and passes the result as
+///     the <c>options</c> argument to <see cref="MemoryPack"/>; an author who configures nothing
+///     receives <see cref="Default"/>.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and are safe for concurrent use.

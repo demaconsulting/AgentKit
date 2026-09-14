@@ -45,9 +45,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     for finite and small.
 ///     </para>
 ///     <para>
-///     <b>These values are provisional.</b> They are public API defaults and they appear in
-///     requirement text, so they are to be confirmed by the repository owner before the first
-///     tagged release. Nothing is published yet, so they remain freely changeable until then.
+///     <b>Every ceiling here is a default, and every one is overridable.</b> A host that wants
+///     different budgets supplies them through the optional parameters of this type's
+///     constructor and hands the result to the three-argument <see cref="PathPolicy"/>
+///     constructor; a host that configures nothing receives <see cref="Default"/>.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and are safe for concurrent use.
