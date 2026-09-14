@@ -66,9 +66,8 @@ lacks a documentation summary, so the reference is complete by construction.
 AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
 every tool an application writes for itself, is built against. Ready-made guarded tool families
 ship in `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
-agent families described under
-[Tool Families](#tool-families) below — so a consumer can attach shipped tools directly, or write
-its own tools against this contract.
+agent families described under *Tool Families* below — so a consumer can attach shipped tools
+directly, or write its own tools against this contract.
 
 ## Path Policy
 
@@ -111,8 +110,9 @@ so a read-only grant never authorizes a write. Access is requested through
 `PathPolicy.TryResolveRead` and `PathPolicy.TryResolveWrite`, which return whether the access is
 permitted, the real location on success, and a reason on refusal. Directory listings are obtained
 through `PathPolicy.EnumerateFiles`, which applies the same decision, so a listing can never
-advertise a file that access would refuse; a listing that names no directory lists the working
-directory.
+advertise a file that access would refuse; at this level, a listing that names no directory
+enumerates the working directory — a tool is free to build a broader listing on top of that
+decision, and `file_list` does, as described under *Composing a Tool List* below.
 
 Every containment decision resolves symbolic links and directory junctions at every path component,
 so a path that merely looks contained cannot reach outside the location the operator granted.
@@ -130,10 +130,20 @@ bare "no".
 ## Tool Limits
 
 `ToolLimits` carries the ceilings a tool observes: the bytes it may read, the characters its
-result may return to the model, the bytes of binary content it may return, and the attachments it
-may add in one turn. Limits are carried with the policy, through `PathPolicy.Limits`, so every
+result may return to the model, the bytes of binary content it may return, the attachments it
+may add in one turn, and how deep a chain of delegated agents may run. Limits are carried with
+the policy, through `PathPolicy.Limits`, so every
 tool an application attaches observes one budget rather than each inventing its own. A host that
 configures nothing still operates within the published defaults.
+
+**Delegation depth is bounded.** `MaxAgentDepth` counts the delegated agents stacked beneath the
+root agent an application starts, which is at depth zero; its default is two, so a root agent may
+start a child, that child may start one more, and the grandchild's own attempt to delegate is
+refused. The refusal states the ceiling and the level the calling agent is already at, and is
+returned before any child is composed or started, so a refused delegation costs nothing to reach.
+Setting the ceiling to zero forbids delegation entirely, which is the expressible way for a host
+to attach the agent family and then withhold its use. Every ceiling accepts zero for the same
+reason; a negative ceiling has no meaning and is rejected.
 
 ## Tool Names and Guarded Construction
 
@@ -195,10 +205,11 @@ create its tools at all, so the model is never offered a tool it cannot use.
 `DemaConsulting.AgentKit.Tools` ships seven ready-made guarded tool families. Each family is a pack
 an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
 requires and returns the `AIFunction` list to hand to an agent framework. The table below is the
-single place in the user-facing documentation that names every shipped tool; `lint.ps1` checks it
-against the tool-name and family-prefix constants in the source, in both directions, so a tool the
-library ships but this table omits — and a tool this table names but the library does not ship —
-fails the build.
+single place in the user-facing documentation that names every shipped tool; `lint.ps1` reads the
+table itself and checks it against the tool-name and family-prefix constants in the source, in both
+directions, so a tool the library ships but this table omits — and a tool this table names but the
+library does not ship — fails the build. No other passage of this guide can stand in for a missing
+row.
 
 ## Available Tools
 
@@ -250,7 +261,9 @@ should know what it is attaching:
   that the measurements in the design documentation were taken against.
 - **Agent** takes the profiles a child may be run under, a runner, and the *packs* a child may draw
   on — never built tools — so a child's tools are composed afresh against the child's own policy
-  and per-composition state stays with the child that owns it.
+  and per-composition state stays with the child that owns it. How far delegation may chain is not
+  the pack's decision: it is bounded by the `MaxAgentDepth` ceiling described under *Tool Limits*
+  above, which a host may set to zero to attach the family and forbid its use.
 
 ## Composing a Tool List
 
@@ -281,8 +294,10 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
 Every tool returned observes the same policy and limits: a `text_file_read` that steps outside the
 granted location, or exceeds the byte ceiling, returns a refusal rather than the file. Every tool
 also reads a path the same way, so a name `file_list` reported can be handed straight back to
-`text_file_read` or `image_read`, and `file_list` called with no directory lists every
-permitted location. The tool
+`text_file_read` or `image_read`. Called with no directory, `file_list` does not forward the absent
+argument to a single enumeration: it makes one policy-governed enumeration per permitted location
+and reports them all, so a listing with no argument is a discovery listing over every granted
+location rather than a listing of the working directory alone. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
 

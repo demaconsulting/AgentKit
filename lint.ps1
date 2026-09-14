@@ -231,10 +231,10 @@ if (Test-Path docs/sysml2/model) {
 #   1. Prose to source: a backtick-quoted, lower-case token carrying a shipped family prefix is a
 #      claim that such a tool exists; if it is not in the shipped set, either the prose is stale
 #      or the tool was renamed.
-#   2. Source to prose: every shipped tool name must be named somewhere in the user guide, whose
-#      'Available Tools' table is the one place that enumerates them. This catches a family that
-#      shipped and was never written up - the todo, memory and agent families, nine tools, were
-#      absent from all user-facing documentation while every other gate passed.
+#   2. Source to prose: every shipped tool name must appear in the user guide's 'Available Tools'
+#      table, which is the one place that enumerates them. This catches a family that shipped and
+#      was never written up - the todo, memory and agent families, nine tools, were absent from
+#      all user-facing documentation while every other gate passed.
 #   3. Counts: a spelled-out or numeric count preceding "tool families" must equal the number of
 #      family-prefix constants. The documents said "four" long after the seventh family shipped.
 #
@@ -283,7 +283,7 @@ if ($toolSources) {
                 }
             }
 
-        # Reverse direction: every shipped tool must be named in the user guide.
+        # Reverse direction: every shipped tool must be named in the 'Available Tools' table.
         #
         # The check above catches prose naming a tool that was renamed or removed. It cannot see a
         # tool that shipped and was never written up - which is the defect that put the whole todo,
@@ -291,14 +291,44 @@ if ($toolSources) {
         # The user guide's 'Available Tools' table is the one place that names every shipped tool,
         # so requiring each shipped name to appear there makes that table complete by construction
         # and removes the reader-facing tool list from the set of hand-maintained facts.
-        $guideFiles = Get-ChildItem docs/user_guide -Recurse -Filter *.md -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '[\\/]generated[\\/]' } | ForEach-Object { $_.FullName }
+        #
+        # The search is scoped to the TABLE, not to the whole guide. Searching the whole guide was
+        # measured to be weaker than the guide claims: the document-assistant chapter names
+        # thirteen tools in prose, so any of those thirteen could have been deleted from the table
+        # with this gate still green. The table is the authoritative inventory, so the table is
+        # what is enforced.
+        $toolTableFile = 'docs/user_guide/introduction.md'
+        $toolTableLines = @()
 
-        if ($guideFiles) {
-            $guideText = (Get-Content -Path $guideFiles -Raw) -join "`n"
+        if (Test-Path $toolTableFile) {
+            $inToolTable = $false
+            foreach ($guideLine in (Get-Content -Path $toolTableFile)) {
+                if ($guideLine -match '^##\s+Available Tools\s*$') {
+                    $inToolTable = $true
+                    continue
+                }
+
+                if (-not $inToolTable) { continue }
+
+                if ($guideLine -match '^\s*\|') {
+                    $toolTableLines += $guideLine
+                }
+                elseif ($toolTableLines.Count -gt 0) {
+                    break
+                }
+            }
+        }
+
+        if ($toolTableLines.Count -eq 0) {
+            # Fail closed: a missing or renamed table would make every shipped tool pass vacuously.
+            Write-Host "tool-names: ${toolTableFile} has no 'Available Tools' table to check against"
+            $lintError = $true
+        }
+        else {
+            $toolTableText = $toolTableLines -join "`n"
             foreach ($tool in $shippedTools) {
-                if ($guideText -notmatch ('`' + [regex]::Escape($tool) + '`')) {
-                    Write-Host "tool-names: docs/user_guide names no '$tool', which the library ships"
+                if ($toolTableText -notmatch ('`' + [regex]::Escape($tool) + '`')) {
+                    Write-Host "tool-names: the 'Available Tools' table names no '$tool', which the library ships"
                     $lintError = $true
                 }
             }

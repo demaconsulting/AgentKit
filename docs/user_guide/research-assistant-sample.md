@@ -1,6 +1,6 @@
 # Sample: Research Assistant
 
-The repository ships a third runnable sample under `samples/research-assistant`. Where the
+The repository ships a runnable sample under `samples/research-assistant`. Where the
 document-assistant sample shows what an agent may *touch*, this one shows how an agent *proceeds*:
 it composes the three families that let work span turns — `todo` to plan, `memory` to remember, and
 `agent` to delegate — onto a single policy, and runs unchanged against the GitHub Copilot runtime or
@@ -9,7 +9,8 @@ things to try.
 
 ## Three Families, One Composition
 
-The sample builds one `PathPolicy` over two locations and attaches six packs to it. The corpus is
+The sample builds one `PathPolicy` over two locations and attaches five packs to it, and a sixth —
+the agent family — when delegation is enabled. The corpus is
 the working directory — the anchor relative paths resolve against — and is granted **read-only**,
 because a research assistant cites sources rather than revising them. The notes folder is granted
 read-write and lies outside the corpus, so it is reachable only by its absolute path:
@@ -65,8 +66,9 @@ state, at three independent levels:
    afresh against the child's own policy. Per-composition state — a task list, a store the pack
    allocated itself — belongs to that child alone, and a caller cannot hand a built tool list down.
 2. **The pack list the application passes.** `CreateChildPacks()` lists the reading families only:
-   no `TodoPack`, no `MemoryPack`. A profile naming `todo_set` would conjure nothing, because no
-   attached pack publishes it. This is asserted by a unit test.
+   no `TodoPack`, no `MemoryPack`, and no `AgentPack` — so a child has no task list, no memories,
+   and no means of delegating further. A profile naming `todo_set` would conjure nothing, because
+   no attached pack publishes it. This is asserted by a unit test.
 3. **The profiles.** The application writes every word of a child's instructions and lists the tools
    it may use; the parent supplies only the task. The reading profile narrows its grants to the
    corpus alone, so it cannot reach the notes folder its parent can write to.
@@ -88,22 +90,35 @@ imagined:
   document, a model frequently picks `memory_update` anyway, leaving corrected text beside a
   citation of a superseded source — even though the update tool reports the source it retained.
   Provenance was correct in every run only when the instructions demanded the new document be cited,
-  and with that demand in place it was correct in 5 of 5 neutral live runs.
+  and with that demand in place it was correct in 5 of 5 neutral live runs (`claude-sonnet-5`,
+  `--embeddings local`).
 - **Recall applies no similarity floor.** `memory_recall` returns the nearest memories it holds
   whatever their similarity, so a question about an unrecorded subject still returns matches. The
   agent is told to read each returned descriptor and judge it.
 - **A child agent shares none of the parent's state.** It has no task list and no memories, so
   whatever it reports that is worth keeping, the parent must file itself.
 
-The task-list family's instruction wording is backed by a measurement — used in 1 of 5 runs with a
-soft instruction against 3 of 3 with an explicit one. The memory instruction now has narrower
-figures of its own, from eight live runs pinned to one model: its subject-only descriptor rule was
-obeyed in 5 of 5 runs whose prompts never mentioned descriptors and in 0 of 3 runs whose prompt
+The task-list family's instruction wording is backed by a measurement of its own: against a
+five-phase task, a soft instruction produced use of the family in 1 of 5 runs against 3 of 3 with an
+explicit one. That figure comes from an earlier measurement of the task-list family, recorded in the
+Todo subsystem design, and **not** from this sample's live runs; the model and the embedding arm it
+was taken against are not recorded, so it is reported here as the separate, differently-conditioned
+measurement it is.
+
+The memory instruction has narrower figures of its own, from eight live runs of this sample pinned
+to `claude-sonnet-5` with `--embeddings local`: its subject-only descriptor rule was obeyed in 5 of
+5 neutral runs whose prompts never mentioned descriptors and in 0 of 3 adversarial runs whose prompt
 demanded a separate memory, and `memory_revise` was chosen over `memory_update` with the new source
-cited in 5 of 5 of the neutral runs. In those same five runs the agent noticed the corpus's
-superseded value by reading and corrected it in place, and the near-duplicate refusal fired in none
-of the eight. The refusal is a backstop for the conflict a model does *not* notice, not the ordinary
-path; see the sample's own README for the full measurement.
+cited in 5 of 5 of those neutral runs. In those same five neutral runs the agent noticed the
+corpus's superseded value by reading and corrected it in place, and the near-duplicate refusal fired
+in none of the eight. The refusal is a backstop for the conflict a model does *not* notice, not the
+ordinary path; see the sample's own README for the full measurement.
+
+**These live figures are measured deliberately, not continuously.** They come from the repository's
+opt-in live-model workflow, which runs on request and on a weekly schedule and is no part of the
+pull-request merge gate — every test that gate runs is hermetic and offline. Unlike the test totals,
+the lint gates and the generated trace matrix, these numbers are therefore not re-verified on every
+change, and they can drift silently as the models behind them change.
 
 ## Running the Sample
 

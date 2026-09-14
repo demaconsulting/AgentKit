@@ -36,10 +36,13 @@ section below.
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type), **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, gated on the `Vision` host
-  capability), **todo** (a flat task list the agent records, updates and drops steps in), **memory**
+  capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
+  steps from), **memory**
   (file, recall, update, revise and forget memories, over an embedding generator the application
-  supplies), and **agent** (delegate a task to an application-defined child agent profile, gated on
-  the `Delegation` host capability). The user guide's *Available Tools* table names every tool in
+  supplies; supplying no store gives each composition a fresh in-memory store that does **not**
+  persist beyond it), and **agent** (delegate a task to an application-defined child agent profile,
+  gated on the `Delegation` host capability, and bounded by the delegation-depth limit below). The
+  user guide's *Available Tools* table names every tool in
   each family; this README deliberately does not restate it.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
@@ -110,8 +113,10 @@ an application's own tools — are built against:
   to a location and each carrying an access level (read-only or read-write) and its own denied
   patterns, with all containment decisions resolving symbolic links and directory junctions at
   every path component
-- **Tool limits**: ceilings on bytes read, result size returned to the model, and attachments per
-  turn, carried with the policy so every tool observes the same budget
+- **Tool limits**: ceilings on bytes read, result size returned to the model, binary content
+  returned, attachments per turn, and how deep a chain of delegated agents may run (two levels
+  beneath the root agent by default; zero forbids delegation entirely), carried with the policy so
+  every tool observes the same budget
 - **Guarded tool construction**: the only supported way to build a tool, so the safety conventions
   cannot be forgotten
 - **Tool results**: text, structured data, binary, and image results, and refusals that carry a
@@ -203,12 +208,15 @@ of what each demonstrates and when to read it.
   in the eight live runs measured (`claude-sonnet-5`, `--embeddings local`) the agent noticed the
   contradiction by reading and corrected the memory in place with `memory_revise` in 5 of 5 of the
   neutral runs; the near-duplicate refusal — the backstop for a conflict the model has *not*
-  noticed — fired in 0 of the 8. It
+  noticed — fired in 0 of the 8. Those live figures come from an opt-in workflow run on request and
+  on a weekly schedule, never as part of the pull-request merge gate, so they are re-measured
+  deliberately rather than continuously and can drift as models change. It
   supplies its own offline embedding generator — `MemoryPack` requires one and never inspects it —
   so it runs from a fresh clone with no server, no credential, and no model binary in the
   repository; `--embeddings ollama` swaps in a real model and changes nothing else. The packs a
-  delegated agent may draw on are listed explicitly and exclude the task list and the memory store,
-  so a child agent cannot reach its parent's plan or record.
+  delegated agent may draw on are listed explicitly and exclude the task list, the memory store and
+  the agent family itself, so a child agent cannot reach its parent's plan or record, nor delegate
+  further.
 - **[Custom Tools](https://github.com/demaconsulting/AgentKit/tree/main/samples/custom-tools)**
   — *the extension path.* A console chat application that shows how an application author writes
   their own guarded tools with `GuardedToolFactory` and publishes them as packs, composed alongside

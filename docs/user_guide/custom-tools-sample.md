@@ -1,7 +1,7 @@
 # Sample: Custom Tools
 
-Alongside the document-assistant sample, the repository ships a second runnable sample under
-`samples/custom-tools`. Where the first sample shows how to *consume* AgentKit's shipped tools, this
+The repository ships a runnable sample under `samples/custom-tools`. Where the *document-assistant*
+sample shows how to *consume* AgentKit's shipped tools, this
 one shows how to *extend* AgentKit: how an application author writes their own guarded tools with
 `GuardedToolFactory` and publishes them as packs, composed alongside a shipped pack and run against
 either the GitHub Copilot runtime or an Ollama model. Refer to the sample's own README for the full
