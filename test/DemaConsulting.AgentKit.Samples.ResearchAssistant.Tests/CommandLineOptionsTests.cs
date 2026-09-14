@@ -161,6 +161,7 @@ public class CommandLineOptionsTests
         Assert.Multiple(
             () => Assert.Contains("--corpus", help, StringComparison.Ordinal),
             () => Assert.Contains("--embeddings local|ollama", help, StringComparison.Ordinal),
+            () => Assert.Contains("--recall-question", help, StringComparison.Ordinal),
             () => Assert.Contains("--no-delegation", help, StringComparison.Ordinal));
     }
 
@@ -175,5 +176,98 @@ public class CommandLineOptionsTests
 
         // Assert: help short-circuits validation
         Assert.True(options.HelpRequested);
+    }
+
+    /// <summary>
+    ///     Proves the recall question is parsed and is independent of the ordinary prompts.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_Parse_RecallQuestion_IsKeptApartFromThePrompts()
+    {
+        // Arrange / Act: a run that researches, then asks a question from memory alone
+        var options = CommandLineOptions.Parse(
+        [
+            "--corpus", "corpus",
+            "--prompt", "Review every document",
+            "--recall-question", "What is the relief valve set to?"
+        ]);
+
+        // Assert: the recall question is not a fourth prompt; it runs on its own agent afterwards
+        Assert.Multiple(
+            () => Assert.Equal(["Review every document"], options.Prompts),
+            () => Assert.Equal("What is the relief valve set to?", options.RecallQuestion));
+    }
+
+    /// <summary>
+    ///     Proves no recall turn is arranged unless one was asked for.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_Parse_NoRecallQuestion_LeavesItUnset()
+    {
+        // Arrange / Act: an ordinary run
+        var options = CommandLineOptions.Parse(["--corpus", "corpus"]);
+
+        // Assert: absent, so nothing extra is built and nothing extra is printed
+        Assert.Null(options.RecallQuestion);
+    }
+
+    /// <summary>
+    ///     Proves the Ollama run names the concrete model it will actually use.
+    /// </summary>
+    /// <remarks>
+    ///     The banner previously reported "(provider default)" here, although the sample's own
+    ///     default was already known and could be named. A run whose model is unrecorded cannot be
+    ///     attributed or reproduced.
+    /// </remarks>
+    [Fact]
+    public void CommandLineOptions_DescribeModel_OllamaWithoutModel_NamesTheSamplesOwnDefault()
+    {
+        // Arrange: an Ollama run that states no model
+        var options = new CommandLineOptions { Corpus = "corpus", Provider = AgentProvider.Ollama };
+
+        // Act: describe the model
+        var description = options.DescribeModel();
+
+        // Assert: the name that will go on the wire, not a placeholder
+        Assert.Contains(CommandLineOptions.DefaultOllamaModel, description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an unnamed Copilot model is reported as unknown rather than as a default.
+    /// </summary>
+    /// <remarks>
+    ///     The Copilot runtime resolves the model at session time from what the signed-in user may
+    ///     use, and reports nothing back through any surface AgentKit exposes. Saying so — and
+    ///     naming the flag that removes the ambiguity — is honest where a placeholder was not.
+    /// </remarks>
+    [Fact]
+    public void CommandLineOptions_DescribeModel_CopilotWithoutModel_SaysItCannotBeKnown()
+    {
+        // Arrange: a Copilot run that states no model
+        var options = new CommandLineOptions { Corpus = "corpus" };
+
+        // Act: describe the model
+        var description = options.DescribeModel();
+
+        // Assert: unknown, with the remedy named
+        Assert.Multiple(
+            () => Assert.Contains("unknown", description, StringComparison.Ordinal),
+            () => Assert.Contains("--model", description, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves a stated model is reported exactly, whichever provider is in use.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_DescribeModel_ModelStated_ReportsItExactly()
+    {
+        // Arrange: a run that pinned its model
+        var options = new CommandLineOptions { Corpus = "corpus", Model = "gpt-5.4-mini" };
+
+        // Act: describe the model
+        var description = options.DescribeModel();
+
+        // Assert: the name and nothing added to it
+        Assert.Equal("gpt-5.4-mini", description);
     }
 }

@@ -209,6 +209,27 @@ public sealed class CommandLineOptions
     public IReadOnlyList<string> Prompts { get; init; } = [];
 
     /// <summary>
+    ///     Gets the question answered from memory alone after every prompt has run, or
+    ///     <see langword="null"/> for none. Set by <c>--recall-question</c>.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This option exists because the ordinary prompts cannot prove what they appear to.</b>
+    ///     A final turn in the same session has the earlier turns' document contents in its
+    ///     context, so an answer containing a fact from the corpus demonstrates nothing about
+    ///     whether the memories were ever consulted — and in live runs the answering turn made no
+    ///     <c>memory_recall</c> call at all, because it had no need to.
+    ///     </para>
+    ///     <para>
+    ///     The question named here is run on a separate agent, in a fresh session, composed with
+    ///     the memory family and no reading tool of any kind. Neither the conversation nor the
+    ///     documents are available to it, so an answer can only have come from
+    ///     <c>memory_recall</c>.
+    ///     </para>
+    /// </remarks>
+    public string? RecallQuestion { get; init; }
+
+    /// <summary>
     ///     Gets a value indicating whether delegation is offered. When <see langword="false"/> the
     ///     agent pack is omitted and the <c>Delegation</c> capability is not declared, so
     ///     <c>agent_run</c> is never created.
@@ -259,6 +280,7 @@ public sealed class CommandLineOptions
         var embeddingModel = DefaultOllamaEmbeddingModel;
         string? githubToken = null;
         string? transcript = null;
+        string? recallQuestion = null;
         var delegationEnabled = true;
         var prompts = new List<string>();
 
@@ -307,6 +329,10 @@ public sealed class CommandLineOptions
                     prompts.Add(TakeValue(args, ref index, arg));
                     break;
 
+                case "--recall-question":
+                    recallQuestion = TakeValue(args, ref index, arg);
+                    break;
+
                 case "--no-delegation":
                     delegationEnabled = false;
                     break;
@@ -337,6 +363,7 @@ public sealed class CommandLineOptions
             GitHubToken = githubToken,
             Transcript = transcript,
             Prompts = prompts,
+            RecallQuestion = recallQuestion,
             DelegationEnabled = delegationEnabled,
         };
     }
@@ -375,6 +402,39 @@ public sealed class CommandLineOptions
 
         fromEnvironment = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
         return string.IsNullOrWhiteSpace(fromEnvironment) ? null : fromEnvironment;
+    }
+
+    /// <summary>
+    ///     Describes the model this run will actually use, or states why it cannot be named.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>A run whose model is unrecorded cannot be attributed or reproduced.</b> The startup
+    ///     banner previously printed "(provider default)" whenever <c>--model</c> was absent, which
+    ///     was wrong in one case and unhelpful in the other: on Ollama the sample's own default was
+    ///     already known and could simply have been named, and on Copilot the phrase suggested a
+    ///     fixed model that could be looked up.
+    ///     </para>
+    ///     <para>
+    ///     It cannot be looked up. <c>CopilotAgentFactory</c> leaves <c>SessionConfig.Model</c>
+    ///     unset when no model is named, and the runtime neither reports nor promises which model
+    ///     it then selects — it depends on what the signed-in user may use, and is resolved inside
+    ///     the runtime at session time. So this says so plainly and names the flag that removes the
+    ///     ambiguity, rather than printing a placeholder that reads like an answer.
+    ///     </para>
+    /// </remarks>
+    /// <returns>The model name, or a statement of why none can be given.</returns>
+    public string DescribeModel()
+    {
+        if (!string.IsNullOrWhiteSpace(Model))
+        {
+            return Model;
+        }
+
+        return Provider == AgentProvider.Ollama
+            ? $"{DefaultOllamaModel} (this sample's default; --model was not given)"
+            : "unknown — the Copilot runtime selects one at session time and does not report "
+              + "which. Pass --model to pin it, which a run worth citing should do.";
     }
 
     /// <summary>
@@ -456,8 +516,10 @@ public sealed class CommandLineOptions
            --embeddings local|ollama Embedding backend for memories (default: local).
            --host <url>              Ollama server URL, for the chat and/or embedding model
                                      (default: {DefaultOllamaHost}).
-           --model <name>            Model backing the agent (default: the Copilot runtime's own
-                                     choice for --provider copilot, {DefaultOllamaModel} for ollama).
+           --model <name>            Model backing the agent. Without it, --provider ollama uses
+                                     {DefaultOllamaModel} and --provider copilot lets the runtime
+                                     pick one it does not report — so pass this for any run whose
+                                     behavior you intend to cite.
            --embedding-model <name>  Ollama embedding model (default: {DefaultOllamaEmbeddingModel};
                                      --embeddings ollama only).
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
@@ -465,13 +527,22 @@ public sealed class CommandLineOptions
            --transcript <path>       Append a machine-readable record of every tool call to a file.
            --no-delegation           Omit the agent pack and the Delegation capability entirely.
            --prompt "<text>"         Run a prompt and exit; repeat to run several turns in order.
+           --recall-question "<text>"
+                                     After the prompts, answer this question in a fresh session on
+                                     an agent carrying the memory tools and no reading tool at all,
+                                     so the answer can only have come from memory_recall.
            --help                    Show this help and exit.
 
          Try:
            --prompt "Plan and carry out a review of every document in the corpus, then summarize
                      what the relief valve is set to and cite the document you got it from"
                                      (watch the plan appear as todo items, findings become memories,
-                                      and the reading of a document be delegated)
+                                      the reading of a document be delegated, and the conclusions be
+                                      written into the notes folder)
+           --prompt "Review every document in the corpus and record what you find"
+           --recall-question "What is the relief valve set to, and which document says so?"
+                                     (the recall turn has no documents and no conversation history;
+                                      watch memory_recall be the only thing the answer can rest on)
            --prompt "What is the relief valve set to?" --prompt "Now read 02-field-revision.md and
                      correct what you recorded"
                                      (watch memory_file refuse the near-duplicate, and watch the

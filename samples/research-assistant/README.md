@@ -15,7 +15,13 @@ shows how it *proceeds*.
   marks each one `done` as it goes, so progress is observable rather than inferred.
 - **Findings that outlive the turn that produced them.** Each document read becomes a memory — a
   short descriptor, a fuller payload, and the document it came from — filed with `memory_file` and
-  found again with `memory_recall`.
+  found again with `memory_recall`. `--recall-question` answers a question on an agent that has the
+  memory tools and *no way to read anything*, in a fresh session, so recall is the only thing the
+  answer can rest on. See [What the recall turn proves](#what-the-recall-turn-proves-and-what-the-prompts-cannot).
+- **A writable location that is actually written to.** Conclusions go into the notes folder, granted
+  read-write and lying outside the read-only corpus. The instructions require the notes file to be
+  written before the answer is given, because a granted capability that is never exercised
+  demonstrates nothing about the policy governing it.
 - **A contradiction caught by arithmetic rather than judgement.** The corpus deliberately contains
   a superseding revision. Filing the second, contradicting statement of one fact is *refused*:
   `memory_file` returns structured data with `stored: false` and names the conflicting memory. A
@@ -32,19 +38,21 @@ shows how it *proceeds*.
 
 ## Running it
 
-From the repository root, with nothing installed beyond the .NET SDK and a Copilot login:
+From the repository root, with nothing installed beyond the .NET SDK and a Copilot login. `-c Release`
+matches what `build.ps1` produces, so the sample starts from binaries that are already built;
+without it `dotnet run` compiles a separate Debug build of the sample and the whole library first.
 
 ```bash
-dotnet run --project samples/research-assistant -- \
+dotnet run -c Release --project samples/research-assistant -- \
   --corpus samples/research-assistant/workspace \
   --prompt "Review every document in the corpus and record what you find." \
-  --prompt "What is the relief valve set to, and which document says so?"
+  --recall-question "What is the relief valve set to, and which document says so?"
 ```
 
 Against an Ollama server instead:
 
 ```bash
-dotnet run --project samples/research-assistant -- \
+dotnet run -c Release --project samples/research-assistant -- \
   --corpus samples/research-assistant/workspace \
   --provider ollama --host http://your-ollama-host:11434 --model qwen3.5:9b \
   --embeddings ollama --embedding-model nomic-embed-text \
@@ -54,6 +62,28 @@ dotnet run --project samples/research-assistant -- \
 Omitting `--prompt` starts an interactive session that ends on `exit`, `quit`, Ctrl-C, or
 end-of-input. `--help` lists every option with its default.
 
+## What the recall turn proves, and what the prompts cannot
+
+`--recall-question` is not another `--prompt`, and the difference is the point.
+
+A `--prompt` turn shares one session with the turns before it. A final turn asked "what is the
+relief valve set to?" therefore already has the document text in its context, because it read the
+document a few turns earlier — so it can answer correctly without calling `memory_recall` at all,
+and in measured live runs it did exactly that: **the answering turn made no recall call in any
+run.** The memories were filed and were never demonstrably the thing an answer came from. A
+single-session transcript cannot tell *remembered* from *still in context*.
+
+`--recall-question` removes both alternatives rather than asking the model not to use them. It runs
+on a separate agent composed from `MemoryPack` and nothing else — no file, text or markdown tool
+exists in that composition, so no document can be reopened — in a **fresh session**, so no earlier
+turn is in its context. What remains is the store the earlier turns filled. An answer that states a
+corpus fact can then only have arrived through `memory_recall`, and the printed tool calls show it
+doing so.
+
+What this still does not prove: that memories survive the process. The store is
+`InMemoryMemoryStore`, so everything filed is gone when the run ends. Durable memory is an
+`IMemoryStore` an application supplies; this sample does not ship one.
+
 ## Where the embeddings come from
 
 `MemoryPack` requires an `IEmbeddingGenerator<string, Embedding<float>>` and never inspects which
@@ -62,23 +92,47 @@ make it visibly.
 
 This sample offers two, and the flag that swaps them is the *entire* difference between them:
 
-| `--embeddings` | Backend | Needs | Quality |
-| -------------- | ------- | ----- | ------- |
-| `local` (default) | `LexicalEmbeddingGenerator`, written in this sample | nothing | lexical, not semantic |
-| `ollama` | an embedding model served by Ollama | a running Ollama and a pulled model | a real semantic embedding |
+| `--embeddings` | Backend | Needs | What it measures |
+| -------------- | ------- | ----- | ---------------- |
+| `local` (default) | `LexicalEmbeddingGenerator`, written in this sample | nothing | shared wording |
+| `ollama` | an embedding model served by Ollama | a running Ollama and a pulled model | shared meaning |
 
 The default is offline so the sample runs from a fresh clone with no server, no credential, and no
 model binary committed to this repository. `LexicalEmbeddingGenerator` is a hashed bag-of-words
-vector: deterministic, L2-normalized, about forty lines of arithmetic. It measures **shared wording,
-not shared meaning**. That is enough to demonstrate the behavior this sample is about — a fact
-re-stated or contradicted in substantially the same words is caught as a near-duplicate — and it is
-*not* enough for a real application, where a memory phrased differently from the question must still
-be recalled. Its own unit tests assert both halves of that, including the paraphrase it fails to
-match, so the limitation is a checked fact rather than a caveat in a comment.
+vector: deterministic, L2-normalized, about forty lines of arithmetic.
 
-One consequence worth stating: `MemoryOptions.DefaultNearDuplicateThreshold` (0.88) was calibrated
-against a real embedding model, not against this generator. The threshold is the author's setting;
-an application using an unusual embedding backend should expect to choose its own.
+**It is not simply a weaker version of a semantic model, and the difference matters most on exactly
+the case this sample is built around.** Two descriptors that differ in one word out of `n` share
+`n - 1` unit coordinates, so their cosine is `(n - 1) / n` — whatever that word is. A numeral is one
+token like any other, and the fact that two numerals *contradict* each other enters the arithmetic
+nowhere. The sample's own unit tests measure the consequence:
+
+| Descriptor pair | Tokens | Cosine | Against the 0.88 default |
+| --------------- | ------ | ------ | ------------------------ |
+| "The relief valve is set at 12 psi." / "…18 psi." | 8 | 0.875 | **below** — both stored |
+| "Relief valve setting for the Harbor Skiff bilge pump is 12 psi." / "…18 psi." | 12 | 0.917 | above — refused |
+
+So whether this generator catches the corpus's superseded 12 psi → 18 psi value depends on how
+verbosely the model happened to phrase its descriptor. And when a model writes a *topic* as the
+descriptor ("Relief valve pressure setting") and puts the value only in the details, the two
+memories embed identically and score exactly 1.0 — because **only the descriptor is embedded** and
+the details are never vectorized. That 1.0 is a property of the descriptor/payload split, not of
+this generator; any backend gives 1.0 for identical input.
+
+None of this is evidence about what a real semantic model would do with the same pair. It might
+score a numeric contradiction higher than this generator does, or lower — low enough to fall under
+the threshold, in which case both statements are stored silently and the contradiction is never
+raised. **Near-duplicate detection is only as good as the vector space it is given**, and that space
+is the application's choice. `MemoryOptions.DefaultNearDuplicateThreshold` (0.88) was calibrated
+against a real embedding model on a real corpus during a spike, not against this generator; an
+application whose domain turns on numeric values should measure its own threshold against its own
+generator and corpus rather than inheriting either number. See
+[the memory design note](../../docs/design/agent-kit-tools/memory.md) for how to do that.
+
+Its unit tests assert all of this — the paraphrase it fails to match, the token-count arithmetic,
+and the exact 1.0 — so the limitations are checked facts rather than caveats in a comment. **Do not
+use it in a real application**: run `--embeddings ollama`, or supply any other
+`IEmbeddingGenerator`, and nothing else in this sample changes.
 
 ## Safe delegation
 
@@ -112,6 +166,8 @@ time, it is never created, because the `Delegation` host capability was not decl
 ## Why the instructions say that
 
 Three sentences in this sample's instructions are there because of measured behavior, not taste.
+Two more, further down, were added after a live run showed a granted capability going unused and a
+plan being written after the fact.
 
 **The task list is described imperatively.** Measured against a five-phase task, a soft instruction
 ("keep track of multi-step work so progress is visible") produced use of the family in 1 of 5 runs;
@@ -141,6 +197,17 @@ told to read each returned descriptor and judge it. Try
 No adherence figure is claimed for the memory instruction. The task-list numbers above are measured;
 there is no memory equivalent, and one borrowed from a neighbor would be invented.
 
+**Conclusions must be written to the notes folder, and the instruction names the tool.** In three
+live runs the notes folder stayed empty. It is the sample's only writable location, so the only
+demonstration of the read-write half of the path policy was a grant nothing ever used. The model was
+not refusing; nothing had told it to write. The instruction now names `text_file_create`, names the
+folder, and says to write before answering.
+
+**A plan is written before the work, not after it.** One live run opened by filing a task already
+marked `done` — "Review all corpus documents", recorded as complete before any document had been
+read. That is a summary wearing a plan's clothes, and it tells a watcher nothing about what is
+coming. The instruction forbids adding an already-finished item.
+
 ## The corpus
 
 Three short documents, written so the interesting cases are real rather than staged:
@@ -162,3 +229,25 @@ the repository's opt-in live-model workflow (`.github/workflows/live_samples.yam
 the agent actually planned, filed, recalled and delegated, rather than merely describing doing so.
 Arguments are deliberately never written to it, because a serialized argument would carry document
 contents into a log.
+
+## Reading the console output
+
+Tool calls arrive in parallel, so the console shows a block of calls and then a block of results in
+*completion* order — which is not call order. Every line therefore carries the provider's call
+identifier, and each result repeats the tool name of the call it answers:
+
+```text
+  [tool call <call-id>] memory_file {"descriptor":"Relief valve setting", …}
+  [tool result <call-id>] memory_file -> {"stored":false,"reason":"near_duplicate", …}
+```
+
+Match on the identifier — the provider's own opaque call id, repeated verbatim on both lines — not
+on position. Results are trimmed to one line at 300 characters, with
+one exception: **`memory_*` results are never truncated**, because a `memory_recall` showing one of
+five returned matches makes the demonstration impossible to check by reading. A recall is bounded by
+the author's configured count; a file read is not, which is where the limit still earns its keep.
+
+The startup banner names the model when it can. With `--provider ollama` that is always possible.
+With `--provider copilot` and no `--model`, the runtime resolves a model at session time from what
+the signed-in user may use and reports nothing back, so the banner says the model is unknown rather
+than printing a placeholder — **pass `--model` for any run whose behavior you intend to cite.**

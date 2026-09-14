@@ -58,7 +58,7 @@ try
         $"Corpus:     {corpusRoot} (read-only, relative paths anchor here)\n" +
         $"Notes:      {notesRoot} (read-write, address it by absolute path)\n" +
         $"Provider:   {options.Provider}\n" +
-        $"Model:      {options.Model ?? "(provider default)"}\n" +
+        $"Model:      {options.DescribeModel()}\n" +
         $"Embeddings: {options.Embeddings}" +
         (options.Embeddings == EmbeddingBackend.Ollama ? $" ({options.EmbeddingModel} at {options.Host})" : " (offline, lexical)") + "\n" +
         $"Delegation: {(options.DelegationEnabled ? "enabled" : "disabled")}\n" +
@@ -79,6 +79,17 @@ try
     await using (setup.Cleanup)
     {
         await ChatLoop.RunAsync(setup.Agent, options, transcript, cancellation.Token);
+
+        // The recall turn runs last, because it can only demonstrate anything once the earlier
+        // turns have filled the store it shares.
+        if (setup.RecallAgent is not null && options.RecallQuestion is not null)
+        {
+            await ChatLoop.RunRecallAsync(
+                setup.RecallAgent,
+                options.RecallQuestion,
+                transcript,
+                cancellation.Token);
+        }
     }
 
     return exitSuccess;

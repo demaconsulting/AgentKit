@@ -76,11 +76,15 @@ jobs:
           samples/document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj
 
       # === RESEARCH ASSISTANT ===
-      # Three turns on one session, because the behavior under test spans turns: a plan made in
-      # the first, a contradiction raised in the second, and a question answered from what was
-      # recorded in the third. The offline embedding backend is used deliberately — this job
-      # exists to exercise the MODEL, and a second live service would only add a second way for
-      # it to fail for reasons that have nothing to do with AgentKit.
+      # Two research turns on one session, because the behavior under test spans turns: a plan
+      # made in the first and a contradiction raised in the second. The question is then asked
+      # with --recall-question rather than as a third --prompt, deliberately: a third prompt
+      # shares the session with the turns that read the documents, so it can answer correctly
+      # without recalling anything, and in measured runs it did exactly that. The recall turn
+      # runs on a fresh session with the memory tools and no reading tool at all, so a correct
+      # answer can only have come through memory_recall. The offline embedding backend is used
+      # deliberately — this job exists to exercise the MODEL, and a second live service would
+      # only add a second way for it to fail for reasons that have nothing to do with AgentKit.
 
       - name: Run research-assistant against a live model
         if: steps.credentials.outputs.available == 'true'
@@ -95,7 +99,7 @@ jobs:
           --prompt "Plan a review of every document in the corpus and carry the plan out.
           Delegate the reading of 01-initial-spec.md to a child agent, and record what you learn."
           --prompt "Now read 02-field-revision.md and correct anything you recorded that it supersedes."
-          --prompt "What is the relief valve set to, and which document is your source for that?"
+          --recall-question "What is the relief valve set to, and which document is your source for that?"
 
       # Asserts on the tool names the run actually emitted, not on the model's prose. Prose
       # varies between runs; a tool name does not. Each assertion below corresponds to a claim
@@ -134,6 +138,18 @@ jobs:
           else
             echo "::error::The agent made no correction at all after being shown the superseding document."
             failed=1
+          fi
+
+          # The notes folder is the sample's only writable location, so an empty one means the
+          # read-write half of the path policy was granted and never exercised. Three earlier
+          # live runs left it empty; the instructions now require it, so this is now checkable.
+          notes="${{ runner.temp }}/research-notes"
+          if [ -z "$(ls -A "${notes}" 2>/dev/null)" ]; then
+            echo "::error::The agent wrote nothing into its notes folder."
+            failed=1
+          else
+            echo "Notes written:"
+            ls -l "${notes}"
           fi
 
           exit "${failed}"

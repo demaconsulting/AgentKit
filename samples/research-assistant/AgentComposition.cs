@@ -19,7 +19,15 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 /// </summary>
 /// <param name="Agent">The constructed agent, ready to create a session and run.</param>
 /// <param name="Cleanup">The handle that releases the agent's runtime resources; disposed by the host.</param>
-public sealed record AgentSetup(AIAgent Agent, IAsyncDisposable Cleanup);
+/// <param name="RecallAgent">
+///     An agent carrying the memory family and nothing else, over the same store, or
+///     <see langword="null"/> when no recall question was asked. See
+///     <see cref="AgentComposition.BuildRecallTools"/> for why it exists.
+/// </param>
+public sealed record AgentSetup(
+    AIAgent Agent,
+    IAsyncDisposable Cleanup,
+    AIAgent? RecallAgent = null);
 
 /// <summary>
 ///     One provider's ability to build an agent, plus the handle that releases it.
@@ -80,6 +88,12 @@ public static class AgentComposition
     public const string AgentName = "research-assistant";
 
     /// <summary>
+    ///     The name the recall agent carries, so a transcript distinguishes the turn that could
+    ///     only have answered from memory from the turns that had the documents in front of them.
+    /// </summary>
+    public const string RecallAgentName = "research-assistant-recall";
+
+    /// <summary>
     ///     The name of the profile that reads one document and reports what it says.
     /// </summary>
     /// <remarks>
@@ -107,7 +121,7 @@ public static class AgentComposition
     ///     the memory instruction</b>, and the sample does not imply one.
     ///     </para>
     ///     <para>
-    ///     <b>Three pieces of guidance are the application's own, and each answers something
+    ///     <b>Five pieces of guidance are the application's own, and each answers something
     ///     observed in a live run rather than something imagined.</b>
     ///     </para>
     ///     <list type="number">
@@ -143,6 +157,26 @@ public static class AgentComposition
     ///             shares its state — which is exactly what a child must never do.
     ///             </description>
     ///         </item>
+    ///         <item>
+    ///             <description>
+    ///             <b>Conclusions are written into the notes folder before the answer is given.</b>
+    ///             In three live runs the notes folder — the sample's only writable location, and
+    ///             therefore the only demonstration of its read-write grant — stayed empty. The
+    ///             model answered in prose and wrote nothing, because nothing had told it to. A
+    ///             granted capability that is never exercised demonstrates nothing about the policy
+    ///             governing it, so the instruction now names the tool and the location and says
+    ///             when to use them.
+    ///             </description>
+    ///         </item>
+    ///         <item>
+    ///             <description>
+    ///             <b>A plan is written before the work, not after it.</b> One live run opened by
+    ///             filing a task already marked complete — "Review all corpus documents", recorded
+    ///             as done before any document had been read — which reads as a summary wearing a
+    ///             plan's clothes and tells a watcher nothing about what is coming. The instruction
+    ///             therefore forbids adding an already-finished item.
+    ///             </description>
+    ///         </item>
     ///     </list>
     /// </remarks>
     /// <param name="corpusRoot">The absolute corpus path named in the instructions, granted read-only.</param>
@@ -174,8 +208,19 @@ public static class AgentComposition
             + "every location you may reach, each as an absolute path with its files beneath it. "
             + "\n\n"
             + TodoPack.SuggestedInstruction
+            + " Write the plan down before you begin the work it describes, and mark an item "
+            + "completed only once you have actually completed it. Never add an item that is "
+            + "already finished: a plan that opens with a completed item is a summary pretending "
+            + "to be a plan, and it tells whoever is watching nothing about what you are about to "
+            + "do."
             + "\n\n"
             + MemoryPack.SuggestedInstruction
+            + "\n\n"
+            + "Before you give your final answer on a piece of research, write your conclusions "
+            + "down: call " + TextFileCreateTool.ToolName + " with an absolute path beneath '"
+            + notesRoot + "' and record what you concluded and which document each conclusion came "
+            + "from. That folder is the only location you can write to, and a conclusion you did "
+            + "not write down does not outlive this run. Write the notes file first, then answer. "
             + "\n\n"
             + "Always record where a fact came from: state the document and the section or heading "
             + "when you file a memory, because a finding you cannot attribute is one you cannot "
@@ -237,6 +282,85 @@ public static class AgentComposition
         new FilePack(),
         new MarkdownPack()
     ];
+
+    /// <summary>
+    ///     Builds the instructions for an agent that may answer only from what it recalls.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This exists because a single-session transcript cannot tell "remembered" from "still
+    ///     in context".</b> In every live run of the sample the final answering turn made no
+    ///     <c>memory_recall</c> call at all: the model had read the documents a few turns earlier,
+    ///     so the answer was already in front of it and recall was genuinely unnecessary. The
+    ///     memories were filed, and nothing demonstrated that they were ever the thing an answer
+    ///     came from.
+    ///     </para>
+    ///     <para>
+    ///     The recall turn removes both alternatives at once rather than asking the model not to
+    ///     use them. It runs in a <em>fresh session</em>, so no earlier turn is in the context, and
+    ///     it is composed from <see cref="BuildRecallTools"/>, which attaches the memory family and
+    ///     nothing else — no reading tool exists to re-open a document with. What remains is the
+    ///     store the earlier turns filled, so an answer that contains a fact from the corpus can
+    ///     only have arrived through <c>memory_recall</c>.
+    ///     </para>
+    /// </remarks>
+    /// <returns>The system instructions for the recall turn.</returns>
+    public static string BuildRecallInstructions() =>
+        "You are answering from memory alone. This is a fresh conversation: nothing you read "
+        + "earlier is in front of you, and you have no file, document or search tool of any kind — "
+        + "the only tools you have are the memory tools. Call " + MemoryRecallTool.ToolName
+        + " and build your answer from the memories it returns and from nothing else, naming the "
+        + "source document each memory records. " + MemoryRecallTool.ToolName + " has no "
+        + "similarity floor: it returns the nearest memories it holds whatever their similarity, so "
+        + "read each returned descriptor and judge whether it is actually about the question. If "
+        + "none of them is, say plainly that you have nothing recorded on that subject. Do not "
+        + "answer from general knowledge, and do not name a source that no memory states.";
+
+    /// <summary>
+    ///     Composes the tools for the recall turn: the memory family over the store the earlier
+    ///     turns filled, and nothing else.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The absence here is the demonstration.</b> No <c>TextFilePack</c>, no <c>FilePack</c>,
+    ///     no <c>MarkdownPack</c>: an agent composed from this list cannot read a document, because
+    ///     no tool that reads one was created. The policy carries no grant for the same reason —
+    ///     grants without tools would be decoration, and the memory family touches no file anyway.
+    ///     </para>
+    ///     <para>
+    ///     The store is the one the root composition was given. That a supplied store is shared by
+    ///     every composition the pack is handed to is stated as a hazard on
+    ///     <see cref="CreateChildPacks"/>; here it is exactly the intent, which is why it is said
+    ///     twice rather than assumed once.
+    ///     </para>
+    /// </remarks>
+    /// <param name="corpusRoot">The working directory the policy anchors on. Nothing is granted.</param>
+    /// <param name="embeddingGenerator">The same generator the memories were filed with.</param>
+    /// <param name="memoryStore">The store the earlier turns filed into.</param>
+    /// <returns>The tool list for the recall turn.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="embeddingGenerator"/> or <paramref name="memoryStore"/> is
+    ///     <see langword="null"/>.
+    /// </exception>
+    public static IList<AIFunction> BuildRecallTools(
+        string corpusRoot,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        IMemoryStore memoryStore)
+    {
+        ArgumentNullException.ThrowIfNull(embeddingGenerator);
+        ArgumentNullException.ThrowIfNull(memoryStore);
+
+        // A working directory is required to express a policy; no grant accompanies it, so nothing
+        // on disk is reachable even if a reading tool somehow arrived.
+        var policy = new PathPolicy(corpusRoot, []);
+
+        return
+        [
+            .. new ToolPackBuilder(policy)
+                .Add(new MemoryPack(embeddingGenerator, MemoryOptions.Default, memoryStore))
+                .Build()
+        ];
+    }
 
     /// <summary>
     ///     Creates the agent profiles the application is willing to have started.
@@ -499,6 +623,15 @@ public static class AgentComposition
         var instructions = BuildInstructions(corpusRoot, notesRoot, options.DelegationEnabled);
         var agent = backend.CreateAgent(tools, instructions, AgentName);
 
+        // The recall agent is built only when one was asked for, from the same store and the same
+        // provider, carrying the memory family and nothing else. See BuildRecallTools.
+        var recallAgent = options.RecallQuestion is null
+            ? null
+            : backend.CreateAgent(
+                BuildRecallTools(corpusRoot, embeddings, memoryStore),
+                BuildRecallInstructions(),
+                RecallAgentName);
+
         // One handle releases everything, in reverse order of acquisition, so the host disposes a
         // single thing and never learns what was behind it.
         var cleanup = new AsyncDisposableAction(async () =>
@@ -507,7 +640,7 @@ public static class AgentComposition
             await embeddingCleanup.DisposeAsync();
         });
 
-        return new AgentSetup(agent, cleanup);
+        return new AgentSetup(agent, cleanup, recallAgent);
     }
 
     /// <summary>

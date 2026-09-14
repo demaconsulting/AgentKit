@@ -34,7 +34,10 @@ agent work across turns rather than within one: `todo` to plan, `memory` to reme
 delegate. It researches a read-only corpus, writes its conclusions into a separate notes folder, and
 makes the mechanisms observable — a plan written down before work starts, a finding filed with the
 document it came from, a contradicting restatement *refused* as a near-duplicate with the
-conflicting memory named, and a child agent started with a task its parent stated.
+conflicting memory named, and a child agent started with a task its parent stated. A final
+`--recall-question` turn answers on a fresh session with the memory tools and no way to read
+anything, so recall — rather than the conversation it would otherwise still be sitting in — is
+demonstrably what the answer rests on.
 
 Two things in it are worth reading even if you never run it. First, **where the embeddings come
 from**: `MemoryPack` requires an `IEmbeddingGenerator` and never inspects it, so the sample supplies

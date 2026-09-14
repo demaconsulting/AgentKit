@@ -28,6 +28,18 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 ///     in this sample changes.
 ///     </para>
 ///     <para>
+///     <b>A numeral is one token like any other, which matters here more than it sounds.</b> Two
+///     descriptors differing in one word out of <c>n</c> share <c>n - 1</c> unit coordinates, so
+///     their cosine is exactly <c>(n - 1) / n</c> whatever that word is — the fact that two numbers
+///     <em>contradict</em> each other enters nowhere. The sample's headline case measures 0.875
+///     stated in eight tokens and 0.917 stated in twelve, which straddles the library's published
+///     0.88 default: whether a superseded engineering value is caught depends on how verbosely the
+///     descriptor was phrased. A semantic model has no such arithmetic and may place the same pair
+///     anywhere, so this is a reason to measure a threshold against the generator actually in use
+///     rather than evidence about what any other backend would do. The unit tests assert both
+///     numbers.
+///     </para>
+///     <para>
 ///     Vectors are L2-normalized, because the memory family compares descriptors by cosine
 ///     similarity against an author-configured threshold. Normalizing here means a long descriptor
 ///     and a short one are compared by direction rather than by length, which is what makes a

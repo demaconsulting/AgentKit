@@ -8,8 +8,9 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests;
 /// <remarks>
 ///     These scenarios establish the two properties the memory family actually depends on from an
 ///     embedding backend — that a vector is stable and that cosine similarity ranks a restatement
-///     above an unrelated sentence — and they establish the limitation a reader must understand
-///     before copying the generator: it measures shared wording, not shared meaning.
+///     above an unrelated sentence — and they establish the limitations a reader must understand
+///     before copying the generator: it measures shared wording, not shared meaning, and a single
+///     differing numeral is only ever one token among many.
 /// </remarks>
 public class LexicalEmbeddingGeneratorTests
 {
@@ -115,6 +116,83 @@ public class LexicalEmbeddingGeneratorTests
         Assert.True(
             score < MemoryOptions.DefaultNearDuplicateThreshold,
             $"A paraphrase scored {score}: the offline generator is lexical and is not expected to.");
+    }
+
+    /// <summary>
+    ///     Proves a numeral is only ever one token among many, so whether a numeric contradiction
+    ///     is caught depends on how long the descriptor is rather than on what the numbers mean.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This is the generator's sharpest limitation for the use case the sample is built around —
+    ///     a superseded engineering value, 12 psi becoming 18 psi — and it is asserted here rather
+    ///     than merely described, for the same reason the paraphrase scenario is.
+    ///     </para>
+    ///     <para>
+    ///     Two descriptors that differ in exactly one word out of <c>n</c> share <c>n - 1</c> unit
+    ///     coordinates out of <c>n</c>, so their cosine is <c>(n - 1) / n</c> whatever that word is.
+    ///     Nothing about the word being a <em>number</em>, nor about the two numbers disagreeing,
+    ///     enters the arithmetic. The consequence is stated plainly by the two pairs below: an
+    ///     eight-token statement of the conflict falls <em>below</em> the published default
+    ///     threshold and would therefore be stored as a second, contradicting memory, while a
+    ///     twelve-token statement of the same conflict clears it and is refused.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task LexicalEmbeddingGenerator_GenerateAsync_DifferingNumeral_ScoresByTokenCountAlone()
+    {
+        // Arrange: the same conflict stated twice, once briefly and once at length
+        using var generator = new LexicalEmbeddingGenerator();
+        var shortOriginal = await EmbedAsync(generator, "The relief valve is set at 12 psi.");
+        var shortConflict = await EmbedAsync(generator, "The relief valve is set at 18 psi.");
+        var longOriginal = await EmbedAsync(
+            generator, "Relief valve setting for the Harbor Skiff bilge pump is 12 psi.");
+        var longConflict = await EmbedAsync(
+            generator, "Relief valve setting for the Harbor Skiff bilge pump is 18 psi.");
+
+        // Act: score each pair
+        var shortScore = Cosine(shortOriginal, shortConflict);
+        var longScore = Cosine(longOriginal, longConflict);
+
+        // Assert: each score is exactly (n - 1) / n for that descriptor's token count — eight
+        // tokens and twelve tokens — and the shorter statement of the very same conflict falls
+        // below the threshold the longer one clears
+        Assert.Multiple(
+            () => Assert.Equal(7.0 / 8.0, shortScore, 5),
+            () => Assert.Equal(11.0 / 12.0, longScore, 5),
+            () => Assert.True(
+                shortScore < MemoryOptions.DefaultNearDuplicateThreshold,
+                $"The brief statement of the conflict scored {shortScore} and would be stored."),
+            () => Assert.True(
+                longScore >= MemoryOptions.DefaultNearDuplicateThreshold,
+                $"The fuller statement of the conflict scored {longScore} and would not be refused."));
+    }
+
+    /// <summary>
+    ///     Proves two descriptors built from the same words score exactly 1.0, however much the
+    ///     details they introduce disagree.
+    /// </summary>
+    /// <remarks>
+    ///     Only the descriptor is embedded; the details payload is never searched and never
+    ///     vectorized. A model that writes a topic as its descriptor and puts the value in the
+    ///     details therefore produces identical vectors for two memories that contradict each other
+    ///     outright. That is a property of the descriptor/payload split rather than of this
+    ///     generator — any embedding backend gives 1.0 for identical input — and it is what a
+    ///     near-duplicate refusal at similarity 1.0 in a live run actually demonstrates.
+    /// </remarks>
+    [Fact]
+    public async Task LexicalEmbeddingGenerator_GenerateAsync_SameWordsInAnyOrder_ScoresExactlyOne()
+    {
+        // Arrange: one topic descriptor, and the same words reordered
+        using var generator = new LexicalEmbeddingGenerator();
+        var first = await EmbedAsync(generator, "Relief valve pressure setting");
+        var second = await EmbedAsync(generator, "Setting pressure valve relief");
+
+        // Act: score them against each other
+        var score = Cosine(first, second);
+
+        // Assert: a bag of words has no order, so these are the same vector
+        Assert.Equal(1.0, score, 5);
     }
 
     /// <summary>

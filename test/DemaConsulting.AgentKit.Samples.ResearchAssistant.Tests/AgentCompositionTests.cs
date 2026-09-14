@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Agent;
 using DemaConsulting.AgentKit.Tools.File;
@@ -5,6 +6,7 @@ using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.Memory;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Todo;
+using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests;
 
@@ -273,6 +275,143 @@ public class AgentCompositionTests
             () => Assert.Contains(TodoSetTool.ToolName, names),
             () => Assert.Contains(MemoryFileTool.ToolName, names),
             () => Assert.DoesNotContain(AgentRunTool.ToolName, names));
+    }
+
+    /// <summary>
+    ///     Proves the instructions require conclusions to be written into the notes folder.
+    /// </summary>
+    /// <remarks>
+    ///     The notes folder is the sample's only writable location, and in three live runs it
+    ///     stayed empty because nothing had told the agent to use it. A read-write grant that is
+    ///     never exercised demonstrates nothing about the policy governing it.
+    /// </remarks>
+    [Fact]
+    public void AgentComposition_BuildInstructions_AnyRun_RequiresConclusionsToBeWrittenToNotes()
+    {
+        // Arrange / Act: build the instructions
+        var instructions = AgentComposition.BuildInstructions(CorpusPath, NotesPath, true);
+
+        // Assert: the tool, the location and the moment are all named
+        Assert.Multiple(
+            () => Assert.Contains(TextFileCreateTool.ToolName, instructions, StringComparison.Ordinal),
+            () => Assert.Contains(
+                $"absolute path beneath '{NotesPath}'", instructions, StringComparison.Ordinal),
+            () => Assert.Contains(
+                "Write the notes file first, then answer", instructions, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the instructions forbid filing a task that is already finished.
+    /// </summary>
+    /// <remarks>
+    ///     One live run opened by recording "Review all corpus documents" as already done, before
+    ///     any document had been read. A plan written after the fact is a summary, and it tells a
+    ///     watcher nothing about what is about to happen.
+    /// </remarks>
+    [Fact]
+    public void AgentComposition_BuildInstructions_AnyRun_ForbidsAPlanItemThatIsAlreadyDone()
+    {
+        // Arrange / Act: build the instructions
+        var instructions = AgentComposition.BuildInstructions(CorpusPath, NotesPath, true);
+
+        // Assert: the plan must precede the work it describes
+        Assert.Multiple(
+            () => Assert.Contains(
+                "Never add an item that is already finished", instructions, StringComparison.Ordinal),
+            () => Assert.Contains(
+                "Write the plan down before you begin the work", instructions, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the recall turn is composed with the memory family and no way to read anything.
+    /// </summary>
+    /// <remarks>
+    ///     This is what makes the recall turn evidence rather than assertion. In every live run the
+    ///     final answering turn made no <c>memory_recall</c> call, because it shared a session with
+    ///     the turns that had read the documents and did not need one. With no reading tool in
+    ///     existence and a fresh session, an answer carrying a fact from the corpus can only have
+    ///     come through recall.
+    /// </remarks>
+    [Fact]
+    public void AgentComposition_BuildRecallTools_AnyRun_CarriesMemoryAndNoWayToReadAnything()
+    {
+        // Arrange: the same collaborators the root composition was given
+        using var embeddings = new LexicalEmbeddingGenerator();
+        var store = new InMemoryMemoryStore();
+
+        // Act: compose the recall turn's tool set
+        var names = AgentComposition
+            .BuildRecallTools(CorpusPath, embeddings, store)
+            .Select(tool => tool.Name)
+            .ToList();
+
+        // Assert: memory only — no document reader, no lister, no outline, no plan, no delegation
+        Assert.Multiple(
+            () => Assert.Contains(MemoryRecallTool.ToolName, names),
+            () => Assert.DoesNotContain(TextFileReadTool.ToolName, names),
+            () => Assert.DoesNotContain(TextFileSearchTool.ToolName, names),
+            () => Assert.DoesNotContain(MarkdownOutlineTool.ToolName, names),
+            () => Assert.DoesNotContain(FileListTool.ToolName, names),
+            () => Assert.DoesNotContain(TodoSetTool.ToolName, names),
+            () => Assert.DoesNotContain(AgentRunTool.ToolName, names));
+    }
+
+    /// <summary>
+    ///     Proves the recall turn shares the store the earlier turns filed into.
+    /// </summary>
+    /// <remarks>
+    ///     A recall agent over a store of its own would recall nothing and would prove the opposite
+    ///     of what it exists to prove, so the sharing is asserted rather than assumed.
+    /// </remarks>
+    [Fact]
+    public async Task AgentComposition_BuildRecallTools_AnyRun_RecallsWhatTheRootCompositionFiled()
+    {
+        // Arrange: one store, filed into through the root composition's tools
+        using var embeddings = new LexicalEmbeddingGenerator();
+        var store = new InMemoryMemoryStore();
+        var rootTools = AgentComposition.BuildTools(
+            CorpusPath, NotesPath, embeddings, store, false, (_, _) => Task.FromResult<string?>(null));
+        var file = rootTools.Single(tool => tool.Name == MemoryFileTool.ToolName);
+        await file.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?>
+            {
+                ["descriptor"] = "Relief valve setting for the Harbor Skiff bilge pump",
+                ["details"] = "The relief valve is set at 18 psi.",
+                ["sourceDocument"] = "02-field-revision.md",
+            }),
+            TestContext.Current.CancellationToken);
+
+        // Act: recall through the recall turn's own tool set
+        var recall = AgentComposition
+            .BuildRecallTools(CorpusPath, embeddings, store)
+            .Single(tool => tool.Name == MemoryRecallTool.ToolName);
+        var result = await recall.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?>
+            {
+                ["query"] = "Relief valve setting for the Harbor Skiff bilge pump",
+            }),
+            TestContext.Current.CancellationToken);
+
+        // Assert: the memory filed through the root composition is what the recall turn finds
+        Assert.Contains("18 psi", JsonSerializer.Serialize(result), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the recall instructions forbid answering from anything but recalled memories.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildRecallInstructions_AnyRun_ForbidsAnsweringFromAnythingElse()
+    {
+        // Arrange / Act: build the recall turn's instructions
+        var instructions = AgentComposition.BuildRecallInstructions();
+
+        // Assert: the absence of documents and of history is stated, and so is the similarity floor
+        Assert.Multiple(
+            () => Assert.Contains(MemoryRecallTool.ToolName, instructions, StringComparison.Ordinal),
+            () => Assert.Contains("This is a fresh conversation", instructions, StringComparison.Ordinal),
+            () => Assert.Contains("has no similarity floor", instructions, StringComparison.Ordinal),
+            () => Assert.Contains(
+                "Do not answer from general knowledge", instructions, StringComparison.Ordinal));
     }
 
     /// <summary>

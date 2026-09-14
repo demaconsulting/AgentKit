@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DemaConsulting.AgentKit.Tools.Memory;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -70,6 +71,42 @@ public static class ChatLoop
         }
 
         await RunInteractiveAsync(agent, session, transcript, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Runs one question on the recall agent, in a session of its own.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The fresh session is half of what this turn proves, and the caller cannot supply
+    ///     it.</b> The recall agent carries the memory family and no reading tool, so no document
+    ///     is reachable from it; creating a new session here means no earlier turn's document
+    ///     contents are in its context either. With both gone, an answer that states a fact from
+    ///     the corpus can only have arrived through <c>memory_recall</c> — which is what the
+    ///     ordinary prompts, sharing one session with the turns that read the documents, could
+    ///     never establish.
+    ///     </para>
+    /// </remarks>
+    /// <param name="recallAgent">The memory-only agent. Must not be <see langword="null"/>.</param>
+    /// <param name="question">The question to answer from memory alone.</param>
+    /// <param name="transcript">The tool-call transcript writer, or <see langword="null"/>.</param>
+    /// <param name="cancellationToken">Cancelled on Ctrl-C to end the run cleanly.</param>
+    /// <returns>A task that completes when the recall turn ends.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="recallAgent"/> is null.</exception>
+    public static async Task RunRecallAsync(
+        AIAgent recallAgent,
+        string question,
+        TextWriter? transcript,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(recallAgent);
+
+        Console.WriteLine(
+            "\n--- recall turn: a fresh session on an agent with the memory tools and no way to "
+            + "read anything ---");
+
+        var session = await recallAgent.CreateSessionAsync(cancellationToken);
+        await RunTurnAsync(recallAgent, session, question, transcript, cancellationToken);
     }
 
     /// <summary>
@@ -147,6 +184,13 @@ public static class ChatLoop
         Console.WriteLine($"\nyou> {message}");
         Console.Write("\nassistant> ");
 
+        // Parallel tool calls arrive as a block of calls followed by a block of results in
+        // completion order, so a result printed on its own says nothing about which call produced
+        // it. Remembering each call's identifier lets the result carry the tool name and the
+        // arguments back, which is the difference between a reader following the run and a reader
+        // watching eleven interchangeable lines go past.
+        var callsInFlight = new Dictionary<string, FunctionCallContent>(StringComparer.Ordinal);
+
         await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: cancellationToken))
         {
             if (!string.IsNullOrEmpty(update.Text))
@@ -159,12 +203,13 @@ public static class ChatLoop
                 switch (content)
                 {
                     case FunctionCallContent call:
+                        callsInFlight[call.CallId] = call;
                         PrintToolCall(call);
                         RecordToolCall(transcript, call);
                         break;
 
                     case FunctionResultContent result:
-                        PrintToolResult(result);
+                        PrintToolResult(result, callsInFlight.GetValueOrDefault(result.CallId));
                         break;
                 }
             }
@@ -174,8 +219,8 @@ public static class ChatLoop
     }
 
     /// <summary>
-    ///     Prints a tool call with its name and arguments, so a user sees exactly what the agent
-    ///     asked the tool to do.
+    ///     Prints a tool call with its correlating identifier, name and arguments, so a user sees
+    ///     exactly what the agent asked the tool to do and can match the result to it.
     /// </summary>
     /// <param name="call">The function call to print.</param>
     private static void PrintToolCall(FunctionCallContent call)
@@ -184,7 +229,7 @@ public static class ChatLoop
             ? JsonSerializer.Serialize(call.Arguments)
             : "{}";
 
-        Console.WriteLine($"\n  [tool call] {call.Name} {arguments}");
+        Console.WriteLine($"\n  [tool call {call.CallId}] {call.Name} {arguments}");
     }
 
     /// <summary>
@@ -217,25 +262,39 @@ public static class ChatLoop
     }
 
     /// <summary>
-    ///     Prints a brief, single-line summary of a tool result, including a refusal's guidance.
+    ///     Prints a single-line summary of a tool result, naming the call it answers.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     A refusal's text is exactly what proves the mechanism held — a near-duplicate declined,
-    ///     a write into the read-only corpus denied — so it is shown, trimmed to one readable line.
+    ///     a write into the read-only corpus denied — so it is shown rather than elided.
+    ///     </para>
+    ///     <para>
+    ///     <b>Memory results are never truncated, and everything else is.</b> A truncated
+    ///     <c>memory_recall</c> was observed showing one of five returned matches, which makes the
+    ///     one demonstration this sample exists for impossible to check by reading. A recall is
+    ///     bounded by the author's configured count and a file read is not, so the limit is applied
+    ///     where unbounded output actually comes from.
+    ///     </para>
     /// </remarks>
     /// <param name="result">The function result to summarize.</param>
-    private static void PrintToolResult(FunctionResultContent result)
+    /// <param name="call">The call it answers, or <see langword="null"/> if it was not seen.</param>
+    private static void PrintToolResult(FunctionResultContent result, FunctionCallContent? call)
     {
-        var summary = Summarize(result.Result);
-        Console.WriteLine($"  [tool result] {result.CallId} -> {summary}");
+        var name = call?.Name ?? "(unmatched call)";
+        var untruncated = call?.Name?.StartsWith(MemoryPack.FamilyPrefix + "_", StringComparison.Ordinal) == true;
+        var summary = Summarize(result.Result, untruncated);
+
+        Console.WriteLine($"  [tool result {result.CallId}] {name} -> {summary}");
     }
 
     /// <summary>
-    ///     Renders a tool result value as a short, single-line string for the transcript.
+    ///     Renders a tool result value as a single-line string for the console.
     /// </summary>
     /// <param name="value">The result value, which may be <see langword="null"/>.</param>
-    /// <returns>A short single-line description of the value.</returns>
-    private static string Summarize(object? value)
+    /// <param name="untruncated">Whether to print the value whole however long it is.</param>
+    /// <returns>A single-line description of the value.</returns>
+    private static string Summarize(object? value, bool untruncated)
     {
         const int maxLength = 300;
 
@@ -249,6 +308,6 @@ public static class ChatLoop
         // Flatten newlines and runs of whitespace so a multi-line body becomes one line.
         text = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-        return text.Length <= maxLength ? text : text[..maxLength] + "…";
+        return untruncated || text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
 }

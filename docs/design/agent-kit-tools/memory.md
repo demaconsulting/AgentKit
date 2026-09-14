@@ -91,6 +91,42 @@ descriptor, asks the store for the single nearest memory, and declines to store 
 nearest match reaches the author's threshold. The comparison is nearly free: the vectors it compares
 were computed when their memories were filed.
 
+**The threshold is only meaningful inside the vector space the author injected, so 0.88 is a
+starting point to measure against rather than a value to adopt.** The 0.965 above is one embedding
+model's opinion of one pair of sentences on one corpus. Two properties of the mechanism make it
+unsafe to carry that number anywhere else unmeasured, and an author whose corpus turns on numeric
+values — a setting, a tolerance, a rating — should read both before accepting the default.
+
+_Only the descriptor is embedded._ The details payload is never vectorized and never searched, so
+two memories whose descriptors are built from the same words score 1.0 against each other however
+much their payloads disagree. A model that files a topic ("relief valve pressure setting") and puts
+the value in the details produces exactly that, and the refusal it triggers is correct but is
+evidence about the descriptor, not about the values. An author who wants the value to participate in
+the comparison must instruct the model to put it in the descriptor — which is instruction, not tool
+behavior, for the reasons given below.
+
+_A numeral carries no special weight._ Similarity is whatever the injected generator says it is, and
+nothing in this family knows that two numbers contradict each other. Where two statements of one
+fact land relative to any threshold is therefore a property of the model, not of the conflict.
+Two backends can disagree in opposite directions on the same pair: a lexical bag-of-words generator
+scores two descriptors differing in one token out of `n` at exactly `(n - 1) / n`, so the same
+12 psi / 18 psi conflict measures 0.875 stated in eight tokens and 0.917 stated in twelve — one side
+of a 0.88 threshold and then the other, on descriptor length alone. A semantic model has no such
+arithmetic and may place a numeric contradiction anywhere, including below a threshold that a
+lexical generator clears. A threshold that is too low files contradictions as duplicates of each
+other and loses one; a threshold that is too high stores both statements silently, and the
+contradiction is never raised at all. The second failure is the quieter one.
+
+_What to do about it._ Choose `MemoryOptions.NearDuplicateThreshold` by measuring, not by
+inheritance: embed a handful of the author's own descriptor pairs with the author's own generator —
+genuine restatements, genuine contradictions, and genuinely different facts about one subject — and
+set the threshold between the lowest score a pair that should be caught achieves and the highest
+score a pair that should not achieves. If those two ranges overlap, no threshold separates them and
+the descriptors or the generator need to change, not the number. Re-measure whenever the generator
+changes: `InMemoryMemoryStore` refuses a vector whose _length_ differs from what it already holds,
+which catches a swap between models of different widths, but two generators of the same width would
+be mixed silently and a measured threshold would quietly stop meaning anything.
+
 **Two defects from the spike are fixed here, and both fixes are structural.**
 
 _Stale provenance._ The spike's revision silently preserved the original `sourceDocument` and
