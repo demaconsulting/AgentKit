@@ -25,6 +25,14 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     Implementations must be safe for concurrent use: one store is shared by all five tools of a
 ///     composition, and an agent may have more than one tool call in flight.
 ///     </para>
+///     <para>
+///     <b>No operation here is asked to be atomic with another.</b> A file call searches and then
+///     adds, and those are two calls into this contract, so per-operation safety does not make the
+///     pair indivisible: two files in flight together can both search before either adds. That is a
+///     stated bound on the near-duplicate check rather than a requirement on an implementation — an
+///     atomic check-and-add is not part of this contract, because where the line between checking
+///     and storing falls is the author's business, not this library's.
+///     </para>
 /// </remarks>
 /// <example>
 ///     <para>
@@ -198,7 +206,9 @@ public interface IMemoryStore
 ///     it is surfaced as the configuration error it is.
 ///     </para>
 ///     <para>
-///     Access is guarded by a lock, so concurrent tool calls against one composition are safe.
+///     Every operation is guarded by a lock, so each one is individually safe against concurrent
+///     tool calls on one composition. No two operations are combined into one: a file call's search
+///     and its subsequent add are separate, as <see cref="IMemoryStore"/> describes.
 ///     </para>
 /// </remarks>
 public sealed class InMemoryMemoryStore : IMemoryStore

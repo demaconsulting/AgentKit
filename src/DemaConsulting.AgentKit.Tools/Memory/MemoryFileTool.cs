@@ -33,6 +33,15 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     a 12-psi versus 18-psi contradiction at 0.965 cosine.
 ///     </para>
 ///     <para>
+///     <b>That comparison covers one call, and is not atomic against another call in flight.</b>
+///     A call searches the store and then adds to it, so two calls filing at the same time can both
+///     search before either adds, and both then store. This is deliberately not closed here:
+///     <see cref="IMemoryStore"/> already requires implementations to be safe for concurrent use,
+///     and the window lies between two operations rather than inside either, so removing it would
+///     mean imposing an atomic check-and-add on whatever persistence the author substituted. The
+///     check is a backstop over what one call can see, not a uniqueness guarantee over the store.
+///     </para>
+///     <para>
 ///     <b>A near-duplicate is reported as structured data, not as prose.</b> This is a defect fix,
 ///     not a style choice: when the spike returned a prose sentence explaining that the memory had
 ///     not been stored, the model went on to assert that it had stored the fact. The result

@@ -74,7 +74,10 @@ descriptor and returned whole, with every tool in the family observing the same 
 
 The listed tests prove a contradicting restatement of a fact already held is not stored, that the
 result reports `stored: false` in a field rather than in prose, that it hands over the conflicting
-memory's details, and that the store still holds exactly one memory afterwards.
+memory's details, and that the store still holds exactly one memory afterwards. The scenario files
+one memory at a time, which is the scope the requirement claims: the comparison covers the call that
+performs it, and nothing here asserts an outcome for two filing calls in flight together, because
+the family does not guarantee one.
 
 #### AgentKitTools-Memory-CorrectionWithoutStaleProvenance: Correction and Provenance
 

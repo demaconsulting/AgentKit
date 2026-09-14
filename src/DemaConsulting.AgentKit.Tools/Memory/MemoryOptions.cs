@@ -8,7 +8,8 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 /// <remarks>
 ///     <para>
 ///     <b>Every value here is the author's decision, not this library's.</b> AgentKit guarantees
-///     that near-duplicate detection happens on every file and that a recall returns at most the
+///     that every file call compares the new descriptor against the memories the store holds when
+///     that call runs, and that a recall returns at most the
 ///     configured number of memories; it takes no view on what the right threshold is for a given
 ///     corpus, because the right threshold depends on the embedding model, the subject matter and
 ///     how much the author would rather re-read a duplicate than miss a conflict.

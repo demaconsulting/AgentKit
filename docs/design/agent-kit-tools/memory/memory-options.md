@@ -10,7 +10,8 @@ over the memory family.
 To carry the two numbers the family's behavior depends on — the near-duplicate threshold and the
 recall count — as one immutable object the author constructs once and the pack hands to the tools
 that need it. The type exists so that neither number is a constant buried in a tool: AgentKit
-guarantees that near-duplicate detection happens and that a recall is bounded, and the author
+guarantees that every file call compares against what the store holds when it runs and that a recall
+is bounded, and the author
 decides at what values.
 
 #### Data Model

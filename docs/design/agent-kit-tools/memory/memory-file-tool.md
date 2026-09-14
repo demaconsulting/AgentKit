@@ -8,7 +8,7 @@ The `MemoryFileTool` class is a public static modeled unit publishing the `memor
 
 To store one memory, unless an existing memory already says nearly the same thing. It is the only
 unit that writes a new memory, and therefore the only place near-duplicate detection can be
-guaranteed to happen.
+performed.
 
 #### Data Model
 
@@ -56,6 +56,11 @@ non-storage result and stop; otherwise construct a `MemoryRecord` with a new ide
 blank source document or locator as absent, add it, read the new count, and return the structured
 stored result. Storing first and checking afterwards would leave a near-duplicate in the store on
 every detection.
+
+The search and the add are two separate calls into the store, and nothing spans them, so the
+comparison is scoped to the call that performs it: two `memory_file` calls in flight together can
+both search before either adds, and both then store. See _Memory_ for why that window is documented
+rather than closed.
 
 **Postconditions:** either exactly one memory was added and the result reports `stored: true`, its
 identifier and the size of the store; or nothing was added and the result reports `stored: false`,

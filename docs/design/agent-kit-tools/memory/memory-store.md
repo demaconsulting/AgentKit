@@ -115,7 +115,9 @@ model's malformed request before the store is reached. A repeated identifier is 
 programming error. A vector of a length the store does not hold is a configuration error in the
 composing application — it can only arise from changing embedding generator against a persisted
 store — and is refused rather than scored, because mixing two models produces similarity numbers
-that look ordinary and mean nothing. The lock makes concurrent calls safe.
+that look ordinary and mean nothing. The lock makes each individual call safe against concurrent
+callers; it does not combine two calls into one, so a file tool's search and its subsequent add
+remain separable — see _MemoryFileTool_.
 
 #### Dependencies
 

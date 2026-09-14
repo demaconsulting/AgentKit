@@ -41,9 +41,12 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     graph genuinely added nothing rather than having been built wrongly.
 ///     </para>
 ///     <para>
-///     <b>Near-duplicate detection is a backstop, and it is not optional.</b> Every file compares
-///     the new descriptor against the vectors already held and declines to store a memory at or
-///     above the author's configured threshold, reporting the conflicting memory instead. The
+///     <b>Near-duplicate detection is a backstop, and it is not optional.</b> Every file call
+///     compares the new descriptor against the vectors the store holds when it runs and declines
+///     to store a memory at or above the author's configured threshold, reporting the conflicting
+///     memory instead. The comparison covers that one call: a call searches and then adds, so two
+///     calls filing at the same time can both search before either adds, and it is a backstop over
+///     what one call can see rather than a uniqueness guarantee over the store. The
 ///     arithmetic caught a 12-psi versus 18-psi contradiction at 0.965 cosine where repeated
 ///     attempts to have a spike model notice the same conflict by reading had failed. Its role is
 ///     precisely that unnoticed case: the refusal fires when the model files a near-identical

@@ -94,10 +94,12 @@ sections:
 
           - id: AgentKitTools-Memory-NearDuplicateDetection
             title: >-
-              The memory family shall compare every new descriptor against the vectors already
-              held before storing anything, shall decline to store one whose nearest match
-              reaches the configured threshold, and shall report that non-storage as structured
-              data naming the conflicting memory, its descriptor, its details and the similarity.
+              The memory family shall compare each new descriptor, within the call that presents
+              it, against the vectors the store holds when that call runs, before storing
+              anything, shall decline to store one whose nearest match reaches the configured
+              threshold, and shall report that non-storage as structured data naming the
+              conflicting memory, its descriptor, its details and the similarity; the comparison
+              covers one call only, and calls in flight together may each store.
             justification: |
               Every attempt in the originating spike to have the model notice a contradiction by
               judgement failed; the arithmetic succeeded, scoring a 12-psi against an 18-psi
@@ -107,6 +109,22 @@ sections:
               prose sentence, the model went on to assert that it had stored the fact. Comparing
               before storing rather than after is what keeps a detected near-duplicate out of the
               store.
+
+              The comparison is scoped to one call because that is the scope the mechanism
+              actually has. A file call reads the store and then writes to it, so two file calls
+              running together can both read before either writes and both then store. Closing
+              that window is deliberately not attempted here: the store contract already obliges
+              an implementation to be safe for concurrent use, and the gap is between two
+              operations the tool performs rather than inside either one, so an atomic
+              check-and-add would have to be imposed on every author's persistence — this library
+              guaranteeing the mechanism would become this library governing the author's store.
+              The consequence is bounded by what is already stated of this check: it is a
+              backstop, not the primary conflict mechanism. It fired in 0 of 8 live
+              research-assistant sample runs, revision in place handled the conflict in 5 of 5
+              runs of the neutral arm (n = 5), and two memories carrying accurate provenance can
+              be a legitimate representation rather than a failure. This is one more reason the
+              comparison is best-effort, alongside its dependence on how the model phrased the
+              descriptor.
             children:
               - AgentKitTools-Memory-FileTool-NearDuplicateNotStored
               - AgentKitTools-Memory-FileTool-StructuredNonStorage

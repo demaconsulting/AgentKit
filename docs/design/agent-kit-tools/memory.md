@@ -16,8 +16,9 @@ is about and where it came from, and one that removes a memory.
 The boundary is deliberately narrow. The family carries no path, consults no policy decision and
 touches no file. It does not choose an embedding backend, does not choose where memories live and
 does not choose the thresholds it applies; all three arrive from the composing application. What it
-guarantees is the mechanism: that only descriptors are embedded, that every file is checked for a
-near-duplicate before anything is stored, that a recall returns whole memories, and that no
+guarantees is the mechanism: that only descriptors are embedded, that a filing call checks for a
+near-duplicate against what the store holds when it runs before storing anything, that a recall
+returns whole memories, and that no
 correction silently keeps provenance it has reason to believe is stale.
 
 The subsystem contains nine modeled units and two shared helpers:
@@ -98,8 +99,9 @@ arithmetic is what catches a conflict the model did not notice, which is by defi
 judgement cannot cover.
 
 **Near-duplicate detection is a backstop, not the primary conflict mechanism, and a reader must not
-leave this document believing it is routine or reliable.** The mechanism is guaranteed — every file
-is checked against the nearest memory held — but what that check can see is one sentence the model
+leave this document believing it is routine or reliable.** The mechanism is guaranteed within the
+call that performs it — a file call compares against the nearest memory the store holds when it runs
+— but what that check can see is one sentence the model
 chose the wording of, and the wording decides the outcome. What a live model does with that latitude
 is the measurement that matters, and it is not what the spike predicted.
 
@@ -132,6 +134,29 @@ lexical bag-of-words generator scores two descriptors differing in one token out
 `(n - 1) / n`, so one conflict measures 0.875 stated in eight tokens and 0.917 stated in twelve —
 below and then above the 0.88 default, on verbosity alone.
 
+_The comparison covers one filing call, not two in flight together._ `memory_file` reads the store
+and then writes to it: it embeds the descriptor, asks for the nearest match, and adds the memory if
+nothing crossed the threshold. Those are two separate operations against the store, so two filing
+calls running at the same time can both complete their search before either adds, and both then
+store. This is reachable rather than theoretical — `IMemoryStore` states that an agent may have more
+than one tool call in flight, and a live sample run returned eleven `memory_file` results with
+interleaved store counts, which only happens when the calls genuinely overlap.
+
+_Why that window is stated rather than closed._ It is not a store defect and cannot be fixed in one:
+`IMemoryStore` already requires implementations to be safe for concurrent use, and
+`InMemoryMemoryStore` takes its lock on every operation, yet the window survives because it lies
+between two operations rather than inside either. Closing it would mean either an atomic
+check-and-add on the store contract — which every author substituting persistence would then have to
+implement — or a lock inside the family serializing calls against a store the author owns. Both are
+this library deciding something about the author's persistence, which is the opposite of the
+principle that AgentKit guarantees the mechanism and the author governs the settings. So the scope
+is documented instead, and it belongs with the other reasons this check is best-effort: only the
+descriptor is embedded, and the model chooses its wording. It does not change the value of the
+mechanism, because the refusal is a backstop that fired in 0 of the 8 live sample runs above while
+revision in place handled the conflict in 5 of 5 neutral-arm runs (n = 5), and because — as the
+adversarial arm shows below — two memories carrying accurate provenance can be a correct
+representation rather than a failure.
+
 _What an adversarial prompt produces, and why it is not a defect._ In the **adversarial arm
 (n = 3)**, whose second prompt demands "a separate new memory… do not revise or update", the
 descriptor rule was obeyed **0 of 3** and the model narrated exactly why: _"I used a distinct
@@ -142,8 +167,9 @@ memories is itself pressure toward two distinct labels — and its outcome is ar
 one. "12 psi per Revision A" and "18 psi per Revision B" are both true statements, about different
 documents; two memories carrying accurate provenance is a legitimate representation of a superseded
 specification, and it is the representation the user explicitly asked for. This is the application
-author governing the settings, which is the intended design: the family guarantees that every file
-is checked and leaves what _should_ happen to a conflict over the author's own corpus to the author,
+author governing the settings, which is the intended design: the family guarantees that a filing call
+checks what the store holds when it runs, and leaves what _should_ happen to a conflict over the
+author's own corpus to the author,
 their instructions and their threshold. An earlier commit message in this repository framed this arm
 as a failure mode. That framing was wrong, and is corrected here: it is neither evasion nor a
 defect.

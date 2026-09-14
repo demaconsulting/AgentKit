@@ -58,14 +58,19 @@ sections:
 
               - id: AgentKitTools-Memory-FileTool-NearDuplicateNotStored
                 title: >-
-                  The file tool shall compare a new descriptor against the nearest stored memory
-                  before storing anything, and shall not store a memory whose nearest match
-                  reaches the configured threshold.
+                  The file tool shall compare a new descriptor against the nearest memory the
+                  store holds when the call runs, before storing anything, and shall not store a
+                  memory whose nearest match reaches the configured threshold; the comparison
+                  covers that one call, and file calls in flight together may each store.
                 justification: |
                   Checking before storing rather than after is what keeps a detected
                   near-duplicate out of the store. Only the nearest match is examined because the
                   store returns matches nearest first, so a nearest match below the threshold
-                  proves every other memory is below it too.
+                  proves every other memory is below it too. The check reads the store and then
+                  writes to it, so two calls running together can both read before either writes;
+                  the scope is stated rather than closed, because the store contract already
+                  requires an implementation to be safe for concurrent use, and an atomic
+                  check-and-add would impose this library's answer on the author's persistence.
                 tests:
                   - MemoryFileTool_File_NearDuplicateDescriptor_IsNotStoredAndNamesTheConflict
 

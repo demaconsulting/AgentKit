@@ -77,7 +77,9 @@ memory, which it could not if the details had contributed.
 **Test**: `MemoryFileTool_File_NearDuplicateDescriptor_IsNotStoredAndNamesTheConflict`
 
 The listed tests prove a contradicting restatement of a fact already held leaves the store holding
-exactly one memory, so the comparison happened before anything was written.
+exactly one memory, so the comparison happened before anything was written. The scenario files one
+memory at a time, which is the whole of what the requirement claims: nothing here asserts an outcome
+for two file calls in flight together, because the tool does not guarantee one.
 
 ##### AgentKitTools-Memory-FileTool-StructuredNonStorage: Structured Non-Storage
 

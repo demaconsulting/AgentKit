@@ -174,9 +174,10 @@ sections:
           The library shall provide a memory family that lets an agent file what it has learned as
           a short embedded descriptor with a richer never-embedded detail payload and its provenance,
           recall the closest memories to a question whole, correct a memory's details without
-          re-embedding it, revise its subject and its source together, and forget it, declining to
-          store a descriptor too close to one already held and reporting that non-storage as
-          structured data, publishing every tool under one family prefix and refusing rather than
+          re-embedding it, revise its subject and its source together, and forget it, declining
+          within the filing call to store a descriptor too close to one the store already holds and
+          reporting that non-storage as structured data,
+          publishing every tool under one family prefix and refusing rather than
           throwing when a request cannot be honored.
         tags: [system]
         justification: |
@@ -194,7 +195,10 @@ sections:
           Near-duplicate detection is arithmetic because every attempt to have the model notice a
           contradiction by judgement failed while the arithmetic caught a 12-psi against an 18-psi
           statement at 0.965 cosine, and its outcome is structured because the same outcome in
-          prose was followed by the model asserting it had stored the fact. Revision takes
+          prose was followed by the model asserting it had stored the fact. That check reads the
+          store and then writes to it within one filing call, so it is scoped to that call rather
+          than across calls in flight together; it is a backstop under a model that mostly revises
+          in place, not a uniqueness guarantee over the store. Revision takes
           provenance as a parameter because a revision that silently kept the original source made
           memories cite documents they no longer reflected. Which embedding backend, which
           persistence and which thresholds are used are all the application author's decisions,
