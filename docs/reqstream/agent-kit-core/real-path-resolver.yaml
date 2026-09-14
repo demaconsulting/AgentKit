@@ -78,6 +78,29 @@ sections:
               - RealPathResolver_Resolve_RelativeSegments_ReturnsNormalizedAbsolutePath
               - RealPathResolver_Resolve_PathWithNoLinks_ReturnsSamePath
 
+          - id: AgentKitCore-RealPathResolver-UndecodableLink
+            title: >-
+              The RealPathResolver shall refuse a path containing a component that the file
+              system marks as a link but for which the platform reports no target.
+            justification: |
+              The link attribute and the link target answer different questions: the attribute
+              says a redirection is recorded, the target says where it leads, and the target is
+              available only for the link kinds the platform decodes. Consulting the target
+              alone conflates "not a link" with "a link whose target cannot be read", and
+              carrying such a component through unchanged returns a location that is not real.
+              The containment decision built on it is promised a real location and deliberately
+              does not resolve, so it would judge the link's own path rather than what the link
+              reaches - a fail-open in the containment risk control measure (IEC 62304 clause
+              5.3.3). Every other failure of resolution already denies; refusing this one makes
+              denying the unknown uniform.
+            tests:
+              # Windows-only evidence: a reparse point carrying a tag the platform does not
+              # decode has no equivalent on POSIX platforms, where every link is a symbolic link
+              # and is always decoded. The source filters keep the Linux and macOS runs, where
+              # the tests are skipped, from being counted as evidence.
+              - "windows@RealPathResolver_Resolve_ComponentIsUndecodableLink_ThrowsIOException"
+              - "windows@RealPathResolver_Resolve_UndecodableLinkItself_ThrowsIOException"
+
           - id: AgentKitCore-RealPathResolver-RejectInvalidPath
             title: >-
               The RealPathResolver shall reject a null or empty path as a programming error.

@@ -44,18 +44,26 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
   see _RealPathResolver Unit Verification Design_ for why
 - **Unresolvable input**: A path containing an embedded null character provides a portable,
   deterministic way to exercise the "location cannot be determined" path without constructing a
-  cyclic link
+  cyclic link. One further scenario exercises the same path through a component the file system
+  marks as a link but for which the platform reports no target
+- **Windows-conditional scenario**: The undecodable-link scenario needs a reparse point carrying a
+  tag nothing on the system decodes, which only Windows has; every link a POSIX file system can
+  express is a symbolic link and is always decoded. It is created by the fixture without elevation
+  and without any external subsystem, declares an explicit skip condition on POSIX platforms, and
+  the requirement it serves carries a Windows source filter so the Linux and macOS runs are not
+  counted as evidence
 - **Mocking**: None
 - **Isolation**: Each test constructs its own policy and its own fixture; no state is shared
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifty scenarios below pass without error or exception beyond
-those explicitly asserted. Any escaping path that is permitted, any escaped file that appears in a
-listing, any relative request resolved against the process working directory, any missing working
-directory accepted, any null grant accepted, any empty grant set permitting access, any read-only
-grant authorizing a write, any denial that fails to echo and enumerate as specified, or any
-exception escaping a refusal constitutes a failure.
+A unit test run passes when all fifty-three scenarios below pass without error or exception beyond
+those explicitly asserted, excepting the undecodable-link scenario on Linux and macOS, which is
+skipped with its reason recorded. Any escaping path that is permitted, any escaped file that
+appears in a listing, any relative request resolved against the process working directory, any
+missing working directory accepted, any null grant accepted, any empty grant set permitting access,
+any read-only grant authorizing a write, any denial that fails to echo and enumerate as specified,
+or any exception escaping a refusal constitutes a failure.
 
 ### Test Scenarios
 
@@ -111,6 +119,19 @@ and no location.
 Boundary condition: a path containing an embedded null character cannot be interpreted by any
 platform. It is refused with a reason rather than allowed to throw, confirming the fail-safe reading
 for input a model controls.
+
+#### AgentKitCore-PathPolicy-UnresolvablePathDenied: A Link the Platform Cannot Decode Is Refused
+
+**Test**: `PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial`
+
+Security control, and the Windows-conditional scenario. An entry inside the granted root is marked
+as a reparse point carrying a tag nothing on the system decodes, and a path through it is
+requested. Asserts the request is refused, that no location is handed back, and that the reason
+given is that the location could not be determined. This is the end-to-end form of the resolver's
+fail-safe refusal: before the resolver distinguished "not a link" from "a link whose target cannot
+be read", the unresolved component was carried through and this request was **permitted**, with the
+link's own path handed back as though it were a real location. Confirmed to fail against the
+implementation as it stood before this change.
 
 #### AgentKitCore-PathPolicy-OrthogonalWorkingDirectory: A Read-Write Working Directory Handles Relative Work
 
@@ -332,6 +353,26 @@ locations are listed with access levels.
 
 Asserts an absolute refusal still echoes the requested location and enumerates grants, but does not
 claim an interpretation occurred.
+
+#### AgentKitCore-PathPolicy-DenialNamesRealLocation: A Link Escape Names Where the Path Really Leads
+
+**Test**: `PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation`
+
+The denial-clarity scenario for the containment rule. A secret is written outside the permitted
+location and a directory link is created inside it, so the request is spelled inside the grant but
+resolves outside it. Asserts the denial carries `Resolved to:` naming the resolved real location of
+the outside file. This is the case an application author who mounts data under a granted folder
+will meet, and without this clause the denial reads as a defect. The scenario asserts only that the
+fact is stated; the message deliberately prescribes no remedy.
+
+#### AgentKitCore-PathPolicy-DenialNamesRealLocation: A Link-Free Denial Names No Real Location
+
+**Test**: `PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation`
+
+The complement, and the guard against the clause becoming unconditional. An ordinary absolute
+request outside the grant, involving no link at all, is refused; asserts the denial contains no
+`Resolved to:` clause. Emitting it always would repeat the line above it and would disclose a
+resolved location for requests where no redirection occurred.
 
 #### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: Bare Segment Under Empty Grants Produces the Worked Example
 

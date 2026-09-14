@@ -171,11 +171,18 @@ sections:
             title: >-
               A path policy shall deny a request whose location cannot be determined.
             justification: |
-              A model can supply text that no platform can interpret as a path. Denying what cannot
-              be understood is the fail-safe reading and keeps the non-throwing contract intact for
-              input the model controls.
+              A model can supply text that no platform can interpret as a path, and the file
+              system can present a component it marks as a link while reporting no target for it.
+              Denying what cannot be understood is the fail-safe reading and keeps the
+              non-throwing contract intact for input the model controls. The undecodable-link
+              case is the one route by which an unresolved component could previously have been
+              carried into a containment decision.
             tests:
               - PathPolicy_TryResolveRead_MalformedPath_ReturnsDenial
+              # Windows-only evidence: a component the file system marks as a link but for which
+              # the platform reports no target has no equivalent on POSIX platforms, where every
+              # link is a symbolic link and is always decoded.
+              - "windows@PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial"
 
           - id: AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
             title: >-
@@ -206,6 +213,27 @@ sections:
               - PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim
               - PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses
               - PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause
+
+          - id: AgentKitCore-PathPolicy-DenialNamesRealLocation
+            title: >-
+              A denial reported by a path policy shall name the real location the request
+              resolved to when that location differs from the one already reported, and shall
+              omit it otherwise.
+            tags: [security]
+            justification: |
+              The containment rule is: resolve to the real location, then require that real
+              location to be granted. A link or mount placed under a granted folder that resolves
+              elsewhere is therefore denied, which an application author who created it reads as
+              a defect unless the denial says where the path actually leads. Naming the real
+              location states the fact that decided the outcome. It is omitted when it matches
+              what the reader has already been shown, so a denial with nothing extra to say adds
+              nothing and discloses no location a link-free request did not already name, and it
+              is unavailable when resolution itself failed. The line states a fact and prescribes
+              no remedy; whether to grant the target is the author's decision, consistent with
+              the project rule that denials never tell the reader what to do.
+            tests:
+              - PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation
+              - PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation
 
           - id: AgentKitCore-PathPolicy-DialectMirroring
             title: >-

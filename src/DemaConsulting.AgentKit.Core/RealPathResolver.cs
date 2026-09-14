@@ -85,6 +85,20 @@ public static class RealPathResolver
     ///     continues beneath it, which makes the returned location real all the way down.
     ///     </para>
     ///     <para>
+    ///     <b>Why an undecodable link is refused rather than carried through.</b> A path
+    ///     component may exist, be marked as a link by the file system, and still yield no
+    ///     target, because the platform decodes only the link kinds it knows. "Not a link" and
+    ///     "a link whose target I cannot read" are then indistinguishable from the target
+    ///     alone, and treating the second as the first would carry an unresolved redirection
+    ///     into the result: the returned location would not be real, and a containment check
+    ///     over it would judge the link's own path rather than what the link reaches. The link
+    ///     attribute is therefore consulted first, and a component that is marked as a link but
+    ///     reports no target is refused as unresolvable. Denying the unknown is the fail-safe
+    ///     reading this class exists to uphold, and it is reported as the same
+    ///     <see cref="IOException"/> the depth bound raises so callers need not distinguish the
+    ///     two.
+    ///     </para>
+    ///     <para>
     ///     <b>Cost and non-existent components.</b> Resolution performs at most one metadata
     ///     probe per existing component, all served from the operating system's directory
     ///     cache. Re-walking a substituted target costs additional probes only when a reparse
@@ -113,7 +127,8 @@ public static class RealPathResolver
     ///     Thrown when <paramref name="path"/> is an empty string or is not a valid path.
     /// </exception>
     /// <exception cref="IOException">
-    ///     Thrown when a link chain is cyclic or exceeds the platform's resolution depth.
+    ///     Thrown when a link chain is cyclic or exceeds the platform's resolution depth, or
+    ///     when a path component is marked as a link but the platform reports no target for it.
     ///     Callers that must not fail on a hostile path should catch this and treat it as a
     ///     denial, which is the fail-safe interpretation.
     /// </exception>
@@ -148,7 +163,8 @@ public static class RealPathResolver
     ///     Thrown when <paramref name="path"/> is an empty string or is not a valid path.
     /// </exception>
     /// <exception cref="IOException">
-    ///     Thrown when a link chain is cyclic or exceeds the platform's resolution depth.
+    ///     Thrown when a link chain is cyclic or exceeds the platform's resolution depth, or
+    ///     when a path component is marked as a link but the platform reports no target for it.
     /// </exception>
     private static string ResolveBounded(string path, int depth)
     {
@@ -192,17 +208,37 @@ public static class RealPathResolver
         {
             accumulated = Path.Combine(accumulated, component);
 
+            // Ask the metadata already retrieved for this component whether it is a link at
+            // all. Testing the attribute first is what separates "not a link" from "a link",
+            // and it costs nothing extra: a component that is not a link is settled by the
+            // probe the walk already performs and never reaches the resolution below.
+            var entry = Probe(accumulated);
+            if (entry is null || !entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                continue;
+            }
+
             // Ask for the final target so that a chain of links is followed to its end in one
             // step rather than requiring this loop to iterate over intermediate links.
-            var target = Probe(accumulated)?.ResolveLinkTarget(returnFinalTarget: true);
-            if (target is not null)
+            var target = entry.ResolveLinkTarget(returnFinalTarget: true);
+            if (target is null)
             {
-                // Resolve the target rather than trusting it: the platform follows the chain
-                // but leaves the target's own ancestors unresolved, and an unresolved ancestor
-                // here is exactly what lets a containment check pass for a location that is
-                // physically elsewhere.
-                accumulated = ResolveBounded(target.FullName, depth + 1);
+                // The component is a link the platform declines to decode: the attribute says
+                // a redirection is recorded here, and the target is unavailable. Carrying the
+                // component through unchanged would return a location that is not real, and a
+                // containment decision made from it would judge the link rather than what the
+                // link reaches. Refusing is the fail-safe reading and is reported as the same
+                // exception the depth bound raises, which callers already treat as a denial.
+                throw new IOException(
+                    $"The path '{accumulated}' could not be resolved: it is a link whose target " +
+                    "the platform does not report.");
             }
+
+            // Resolve the target rather than trusting it: the platform follows the chain
+            // but leaves the target's own ancestors unresolved, and an unresolved ancestor
+            // here is exactly what lets a containment check pass for a location that is
+            // physically elsewhere.
+            accumulated = ResolveBounded(target.FullName, depth + 1);
         }
 
         // A link target may itself be recorded as a relative path, so normalize once more
@@ -218,7 +254,9 @@ public static class RealPathResolver
     ///     Only an entry that exists can be a reparse point, so the walk needs a single probe
     ///     that answers "is there a directory, a file, or nothing here?". A component that
     ///     exists as neither is not an error — it is simply a part of the path that has not
-    ///     been created yet, and it is carried through unchanged.
+    ///     been created yet, and it is carried through unchanged. The returned metadata is the
+    ///     one the caller then reads the reparse-point attribute from, so the walk never pays
+    ///     for a second look at the same component.
     /// </remarks>
     /// <param name="path">The absolute path to probe.</param>
     /// <returns>

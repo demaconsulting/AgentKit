@@ -73,6 +73,52 @@ public class PathPolicyTests
     }
 
     /// <summary>
+    ///     Gets a value indicating whether this platform can express a link whose kind the
+    ///     platform itself does not decode.
+    /// </summary>
+    /// <remarks>
+    ///     Consulted by xUnit as a skip condition; see the matching condition on
+    ///     <see cref="RealPathResolverTests"/> for why only Windows has such a case.
+    /// </remarks>
+    public static bool SupportsUndecodableLinks => OperatingSystem.IsWindows();
+
+    /// <summary>
+    ///     Proves that a path passing through an entry marked as a link whose target the platform
+    ///     declines to report is refused rather than permitted at the link's own location.
+    /// </summary>
+    /// <remarks>
+    ///     The end-to-end form of the resolver's fail-safe refusal. Before the resolver
+    ///     distinguished "not a link" from "a link I cannot resolve", the unresolved component was
+    ///     carried through and this request was <em>permitted</em>, with the link's own path handed
+    ///     back as though it were a real location.
+    /// </remarks>
+    [Fact(
+        Skip = "Windows-only: a reparse point carrying a tag the platform does not decode has " +
+               "no equivalent on POSIX platforms, where every link is a symbolic link and is " +
+               "always decoded.",
+        SkipUnless = nameof(SupportsUndecodableLinks))]
+    public void PathPolicy_TryResolveRead_UndecodableLinkInsideGrant_ReturnsDenial()
+    {
+        // Arrange: an entry inside the granted root marked as a link nothing can decode
+        using var fixture = new ReparsePointFixture();
+        var policy = CreateRootedPolicy(fixture.Root);
+        fixture.CreateUndecodableReparsePoint("mount");
+        var requested = Path.Combine(policy.WorkingDirectory, "mount", "secret.txt");
+
+        // Act: ask the policy for a path that passes through it
+        var permitted = policy.TryResolveRead(requested, out var realPath, out var denial);
+
+        // Assert: refused, with no location handed back and the unknown stated as the reason
+        Assert.False(permitted);
+        Assert.Null(realPath);
+        Assert.NotNull(denial);
+        Assert.Contains(
+            "could not be resolved to a real location",
+            denial,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves that a relative path climbing out of the working directory is refused.
     /// </summary>
     [Fact]
@@ -882,6 +928,62 @@ public class PathPolicyTests
         Assert.NotNull(denial);
         Assert.Contains($"Requested: \"{requested}\"", denial, StringComparison.Ordinal);
         Assert.DoesNotContain("Interpreted as:", denial, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a denial for a path that is spelled inside a permitted location but leads
+    ///     outside it names the real location the path resolved to.
+    /// </summary>
+    /// <remarks>
+    ///     An author who mounts data beneath a granted folder sees a request that looks contained
+    ///     being refused, and without the real location the denial reads as a defect. The message
+    ///     states where the path actually leads and stops there: what to do about it is the
+    ///     author's decision.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_TryResolveRead_LinkEscape_DenialNamesTheRealLocation()
+    {
+        // Arrange: a secret outside the root, reachable through a link inside it
+        using var fixture = new ReparsePointFixture();
+        var secret = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
+        fixture.CreateDirectoryLink("junction", fixture.Outside);
+        var policy = CreateRootedPolicy(fixture.Root);
+        var requested = Path.Combine(policy.WorkingDirectory, "junction", "secret.txt");
+
+        // Act: ask for the contained-looking path
+        policy.TryResolveRead(requested, out _, out var denial);
+
+        // Assert: the denial names where the path really leads, and prescribes nothing
+        Assert.NotNull(denial);
+        Assert.Contains(
+            $"Resolved to: {RealPathResolver.Resolve(secret)}",
+            denial,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a denial for a path that leads exactly where it is spelled says nothing
+    ///     about a real location, because there is nothing further to state.
+    /// </summary>
+    /// <remarks>
+    ///     The clause exists to explain a redirection. Emitting it unconditionally would repeat
+    ///     the line above it and would disclose a resolved location for requests where no
+    ///     redirection occurred.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_TryResolveRead_LinkFreeDenial_DoesNotNameARealLocation()
+    {
+        // Arrange: a granted anchor and an ordinary absolute request outside it
+        using var fixture = new ReparsePointFixture();
+        var requested = ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "x");
+        var policy = CreateRootedPolicy(RealPathResolver.Resolve(fixture.Root));
+
+        // Act: an absolute request that involves no link at all
+        policy.TryResolveRead(RealPathResolver.Resolve(requested), out _, out var denial);
+
+        // Assert: the denial carries no resolved-location clause
+        Assert.NotNull(denial);
+        Assert.DoesNotContain("Resolved to:", denial, StringComparison.Ordinal);
     }
 
     /// <summary>

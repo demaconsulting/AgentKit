@@ -10,8 +10,9 @@ precisely the behavior of the operating system's link resolution, so a simulated
 would verify the simulation rather than the control.
 
 Each test creates its own temporary tree through `ReparsePointFixture`, which provides an allowed
-root, a sibling directory outside it, and the ability to create a genuine directory link between
-them.
+root, a sibling directory outside it, the ability to create a genuine directory link between them,
+and — on Windows — the ability to mark an entry as a reparse point carrying a tag the platform
+does not decode.
 
 Unit tests reside in `RealPathResolverTests.cs` within the `DemaConsulting.AgentKit.Core.Tests`
 project.
@@ -37,13 +38,25 @@ project.
   Linux and macOS source filters so the evidence comes only from platforms that actually ran it.
   This is distinct from the fixture's failure policy above: the scenario is visibly not run
   rather than silently passing, and the requirement is not credited by the Windows run
+- **Windows-conditional scenarios**: Two scenarios need a path component the file system marks as
+  a link but for which the platform reports no target. Only Windows has such a thing: a reparse
+  point may carry a tag nothing on the system decodes, whereas every link a POSIX file system can
+  express is a symbolic link and is always decoded. The fixture creates one by writing a reparse
+  point with a tag outside the Microsoft-reserved range, in the GUID-carrying form the platform
+  defines for third-party tags. That needs write access to an empty directory and **no
+  elevation** — confirmed on an unelevated developer session — and **no external subsystem**, so
+  it holds the same property as the junction fixture: it cannot be green on an elevated runner
+  and red on a workstation. The scenarios declare an explicit skip condition on POSIX platforms
+  and the requirement they serve carries Windows source filters, so the Linux and macOS runs are
+  not counted as evidence
 - **Mocking**: None; introducing any would invalidate the verification
 - **Isolation**: Each test constructs and disposes its own fixture; no state is shared
 
 ### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or unexpected exception,
-excepting the platform-conditional scenario on Windows, which is skipped with its reason
+A unit test run passes when all eleven scenarios below pass without error or unexpected exception,
+excepting the platform-conditional scenarios — the link-target-through-a-link scenario on Windows
+and the two undecodable-link scenarios on Linux and macOS — which are skipped with their reasons
 recorded. Any unexpected exception type, any resolved location that differs from the one
 specified, and any failure to create or tear down the reparse point constitutes a failure.
 
@@ -123,6 +136,30 @@ combined with the file's name, and that resolving the result again returns the s
 The expectation is expressed relative to the resolved root rather than to the raw temporary path
 because on macOS the temporary directory is itself reached through a symbolic link; the property
 under test is that no *further* redirection occurs.
+
+#### AgentKitCore-RealPathResolver-UndecodableLink: A Link the Platform Cannot Decode Is Refused
+
+**Test**: `RealPathResolver_Resolve_ComponentIsUndecodableLink_ThrowsIOException`
+
+Regression guard for a fail-open, and one of the two Windows-conditional scenarios. Creates an
+entry inside the root that the file system marks as a reparse point carrying a tag nothing on the
+system decodes, then resolves a path passing through it. Asserts that an `IOException` is raised
+and that its message names the component that could not be resolved. Before the walk distinguished
+"not a link" from "a link whose target cannot be read", both reported no target, the component was
+appended unchanged, and the returned location named the link rather than what it reaches — a value
+a containment check, which is promised a real location and deliberately does not resolve, would
+then judge. The assertion is on the exception rather than on a resolved value because there is no
+correct value to return: the target is genuinely unknown, and refusing is the fail-safe reading.
+Confirmed to fail against the implementation as it stood before this change.
+
+#### AgentKitCore-RealPathResolver-UndecodableLink: The Link Itself Is Refused
+
+**Test**: `RealPathResolver_Resolve_UndecodableLinkItself_ThrowsIOException`
+
+The leaf form of the scenario above, stated separately because the leaf is the component a naive
+resolver is most likely to special-case, and because reporting the entry's own path here would
+return a location that is not real while looking entirely contained. Asserts that resolving the
+entry itself raises `IOException`. Also confirmed to fail against the previous implementation.
 
 #### AgentKitCore-RealPathResolver-RejectInvalidPath: Null Path Throws ArgumentNullException
 

@@ -28,6 +28,7 @@ sections:
           - AgentKitCore-RealPathResolver-Normalization
           - AgentKitCore-RealPathResolver-NonExistentPath
           - AgentKitCore-RealPathResolver-RejectInvalidPath
+          - AgentKitCore-RealPathResolver-UndecodableLink
           - AgentKitCore-PathRule-RootResolvedAtConstruction
           - AgentKitCore-PathPolicy-DenyEscapedPath
           - AgentKitCore-PathPolicy-RealPathReported
@@ -121,8 +122,9 @@ sections:
       - id: AgentKitCore-PathAccess-DenialDisclosure
         title: >-
           The library shall state in a denial the request it received, the location it interpreted
-          a relative request as, and the permitted locations with their access levels, so a
-          confined model learns where it may work instead of guessing.
+          a relative request as, the real location the request resolved to when that differs, and
+          the permitted locations with their access levels, so a confined model learns where it
+          may work instead of guessing.
         tags: [system]
         justification: |
           A denial that only refuses is useless to the agent receiving it: told nothing but "no",
@@ -131,10 +133,13 @@ sections:
           a confined model the truthful map of where it may work is worth more than concealing
           paths it is already confined to. A denial therefore echoes the request, states the
           interpretation when and only when a relative request was interpreted so a silent
-          wrong-target cannot pass unnoticed, and enumerates the permitted locations with their
-          levels. Each grant contributes its own description to that enumeration.
+          wrong-target cannot pass unnoticed, names the real location when a link or mount moved
+          the request somewhere the reader has not already been shown, and enumerates the
+          permitted locations with their levels. Each grant contributes its own description to
+          that enumeration. A denial states facts and prescribes no remedy.
         children:
           - AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
+          - AgentKitCore-PathPolicy-DenialNamesRealLocation
           - AgentKitCore-PathRule-Describe
         tests:
           - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations

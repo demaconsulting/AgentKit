@@ -57,9 +57,11 @@ absolute.
 5. Split the portion below the volume root into components, accepting either directory
    separator.
 6. Starting at the volume root, append one component at a time. At each accumulated prefix,
-   probe for a directory and then for a file; if the prefix exists, ask for its final link
-   target. When a target is reported, resolve that target by this same algorithm, replace the
-   accumulated prefix with the result, and continue with the remaining components beneath it.
+   probe for a directory and then for a file; when the prefix exists, ask the metadata already
+   retrieved whether it is marked as a reparse point. When it is, ask for its final link target:
+   resolve that target by this same algorithm, replace the accumulated prefix with the result,
+   and continue with the remaining components beneath it. When it is marked as a reparse point
+   but reports no target, refuse the path as unresolvable.
 7. Normalize once more and return, because a link target may itself be recorded relatively.
 
 **Postconditions:** the returned location is absolute, fully qualified, contains no relative
@@ -91,6 +93,26 @@ incompleteness is what made a platform whose temporary directory is itself reach
 link disagree with itself about where a location was; with the target resolved, both spellings
 report the same real location.
 
+**Why an undecodable link is refused rather than carried through.** The link attribute and the
+link target answer different questions. The attribute says whether the file system has recorded a
+redirection on an entry; the target says where that redirection leads, and it is available only
+for the link kinds the platform knows how to decode. Consulting the target alone therefore
+conflates "this is not a link" with "this is a link whose target I cannot read", because both
+report nothing. Treating the second as the first carries an unresolved redirection into the
+returned value: the location is no longer real, and the containment check made from it — which is
+promised a real location and deliberately does not resolve — judges the link's own path instead of
+what the link reaches. This was the one route by which the walk could return a value known not to
+be real; every other failure already denies. The attribute is consequently tested first, and a
+component marked as a link that reports no target raises the same error a cyclic or over-deep
+chain raises, which callers already treat as a denial. Denying the unknown is the fail-safe
+reading this unit is built on.
+
+The consequence is recorded rather than hidden: an entry carrying a link kind this platform cannot
+decode is refused even in the cases where the operating system's own I/O would have followed it
+transparently. Refusing a location that cannot be shown to be real is the posture a containment
+control must take; the application author's remedy, as for any other denial, is a grant naming the
+real location.
+
 **Why resolution is bounded.** Resolving a target recursively means a cyclic arrangement of
 links — one whose cycle is spread across two or more links, so that each individual chain
 terminates and the platform's own chain following cannot see it — would otherwise recurse
@@ -100,10 +122,12 @@ a cyclic chain raises. Failing is the fail-safe outcome: callers treat an unreso
 denial.
 
 **Cost.** At most one metadata probe per existing component, served from the operating system's
-directory cache. Resolving a substituted target costs further probes only where a reparse point
-is actually encountered, and the nesting is bounded as above, so a path containing no links pays
-exactly what it did before. Components that do not yet exist cannot be reparse points and are
-appended unchanged, which is what allows a write target to be judged before it is created.
+directory cache; the link attribute is read from that same probe, so a component that is not a
+link is settled without a second look and a path containing no links pays exactly what it did
+before. Resolving a substituted target costs further probes only where a reparse point is
+actually encountered, and the nesting is bounded as above. Components that do not yet exist cannot
+be reparse points and are appended unchanged, which is what allows a write target to be judged
+before it is created.
 
 #### ResolveBounded(string path, int depth)
 
@@ -119,7 +143,9 @@ path, so exposing it would offer only a way to weaken the guarantee.
 Private helper returning file system metadata for an existing path, or nothing when the path does
 not exist. Directories are probed first because a junction and a directory symbolic link both
 present as directories, and those are the escape vectors that matter most; a file is probed
-second because a POSIX file symbolic link can equally leave a permitted location.
+second because a POSIX file symbolic link can equally leave a permitted location. The metadata it
+returns is the same object the walk then reads the reparse-point attribute from, so no component
+is looked at twice.
 
 ### Error Handling
 
@@ -129,13 +155,15 @@ second because a POSIX file symbolic link can equally leave a permitted location
 | `path` is empty or not a valid path  | `ArgumentException` propagates             |
 | A link chain is cyclic or too deep   | `IOException` propagates                   |
 | Links form a cycle across each other | `IOException` raised once the bound is hit |
+| A component is a link with no target | `IOException` raised; the unknown denied   |
 | A component does not exist           | Not an error; component appended unchanged |
 | A path has no volume root            | Not an error; normalized path returned     |
 
 Nothing is handled locally. A missing path is a programming error in the caller and is surfaced
-immediately. A cyclic link chain is deliberately **not** converted into a result here, because
-whether an unresolvable path is a denial or a failure is a policy question, not a resolution
-question; see *PathPolicy Unit Design*, which catches it and denies.
+immediately. A cyclic link chain, and equally a link whose target the platform will not report,
+are deliberately **not** converted into a result here, because whether an unresolvable path is a
+denial or a failure is a policy question, not a resolution question; see *PathPolicy Unit Design*,
+which catches it and denies.
 
 ### Dependencies
 

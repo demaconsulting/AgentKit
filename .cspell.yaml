@@ -61,6 +61,9 @@ words:
   - postconditions
   - unserialized
   - yamlfix
+  - Landlock
+  - inodes
+  - TOCTOU
 
 # Exclude common build artifacts, dependencies, and vendored third-party code
 ignorePaths:

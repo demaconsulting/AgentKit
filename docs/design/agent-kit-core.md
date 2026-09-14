@@ -287,8 +287,10 @@ restraint.
 The measure is segregated into three units whose responsibilities do not overlap:
 
 - **RealPathResolver** establishes _where a path actually leads_, resolving symbolic links and
-  directory junctions at every path component. Isolating this makes the one algorithm whose
-  correctness the whole control depends on separately reviewable and separately testable.
+  directory junctions at every path component, and refusing any path it cannot establish a real
+  location for — including a component the file system marks as a link but for which the platform
+  reports no target. Isolating this makes the one algorithm whose correctness the whole control
+  depends on separately reviewable and separately testable.
 - **PathRule** establishes _what a location grants_, carrying an access level that is permission
   only: read-only or read-write. It has no addressing meaning and cannot silently change where a
   relative path resolves.

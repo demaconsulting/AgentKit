@@ -44,6 +44,16 @@ namespace DemaConsulting.AgentKit.Core;
 ///     outside a granted location through a link is refused exactly as an absolute one is.
 ///     </para>
 ///     <para>
+///     <b>The real location must itself be granted.</b> Containment is judged on where a path
+///     actually leads, not on how it is spelled, so a link or mount inside a granted location
+///     whose target lies elsewhere is denied unless that target is separately granted. This is
+///     the established convention for confinement mechanisms, and the escape hatch is the one
+///     they all offer: the application author adds a grant for the target. A denial names the
+///     real location when it differs from the spelling, so the cause is evident; see
+///     <em>PathPolicy Unit Design</em> for the convention this follows and the trade-off it
+///     carries.
+///     </para>
+///     <para>
 ///     <b>Denial is a return value, not an exception.</b> A refused path is reported by returning
 ///     <see langword="false"/> with a denial message. An exception thrown at a model's tool call
 ///     ends the agent's turn and strands it with no way forward, whereas a returned denial lets the
@@ -674,7 +684,11 @@ public sealed class PathPolicy
             // is the fail-safe reading, and it keeps the promise that no exception escapes.
             realPath = null;
             denialMessage = BuildDenial(
-                "could not be resolved to a real location", path, wasRelative, interpretedAbsolute);
+                "could not be resolved to a real location",
+                path,
+                wasRelative,
+                interpretedAbsolute,
+                resolvedReal: null);
             return false;
         }
 
@@ -690,7 +704,7 @@ public sealed class PathPolicy
         // enumerate what is permitted so the model can re-address rather than guess.
         realPath = null;
         var reason = ClassifyDenial(resolved, requireWrite);
-        denialMessage = BuildDenial(reason, path, wasRelative, interpretedAbsolute);
+        denialMessage = BuildDenial(reason, path, wasRelative, interpretedAbsolute, resolved);
         return false;
     }
 
@@ -819,10 +833,10 @@ public sealed class PathPolicy
     /// </summary>
     /// <remarks>
     ///     Normalization is lexical only — it collapses "." and ".." against the already-absolute
-    ///     input and does not touch the file system. It deliberately does not resolve links: the
-    ///     per-component reparse walk in <see cref="RealPathResolver"/> exists for the containment
-    ///     decision, and placing a link-resolved real path into a denial would disclose a link
-    ///     target the caller never named. Only the reported value is normalized; the candidate
+    ///     input and does not touch the file system. It deliberately does not resolve links: this
+    ///     line reports how the request was <em>read</em>, and the location a link actually leads
+    ///     to is reported separately by <see cref="BuildDenial"/>, which names the resolved real
+    ///     location only when it differs. Only the reported value is normalized; the candidate
     ///     handed to the resolver is unchanged, so containment is unaffected. Because the path is
     ///     caller-controlled, normalization can throw on malformed input (invalid characters, an
     ///     over-long result); a denial must never throw, so the same resolution-class failures
@@ -911,21 +925,46 @@ public sealed class PathPolicy
 
     /// <summary>
     ///     Builds a denial message stating what was asked for, how it was interpreted when that
-    ///     happened, and which locations are permitted.
+    ///     happened, where it actually resolved to when that differs, and which locations are
+    ///     permitted.
     /// </summary>
     /// <remarks>
-    ///     The three parts appear in order: the requested input echoed verbatim; the interpreted
+    ///     <para>
+    ///     The four parts appear in order: the requested input echoed verbatim; the interpreted
     ///     absolute location, present only when a relative request was joined to the working
     ///     directory, so an interpretation is never reported that did not occur and the
-    ///     interpretation is never reported on its own; and the permitted locations, each with its
-    ///     access level, or a statement that none are permitted.
+    ///     interpretation is never reported on its own; the real location the request resolved
+    ///     to, present only when it differs from the location already reported; and the
+    ///     permitted locations, each with its access level, or a statement that none are
+    ///     permitted.
+    ///     </para>
+    ///     <para>
+    ///     <b>Why the real location is named.</b> A path that is spelled inside a permitted
+    ///     location and yet resolves outside it is denied for a reason nothing else in the
+    ///     message discloses, and an author who mounted data beneath a granted folder would
+    ///     otherwise read the denial as a defect. Naming where the path actually resolved to
+    ///     states the fact that decided the outcome. It is omitted whenever the resolved
+    ///     location matches what the reader already sees, so a denial that has nothing extra to
+    ///     say adds nothing, and it discloses no location a link-free request did not already
+    ///     name. The line states a fact and prescribes nothing: what to do about it — whether
+    ///     to add a grant for the target — is the author's decision, not the message's.
+    ///     </para>
     /// </remarks>
     /// <param name="reason">The reason phrase for the denial.</param>
     /// <param name="path">The caller's requested path; may be null.</param>
     /// <param name="wasRelative">Whether the request was interpreted against the working directory.</param>
     /// <param name="interpretedAbsolute">The absolute location the request was interpreted as.</param>
+    /// <param name="resolvedReal">
+    ///     The real location the request resolved to, or <see langword="null"/> when resolution
+    ///     itself failed and no real location is known.
+    /// </param>
     /// <returns>The constructed denial message.</returns>
-    private string BuildDenial(string reason, string? path, bool wasRelative, string interpretedAbsolute)
+    private string BuildDenial(
+        string reason,
+        string? path,
+        bool wasRelative,
+        string interpretedAbsolute,
+        string? resolvedReal)
     {
         var builder = new StringBuilder();
         builder.Append("Denied: ").Append(reason).Append('.');
@@ -940,7 +979,15 @@ public sealed class PathPolicy
             builder.Append('\n').Append("Interpreted as: ").Append(interpretedAbsolute);
         }
 
-        // (c) What is actually permitted, enumerated with access levels.
+        // (c) Where it really leads, only when a link or mount moved it somewhere the reader
+        // has not already been shown; otherwise the line would repeat what is above it.
+        if (resolvedReal is not null &&
+            !string.Equals(resolvedReal, interpretedAbsolute, PathComparison))
+        {
+            builder.Append('\n').Append("Resolved to: ").Append(resolvedReal);
+        }
+
+        // (d) What is actually permitted, enumerated with access levels.
         if (_grants.Length == 0)
         {
             builder.Append('\n').Append("No locations are permitted.");

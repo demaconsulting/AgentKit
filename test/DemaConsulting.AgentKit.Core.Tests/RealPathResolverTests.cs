@@ -25,6 +25,82 @@ public class RealPathResolverTests
     public static bool SupportsLinkTargetsSpelledThroughLinks => !OperatingSystem.IsWindows();
 
     /// <summary>
+    ///     Gets a value indicating whether this platform can express a link whose kind the
+    ///     platform itself does not decode.
+    /// </summary>
+    /// <remarks>
+    ///     Consulted by xUnit as a skip condition. Only Windows has reparse points carrying a
+    ///     tag nothing on the system can interpret; every link a POSIX file system can express
+    ///     is a symbolic link, which is always decoded, so there is no such case to create
+    ///     there. The condition is written as "Windows" rather than as a probe so that a
+    ///     Windows run which could not create the arrangement fails rather than quietly skips.
+    /// </remarks>
+    public static bool SupportsUndecodableLinks => OperatingSystem.IsWindows();
+
+    /// <summary>
+    ///     Proves that a path component marked as a link whose target the platform declines to
+    ///     report is refused rather than carried through unresolved.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Regression guard for a fail-open. "Not a link" and "a link whose target I cannot
+    ///     read" both report no target, so a resolver that consults the target alone treats the
+    ///     second as the first and appends the component unchanged. The returned location then
+    ///     names the link rather than what the link reaches, and a containment check over it —
+    ///     which is promised a real location and deliberately does not resolve — judges the
+    ///     wrong location. Every other way this resolution can fail already denies; this was
+    ///     the one route that silently allowed.
+    ///     </para>
+    ///     <para>
+    ///     The assertion is on the exception, not on a resolved value, because there is no
+    ///     correct value to return: the target is genuinely unknown, and refusing is the
+    ///     fail-safe reading the class documents.
+    ///     </para>
+    /// </remarks>
+    [Fact(
+        Skip = "Windows-only: a reparse point carrying a tag the platform does not decode has " +
+               "no equivalent on POSIX platforms, where every link is a symbolic link and is " +
+               "always decoded.",
+        SkipUnless = nameof(SupportsUndecodableLinks))]
+    public void RealPathResolver_Resolve_ComponentIsUndecodableLink_ThrowsIOException()
+    {
+        // Arrange: an entry inside the root marked as a link whose kind nothing can decode
+        using var fixture = new ReparsePointFixture();
+        var undecodable = fixture.CreateUndecodableReparsePoint("mount");
+        var requested = Path.Combine(undecodable, "secret.txt");
+
+        // Act & Assert: the component is refused rather than appended unchanged, and the
+        // message names the component that could not be resolved
+        var exception = Assert.Throws<IOException>(() => RealPathResolver.Resolve(requested));
+        Assert.Contains(undecodable, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that an entry that is itself a link whose target the platform declines to
+    ///     report is refused, not reported as its own location.
+    /// </summary>
+    /// <remarks>
+    ///     The leaf case of the scenario above. It is stated separately because the leaf is the
+    ///     component a naive resolver would be most likely to special-case, and because a
+    ///     resolver that returned the entry's own path here would report a location that is not
+    ///     real while looking entirely contained.
+    /// </remarks>
+    [Fact(
+        Skip = "Windows-only: a reparse point carrying a tag the platform does not decode has " +
+               "no equivalent on POSIX platforms, where every link is a symbolic link and is " +
+               "always decoded.",
+        SkipUnless = nameof(SupportsUndecodableLinks))]
+    public void RealPathResolver_Resolve_UndecodableLinkItself_ThrowsIOException()
+    {
+        // Arrange: the link itself, with nothing requested beneath it
+        using var fixture = new ReparsePointFixture();
+        var undecodable = fixture.CreateUndecodableReparsePoint("mount");
+
+        // Act & Assert: refused rather than reported as its own real location
+        Assert.Throws<IOException>(() => RealPathResolver.Resolve(undecodable));
+    }
+
+    /// <summary>
     ///     Proves that a file whose enclosing directory is reached through a directory link is
     ///     reported at its real location outside the allowed root.
     /// </summary>
