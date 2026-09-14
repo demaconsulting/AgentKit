@@ -46,7 +46,12 @@ reviews:
   - id: Purpose
     title: Review that README and User Guide are Coherent and Complete
     context:
-      - "!docs/design/introduction.md"                              # exclude design intro from user-facing review
+      # The user guide documents the three samples, so the samples index is useful
+      # orientation for judging whether that documentation is coherent. Context is not
+      # fingerprinted, and the standard's Context Files table lists context to add rather
+      # than an exclusive set, so this addition is permitted. The global
+      # docs/design/introduction.md context is NOT negated here: the standard says to
+      # always include it as global context for every reviewer.
       - "samples/README.md"                                         # samples index (orientation only)
     paths:
       - "README.md"                                                 # project readme
@@ -60,6 +65,12 @@ reviews:
       - "docs/user_guide/**/*.md"
     paths:
       - "requirements.yaml"                                         # root requirements file
+      # Repo-level quality/process requirements grouping. It is a root-tagged
+      # requirements file that belongs to no system, so no {SystemName}-AllRequirements
+      # set can own it; it is reviewed here alongside the root requirements file it
+      # is included from. Deliberate, documented deviation from the standard's
+      # Decomposition path list.
+      - "docs/reqstream/quality.yaml"                               # repo-level quality requirements
       - "docs/design/introduction.md"                               # design introduction
       - "docs/sysml2/**/*.sysml"                                    # SysML2 model (authoritative structure)
 
@@ -109,8 +120,7 @@ reviews:
       - "docs/design/agent-kit-core.md"
       - "docs/reqstream/agent-kit-core.yaml"
     paths:
-      - "requirements.yaml"                                                 # root requirements file
-      - "docs/reqstream/**/*.yaml"                                          # all requirements files
+      - "docs/reqstream/agent-kit-core/**/*.yaml"                           # all Core requirements files
 
   # AgentKitCore-GuardedToolFactory Review (one per unit)
   - id: AgentKitCore-GuardedToolFactory
@@ -986,7 +996,6 @@ reviews:
       - "docs/design/agent-kit-agents-chat-client.md"
       - "docs/reqstream/agent-kit-agents-chat-client.yaml"
     paths:
-      - "docs/reqstream/agent-kit-agents-chat-client.yaml"                  # system requirements
       - "docs/reqstream/agent-kit-agents-chat-client/**/*.yaml"             # all ChatClient requirements files
 
   # AgentKitAgentsChatClient-ChatClientAgentFactory Review (one per unit)
@@ -1048,7 +1057,6 @@ reviews:
       - "docs/design/agent-kit-agents-copilot.md"
       - "docs/reqstream/agent-kit-agents-copilot.yaml"
     paths:
-      - "docs/reqstream/agent-kit-agents-copilot.yaml"                      # system requirements
       - "docs/reqstream/agent-kit-agents-copilot/**/*.yaml"                 # all Copilot requirements files
 
   # AgentKitAgentsCopilot-CopilotAgentFactory Review (one per unit)

@@ -335,6 +335,184 @@ if ($toolSources) {
     }
 }
 
+# [PROJECT-SPECIFIC] Review-set hierarchy conformance.
+#
+# 'reviewmark --lint' validates that .reviewmark.yaml parses and 'reviewmark --plan' reports
+# whether every file is covered by some review-set. Neither says anything about WHICH set a
+# file belongs to, so a review-set may be scoped wrongly and still pass both: the
+# AgentKitCore-AllRequirements set carried 'docs/reqstream/**/*.yaml' and fingerprinted 81
+# files - every other system's requirements - instead of the 11 under its own system folder,
+# and every gate was green the whole time.
+#
+# The systems are read from the top-level SysML2 model files rather than restated here, so a
+# system added, renamed or removed is picked up automatically and this check cannot go stale.
+# For each modelled system the four prescribed sets must exist with the prescribed titles and
+# the prescribed scope, per the 'Review-Set Organization' section of reviewmark-usage.md.
+#
+# Path assertions are deliberately asymmetric, because the two failure modes differ:
+#   - '-AllRequirements' is asserted to be EXACTLY the system's requirements glob. That set
+#     exists to keep the requirements review bounded, so any extra entry is the defect.
+#   - '-Architecture', '-Design' and '-Verification' are asserted to CONTAIN the prescribed
+#     documents. Those sets legitimately carry extras - integration tests, shared test
+#     helpers, the OTS overview - so requiring equality would report correct configuration
+#     as an error.
+# Context is asserted as containment for the same reason.
+#
+# LIMIT, stated plainly: this checks the system tier only. Subsystem and unit sets are not
+# checked, because their legitimate contents are not derivable - subsystem sets deliberately
+# carry shared helper sources that are not units (TextLines.cs, MemoryEmbedding.cs and
+# others), and no rule distinguishes those from a unit source wrongly pulled up a level.
+# Whether a subsystem set is scoped correctly remains a reviewer's responsibility.
+Write-Host "Linting: review-set hierarchy..."
+
+$reviewConfigPath = '.reviewmark.yaml'
+if ((Test-Path $reviewConfigPath) -and (Test-Path docs/sysml2/model)) {
+    $reviewSets = @()
+    $currentSet = $null
+    $currentList = $null
+
+    foreach ($line in Get-Content $reviewConfigPath) {
+        if ($line -match '^\s*#') { continue }
+        if ($line -match '^  - id:\s*(\S+)\s*$') {
+            if ($currentSet) { $reviewSets += $currentSet }
+            $currentSet = [pscustomobject]@{ Id = $Matches[1]; Title = ''; Paths = @(); Context = @() }
+            $currentList = $null
+            continue
+        }
+        if (-not $currentSet) { continue }
+        if ($line -match '^    title:\s*(.+?)\s*$') { $currentSet.Title = $Matches[1]; $currentList = $null; continue }
+        if ($line -match '^    paths:\s*$') { $currentList = 'paths'; continue }
+        if ($line -match '^    context:\s*$') { $currentList = 'context'; continue }
+        if ($currentList -and $line -match '^      - "?([^"#]+?)"?\s*(#.*)?$') {
+            if ($currentList -eq 'paths') { $currentSet.Paths += $Matches[1] } else { $currentSet.Context += $Matches[1] }
+        }
+    }
+    if ($currentSet) { $reviewSets += $currentSet }
+
+    $modelledSystems = Get-ChildItem docs/sysml2/model -File -Filter *.sysml -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.BaseName }
+
+    if ($reviewSets.Count -eq 0 -or $modelledSystems.Count -eq 0) {
+        # Fail closed: an empty review-set list or an empty system list would pass vacuously.
+        Write-Host "review-sets: no review-sets or no modelled systems were found"
+        $lintError = $true
+    }
+    else {
+        function Test-ReviewSetMembers {
+            param($Set, $Kind, [string[]]$Members, [string[]]$Required)
+            foreach ($required in $Required) {
+                if ($Members -notcontains $required) {
+                    Write-Host "review-sets: $($Set.Id) $Kind omits '$required'"
+                    $script:lintError = $true
+                }
+            }
+        }
+
+        $systemPrefixes = @()
+
+        foreach ($kebab in $modelledSystems) {
+            $pascal = ($kebab -split '-' | ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1) }) -join ''
+            $systemPrefixes += $pascal
+
+            $expected = @(
+                @{ Suffix = 'Architecture'
+                    Title = "Review that $pascal Architecture Satisfies Requirements"
+                    Paths = @("docs/reqstream/$kebab.yaml", 'docs/design/introduction.md', "docs/design/$kebab.md",
+                        'docs/verification/introduction.md', "docs/verification/$kebab.md")
+                    Context = @('README.md', 'docs/user_guide/**/*.md')
+                    Exact = $false
+                }
+                @{ Suffix = 'Design'
+                    Title = "Review that $pascal Design is Consistent and Complete"
+                    Paths = @('docs/design/introduction.md', "docs/design/$kebab.md", "docs/design/$kebab/**/*.md")
+                    Context = @("docs/reqstream/$kebab.yaml")
+                    Exact = $false
+                }
+                @{ Suffix = 'Verification'
+                    Title = "Review that $pascal Verification is Consistent and Complete"
+                    Paths = @('docs/verification/introduction.md', "docs/verification/$kebab.md",
+                        "docs/verification/$kebab/**/*.md")
+                    Context = @("docs/reqstream/$kebab.yaml")
+                    Exact = $false
+                }
+                @{ Suffix = 'AllRequirements'
+                    Title = "Review that All $pascal Requirements are Complete"
+                    Paths = @("docs/reqstream/$kebab/**/*.yaml")
+                    Context = @("docs/design/$kebab.md", "docs/reqstream/$kebab.yaml")
+                    Exact = $true
+                }
+            )
+
+            foreach ($spec in $expected) {
+                $id = "$pascal-$($spec.Suffix)"
+                $matching = @($reviewSets | Where-Object { $_.Id -eq $id })
+                if ($matching.Count -ne 1) {
+                    Write-Host "review-sets: the model defines system '$kebab' but .reviewmark.yaml has $($matching.Count) '$id' review-sets; expected exactly 1"
+                    $lintError = $true
+                    continue
+                }
+
+                $set = $matching[0]
+                if ($set.Title -ne $spec.Title) {
+                    Write-Host "review-sets: $id is titled '$($set.Title)'; the standard prescribes '$($spec.Title)'"
+                    $lintError = $true
+                }
+
+                Test-ReviewSetMembers -Set $set -Kind 'paths' -Members $set.Paths -Required $spec.Paths
+                Test-ReviewSetMembers -Set $set -Kind 'context' -Members $set.Context -Required $spec.Context
+
+                if ($spec.Exact) {
+                    foreach ($path in $set.Paths) {
+                        if ($spec.Paths -notcontains $path) {
+                            Write-Host "review-sets: $id includes '$path', which widens it beyond the system's own requirements"
+                            $lintError = $true
+                        }
+                    }
+                }
+            }
+        }
+
+        # Repository-level sets: exactly one of each, and 'Purpose' scoped to user-facing prose only.
+        foreach ($id in @('Purpose', 'Decomposition')) {
+            $matching = @($reviewSets | Where-Object { $_.Id -eq $id })
+            if ($matching.Count -ne 1) {
+                Write-Host "review-sets: .reviewmark.yaml has $($matching.Count) '$id' review-sets; the standard allows exactly 1 per repository"
+                $lintError = $true
+            }
+        }
+
+        $purpose = @($reviewSets | Where-Object { $_.Id -eq 'Purpose' })
+        if ($purpose.Count -eq 1) {
+            $purposePaths = @('README.md', 'docs/user_guide/**/*.md')
+            if (@(Compare-Object $purpose[0].Paths $purposePaths).Count -ne 0) {
+                Write-Host "review-sets: Purpose is scoped to [$($purpose[0].Paths -join ', ')]; the standard prescribes README and the user guide only"
+                $lintError = $true
+            }
+        }
+
+        $decomposition = @($reviewSets | Where-Object { $_.Id -eq 'Decomposition' })
+        if ($decomposition.Count -eq 1) {
+            Test-ReviewSetMembers -Set $decomposition[0] -Kind 'paths' -Members $decomposition[0].Paths `
+                -Required @('requirements.yaml', 'docs/design/introduction.md', 'docs/sysml2/**/*.sysml')
+            Test-ReviewSetMembers -Set $decomposition[0] -Kind 'context' -Members $decomposition[0].Context `
+                -Required @('README.md', 'docs/user_guide/**/*.md')
+        }
+
+        # A prefixed review-set whose prefix is not a modelled system, OTS or Shared item is
+        # left over from a rename: it covers files nothing else claims, under a name that no
+        # longer corresponds to anything in the tree.
+        $knownPrefixes = $systemPrefixes + @('OTS', 'Shared')
+        foreach ($set in $reviewSets) {
+            if ($set.Id -notmatch '-') { continue }
+            $prefix = ($set.Id -split '-')[0]
+            if ($knownPrefixes -notcontains $prefix) {
+                Write-Host "review-sets: $($set.Id) is prefixed '$prefix', which is not a modelled system, OTS or Shared item"
+                $lintError = $true
+            }
+        }
+    }
+}
+
 # --- DOTNET FORMATTING SECTION ---
 # Verifies C# code formatting matches .editorconfig rules.
 Write-Host "Linting: dotnet format..."
