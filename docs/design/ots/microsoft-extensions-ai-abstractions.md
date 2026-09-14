@@ -23,7 +23,7 @@ NuGet dependency AgentKit carries.
 ### Integration Pattern
 
 `Microsoft.Extensions.AI.Abstractions` is consumed as the tool currency by `GuardedToolFactory`
-in `AgentKitCore`, which references it as a **direct** `PackageReference` at version `10.10.0`.
+in `AgentKitCore`, which references it as a **direct** `PackageReference`.
 `AgentKitTools` reaches the same abstraction **transitively** through its `ProjectReference` to
 `AgentKitCore`; it takes no direct package reference of its own, so a tool family composes through
 the same currency Core publishes without restating a dependency Core already owns. There is no

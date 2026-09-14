@@ -58,7 +58,7 @@ wrapping a JSON string. Both are consumable by the runtime, so the change is ben
 observable on **every** textual tool result, not only on binary ones, and a reader who expected
 the wrapped form must not read it as a regression.
 
-Verified against `Microsoft.Extensions.AI.Abstractions` 10.10.0, the version this library pins:
+Verified against the `Microsoft.Extensions.AI.Abstractions` version this library pins:
 
 | Declared return type   | Value returned      | Without the guard                     | With the guard    |
 |------------------------|---------------------|---------------------------------------|-------------------|

@@ -81,9 +81,9 @@ constructor removed so that the constructor reverted to being implicit, the Tool
 `Error: 1 undocumented API item(s) found (--enforce-docs-severity Error).` and
 `ApiMark.Tool exited with code 1`, and restoring the constructor returned it to 0. The failing
 build also names the member it objected to — `[Undocumented] Method:
-DemaConsulting.AgentKit.Tools.Image.ImagePack.ImagePack()` — which `0.5.0` reports and
-`0.5.0-beta.3` did not, so a future failure identifies its own cause without a re-run at higher
-verbosity. That transition is the load-bearing evidence: it is a change from
+DemaConsulting.AgentKit.Tools.Image.ImagePack.ImagePack()` — so a failure identifies its own cause
+without a re-run at higher verbosity. That transition is the load-bearing evidence: it is a change
+from
 green to red and back, with the count tracking the change exactly, rather than a tool noticing a
 condition that was already present. No `CS1591` and no analyzer diagnostic appeared at any point
 during it, because an implicit constructor is invisible to both — so ApiMark was the only check
@@ -91,27 +91,28 @@ that objected. An earlier attempt to demonstrate the same property by removing t
 from an *explicit* constructor proves nothing about this tool, because the compiler raises `CS1591`
 first and fails the build before the coverage check is reached.
 
-This pins the stable release `0.5.0`. Enforcement was originally adopted on the prerelease
-`0.5.0-beta.3` as a deliberate exception to the convention of pinning stable versions of every
-tool, because documentation-coverage enforcement does not exist in the `0.4.10` stable release and
-shipping an API reference with unenforced gaps was judged the worse outcome. That exception is now
-closed: `0.5.0` is the stable release of the same line, so the convention holds again with no
-prerelease carve-out. The version is recorded in the four project files, which is the only place it
-is recorded: `.versionmark.yaml` captures versions from `dotnet tool list`, and the ApiMark **CLI**
-is deliberately absent from `.config/dotnet-tools.json`, so ApiMark has no VersionMark entry to
-update.
+This pins a stable release. Enforcement was originally adopted on a prerelease as a deliberate
+exception to the convention of pinning stable versions of every tool, because documentation-
+coverage enforcement did not exist in the then-current stable release and shipping an API reference
+with unenforced gaps was judged the worse outcome. That exception is now closed: enforcement is
+available in a stable release of the same line, so the convention holds again with no prerelease
+carve-out. The pinned version lives in the four project files, which are the only place it is
+recorded: `.versionmark.yaml` captures versions from `dotnet tool list`, and the ApiMark **CLI** is
+deliberately absent from `.config/dotnet-tools.json`, so ApiMark has no VersionMark entry to
+update. Version provenance for a given build therefore comes from those project files and from the
+build's own record, never from this document.
 
-Moving from `0.5.0-beta.3` to `0.5.0` skips `beta.4` and `beta.5`, so it was verified as a real
-upgrade rather than a label change. The build that produced the current reference reports
-`ApiMark.Tool version 0.5.0+740f0c2f7a64e5ad677ed6b2ab23e7cd5c952c76`, loading its task assembly
-from the `DemaConsulting.ApiMark.MSBuild` `0.5.0` folder of the NuGet global packages cache, so the
-version that executed is known
-rather than assumed — a check that matters here because a `--no-restore` build can resolve a
-cached older package while the project file claims a newer one. Every one of the 229 generated
-pages is byte-identical to the output `0.5.0-beta.3` produced from the same sources, and the
-FileAssert assertions over that output pass unchanged.
+Because the move to the stable release skipped intermediate prereleases, it was verified as a real
+upgrade rather than a label change. The verification does not rest on a green build: ApiMark
+prints its own version and the path it loaded its task assembly from, and both were read back out
+of the build log and matched against the package the restore actually resolved. That check matters
+here because a build that skips restore can run a cached older package while the project file
+claims a newer one. Every one of the generated pages came out byte-identical to the output the
+previous pin produced from the same sources, and the FileAssert assertions over that output pass
+unchanged.
 
-The MSBuild integration did change in one respect. `0.5.0` defaults `ApiMarkReferencePaths` to the
+The MSBuild integration did change in one respect. The current release defaults
+`ApiMarkReferencePaths` to the
 resolved `@(ReferencePath)` items when the property is not set explicitly, so a doc comment
 inherited from a type in a referenced assembly resolves without configuration; the opt-out is
 `ApiMarkDisableReferencePathsHarvest=true`. This repository sets neither property, so the
