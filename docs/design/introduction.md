@@ -119,6 +119,15 @@ software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
+- **AgentKitSamples (System)** — The repository's runnable demonstration applications, delivered as
+  source rather than as a published package; each is a self-contained console application whose
+  requirements are demonstration requirements
+- **CustomTools (Unit)** — The extension-path sample: an application author writes their own guarded
+  tools and publishes them as packs that compose alongside a shipped pack
+- **DocumentAssistant (Unit)** — The consumption-path sample: an application attaches the shipped tool
+  packs to an agent under a policy that grants a workspace to read and a separate location to write
+- **ResearchAssistant (Unit)** — The agent-infrastructure-path sample: an agent plans, remembers, and
+  delegates safely across turns, with an application-supplied offline embedding backend
 
 The following OTS items are also covered:
 
@@ -166,7 +175,7 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
-The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
+The repository contains five systems. `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
@@ -184,7 +193,21 @@ turns a provider into a Microsoft Agent Framework agent carrying a supplied tool
 justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
 Each is flat — one factory class — and the two share no code and never reference each other. The
-`SoftwareStructureView.svg` above renders all four systems.
+`SoftwareStructureView.svg` above renders all five systems.
+
+`AgentKitSamples` is the fifth system: the repository's runnable demonstration applications. It is
+not a shipped library — none of its samples is packed, published, or given an SBOM — but each sample
+is locally-developed software with its own test project, so the collection is modeled as a system
+whose requirements are *demonstration* requirements. A sample requirement states what the sample must
+prove to a reader ("the sample shall demonstrate X"), not a library capability, because the samples'
+purpose is pedagogical: `DocumentAssistant` shows how to consume AgentKit, `ResearchAssistant` shows
+how an agent works across turns, and `CustomTools` shows how to extend AgentKit with author-written
+tools. The system is deliberately flat, its three units sitting directly beneath it: the samples share
+no code and depend on each other in no way, so a "samples" subsystem layer would add a requirements
+file, a design document, a verification document and a review set without carrying any architectural
+information. The samples target `net10.0` only and are not a shipped multi-platform package, so —
+unlike the four library systems — `AgentKitSamples` deliberately has no `platform-requirements.yaml`;
+its absence is a design decision, not an oversight.
 
 ## Folder Layout
 
@@ -277,6 +300,24 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed
 ```
+
+The demonstration samples live under `samples/`, one folder per sample. Unlike a library unit — one
+class in one file — each sample unit is a whole console application, so its folder holds several
+source files that together form the worked example:
+
+```text
+samples/
+├── custom-tools/          — the extension path: author-written guarded tools published as packs
+│                            alongside a shipped pack (docstats and clock)
+├── document-assistant/    — the consumption path: shipped tool packs attached to an agent under a
+│                            policy of granted locations, with every tool call printed
+└── research-assistant/    — the agent-infrastructure path: todo, memory and agent families across
+                             turns, over a read-only corpus and a separate writable notes location,
+                             with an application-supplied offline embedding backend
+```
+
+Each sample folder is a self-contained application; the samples share a common shape by convention
+but no code, so each can be read in isolation.
 
 ## Document Conventions
 

@@ -24,15 +24,16 @@ shows how it *proceeds*.
   demonstrates nothing about the policy governing it. Observed: notes were written in the run whose
   prompt asked for a review and summary, and not in narrow single-step runs — the file appears when
   a turn actually produces conclusions, which is 1 of the 3 live runs measured.
-- **A contradiction that near-duplicate arithmetic *may* catch, depending on how the model phrases
-  its descriptor.** The corpus deliberately contains a superseding revision, and when the second
-  statement is filed under the same *subject* descriptor as the first, `memory_file` refuses it:
-  structured data with `stored: false`, naming the conflicting memory. A refusal you can see is what
-  keeps a model from reporting that it stored something it did not. **It did not fire in 3 of 3 live
-  runs under `--embeddings local`**, because the model wrote `"Relief valve setting for the bilge
-  pump"` and `"Relief valve setting per field revision (Revision B)"` — two descriptors, so no
-  collision, both stored. Only the descriptor is embedded, so a model that understands the facts
-  differ defeats the detection by saying so. See
+- **A contradiction the agent resolves, with near-duplicate arithmetic as the backstop.** The corpus
+  deliberately contains a superseding revision. In **5 of 5 neutral live runs** (`claude-sonnet-5`,
+  `--embeddings local`) the agent noticed the contradiction itself, cited `02-field-revision.md` and
+  used `memory_revise` to correct the memory in place, leaving exactly one relief-valve memory at
+  18 psi. The near-duplicate refusal fired in **none of those 5 runs — and neither did the failure
+  it exists to catch**. The refusal is what covers the case where the model has *not* noticed: file
+  a near-identical *subject* descriptor and `memory_file` declines it with structured data,
+  `stored: false`, naming the conflicting memory. A refusal you can see is what keeps a model from
+  reporting that it stored something it did not. Across **8 live runs it never fired at all**; it
+  fires 5 of 5 when descriptors genuinely collide, and in the unit tests. See
   [When the refusal fires, and when it does not](#when-the-refusal-fires-and-when-it-does-not).
 - **A correction that cites the right document.** The agent is told, explicitly, that a correction
   drawn from a *different* document is made with `memory_revise` stating that new document — not
@@ -95,32 +96,63 @@ What this still does not prove: that memories survive the process. The store is
 ## When the refusal fires, and when it does not
 
 The sample is built around a superseded engineering value — 12 psi in Revision A, 18 psi in
-Revision B — and the near-duplicate refusal is the thing worth watching. It is **best-effort and
-phrasing-dependent**, not a guarantee, and the honest measurement is that it did not fire in any of
-the three live runs measured under `--embeddings local`.
+Revision B — and how the agent handles that is the thing worth watching. The near-duplicate refusal
+is a **backstop**, not the primary mechanism, and the honest measurement is that **it did not fire
+in any of the 8 live runs** measured here (`claude-sonnet-5`, `--embeddings local`).
 
-**Why not.** Only the descriptor is embedded, so detection compares descriptors. One run was
-constructed specifically to force a refusal: two prompts explicitly demanded a *separate new* memory
-of the same fact. The model complied and wrote descriptors that distinguish the two:
+### The neutral arm (n = 5): the agent revises, and that is the better outcome
 
-| Descriptor the model wrote | Value | Source | Outcome |
-| -------------------------- | ----- | ------ | ------- |
-| "Relief valve setting for the bilge pump" | 12 psi | `01-initial-spec.md` | stored |
-| "Relief valve setting per field revision (Revision B)" | 18 psi | `02-field-revision.md` | stored |
+Five runs whose prompts never mention descriptors at all. What happened, every time:
 
-Those two score **0.40** against each other under this sample's generator — nowhere near the 0.88
-default — so both were stored and the store ended up holding two contradictory relief-valve values
-with nothing raised. Nothing malfunctioned. The model had *understood* that the two facts differed
-and had said so in the only field that is compared. **The better a model understands that a conflict
-exists, the less likely it is to be caught** — which is why the fix is an instruction and not a tool
-change.
+| What was measured | Result |
+| ----------------- | ------ |
+| Subject-only descriptor rule obeyed (value/revision kept out of the descriptor) | **5 / 5** |
+| Near-duplicate refusal fired | **0 / 5** |
+| Two contradictory memories stored silently — the failure the refusal exists to catch | **0 / 5** |
+| Contradiction noticed and corrected in place with `memory_revise`, citing `02-field-revision.md` | **5 / 5** |
+| Store left holding exactly one relief-valve memory, at 18 psi | **5 / 5** |
+| `memory_revise` chosen over `memory_update` | **5 / 5** |
+| Corrected memory cites the new source | **5 / 5** |
+| Fresh-session `--recall-question` turn answered 18 psi through `memory_recall` | **5 / 5** |
 
-The converse confirms the mechanism rather than excusing it. An earlier live run scored exactly
-**1.0** and refused correctly, because the descriptor was topic-only — "Relief valve pressure
-setting" — with the value carried in the un-embedded details.
+The refusal never firing here is not a gap. The refusal fires when the model files a near-identical
+descriptor — which is to say, **when it has not noticed the conflict**. That is exactly the case a
+backstop is for, and exactly the case no amount of reading is going to fix. When the model *does*
+notice, it revises, and a revision is the better of the two outcomes: one memory, corrected, citing
+the document that corrected it, instead of a refusal the model then has to act on. **Revise-in-place
+is the primary path in practice; the refusal is the floor under it.**
 
-**Seeing it fire.** Add a prompt that states the descriptor rule, so the two statements land on one
-subject:
+The arithmetic itself is not in doubt. It fired **5 of 5** in an earlier, directly driven
+measurement in which the two descriptors genuinely collided, and it fires in this sample's own unit
+tests (`DescriptorPhrasingTests`). What the live runs measure is how often a model reaches it, not
+whether it works.
+
+### The adversarial arm (n = 3): two memories, and that is arguably right
+
+Three runs whose second prompt demands *"a separate new memory… do not revise or update"*.
+
+| What was measured | Result |
+| ----------------- | ------ |
+| Subject-only descriptor rule obeyed | **0 / 3** |
+| Near-duplicate refusal fired | **0 / 3** |
+| Both memories stored — store left holding 12 psi and 18 psi at once | **3 / 3** |
+
+The model narrated exactly what it was doing: *"I used a distinct descriptor ('…per field revision')
+so it wouldn't collide with the Revision A memory."* Only the descriptor is embedded, so a
+descriptor chosen to distinguish is a descriptor that will not collide.
+
+**This is an adversarial lower bound, not everyday behavior** — being told to keep two memories is
+itself pressure toward two distinct labels — and the outcome is arguably the *correct* one. "12 psi
+per Revision A" and "18 psi per Revision B" are both true statements, about different documents. Two
+memories carrying accurate provenance is a legitimate representation of a superseded specification,
+and it is the representation the user explicitly asked for. This is the **application author
+governing the settings**, which is the intended design: AgentKit guarantees that every file is
+checked, and leaves what *should* happen to a conflict over the author's own corpus to the author,
+their instructions and their threshold.
+
+### Seeing it fire
+
+Add a prompt that states the descriptor rule outright, so the two statements land on one subject:
 
 ```bash
 dotnet run -c Release --project samples/research-assistant -- \
@@ -132,14 +164,21 @@ revision, no value in it." \
 relief valve, under that same subject descriptor."
 ```
 
+**The measurement above deliberately did not use these prompts.** They state the descriptor rule in
+the prompt, which is the very cue being tested — an agent told the rule twice cannot evidence
+whether the shipped *instruction* alone is enough. The neutral arm's prompts therefore never mention
+descriptors, and its 5-of-5 adherence figure is about the instruction rather than about the prompt.
+These prompts are for reproducing the refusal on demand, not for measuring adherence.
+
 This is still not a guarantee: the model writes the descriptor, and no prompt makes it obey. If the
 refusal does not appear, read the `memory_file` arguments the console prints — the descriptors are
 right there, and they are the whole explanation.
 
-**The quieter failure is the expected one.** A refusal is visible. Two contradictory memories filed
-under distinct descriptors are not: there is no refusal, no warning, and nothing in the transcript
-to show the contradiction was missed. An application whose correctness depends on contradictions
-being caught needs a check outside the memory family.
+**What is still not covered.** The refusal is visible; two contradictory memories filed under
+distinct descriptors are not. In the measured neutral runs that silent case did not occur — the
+agent corrected the record instead — but nothing guarantees it. An application whose correctness
+depends on contradictions being *raised*, rather than merely being handled well, needs a check
+outside the memory family.
 
 ## Where the embeddings come from
 
@@ -232,16 +271,17 @@ an explicit one produced 3 of 3 with every phase recorded and closed. The sample
 `TodoPack.SuggestedInstruction` verbatim rather than paraphrasing it, so the wording it ships cannot
 drift from the wording that was measured.
 
-**A descriptor names the subject, never the source, the revision or the value.** This is the
-finding that matters most and the one that is self-defeating without an instruction. Detection
-compares descriptors, because only the descriptor is embedded — so a model that recognizes a
-conflict and writes "…per field revision (Revision B)" to distinguish it has defeated the detection
-by understanding the problem correctly. In 3 of 3 live runs that is exactly what happened and
-nothing was refused. The instruction now states the rule *and its reason*, because this project has
-repeatedly found that a rule without a reason gets applied inconsistently — and here the reasoning
-that overrides it is the same reasoning that produced the failure. Source and revision belong in the
-provenance parameters and the details, which are not embedded. `MemoryPack.SuggestedInstruction`
-carries the same guidance for any application.
+**A descriptor names the subject, never the source, the revision or the value.** Detection compares
+descriptors, because only the descriptor is embedded — so a model that recognizes a conflict and
+writes "…per field revision (Revision B)" to distinguish it has stepped past the arithmetic by
+understanding the problem correctly. That is what happened in 3 of 3 live runs *before* this
+instruction existed, and it is still what happens in 3 of 3 adversarial runs that demand a separate
+memory. With the instruction and neutral prompts the rule is obeyed in **5 of 5** runs: values and
+revisions go into the details and the provenance parameters, which are not embedded. The instruction
+states the rule *and its reason*, because this project has repeatedly found that a rule without a
+reason gets applied inconsistently — and here the reasoning that overrides it is the same reasoning
+that produced the collision-free descriptors. `MemoryPack.SuggestedInstruction` carries the same
+guidance for any application.
 
 **A correction from a new document must be a revision that cites it.** This is the live risk.
 `memory_update` keeps the provenance a memory already carried; `memory_revise` sets it. Offered a
@@ -249,7 +289,8 @@ conflict raised by a *new* document, a model frequently picks `memory_update` an
 corrected text beside a citation of the superseded source — and it does so even though
 `memory_update` reports the source it retained and its own description says a changed source calls
 for a revision. Provenance was correct in every run only when the instructions demanded the new
-document be cited. So this sample's instructions demand it, and
+document be cited — and with that demand in place it was correct in 5 of 5 neutral live runs. So
+this sample's instructions demand it, and
 `MemoryPack.SuggestedInstruction` now carries the same guidance for any application. It is
 deliberately *not* enforced in the tools: which source a corrected memory should cite is the
 author's policy over their own corpus, and AgentKit guarantees the mechanism rather than governing
@@ -262,8 +303,11 @@ reporting "no matches found" when two low-similarity matches were in fact return
 told to read each returned descriptor and judge it. Try
 `--prompt "What do you know about the mooring winch?"` — nothing in the corpus is about one.
 
-No adherence figure is claimed for the memory instruction. The task-list numbers above are measured;
-there is no memory equivalent, and one borrowed from a neighbor would be invented.
+No general adherence figure is claimed for the memory instruction as a whole. What is measured is
+narrower and is stated where it belongs: the subject-only descriptor rule was obeyed in 5 of 5
+neutral runs and 0 of 3 adversarial ones, and `memory_revise` was chosen over `memory_update` with
+the new source cited in 5 of 5 neutral runs. The task-list 1-of-5 versus 3-of-3 comparison above is
+a different measurement of a different family's wording, and is not transferable to this one.
 
 **Conclusions must be written to the notes folder, and the instruction names the tool.** In three
 live runs the notes folder stayed empty. It is the sample's only writable location, so the only

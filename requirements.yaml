@@ -72,6 +72,10 @@ includes:
   - docs/reqstream/agent-kit-agents-copilot.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml
+  - docs/reqstream/agent-kit-samples.yaml
+  - docs/reqstream/agent-kit-samples/custom-tools.yaml
+  - docs/reqstream/agent-kit-samples/document-assistant.yaml
+  - docs/reqstream/agent-kit-samples/research-assistant.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/apimark.yaml
   - docs/reqstream/ots/reqstream.yaml

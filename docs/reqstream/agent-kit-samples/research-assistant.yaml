@@ -1,0 +1,329 @@
+---
+# Software Unit Requirements for the ResearchAssistant sample
+#
+# These requirements describe what the research-assistant sample must demonstrate to a reader about
+# planning, remembering, and delegating safely across turns, and about supplying an offline
+# embedding backend so the sample runs with nothing installed.
+
+sections:
+  - title: AgentKitSamples Requirements
+    sections:
+      - title: ResearchAssistant Requirements
+        requirements:
+          - id: AgentKitSamples-ResearchAssistant-InstructionsNameGrantedLocations
+            title: >-
+              The sample shall demonstrate that the instructions name both granted locations — the
+              read-only corpus and the writable notes location — and the access each carries.
+            justification: |
+              An application that knows its locations says so, and says which one it can write. The
+              demonstration builds the instructions for a delegating run and shows the corpus is
+              named read-only, the notes location read-write, and the agent is told it cannot edit
+              the corpus.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_NamesBothLocationsWithAccess
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsAppendPublishedGuidance
+            title: >-
+              The sample shall demonstrate that it appends the library's published suggested
+              instructions for the families it uses rather than transcribing them.
+            justification: |
+              Wording the sample ships should not drift from the wording the library wrote, so the
+              sample appends the published constants rather than copying their text. The
+              demonstration builds the instructions and shows both families' published constants
+              appear verbatim.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_AppendsThePublishedSuggestedInstructions
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsRequireProvenanceOnRevision
+            title: >-
+              The sample shall demonstrate that the instructions require a correction drawn from a
+              changed source to be made as a revision citing the new document, not as an update that
+              retains the original provenance.
+            justification: |
+              A correction filed as an update keeps the superseded document's provenance, leaving the
+              corrected memory citing the wrong source. The demonstration builds the instructions and
+              shows the revision tool is named for the changed-source case, the update tool is ruled
+              out for it, and the reason is stated.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_RequiresARevisionToCiteTheNewDocument
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsWarnRecallHasNoFloor
+            title: >-
+              The sample shall demonstrate that the instructions warn that recall applies no
+              similarity floor and tell the agent to judge each returned descriptor.
+            justification: |
+              Recall returns the nearest memories whatever their similarity, so a question about an
+              unrecorded subject still returns matches. The demonstration builds the instructions and
+              shows the absence of a floor is stated together with the instruction to say plainly
+              when nothing is recorded on a subject.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_WarnsThatRecallHasNoSimilarityFloor
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsRequireASubjectOnlyDescriptor
+            title: >-
+              The sample shall demonstrate that the instructions require a memory's descriptor to
+              name the subject only, keeping provenance out of the descriptor, and state why.
+            justification: |
+              Only the descriptor is compared for near-duplicate detection, so a descriptor that
+              names its source instead of its subject lets a contradicting fact be filed silently
+              beside the one it contradicts. The demonstration builds the instructions and shows the
+              rule, the fields provenance belongs in instead, and the reason are all present.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_RequiresASubjectOnlyDescriptor
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsRequireConclusionsWrittenToNotes
+            title: >-
+              The sample shall demonstrate that the instructions require the agent to write its
+              conclusions into the writable notes location.
+            justification: |
+              The notes location is the run's only writable grant, and a read-write grant that is
+              never exercised demonstrates nothing about the policy governing it. The demonstration
+              builds the instructions and shows the writing tool, the notes location, and the moment
+              to write are all named.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_RequiresConclusionsToBeWrittenToNotes
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsRequirePlanBeforeWork
+            title: >-
+              The sample shall demonstrate that the instructions forbid recording a plan item that is
+              already finished and require the plan to be written before the work begins.
+            justification: |
+              A plan written after the fact is a summary and tells a watcher nothing about what is
+              about to happen. The demonstration builds the instructions and shows both the
+              prohibition on an already-finished item and the requirement to write the plan first.
+            tests:
+              - AgentComposition_BuildInstructions_AnyRun_ForbidsAPlanItemThatIsAlreadyDone
+
+          - id: AgentKitSamples-ResearchAssistant-InstructionsDescribeDelegationTruthfully
+            title: >-
+              The sample shall demonstrate that the instructions describe delegation truthfully in
+              both directions: naming the delegation tool and a child's independence when delegation
+              is offered, and offering no such tool when it is not.
+            justification: |
+              The instructions must match the composed tool set: a run without delegation should not
+              invite the agent to delegate. The demonstration builds the instructions with and
+              without delegation and shows a delegating run names the tool and states a child shares
+              none of the parent's state, while a solo run names no such tool at all.
+            tests:
+              - AgentComposition_BuildInstructions_DelegationDisabled_DoesNotOfferASubAgent
+
+          - id: AgentKitSamples-ResearchAssistant-ComposesTheThreeCrossTurnFamilies
+            title: >-
+              The sample shall demonstrate that a delegating run composes the planning, memory, and
+              delegation families over the reading tools.
+            justification: |
+              The three families that let an agent work across turns are the subject of this sample,
+              so a run must actually carry them. The demonstration composes a delegating tool set and
+              shows the todo, memory, delegation, and reading tools are all present.
+            tests:
+              - AgentComposition_BuildTools_DelegationEnabled_ComposesPlanningMemoryAndDelegation
+
+          - id: AgentKitSamples-ResearchAssistant-GatesDelegationOnTheHostGrant
+            title: >-
+              The sample shall demonstrate that with delegation withheld the sub-agent tool is never
+              created, while the planning and memory families remain.
+            justification: |
+              Capability gating means a pack whose required capability the host did not declare is
+              never asked for its tools, so the model is never offered one it cannot use. The
+              demonstration composes a tool set with delegation withheld and shows the planning and
+              memory tools remain while the delegation tool is absent entirely.
+            tests:
+              - AgentComposition_BuildTools_DelegationDisabled_NeverCreatesTheSubAgentTool
+
+          - id: AgentKitSamples-ResearchAssistant-ContainsDelegatedChild
+            title: >-
+              The sample shall demonstrate that a delegated child is composed from the reading
+              families alone and that each registered profile admits only the tools and grants it
+              declares.
+            justification: |
+              A contained child cannot reach its parent's plan or record, and the narrowest correct
+              capability set is the one worth shipping. The demonstration shows the child packs
+              exclude the todo, memory, and agent families; the reading profile is narrowed to a
+              single read-only corpus grant admitting only reading tools; and the summarizing profile
+              legitimately declares no tools at all.
+            tests:
+              - AgentComposition_CreateChildPacks_AnyRun_WithholdsTheTodoMemoryAndAgentFamilies
+              - AgentComposition_CreateProfiles_Reader_NarrowsToTheCorpusAndReadsOnly
+              - AgentComposition_CreateProfiles_Summarizer_DeclaresNoTools
+
+          - id: AgentKitSamples-ResearchAssistant-RecallTurnCarriesMemoryOnly
+            title: >-
+              The sample shall demonstrate that the final recall turn carries the memory family and
+              no way to read anything, and that its instructions forbid answering from anything but
+              recalled memories.
+            justification: |
+              An answer that could have been read from the documents or the conversation would not
+              prove recall. The demonstration composes the recall turn's tools and shows only memory
+              is present — no document reader, lister, outline, plan, or delegation — and its
+              instructions state the conversation is fresh, the floor is absent, and general
+              knowledge is off limits.
+            tests:
+              - AgentComposition_BuildRecallTools_AnyRun_CarriesMemoryAndNoWayToReadAnything
+              - AgentComposition_BuildRecallInstructions_AnyRun_ForbidsAnsweringFromAnythingElse
+
+          - id: AgentKitSamples-ResearchAssistant-RecallTurnSharesTheFiledStore
+            title: >-
+              The sample shall demonstrate that the recall turn recalls from the same store the
+              earlier turns filed into.
+            justification: |
+              A recall turn over a store of its own would recall nothing and would prove the opposite
+              of what it exists to prove. The demonstration files a memory through the root
+              composition and shows the recall turn's own tool set finds that memory.
+            tests:
+              - AgentComposition_BuildRecallTools_AnyRun_RecallsWhatTheRootCompositionFiled
+
+          - id: AgentKitSamples-ResearchAssistant-SuppliesTheEmbeddingBackend
+            title: >-
+              The sample shall demonstrate that it supplies the embedding backend the memory family
+              requires, defaulting to an offline generator that needs no server or credential.
+            justification: |
+              The memory family requires an embedding generator and never inspects it, so the sample
+              supplies one, and the offline default is what lets a reader run the sample with nothing
+              installed. The demonstration resolves the backend for an offline run and shows the
+              sample's own offline generator is used.
+            tests:
+              - AgentComposition_CreateEmbeddingGenerator_LocalBackend_UsesTheOfflineGenerator
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineRequiresCorpus
+            title: >-
+              The sample shall demonstrate that its command line requires a corpus and reports a flag
+              left without its value against that flag.
+            justification: |
+              There is nothing to anchor or grant without a corpus, and a following flag must not be
+              misread as a missing value. The demonstration shows a run with no corpus and a flag
+              missing its value each name their own mistake.
+            tests:
+              - CommandLineOptions_Parse_NoCorpus_ThrowsCommandLineException
+              - CommandLineOptions_Parse_FlagWithoutValue_ThrowsCommandLineException
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineRejectsUnknownInput
+            title: >-
+              The sample shall demonstrate that its command line rejects an unrecognized argument or
+              an unknown embedding backend rather than ignoring or silently defaulting it.
+            justification: |
+              A misspelled flag ignored would run the agent over the wrong folder or with the wrong
+              backend, a mistake only noticed after the fact. The demonstration shows an unknown
+              argument and an unknown embedding backend are each named rather than accepted.
+            tests:
+              - CommandLineOptions_Parse_UnknownArgument_ThrowsCommandLineException
+              - CommandLineOptions_Parse_UnknownEmbeddingBackend_ThrowsCommandLineException
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineDefaultsToAnOfflineRun
+            title: >-
+              The sample shall demonstrate that the shortest useful command line defaults to offline
+              embeddings, the Copilot provider, and delegation enabled.
+            justification: |
+              A reader should be able to run the sample with nothing installed and still see all
+              three families demonstrated. The demonstration parses a corpus-only command line and
+              shows it defaults to the offline backend, the Copilot provider, delegation on, and no
+              prompts.
+            tests:
+              - CommandLineOptions_Parse_OnlyCorpus_DefaultsToOfflineEmbeddingsAndDelegation
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineAccumulatesPrompts
+            title: >-
+              The sample shall demonstrate that repeated prompts accumulate in the order given, so a
+              single run can span several turns.
+            justification: |
+              This sample's subject is work that outlives a turn, so a single-prompt mode could not
+              demonstrate it. The demonstration parses two prompts and shows both are kept in the
+              stated order.
+            tests:
+              - CommandLineOptions_Parse_RepeatedPrompts_AreKeptInOrder
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineKeepsRecallQuestionApart
+            title: >-
+              The sample shall demonstrate that a recall question is parsed and kept apart from the
+              ordinary prompts, and that none is arranged unless one was asked for.
+            justification: |
+              The recall question runs on its own agent after the research turns, so it must not be
+              treated as a further prompt, and no recall turn should be built when none was
+              requested. The demonstration shows a recall question is kept separate from the prompts
+              and is left unset when absent.
+            tests:
+              - CommandLineOptions_Parse_RecallQuestion_IsKeptApartFromThePrompts
+              - CommandLineOptions_Parse_NoRecallQuestion_LeavesItUnset
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineResolvesCredentialWithoutPrinting
+            title: >-
+              The sample shall demonstrate that a stated credential wins over the environment and
+              that a blank credential is treated as no credential at all.
+            justification: |
+              A run that states a credential means that credential, and an empty value is how an
+              unattended workflow expresses that no secret was configured. The demonstration shows an
+              explicit token is the one resolved and a blank token is not treated as a credential.
+            tests:
+              - CommandLineOptions_ResolveGitHubToken_ExplicitToken_WinsOverTheEnvironment
+              - CommandLineOptions_ResolveGitHubToken_BlankToken_IsNotTreatedAsACredential
+
+          - id: AgentKitSamples-ResearchAssistant-CommandLineDescribesTheRunHonestly
+            title: >-
+              The sample shall demonstrate that it can describe the run without executing it: help
+              text lists the flags a reader needs, help is answerable before the command line is
+              valid, and the reported model is the concrete one the run will use or an honest
+              statement that it cannot be known.
+            justification: |
+              A run whose model is unrecorded cannot be attributed or reproduced, and a reader asking
+              what the options are has not yet supplied them. The demonstration shows the help text
+              describes the embedding choice and the other flags, help short-circuits validation, an
+              Ollama run names the sample's own default model, an unnamed Copilot model is reported as
+              unknown with the remedy named, and a stated model is reported exactly.
+            tests:
+              - CommandLineOptions_HelpText_AnyRun_DescribesTheEmbeddingChoice
+              - CommandLineOptions_Parse_HelpWithoutCorpus_RequestsHelpRatherThanFailing
+              - CommandLineOptions_DescribeModel_OllamaWithoutModel_NamesTheSamplesOwnDefault
+              - CommandLineOptions_DescribeModel_CopilotWithoutModel_SaysItCannotBeKnown
+              - CommandLineOptions_DescribeModel_ModelStated_ReportsItExactly
+
+          - id: AgentKitSamples-ResearchAssistant-DescriptorPhrasingDecidesConflictDetection
+            title: >-
+              The sample shall demonstrate that whether a contradicting fact is caught depends on how
+              its descriptor is phrased: a subject-only descriptor collides and is refused, while a
+              source-qualified descriptor does not collide and is stored beside the fact it
+              contradicts.
+            justification: |
+              Only the descriptor is embedded, so near-duplicate detection compares descriptors, and
+              a model that qualifies a descriptor by its source describes two contradicting facts as
+              two different subjects. The demonstration files the same two facts under both phrasings
+              and shows the subject-only pair is refused as a near-duplicate at similarity 1.0 while
+              the source-qualified pair is stored, with the phrasing threshold difference asserted
+              directly.
+            tests:
+              - MemoryFile_SubjectOnlyDescriptors_RefuseTheContradictingFact
+              - MemoryFile_SourceQualifiedDescriptors_StoreBothContradictingFacts
+              - LexicalEmbeddingGenerator_ConflictingFacts_ScoreByPhrasingNotByContradiction
+
+          - id: AgentKitSamples-ResearchAssistant-OfflineEmbeddingsAreStableAndUnit
+            title: >-
+              The sample shall demonstrate that its offline embedding generator produces a stable,
+              unit-length, order-independent vector for any text and answers a batch in input order.
+            justification: |
+              A stored vector must outlive the process that produced it, one fixed cosine threshold
+              must be meaningful across descriptors of different sizes, and a batch result must match
+              a vector back to the text it came from. The demonstration shows the same text embeds to
+              the same vector, any text embeds to a unit vector, empty or punctuation-only text still
+              embeds to a defined vector, the same words in any order score exactly one, and a batch
+              is answered in input order.
+            tests:
+              - LexicalEmbeddingGenerator_GenerateAsync_SameText_ProducesTheSameVector
+              - LexicalEmbeddingGenerator_GenerateAsync_AnyText_ProducesAUnitVector
+              - LexicalEmbeddingGenerator_GenerateAsync_EmptyText_ProducesADefinedVector
+              - LexicalEmbeddingGenerator_GenerateAsync_SameWordsInAnyOrder_ScoresExactlyOne
+              - LexicalEmbeddingGenerator_GenerateAsync_SeveralTexts_AnswersInInputOrder
+
+          - id: AgentKitSamples-ResearchAssistant-OfflineEmbeddingsRankByWordingNotMeaning
+            title: >-
+              The sample shall demonstrate the limitation a reader must understand before copying its
+              offline generator: it measures shared wording rather than shared meaning, so a
+              restatement scores as a near-duplicate but a paraphrase does not, and a numeral is only
+              one token among many.
+            justification: |
+              A reader who copies the generator into a real application needs its limitation to be a
+              checked fact rather than a caveat in a comment, and it is precisely why a real
+              embedding model exists as an alternative. The demonstration shows a restatement scores
+              above the published default threshold, a paraphrase scores below it, and a differing
+              numeral is caught only when the descriptor is long enough.
+            tests:
+              - LexicalEmbeddingGenerator_GenerateAsync_RestatedFact_ScoresAboveTheDefaultThreshold
+              - LexicalEmbeddingGenerator_GenerateAsync_ParaphrasedFact_ScoresLowBecauseItIsLexical
+              - LexicalEmbeddingGenerator_GenerateAsync_DifferingNumeral_ScoresByTokenCountAlone

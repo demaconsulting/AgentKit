@@ -41,22 +41,35 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     graph genuinely added nothing rather than having been built wrongly.
 ///     </para>
 ///     <para>
-///     <b>Near-duplicate detection is arithmetic and it is not optional.</b> Every file compares the
-///     new descriptor against the vectors already held and declines to store a memory at or above
-///     the author's configured threshold, reporting the conflicting memory instead. Having the
-///     model notice conflicts by judgement was tried repeatedly and failed every time; the
-///     arithmetic caught a 12-psi versus 18-psi contradiction at 0.965 cosine.
+///     <b>Near-duplicate detection is a backstop, and it is not optional.</b> Every file compares
+///     the new descriptor against the vectors already held and declines to store a memory at or
+///     above the author's configured threshold, reporting the conflicting memory instead. The
+///     arithmetic caught a 12-psi versus 18-psi contradiction at 0.965 cosine where repeated
+///     attempts to have a spike model notice the same conflict by reading had failed. Its role is
+///     precisely that unnoticed case: the refusal fires when the model files a near-identical
+///     descriptor, which is to say when it has <em>not</em> seen that it is contradicting something
+///     the store already holds.
 ///     </para>
 ///     <para>
-///     <b>It is nonetheless best-effort, because it can only see what the model wrote in the
-///     descriptor.</b> The mechanism is guaranteed — every file is checked — but what it
-///     catches is phrasing-dependent, and an author must not read it as a guarantee that
-///     contradictions are found. Two descriptors written as the same subject collide and the
-///     conflict is raised; the same two facts written as <c>"…for the bilge pump"</c> and
-///     <c>"…per field revision (Revision B)"</c> do not collide and are both stored with
-///     nothing raised, which is the quieter failure and the observed one. This is why
-///     <see cref="SuggestedInstruction"/> spends four sentences on how to phrase a descriptor:
-///     the phrasing is the part of the mechanism the library cannot supply.
+///     <b>When a model does notice a conflict it revises in place, and that is the better
+///     outcome.</b> Measured over five live runs of the <c>research-assistant</c> sample whose
+///     prompts never mention descriptors, the model recognized the superseded value by reading,
+///     cited the superseding document and corrected the memory with <c>memory_revise</c> in 5 of 5,
+///     leaving one memory rather than two. The refusal fired in none of those runs, and neither did
+///     the silent double-store it exists to catch. Revision in place is the primary path in
+///     practice; the arithmetic is the floor under it.
+///     </para>
+///     <para>
+///     <b>Do not read the refusal as routine or reliable.</b> The mechanism is guaranteed — every
+///     file is checked — but what it catches is phrasing-dependent, and it did not fire in any of
+///     the eight live sample runs measured. It fires when two descriptors are written as the same
+///     subject, and does not when the same two facts are written as <c>"…for the bilge pump"</c>
+///     and <c>"…per field revision (Revision B)"</c>, which is what a model produces when it has
+///     understood that the facts differ. That second outcome is not by itself a defect: two
+///     memories carrying accurate provenance for two different documents is a legitimate
+///     representation, and which representation is wanted over a given corpus is the author's
+///     policy. What the library cannot supply is the phrasing, which is why
+///     <see cref="SuggestedInstruction"/> spends four sentences on it.
 ///     </para>
 ///     <para>
 ///     <b>The application author governs the settings; this family guarantees the mechanism.</b>
@@ -146,24 +159,27 @@ public sealed class MemoryPack : IToolPack
     ///     carry this sentence across.
     ///     </para>
     ///     <para>
-    ///     <b>The descriptor-phrasing sentences are here because of a measured self-defeating
-    ///     failure.</b> Live runs asked a model to file two contradicting statements of one fact.
-    ///     It wrote <c>"Relief valve setting for the bilge pump"</c> for the first and
-    ///     <c>"Relief valve setting per field revision (Revision B)"</c> for the second — both
-    ///     stored, no refusal raised, the store left holding two contradictory values. The
-    ///     descriptors were different because the model had <em>understood</em> that the facts
-    ///     differed and had said so in the only field that is embedded. Detection keys on
-    ///     descriptor similarity, so a model that recognizes a conflict and names the source or
-    ///     revision that distinguishes it defeats detection precisely when a conflict exists.
-    ///     Instructing subject-only descriptors is the lever that restores the collision, and
+    ///     <b>The descriptor-phrasing sentences are here because of a measured behavior, not a
+    ///     hypothetical one.</b> Asked to file two contradicting statements of one fact and told to
+    ///     keep them separate, a model wrote <c>"Relief valve setting for the bilge pump"</c> for the
+    ///     first and <c>"Relief valve setting per field revision (Revision B)"</c> for the second —
+    ///     both stored, no refusal raised. The descriptors were different because the model had
+    ///     <em>understood</em> that the facts differed and had said so in the only field that is
+    ///     embedded. Detection keys on descriptor similarity, so a model that names the source or
+    ///     revision that distinguishes a conflict steps past detection precisely when a conflict
+    ///     exists. Instructing subject-only descriptors is the lever that restores the collision, and
     ///     stating the reason rather than the bare rule is deliberate: a rule without a reason gets
-    ///     applied inconsistently by exactly the reasoning that produced the failure.
+    ///     applied inconsistently by exactly the reasoning that produced the distinct descriptors.
     ///     </para>
     ///     <para>
-    ///     <b>No adherence figure is claimed for this text.</b> The task-list family's published
-    ///     1-of-5 versus 3-of-3 comparison was measured for that family's wording; nothing
-    ///     equivalent has been measured for this one, and a number borrowed from a neighbor would
-    ///     be a fabricated one.
+    ///     <b>What that instruction is worth, measured.</b> Over eight live runs of the
+    ///     <c>research-assistant</c> sample, the subject-only rule was obeyed in 5 of 5 runs whose
+    ///     prompts never mentioned descriptors, and in 0 of 3 runs whose prompt demanded a separate
+    ///     memory and so pressed for a distinguishing label. In the same five neutral runs the model
+    ///     chose <c>memory_revise</c> over <c>memory_update</c> and cited the new document 5 of 5.
+    ///     Those figures are the whole of what has been measured for this text; the task-list family's
+    ///     published 1-of-5 versus 3-of-3 comparison belongs to that family's wording and does not
+    ///     transfer to this one.
     ///     </para>
     ///     <para>
     ///     It is deliberately not applied automatically. This library composes tools; it does not

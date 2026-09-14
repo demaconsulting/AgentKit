@@ -1,0 +1,90 @@
+---
+# Software Unit Requirements for the CustomTools sample
+#
+# These requirements describe what the custom-tools sample must demonstrate to a reader about
+# authoring guarded tools and publishing them as packs alongside a shipped pack.
+
+sections:
+  - title: AgentKitSamples Requirements
+    sections:
+      - title: CustomTools Requirements
+        requirements:
+          - id: AgentKitSamples-CustomTools-ComposesCustomPacksAlongsideShippedPack
+            title: >-
+              The sample shall demonstrate that two author-written packs compose onto the same
+              builder as a shipped pack, and that every published tool name is a valid,
+              family-prefixed name.
+            justification: |
+              An author needs to see that their own pack is a pack in exactly the sense a shipped one
+              is: added to the same builder, on the same policy, and admitted only when each tool it
+              publishes carries the pack's declared family prefix. The demonstration composes both
+              custom packs alongside the shipped text-file pack and shows the composed tool set holds
+              the custom tools, the shipped tools, and no name the naming convention would reject.
+            tests:
+              - AgentComposition_BuildTools_ComposesCustomPacksWithShippedPack
+
+          - id: AgentKitSamples-CustomTools-PathTakingToolReturnsStructuredCounts
+            title: >-
+              The sample shall demonstrate that an author-written path-taking tool addresses a file
+              in the granted workspace by its bare relative name and returns a structured,
+              machine-readable result.
+            justification: |
+              A tool an author writes should be indistinguishable in behavior from a shipped one: it
+              anchors a relative name to the granted workspace and answers with structured data a
+              model can act on rather than prose. The demonstration counts a known fixture and shows
+              the reported path, character, word, and line counts are the deterministic values of
+              that fixture.
+            tests:
+              - DocStatsWordCount_KnownFile_ReturnsStructuredCounts
+
+          - id: AgentKitSamples-CustomTools-PathTakingToolRefusesEscape
+            title: >-
+              The sample shall demonstrate that an author-written path-taking tool observes
+              containment, returning a refusal that names the containment reason rather than reading
+              a file outside the granted workspace or throwing.
+            justification: |
+              The whole value of the guarded construction path is that an author's own tool inherits
+              containment without writing it: a path escaping the workspace is refused the same way a
+              shipped tool refuses it, and the refusal is a value the model reads rather than an
+              exception. The demonstration requests a file above the workspace and shows a returned
+              denial naming the containment reason.
+            tests:
+              - DocStatsWordCount_PathOutsideWorkspace_ReturnsPathNotPermittedDenial
+
+          - id: AgentKitSamples-CustomTools-PathTakingToolAnswersDiscovery
+            title: >-
+              The sample shall demonstrate that an author-written path-taking tool answers a
+              no-argument request as discovery, reporting the inspectable locations and that relative
+              addressing applies.
+            justification: |
+              A model that does not yet know what it may inspect asks with no argument, and a tool
+              built the shipped way answers that as discovery rather than as an error. The
+              demonstration invokes the tool with no arguments and shows a structured result naming
+              the inspectable workspace and the relative-addressing dialect.
+            tests:
+              - DocStatsWordCount_NoArgument_ReturnsDiscoveryStructure
+
+          - id: AgentKitSamples-CustomTools-NoPathToolReturnsStructuredResult
+            title: >-
+              The sample shall demonstrate that an author-written tool that takes no path is
+              constructed through the same guarded path and returns a structured result without
+              consulting any policy.
+            justification: |
+              The guarded construction path is the way to build every tool, not only path-based ones.
+              A tool that needs no location simply does not consult one, and this is worth proving so
+              a reader does not conclude the contract is only for file tools. The demonstration
+              invokes the clock tool and shows a structured result naming both the local and UTC
+              times and the local time zone.
+            tests:
+              - ClockNow_ReturnsStructuredLocalAndUtcTime
+
+          - id: AgentKitSamples-CustomTools-InstructionsNameWorkspaceAndCustomTools
+            title: >-
+              The sample shall demonstrate that the instructions it builds for a run name the granted
+              workspace and the author-written tools the run carries.
+            justification: |
+              An application describes its agent's real capability set truthfully so the model does
+              not invent capabilities it will only be refused. The demonstration builds the
+              instructions for a run and shows they name the workspace and both author-written tools.
+            tests:
+              - AgentComposition_BuildInstructions_NamesWorkspaceAndCustomTools

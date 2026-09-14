@@ -87,7 +87,8 @@ imagined:
   provenance a memory already carried; `memory_revise` sets it. Offered a conflict raised by a new
   document, a model frequently picks `memory_update` anyway, leaving corrected text beside a
   citation of a superseded source — even though the update tool reports the source it retained.
-  Provenance was correct in every run only when the instructions demanded the new document be cited.
+  Provenance was correct in every run only when the instructions demanded the new document be cited,
+  and with that demand in place it was correct in 5 of 5 neutral live runs.
 - **Recall applies no similarity floor.** `memory_recall` returns the nearest memories it holds
   whatever their similarity, so a question about an unrecorded subject still returns matches. The
   agent is told to read each returned descriptor and judge it.
@@ -95,8 +96,14 @@ imagined:
   whatever it reports that is worth keeping, the parent must file itself.
 
 The task-list family's instruction wording is backed by a measurement — used in 1 of 5 runs with a
-soft instruction against 3 of 3 with an explicit one. No equivalent figure exists for the memory
-instruction, and none is claimed.
+soft instruction against 3 of 3 with an explicit one. The memory instruction now has narrower
+figures of its own, from eight live runs pinned to one model: its subject-only descriptor rule was
+obeyed in 5 of 5 runs whose prompts never mentioned descriptors and in 0 of 3 runs whose prompt
+demanded a separate memory, and `memory_revise` was chosen over `memory_update` with the new source
+cited in 5 of 5 of the neutral runs. In those same five runs the agent noticed the corpus's
+superseded value by reading and corrected it in place, and the near-duplicate refusal fired in none
+of the eight. The refusal is a backstop for the conflict a model does *not* notice, not the ordinary
+path; see the sample's own README for the full measurement.
 
 ## Running the Sample
 

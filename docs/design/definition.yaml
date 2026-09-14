@@ -42,6 +42,10 @@ input-files:
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-copilot.md
   - docs/design/agent-kit-agents-copilot/copilot-agent-factory.md
+  - docs/design/agent-kit-samples.md
+  - docs/design/agent-kit-samples/custom-tools.md
+  - docs/design/agent-kit-samples/document-assistant.md
+  - docs/design/agent-kit-samples/research-assistant.md
   - docs/design/ots.md
   - docs/design/ots/apimark.md
   - docs/design/ots/buildmark.md

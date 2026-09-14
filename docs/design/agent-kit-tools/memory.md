@@ -91,42 +91,71 @@ descriptor, asks the store for the single nearest memory, and declines to store 
 nearest match reaches the author's threshold. The comparison is nearly free: the vectors it compares
 were computed when their memories were filed.
 
-**The detection is best-effort and phrasing-dependent, and a reader must not leave this document
-believing conflicts are reliably caught.** The mechanism is guaranteed — every file is checked
-against the nearest memory held — but what that check can see is one sentence the model chose the
-wording of, and the wording decides the outcome. Two properties compound, and the second was only
-visible in live runs.
+That spike finding is narrower than it sounds, and later live measurement bounds it. The spike had
+no instruction telling a model to look for conflicts; an instructed live model does notice them, in
+5 of 5 runs measured below. What survives is the mechanism's _role_ rather than its primacy: the
+arithmetic is what catches a conflict the model did not notice, which is by definition the case
+judgement cannot cover.
 
-_Detection keys on descriptor similarity, and recognizing a conflict is what destroys it._ Only the
-descriptor is embedded. In three live runs of the `research-assistant` sample under a lexical
-generator the near-duplicate refusal did not fire once, including in a run constructed to force it:
-two prompts explicitly demanded a separate new memory of the same fact, and the model wrote
-`"Relief valve setting for the bilge pump"` (12 psi, from `01-initial-spec.md`) and `"Relief valve
-setting per field revision (Revision B)"` (18 psi, from `02-field-revision.md`). Both were stored.
-Nothing malfunctioned: the model had understood that the facts differed and had said so in the only
-field that is compared. A descriptor that names the source, the revision or the qualifier describes
-_where_ a fact came from; a descriptor that names the subject describes _what_ the fact is about.
-Only the second lets two conflicting statements collide, so the better a model understands that two
-facts differ, the less likely the conflict is to be caught — unless the instruction tells it to
-write subject-only descriptors, and tells it why. The converse confirms the mechanism rather than
-excusing it: an earlier live run scored exactly 1.0 and refused correctly, because the descriptor
-was topic-only (`"Relief valve pressure setting"`) with the value carried in the un-embedded
-details. That is the descriptor/payload split working as designed. The spike never exposed this
-because its descriptors were uniformly auto-generated in one shape, so conflicting facts collided by
-construction; live models phrase descriptors freely and distinguish them.
+**Near-duplicate detection is a backstop, not the primary conflict mechanism, and a reader must not
+leave this document believing it is routine or reliable.** The mechanism is guaranteed — every file
+is checked against the nearest memory held — but what that check can see is one sentence the model
+chose the wording of, and the wording decides the outcome. What a live model does with that latitude
+is the measurement that matters, and it is not what the spike predicted.
+
+_What a live model actually does with a conflict._ Eight live runs of the `research-assistant`
+sample were measured after the subject-only descriptor instruction was added — model pinned
+`claude-sonnet-5`, `--embeddings local` — in two arms. In the **neutral arm (n = 5)**, whose prompts
+never mention descriptors at all, the descriptor rule was obeyed **5 of 5**: values and revisions
+went into `details` and the provenance parameters rather than into the embedded field. The
+near-duplicate refusal fired **0 of 5**. But the failure it exists to catch — two contradictory
+memories stored silently — also occurred **0 of 5**. The model recognized the contradiction by
+reading, cited `02-field-revision.md`, and used `memory_revise` to correct the memory in place
+**5 of 5**; each run ended holding exactly one relief-valve memory, at 18 psi. The regression checks
+were clean across the same five runs: `memory_revise` chosen over `memory_update` 5 of 5, the new
+source cited 5 of 5, and the fresh-session recall turn answering 18 psi through `memory_recall`
+5 of 5.
+
+_So the refusal covers the unnoticed conflict, which is the case worth covering._ The refusal fires
+when the model files a near-identical descriptor — which is to say, when it has _not_ noticed that
+it is contradicting something the store already holds. That is precisely when a backstop is wanted,
+and precisely when no amount of judgement is going to produce a revision. When the model does
+notice, it revises, and a revision is the better outcome of the two: one memory, corrected, citing
+the document that corrected it, instead of a refusal the model then has to act on. Revision in place
+is therefore the primary path in practice and the refusal is the floor under it. Stated plainly: the
+refusal did not fire in any of the 8 live sample runs. It did fire 5 of 5 in an earlier directly
+driven measurement in which the descriptors genuinely collided, and it fires in the unit tests, so
+the arithmetic is not in doubt — only how often a live model reaches it.
 
 _Descriptor length moves the same conflict across the threshold._ Independently of phrasing, a
 lexical bag-of-words generator scores two descriptors differing in one token out of `n` at exactly
 `(n - 1) / n`, so one conflict measures 0.875 stated in eight tokens and 0.917 stated in twelve —
 below and then above the 0.88 default, on verbosity alone.
 
+_What an adversarial prompt produces, and why it is not a defect._ In the **adversarial arm
+(n = 3)**, whose second prompt demands "a separate new memory… do not revise or update", the
+descriptor rule was obeyed **0 of 3** and the model narrated exactly why: _"I used a distinct
+descriptor ('…per field revision') so it wouldn't collide with the Revision A memory."_ Nothing was
+refused (0 of 3), both memories were stored, and the store was left holding 12 psi and 18 psi at
+once. This arm is an adversarial lower bound rather than everyday behavior — being told to keep two
+memories is itself pressure toward two distinct labels — and its outcome is arguably the correct
+one. "12 psi per Revision A" and "18 psi per Revision B" are both true statements, about different
+documents; two memories carrying accurate provenance is a legitimate representation of a superseded
+specification, and it is the representation the user explicitly asked for. This is the application
+author governing the settings, which is the intended design: the family guarantees that every file
+is checked and leaves what _should_ happen to a conflict over the author's own corpus to the author,
+their instructions and their threshold. An earlier commit message in this repository framed this arm
+as a failure mode. That framing was wrong, and is corrected here: it is neither evasion nor a
+defect.
+
 _What follows for an author._ Write the instruction, because it is the only lever that exists, and
-`MemoryPack.SuggestedInstruction` carries the wording and the reasoning. Then treat the outcome as
-best-effort anyway: an application author cannot guarantee how a model phrases a descriptor, so the
-expected failure is not a false refusal but the quiet one — both memories stored, the contradiction
-never raised, and nothing in the transcript to show it happened. An application whose correctness
-depends on contradictions being caught needs a check outside this family; near-duplicate detection
-raises what it can see and claims nothing more.
+`MemoryPack.SuggestedInstruction` carries the wording and the reasoning; it was obeyed in 5 of 5
+neutral runs, which is the situation an ordinary application is in. Then do not read the refusal as
+a guarantee. An application author cannot guarantee how a model phrases a descriptor, and a
+descriptor a model deliberately chose to distinguish is one that will not collide. An application
+whose correctness depends on contradictions being _raised_ — rather than merely being handled well,
+which is what the measurement shows the model doing — needs a check outside this family;
+near-duplicate detection raises what it can see and claims nothing more.
 
 **The threshold is only meaningful inside the vector space the author injected, so 0.88 is a
 starting point to measure against rather than a value to adopt.** The 0.965 above is one embedding
