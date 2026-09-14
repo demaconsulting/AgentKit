@@ -23,7 +23,11 @@ reason the image-promoting decorator is deliberately absent) was verified in the
 re-proven here.
 
 System tests reside in `AgentKitAgentsCopilotTests.cs` within the
-`DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
+`DemaConsulting.AgentKit.Agents.Copilot.Tests` project. The runtime's other injection channels —
+its skills and its discovered custom instructions — are closed on the same session configuration
+and are verified at the unit level against the built configuration
+(`CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld`), where the two values are
+set.
 
 ## Test Environment
 

@@ -9,21 +9,27 @@ sections:
     requirements:
       - id: AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
         title: >-
-          The library shall suppress the tools the Copilot runtime injects by deriving the session
-          allow-list from the same tool collection it publishes to the session, so the published
-          tools and the allow-list cannot diverge.
+          The library shall withhold the capability the Copilot runtime injects, suppressing the
+          runtime's tools by deriving the session allow-list from the same tool collection it
+          publishes to the session, so the published tools and the allow-list cannot diverge, and
+          closing the runtime's skill and custom-instruction channels on every session it builds.
         tags: [system, security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
-          reading and writing, and more. Supplying an application's own tools is not enough: unless
-          the built-ins are suppressed, a document assistant silently retains command execution. The
-          session's available-tools list is an allow-list, so the library derives it from the same
-          collection it assigns as the session's tools. Deriving both from one collection makes the
-          published tool set and the allow-list impossible to drift apart, which is the safety
-          property of the whole package. Deriving the allow-list also requires the session-config
-          construction path, which is the only one that carries an allow-list at all.
+          reading and writing, and more — and its own channels for injecting further capability and
+          direction. Supplying an application's own tools is not enough: unless the built-ins are
+          suppressed, a document assistant silently retains command execution. The session's
+          available-tools list is an allow-list, so the library derives it from the same collection
+          it assigns as the session's tools. Deriving both from one collection makes the published
+          tool set and the allow-list impossible to drift apart, which is the safety property of the
+          whole package. Deriving the allow-list also requires the session-config construction path,
+          which is the only one that carries an allow-list at all. Tools are not the only channel:
+          the runtime's skills and its discovered custom instructions would attach capability and
+          direction the composing application never granted, so those channels are closed on every
+          session for the same reason the built-in tools are suppressed.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
+          - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
 
