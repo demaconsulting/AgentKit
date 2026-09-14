@@ -60,7 +60,8 @@ governed by the supplied policy for the rest of its life.
 4. The named directory is listed under the working-directory anchor when the request was relative and
    the policy can emit relative names; otherwise it is listed under its resolved absolute header.
 5. An empty named-directory result returns `No files matched.`.
-6. A result over `MaxResultCharacters` is refused with advice to narrow the pattern.
+6. A result over `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the ceiling as a
+   plain fact and prescribing no remedy.
 7. Otherwise the listing is returned as text.
 
 ##### ListEveryLocation(PathPolicy policy, string pattern)

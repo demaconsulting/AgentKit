@@ -79,13 +79,13 @@ sections:
 
           - id: AgentKitTools-File-DenialsAreResults
             title: >-
-              The file family shall report every refusal as a returned result that names its reason,
-              never throwing at a model, and shall direct the model to the listing tool where a
-              missing target has one.
+              The file family shall report every refusal as a returned result that names its reason
+              and no other tool, never throwing at a model.
             justification: |
               An exception raised while a model is calling a tool ends the agent's turn and strands
               it, whereas a returned refusal lets it read the reason and choose a permitted
-              alternative.
+              alternative. A denial states a fact and never prescribes a remedy; naming another tool
+              to run is a prescription the refusal must not make.
             children:
               - AgentKitTools-File-CopyTool-MissingSource
               - AgentKitTools-File-MoveTool-MissingSource

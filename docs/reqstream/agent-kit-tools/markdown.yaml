@@ -53,7 +53,7 @@ sections:
               - AgentKitTools-Markdown-OutlineTool-PolicyGoverned
               - AgentKitTools-Markdown-OutlineTool-MissingOrDirectory
             tests:
-              - Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult
+              - Markdown_Family_PathOutsideGrants_IsRefused
 
           - id: AgentKitTools-Markdown-Outline
             title: >-

@@ -55,14 +55,17 @@ The listed tests prove every tool in the family carries a valid name and a descr
 
 #### AgentKitTools-Markdown-PolicyGoverned: Policy Governed
 
-**Test**: `Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult`
+**Test**: `Markdown_Family_PathOutsideGrants_IsRefused`
 
-The listed tests prove the family's structured result reaches the caller as a JSON element the guard
-serialized, and that a file outside the permitted location is never outlined.
+Security control at the composed boundary: the outline of a Markdown file placed in a sibling
+directory no grant permits is requested through the published tool list and refused as
+`PathNotPermitted`, with no heading from that file appearing in the result. The bait lies outside the
+grants and is named by absolute path, so the request would succeed were the read decision not
+consulted — the scenario fails if containment is removed.
 
 #### AgentKitTools-Markdown-Outline: Outline
 
 **Test**: `Markdown_Family_OutlineOfPermittedFile_ReturnsStructuredResult`
 
 The listed tests prove the family's structured result reaches the caller as a JSON element the guard
-serialized, and that a file outside the permitted location is never outlined.
+serialized, carrying the section count the document's headings imply.

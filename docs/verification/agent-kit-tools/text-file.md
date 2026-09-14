@@ -34,7 +34,7 @@ Subsystem tests reside in `TextFile/TextFileTests.cs` within the
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all 7 requirement scenarios below, covering 11 listed test method
+A subsystem test run passes when all 7 requirement scenarios below, covering 14 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing tool, a wrong
 family prefix, an ignored policy decision, a containment escape, a thrown refusal, incorrect relative-path
 behavior, unsafe mutation, or a ceiling violation returned as truncated content constitutes a
@@ -67,8 +67,9 @@ tool's result reaches the caller in the form the tool returned it.
 **Test**: `TextFile_Family_PathOutsideRoot_IsRefusedByEveryTool`
 
 The listed tests prove a read-wide, write-narrow policy permits the read and refuses the edit of one
-path; a path outside the permitted location is refused by every editing tool
-and never surfaced by search.
+path; a path outside the permitted location is refused by every editing tool, and a file the grant's
+deny pattern refuses — placed inside the searched location, so the enumeration genuinely reaches it —
+is never surfaced by search.
 
 #### AgentKitTools-TextFile-NavigationAndPaging: Navigation And Paging
 
@@ -96,6 +97,25 @@ The listed tests prove a refused request returns a result rather than throwing.
 
 #### AgentKitTools-TextFile-ObservesPolicyLimits: Observes Policy Limits
 
-**Test**: `TextFile_Family_ToolResult_ReachesTheCallerUnserialized`
+**Test**: `TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling`
 
-The listed tests prove a family tool's result reaches the caller in the form the tool returned it.
+**Test**: `TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse`
+
+**Test**: `TextFileReadTool_Read_UnrangedLargeFile_ReturnsDenialNamingRecourseAndTotal`
+
+**Test**: `TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncated`
+
+Each listed test drives a configured ceiling to overrun and asserts the refusal, so each would fail
+were its ceiling check removed. The first assembles a search listing far larger than a 32-character
+result ceiling and asserts a `ResourceTooLarge` denial naming that ceiling, with no match returned in
+its place. The second reads a single line longer than a 16-byte read ceiling and asserts a
+`ResourceTooLarge` denial that names the ceiling and the `startLine`/`lineCount` recourse, and that
+none of the line's content is returned. The third reads an unranged file larger than a 64-byte read
+ceiling and asserts the same denial additionally names the file's true total line count, with no file
+content returned. The fourth reads a window past a 32-character result ceiling and asserts a
+`ResourceTooLarge` denial rather than truncated text — the read ceiling and the result ceiling are
+separate bounds and both refuse.
+
+These are unit-level tests reached from the subsystem requirement deliberately: the ceilings are
+enforced in the individual tools, so this is where a ceiling overrun can actually be provoked. The
+family-level composition properties are covered by the scenarios above.

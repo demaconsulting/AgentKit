@@ -49,7 +49,7 @@ public class MarkdownTests
 
     /// <summary>
     ///     Proves the family's structured result reaches the caller as a JSON element the guard
-    ///     serialized, and that a link-escaping file is never outlined.
+    ///     serialized.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -67,5 +67,32 @@ public class MarkdownTests
 
         var element = Assert.IsType<JsonElement>(result);
         Assert.Equal(2, element.GetProperty("sectionCount").GetInt32());
+    }
+
+    /// <summary>
+    ///     Proves a path outside the grants is refused by the composed family, so containment holds
+    ///     at the boundary an application actually attaches — the published tool list — and not only
+    ///     at the unit's own factory.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Markdown_Family_PathOutsideGrants_IsRefused()
+    {
+        // Arrange: a Markdown file in the sibling directory no grant permits
+        using var fixture = new TempDirectoryFixture();
+        var outsideFile = TempDirectoryFixture.WriteFile(fixture.Outside, "secret.md", "# Confidential\n");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        var tools = new ToolPackBuilder(policy).Add(new MarkdownPack()).Build();
+
+        // Act: ask the composed outline tool for the outside file
+        var tool = tools.Single(candidate => candidate.Name == MarkdownOutlineTool.ToolName);
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments { ["path"] = outsideFile },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the request is refused and no part of the file's structure is disclosed
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Confidential", text, StringComparison.Ordinal);
     }
 }

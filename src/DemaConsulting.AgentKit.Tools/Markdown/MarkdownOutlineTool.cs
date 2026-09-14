@@ -148,8 +148,9 @@ public static class MarkdownOutlineTool
                 "The maxDepth must be between 1 and 6, or omitted to report every level.");
         }
 
-        // The single read decision. A path escaping the permitted location through a link is refused
-        // here without this tool knowing links exist.
+        // The single read decision. Resolution and containment both happen inside the policy, so a
+        // path outside the permitted location, or one a deny pattern excludes, is refused here
+        // without this tool making any path judgment of its own.
         if (!policy.TryResolveRead(path, out var realPath, out var denialMessage))
         {
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);

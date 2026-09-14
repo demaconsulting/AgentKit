@@ -16,7 +16,7 @@ namespace DemaConsulting.AgentKit.Tools.Tests.Image;
 ///     internal method directly, because the delivery of the result through the guarded factory
 ///     is the load-bearing property this unit exists to provide: without it the image content
 ///     would be serialized into a <see cref="JsonElement"/> before a provider ever saw it.
-///     The reparse-point scenario reuses the fixture defined in the TextFile tests, an internal
+///     The containment scenario reuses the fixture defined in the TextFile tests, an internal
 ///     type in this same assembly, rather than a copy.
 /// </remarks>
 public class ImageReadToolTests

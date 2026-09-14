@@ -122,6 +122,12 @@ public class TextFileTests
     ///     Proves a path outside the permitted location is refused by every editing tool and
     ///     never surfaced by search.
     /// </summary>
+    /// <remarks>
+    ///     The search half carries a second bait inside the searched location that the grant's deny
+    ///     pattern refuses, so that leg fails if the policy filter applied to each enumerated
+    ///     candidate is removed, rather than resting on the sibling directory a walk could not reach
+    ///     anyway.
+    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task TextFile_Family_PathOutsideRoot_IsRefusedByEveryTool()
@@ -131,7 +137,9 @@ public class TextFileTests
             fixture.Outside,
             "secret.txt",
             "outside-content");
-        var tools = Compose(fixture.Root);
+        TempDirectoryFixture.WriteFile(fixture.Root, "denied.txt", "outside-content");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["denied.txt"])]);
+        var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
         var readResult = await InvokeAsync(
             tools, TextFileReadTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });

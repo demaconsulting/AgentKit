@@ -192,4 +192,7 @@ sections:
               - AgentKitTools-TextFile-SearchTool-LargeFileSearchable
               - AgentKitTools-TextFile-SearchTool-BoundedResult
             tests:
-              - TextFile_Family_ToolResult_ReachesTheCallerUnserialized
+              - TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
+              - TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse
+              - TextFileReadTool_Read_UnrangedLargeFile_ReturnsDenialNamingRecourseAndTotal
+              - TextFileReadTool_Read_TextBeyondTheResultCeiling_ReturnsDenialRatherThanTruncated

@@ -15,14 +15,15 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 /// <remarks>
 ///     <para>
 ///     <b>Search is a policy call, and this is the most important security property in the family.</b>
-///     Every candidate file is drawn from <see cref="PathPolicy.EnumerateFiles"/>, which filters each
-///     one through the very read decision direct access uses, so a search can never disclose the
-///     content, the path, or even the <em>existence</em> of a file the policy would refuse. Searching
-///     the file system directly would defeat that: recursive enumeration follows links out of a
-///     permitted location, and a match reported from such a file would leak both its contents and the
+///     Every candidate file is drawn from <see cref="PathPolicy.EnumerateFiles"/>, which re-filters
+///     each one through the very read decision direct access uses, so a search can never disclose the
+///     content, the path, or even the <em>existence</em> of a file the policy would refuse — a file a
+///     grant's deny pattern excludes is as invisible to a search as it is to a read. Searching the
+///     file system directly would defeat that: a bare recursive enumeration reports every file it
+///     walks, and a match taken from one the policy excludes would leak both its contents and the
 ///     fact that it exists. The enumeration must remain a policy call — never a
 ///     <see cref="Directory"/> call — and that invariant is verified by a scenario whose only match
-///     lies behind a link outside the grants.
+///     lies in a file the grant's deny pattern refuses.
 ///     </para>
 ///     <para>
 ///     <b>Matches are reported grep-style.</b> A match line is <c>path:line:content</c> — the file's

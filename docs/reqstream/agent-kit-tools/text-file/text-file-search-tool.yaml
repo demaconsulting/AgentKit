@@ -141,4 +141,4 @@ sections:
                   A truncated search result hides matches the model would then never see; naming the
                   ceiling lets it narrow the search instead.
                 tests:
-                  - TextFileSearchTool_Search_MaxMatches_CapsTheReportedMatches
+                  - TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling

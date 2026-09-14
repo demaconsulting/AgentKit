@@ -119,7 +119,9 @@ an oversized result or binary content where text was required — produces a `To
 naming its reason. Nothing is thrown at a model, because an exception raised during a tool call ends
 the agent's turn and strands it.
 
-**Ceilings refuse, they do not truncate.** `MaxReadBytes` bounds what may be read and
+**Ceilings refuse rather than truncate what they bound.** `MaxReadBytes` bounds what may be read and
 `MaxResultCharacters` bounds what may be returned. Search and read refuse an overrun with the
 ceiling named. A partial file or partial search result would be an omission the model cannot detect
-and would reason past.
+and would reason past. The one bounded prefix in the family is not an exception to this: search
+renders a single line longer than `MaxReadBytes` against a truncated prefix so no pathological line
+is ever materialized whole, and the search tool's own remarks disclose it.

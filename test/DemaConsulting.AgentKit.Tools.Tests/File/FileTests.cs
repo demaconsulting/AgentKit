@@ -55,32 +55,47 @@ public class FileTests
     ///     Proves a file outside the permitted root is never listed, copied, moved or deleted —
     ///     no tool in the family can breach containment.
     /// </summary>
+    /// <remarks>
+    ///     The bait is placed where an unguarded operation would genuinely find it: the grant covers
+    ///     only a workspace subdirectory, and the file sits in its ungranted parent, which is the
+    ///     directory the listing request names. Every leg therefore fails if the read or write
+    ///     decision stops being consulted, rather than holding by path arithmetic alone.
+    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task File_Family_PathOutsideRoot_IsNeverReachableByAnyTool()
     {
-        // Arrange: a file in the sibling directory no grant permits
+        // Arrange: grant only a workspace subdirectory, and bait its ungranted parent
         using var fixture = new TempDirectoryFixture();
+        var workspace = Path.Combine(fixture.Root, "workspace");
+        Directory.CreateDirectory(workspace);
         var outsideFile = TempDirectoryFixture.WriteFile(
-            fixture.Outside,
+            fixture.Root,
             "secret.txt",
             "outside-content");
-        var tools = Compose(fixture.Root);
+        var tools = Compose(workspace);
 
-        // Act: attempt every family operation against the outside file, and list the root
+        // Act: list the ungranted parent, then attempt every mutating operation against the bait
         var listResult = await InvokeAsync(
             tools, FileListTool.ToolName, new AIFunctionArguments { ["directory"] = fixture.Root });
         var copyResult = await InvokeAsync(
             tools,
             FileCopyTool.ToolName,
             new AIFunctionArguments { ["source"] = outsideFile, ["destination"] = "copy.txt" });
+        var moveResult = await InvokeAsync(
+            tools,
+            FileMoveTool.ToolName,
+            new AIFunctionArguments { ["source"] = outsideFile, ["destination"] = "moved.txt" });
         var deleteResult = await InvokeAsync(
             tools, FileDeleteTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });
 
-        // Assert: the listing never mentions the outside file, the copy and delete are refused,
-        // and the outside file still exists untouched
-        Assert.DoesNotContain("secret.txt", Assert.IsType<string>(listResult), StringComparison.Ordinal);
+        // Assert: the listing is refused and never names the bait; the copy, move and delete are
+        // refused; and the bait still exists untouched
+        var listText = Assert.IsType<string>(listResult);
+        Assert.Contains("Denied (PathNotPermitted)", listText, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret.txt", listText, StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(copyResult), StringComparison.Ordinal);
+        Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(moveResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(deleteResult), StringComparison.Ordinal);
         Assert.Equal(
             "outside-content",

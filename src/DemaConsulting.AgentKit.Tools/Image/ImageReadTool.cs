@@ -174,9 +174,9 @@ public static class ImageReadTool
             return ToolResult.Denied(DenialReason.InvalidRequest, PathRequired);
         }
 
-        // The single read decision. Resolution happens inside the policy, so a path that reaches
-        // outside the permitted location through a link is refused here without this tool having
-        // to know that links exist.
+        // The single read decision. Resolution and containment both happen inside the policy, so a
+        // path outside the permitted location, or one a deny pattern excludes, is refused here
+        // without this tool making any path judgment of its own.
         if (!policy.TryResolveRead(path, out var realPath, out var denialMessage))
         {
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);

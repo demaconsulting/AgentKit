@@ -10,8 +10,8 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// </summary>
 /// <remarks>
 ///     The scenarios use the paths a model actually sends and assert the grep-style output. The
-///     most important scenario proves a file reachable only through a link outside the grants is
-///     never surfaced by a search — the single most important security property of this increment.
+///     most important scenario proves a file the grant's deny pattern refuses is never surfaced by a
+///     search — not its content, not its path, not its existence.
 /// </remarks>
 public class TextFileSearchToolTests
 {
@@ -149,6 +149,33 @@ public class TextFileSearchToolTests
         var text = Assert.IsType<string>(result);
         var matchLines = text.Split('\n').Count(line => line.Contains(":hit", StringComparison.Ordinal));
         Assert.Equal(2, matchLines);
+    }
+
+    /// <summary>
+    ///     Proves an assembled search result larger than the policy's result ceiling is refused with
+    ///     the ceiling named, rather than returned truncated: a truncated listing would hide matches
+    ///     the model could never discover it was missing.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling()
+    {
+        // Arrange: a file whose every line matches, under a result ceiling far smaller than the
+        // listing those matches assemble into
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(
+            fixture.Root, "note.txt", string.Concat(Enumerable.Repeat("hit\n", 100)));
+        var tool = TextFileSearchTool.Create(
+            RootedPolicy(fixture.Root, new ToolLimits(maxResultCharacters: 32)));
+
+        // Act: search for the token every line carries
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["pattern"] = "hit" });
+
+        // Assert: the request is refused as too large, the ceiling is named, and no match is returned
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("32-character", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("note.txt:1:hit", text, StringComparison.Ordinal);
     }
 
     /// <summary>

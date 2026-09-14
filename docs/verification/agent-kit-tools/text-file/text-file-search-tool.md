@@ -120,6 +120,7 @@ file being silently skipped for size.
 
 ##### AgentKitTools-TextFile-SearchTool-BoundedResult: Bounded Result
 
-**Test**: `TextFileSearchTool_Search_MaxMatches_CapsTheReportedMatches`
+**Test**: `TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling`
 
-The listed tests prove maxMatches caps the number of reported matches.
+The listed tests prove an assembled result larger than the policy's result ceiling is refused as
+`ResourceTooLarge` with the ceiling named, and that no match is returned in its place.

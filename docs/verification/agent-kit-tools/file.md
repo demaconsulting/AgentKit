@@ -61,8 +61,12 @@ tools.
 
 **Test**: `File_Family_PathOutsideRoot_IsNeverReachableByAnyTool`
 
-The listed tests prove a file outside the permitted root is never
-listed, copied, moved or deleted — no tool in the family can breach containment.
+Security control at the composed boundary: the grant covers only a workspace subdirectory and the
+bait file is written into its ungranted parent — the very directory the listing request names — so
+each leg is refused by a decision rather than by path arithmetic. The listing of the ungranted parent
+is refused as `PathNotPermitted` and never names the bait; the copy, the move and the delete of the
+bait are each refused as `PathNotPermitted`; and the bait is confirmed byte-identical afterwards, so
+no tool in the family reached it.
 
 #### AgentKitTools-File-DenialsAreResults: Denials Are Results
 

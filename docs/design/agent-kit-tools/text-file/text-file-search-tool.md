@@ -66,7 +66,8 @@ governed by the supplied policy for the rest of its life.
    honored and reduced to the file-name pattern used by the policy enumeration.
 6. The result is assembled from the permitted candidates.
 7. No matches are returned as `No matches.`, not as a refusal.
-8. A result longer than `MaxResultCharacters` is refused with advice to narrow the search.
+8. A result longer than `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the ceiling as
+   a plain fact and prescribing no remedy.
 9. Otherwise the grep-style listing is returned.
 
 ##### BuildResultAsync(...)
