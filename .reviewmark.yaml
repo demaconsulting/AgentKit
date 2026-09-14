@@ -757,21 +757,6 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryOptions.cs"    # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryOptionsTests.cs"  # unit tests
 
-  # AgentKitTools-Memory-MemoryRecord Review (one per unit)
-  - id: AgentKitTools-Memory-MemoryRecord
-    title: Review that AgentKitTools Memory MemoryRecord Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/memory.md"
-      - "docs/reqstream/agent-kit-tools/memory.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/memory/memory-record.yaml"     # unit requirements
-      - "docs/design/agent-kit-tools/memory/memory-record.md"          # unit design
-      - "docs/verification/agent-kit-tools/memory/memory-record.md"    # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Memory/MemoryRecord.cs"     # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryRecordTests.cs"  # unit tests
-
   # AgentKitTools-Memory-MemoryStore Review (one per unit)
   - id: AgentKitTools-Memory-MemoryStore
     title: Review that AgentKitTools Memory MemoryStore Implementation is Correct
@@ -905,21 +890,6 @@ reviews:
       - "docs/verification/agent-kit-tools/agent/agent-profile.md"     # unit verification
       - "src/DemaConsulting.AgentKit.Tools/Agent/AgentProfile.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentProfileTests.cs"  # unit tests
-
-  # AgentKitTools-Agent-ChildAgentRequest Review (one per unit)
-  - id: AgentKitTools-Agent-ChildAgentRequest
-    title: Review that AgentKitTools Agent ChildAgentRequest Implementation is Correct
-    context:
-      - "docs/design/agent-kit-tools.md"
-      - "docs/reqstream/agent-kit-tools.yaml"
-      - "docs/design/agent-kit-tools/agent.md"
-      - "docs/reqstream/agent-kit-tools/agent.yaml"
-    paths:
-      - "docs/reqstream/agent-kit-tools/agent/child-agent-request.yaml"   # unit requirements
-      - "docs/design/agent-kit-tools/agent/child-agent-request.md"        # unit design
-      - "docs/verification/agent-kit-tools/agent/child-agent-request.md"  # unit verification
-      - "src/DemaConsulting.AgentKit.Tools/Agent/ChildAgentRequest.cs"    # unit source
-      - "test/DemaConsulting.AgentKit.Tools.Tests/Agent/ChildAgentRequestTests.cs"  # unit tests
 
   # AgentKitTools-Agent-AgentRunTool Review (one per unit)
   - id: AgentKitTools-Agent-AgentRunTool

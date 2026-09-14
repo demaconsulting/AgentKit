@@ -2,15 +2,21 @@
 
 ![AgentKit Tools Memory Structure](MemoryView.svg)
 
-The `MemoryStore` unit comprises the public `IMemoryStore` contract and the public sealed
-`InMemoryMemoryStore` default implementation.
+The `MemoryStore` unit comprises the two public immutable records the family's currency is
+expressed in — `MemoryRecord`, which is one memory, and `MemoryMatch`, which is one memory as a
+search found it — together with the public `IMemoryStore` contract and the public sealed
+`InMemoryMemoryStore` default implementation. The records are defined here rather than in a file of
+their own because they carry no behavior to design, implement or verify apart from the contract
+that hands them out.
 
 #### Purpose
 
-To be the only thing the memory tools know about persistence. The interface exists so the
-application author chooses where memories live; the default implementation exists so the family can
-be attached without an author first choosing a database. Both are public because substituting
-persistence is a supported, first-class use of the family rather than an extension point bolted on.
+To be the only thing the memory tools know about persistence, and to define what is persisted. The
+interface exists so the application author chooses where memories live; the default implementation
+exists so the family can be attached without an author first choosing a database. Both are public
+because substituting persistence is a supported, first-class use of the family rather than an
+extension point bolted on, and the records are public for the same reason: an author substituting
+persistence has to be able to name what they are persisting.
 
 #### Data Model
 
@@ -21,11 +27,47 @@ persistence is a supported, first-class use of the family rather than an extensi
 | `_gate`     | `object`             | Lock guarding all access to `_memories`     |
 | `_memories` | `List<MemoryRecord>` | Ordered; ids unique; vectors all one length |
 
-A list rather than a dictionary, because every search is an exhaustive scan anyway and insertion
-order gives a stable tie-break between two memories of equal similarity. An exhaustive scan is the
-right algorithm at the scale this default is for — an agent session's worth of memories, tens to low
-thousands — and an author whose corpus outgrows it substitutes a store that indexes, which is the
-reason the interface is public.
+`MemoryRecord` and `MemoryMatch` are sealed positional records enforcing no invariants of their own:
+validation of what a model supplied happens in the tools, and validation of what reaches a store
+happens below.
+
+`MemoryRecord`:
+
+| Member           | Type                    | Invariant                                     |
+| ---------------- | ----------------------- | --------------------------------------------- |
+| `Id`             | `string`                | Unique within the store; never changed        |
+| `Descriptor`     | `string`                | The only text embedded, and the only searched |
+| `Details`        | `string`                | Never embedded; returned whole on recall      |
+| `SourceDocument` | `string?`               | The document the fact came from, or absent    |
+| `SourceLocator`  | `string?`               | Where in that document, or absent             |
+| `Embedding`      | `ReadOnlyMemory<float>` | The vector `Descriptor` produced              |
+
+`MemoryMatch`:
+
+| Member       | Type           | Invariant                                         |
+| ------------ | -------------- | ------------------------------------------------- |
+| `Memory`     | `MemoryRecord` | The memory found                                  |
+| `Similarity` | `double`       | Cosine of one comparison, inclusive range -1 to 1 |
+
+Four properties of the model are deliberate. A record rather than a class, so a store can hand a
+memory out without any caller being able to mutate what it holds, and so `MemoryUpdateTool` can
+re-state one with `existing with { Details = ... }` — which is what makes a half-applied update
+unrepresentable. The vector is held beside the descriptor so that near-duplicate detection and
+recall both read an already-computed value rather than re-embedding stored text, which is what makes
+the duplicate check nearly free. Provenance is nullable because a memory whose source is unknown is a
+real memory, and requiring one would either block filing what a model legitimately read or invite it
+to invent a citation. And there is no link, edge or relation to another memory: two spikes produced
+530 such links, correctly wired, none of which ever contributed to a correct answer.
+
+The score is carried on `MemoryMatch` rather than on `MemoryRecord` because it is a property of one
+comparison: the same memory scores differently against every query, and a score stored in the record
+would be silently contradicted by the next recall.
+
+A list rather than a dictionary for `_memories`, because every search is an exhaustive scan anyway
+and insertion order gives a stable tie-break between two memories of equal similarity. An exhaustive
+scan is the right algorithm at the scale this default is for — an agent session's worth of memories,
+tens to low thousands — and an author whose corpus outgrows it substitutes a store that indexes,
+which is the reason the interface is public.
 
 #### Key Methods
 
@@ -121,7 +163,7 @@ remain separable — see _MemoryFileTool_.
 
 #### Dependencies
 
-The unit depends on `MemoryRecord` and `MemoryMatch`, and otherwise only on Base Class Library
+The unit defines `MemoryRecord` and `MemoryMatch`, and otherwise depends only on Base Class Library
 collections, locking and arithmetic. It depends on no embedding abstraction at all: a store never
 embeds anything, because which backend is in use is the author's decision and invisible here.
 

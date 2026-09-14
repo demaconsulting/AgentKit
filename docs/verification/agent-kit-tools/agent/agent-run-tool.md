@@ -1,6 +1,7 @@
 ### AgentRunTool Unit Verification Design
 
-This document describes the unit-level verification strategy for the `AgentRunTool` class.
+This document describes the unit-level verification strategy for the `AgentRunTool` class and the
+`ChildAgentRequest` it hands the host's runner.
 
 #### Verification Approach
 
@@ -13,6 +14,13 @@ way a runtime does — through `InvokeAsync` with a named argument dictionary �
 delegation path is exercised rather than bypassed. Invoking through the constructed tool is
 essential: a hand-called delegate would prove nothing about how the tool as registered marshals
 its result.
+
+The three request scenarios compose `AgentPack` instead of building the tool directly, because
+the request's constructor is internal: a hand-built request would not exercise the path the
+family actually takes, and the runner's cancellation-observation and exception-propagation
+behavior is only meaningful when the request travels from the tool to the runner exactly as
+production code sends it. The request itself enforces no invariants, so there is nothing to
+verify about it apart from what reaches the runner.
 
 The composer lambdas that unit tests supply let the scenarios assert what the tool passes into
 composition without pulling in a real sibling family; the family's real composer is verified in
@@ -35,12 +43,14 @@ where a policy needs a working directory.
 
 #### Acceptance Criteria
 
-A unit test run passes when all eleven scenarios below pass without error or exception beyond
+A unit test run passes when all fourteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool description that omits a registered profile, a missing
 required constructor argument accepted, an unknown or malformed profile that reaches the
 runner, a call at the depth ceiling that composes or starts anything, a child answer that is
-truncated rather than refused, a null answer reported as a failure, or a composed profile
-different from the one the model named each constitute a failure.
+truncated rather than refused, a null answer reported as a failure, a composed profile
+different from the one the model named, a request that fails to describe the child the host must
+build, a cancellation token the runner did not observe, or a runner exception silently converted
+into a returned refusal each constitute a failure.
 
 #### Test Scenarios
 
@@ -135,3 +145,31 @@ The load-bearing isolation scenario for this unit: asserts the composer was invo
 profile the model named and with no other, and that the request handed to the runner carries
 the tools the composer returned. No parent-bound tool list is filtered at this call site; the
 composer is the only route by which tools reach the child.
+
+##### AgentKitTools-Agent-RunTool-RequestDescribesTheChild: The Request Describes the Child the Host Must Build
+
+**Test**: `ChildAgentRequest_Properties_DescribeTheChildTheHostMustBuild`
+
+Normal operation: composes the family, delegates through `agent_run`, and asserts on the
+`ChildAgentRequest` the runner received that `ProfileName`, `Instructions`, `Tools`, `Task` and
+`Depth` describe the child the host would build — the profile the model selected, the
+application-authored instructions, the tools composed against the child's own policy, the task
+the parent stated, and the child's delegation depth.
+
+##### AgentKitTools-Agent-RunTool-RunnerContract: The Runner Observes the Caller's Cancellation Token
+
+**Test**: `ChildAgentRequest_Runner_ObservesTheCallersCancellationToken`
+
+Normal operation for cancellation: the parent turn's cancellation token is passed through to
+the runner so a canceled parent turn reaches the child rather than leaving a delegated agent
+detached. The scenario cancels the token and asserts the runner observes it.
+
+##### AgentKitTools-Agent-RunTool-RunnerContract: A Host Failure Propagates
+
+**Test**: `ChildAgentRequest_Runner_HostFailure_Propagates`
+
+Error path: the runner throws a stated exception and the scenario asserts the exception
+propagates out of `agent_run` rather than being converted into a returned refusal. This
+library cannot tell a transient outage from a misconfiguration from the runner's exception
+alone, and reporting either as a refusal would tell the model something the library does not
+know.

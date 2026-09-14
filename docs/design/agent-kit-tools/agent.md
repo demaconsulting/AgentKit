@@ -22,13 +22,12 @@ the library composed for the child, runs it on the task, and returns its final t
 agent never authors the child's instructions, never names a tool the application did not attach,
 never widens a grant, and never hands a tool list down.
 
-The subsystem contains four units:
+The subsystem contains three units:
 
 | Unit                | Responsibility                                                            |
 |---------------------|---------------------------------------------------------------------------|
 | `AgentProfile`      | One named child agent the application is willing to have started          |
-| `ChildAgentRequest` | The bundle the library hands the host's runner for one delegated agent    |
-| `AgentRunTool`      | Publishes `agent_run`; refuses malformed calls, chooses and composes      |
+| `AgentRunTool`      | Publishes `agent_run`; chooses, composes, and shapes the host's request   |
 | `AgentPack`         | Publishes the family under the `agent` prefix, gated on Delegation        |
 
 ### Interfaces

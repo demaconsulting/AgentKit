@@ -78,10 +78,6 @@ sections:
               Provenance is optional because a memory whose source is unknown is a real memory,
               and requiring one would only invite the model to invent a citation.
             children:
-              - AgentKitTools-Memory-Record-DescriptorPayloadSplit
-              - AgentKitTools-Memory-Record-Provenance
-              - AgentKitTools-Memory-Record-Immutability
-              - AgentKitTools-Memory-Record-Match
               - AgentKitTools-Memory-FileTool-StoresNewMemory
               - AgentKitTools-Memory-FileTool-DescriptorOnlyEmbedded
               - AgentKitTools-Memory-FileTool-Provenance

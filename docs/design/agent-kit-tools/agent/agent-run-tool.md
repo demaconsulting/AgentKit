@@ -2,8 +2,11 @@
 
 ![AgentKit Tools Agent Structure](AgentView.svg)
 
-The `AgentRunTool` class publishes the `agent_run` tool and defines the internal
-`ChildToolComposer` seam every child's tools are built through.
+The `AgentRunTool` class publishes the `agent_run` tool, defines the internal
+`ChildToolComposer` seam every child's tools are built through, and defines the
+`ChildAgentRequest` bundle the host's runner receives. The request lives here rather than in a file
+of its own because it carries no behavior of its own: it is the shape of this tool's one call into
+the host.
 
 #### Purpose
 
@@ -16,6 +19,13 @@ The unit exists so the model's authority is exactly one word: the *name* of an a
 supply the child's instructions, its tools or its grants. Refusing a call the tool cannot honor
 returns a result naming the reason rather than throwing, because an exception in a tool call ends
 the agent's turn and strands it.
+
+`ChildAgentRequest` carries everything the host needs to start one child — the profile the model
+selected, the application-authored instructions, the tools the library composed against the child's
+own policy, the task the parent stated, and the child's delegation depth — in a shape the host
+cannot assemble wrongly. Its constructor is `internal`, because the property most worth assembling
+wrongly is the tool list: a runner that could hand-build its own request could hand it the parent's
+tools, and that is exactly the mistake the family's isolation property exists to prevent.
 
 #### Data Model
 
@@ -40,6 +50,23 @@ caller hands the parent's tools down to be filtered. Its only implementation, in
 `AgentPack.CreateTools`, composes the registered packs afresh against the child's own policy.
 Invoking it once per `agent_run` call — rather than once at construction — is what gives two
 sibling children different per-composition state.
+
+##### `ChildAgentRequest`
+
+The request handed to the host's runner. The class is sealed and immutable; every property is set
+at construction and never changes.
+
+| Member         | Type                        | Invariant                                            |
+|----------------|-----------------------------|------------------------------------------------------|
+| `ProfileName`  | `string`                    | The name the model selected; carries no authority    |
+| `Instructions` | `string`                    | The application's authorship of what the child is    |
+| `Tools`        | `IReadOnlyList<AIFunction>` | Composed against the child's own policy; may be empty|
+| `Task`         | `string`                    | The one part the parent supplied; data, not authority|
+| `Depth`        | `int`                       | The child's depth, counting a root agent as zero     |
+
+The tool list is already the intersection of the profile's declared names and what the application
+attached, so the host attaches it as it stands. It may be empty when the profile declares no tools,
+in which case the host builds an agent that can only answer.
 
 #### Key Methods
 
@@ -94,6 +121,32 @@ included; a profile's description is included where it has one, in parentheses b
 An empty registration produces a description that states none are registered, so a model that
 sees the tool but has nothing to delegate to reads the fact rather than inventing a profile name.
 
+##### ChildAgentRequest(profileName, instructions, tools, task, depth)
+
+Internal constructor. Everything here has been validated or constructed by the tool delegate
+before this point; no re-validation is required or performed.
+
+**Preconditions:** the caller is the library. All arguments are non-null; `depth` is non-negative.
+
+**Algorithm:** captures each argument on the corresponding property.
+
+**Postconditions:** the request is immutable and safe to hand across a runner boundary.
+
+#### The Runner's Contract
+
+The runner the application gave `AgentPack` is a `Func<ChildAgentRequest, CancellationToken,
+Task<string?>>`. It is expected to build an agent from `Instructions` and `Tools` exactly as
+given, run it against `Task`, and return the final text. It should not add tools, because a tool
+the application did not attach is a capability the profile did not admit, and it should not
+replace the instructions, because those are the application's authorship of what the child is.
+
+The cancellation token the tool call observed is passed through, so a canceled parent turn
+reaches the child rather than leaving a delegated agent detached. A runner returning `null` or
+empty text is reported to the parent as a child that said nothing rather than as a failure. An
+exception raised inside the runner propagates rather than becoming a refusal, because failing to
+reach a model provider is the host's condition to classify: a transient outage and a
+misconfigured credential look the same from inside this library.
+
 #### Error Handling
 
 Everything a model controls produces a returned refusal, never an exception: `InvalidRequest` for
@@ -113,9 +166,9 @@ this library does not know.
 #### Dependencies
 
 `PathPolicy`, `ToolLimits`, `ToolResult`, `DenialReason` and `GuardedToolFactory` from
-AgentKitCore, for the policy, ceilings and returned results. `AgentProfile` and
-`ChildAgentRequest` from this subsystem. `AIFunction` from
-`Microsoft.Extensions.AI.Abstractions`, as the type the constructed tool takes.
+AgentKitCore, for the policy, ceilings and returned results. `AgentProfile` from this subsystem.
+`AIFunction` from `Microsoft.Extensions.AI.Abstractions`, as the type the constructed tool takes
+and the type the request carries.
 
 #### Callers
 

@@ -1,16 +1,20 @@
 ### MemoryStore Unit Verification Design
 
-This document describes the unit-level verification strategy for the `IMemoryStore` contract and its
-default `InMemoryMemoryStore` implementation.
+This document describes the unit-level verification strategy for the `MemoryRecord` and
+`MemoryMatch` records, the `IMemoryStore` contract and its default `InMemoryMemoryStore`
+implementation.
 
 #### Verification Approach
 
 Nothing is mocked or stubbed. The store holds no collaborators, so each scenario uses a fresh
 instance and exercises add, find, replace, remove, search, count, the dimension guard and the
-validation rules directly. Vectors are stated as literal coordinate pairs rather than produced by an
-embedding generator, because the properties under test are arithmetic — cosine similarity, ordering,
-capping, the zero-vector case — and a generated vector would make the expected numbers something a
-reader has to take on trust.
+validation rules directly. The two records enforce no invariants of their own and have no scenarios
+of their own: every part they carry is stated, stored and read back through the store scenarios
+below, and the re-statement an update relies on is verified where it is used, in
+`MemoryUpdateTool_Update_KnownMemory_ReplacesDetailsAlone`. Vectors are stated as literal coordinate
+pairs rather than produced by an embedding generator, because the properties under test are
+arithmetic — cosine similarity, ordering, capping, the zero-vector case — and a generated vector
+would make the expected numbers something a reader has to take on trust.
 
 The substitutability requirement is exercised at the pack boundary, in
 `MemoryPack_CreateTools_SuppliedStore_IsSharedAcrossCompositions`, because it is a property of how a

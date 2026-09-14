@@ -8,7 +8,6 @@ package AgentKitTools {
         comment reqRef /* Requirements: docs/reqstream/agent-kit-tools/memory.yaml */
 
         part memoryOptions : MemoryOptions;
-        part memoryRecord : MemoryRecord;
         part memoryStore : MemoryStore;
         part memoryFileTool : MemoryFileTool;
         part memoryRecallTool : MemoryRecallTool;

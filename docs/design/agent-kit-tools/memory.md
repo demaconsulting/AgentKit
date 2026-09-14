@@ -21,13 +21,12 @@ near-duplicate against what the store holds when it runs before storing anything
 returns whole memories, and that no
 correction silently keeps provenance it has reason to believe is stale.
 
-The subsystem contains nine modeled units and two shared helpers:
+The subsystem contains eight modeled units and two shared helpers:
 
 | Unit               | Responsibility                                                         |
 | ------------------ | ---------------------------------------------------------------------- |
 | `MemoryOptions`    | The author's near-duplicate threshold and recall count                 |
-| `MemoryRecord`     | One memory, and the memory-plus-similarity pair a search returns       |
-| `MemoryStore`      | The substitutable persistence contract and its in-process default      |
+| `MemoryStore`      | The two records, the persistence contract and its in-process default   |
 | `MemoryFileTool`   | Publishes `memory_file`: stores a memory unless one already says it    |
 | `MemoryRecallTool` | Publishes `memory_recall`: vector search returning matches whole       |
 | `MemoryUpdateTool` | Publishes `memory_update`: replaces details, embedding nothing         |

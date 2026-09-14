@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def MemoryStore {
-        doc /* The substitutable persistence contract for memories — add, find, replace, remove, cosine search nearest-first and count — together with the default in-process implementation: a locked list with an exhaustive cosine scan that refuses vectors of mismatched length. */
+        doc /* The substitutable persistence contract for memories — add, find, replace, remove, cosine search nearest-first and count — together with the default in-process implementation: a locked list with an exhaustive cosine scan that refuses vectors of mismatched length. Also defines the two immutable records the contract is expressed in: a memory, and a memory paired with the cosine similarity of one comparison. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/Memory/MemoryStore.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/Memory/MemoryStoreTests.cs */

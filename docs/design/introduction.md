@@ -91,9 +91,8 @@ software items, specifically:
   each memory a short embedded descriptor with a richer never-embedded payload and its provenance,
   published as one pack
 - **MemoryOptions (Unit)** — The author's near-duplicate threshold and recall count
-- **MemoryRecord (Unit)** — One memory, and the memory-plus-similarity pair a search returns
-- **MemoryStore (Unit)** — The substitutable persistence contract for memories and its default
-  in-process implementation
+- **MemoryStore (Unit)** — The memory and match records, the substitutable persistence contract for
+  memories and its default in-process implementation
 - **MemoryFileTool (Unit)** — Publishes the `memory_file` tool
 - **MemoryRecallTool (Unit)** — Publishes the `memory_recall` tool
 - **MemoryUpdateTool (Unit)** — Publishes the `memory_update` tool
@@ -105,9 +104,9 @@ software items, specifically:
   application registered by name, published as one capability-gated pack
 - **AgentProfile (Unit)** — One named child agent the application is willing to have started: its
   instructions, the tool names it admits, and any narrowing of its path grants
-- **ChildAgentRequest (Unit)** — The bundle the library hands the host's runner for one delegated
-  agent, carrying tools composed from the child's own state
-- **AgentRunTool (Unit)** — Publishes the `agent_run` tool
+- **AgentRunTool (Unit)** — Publishes the `agent_run` tool, and defines the request bundle the
+  host's runner is handed for one delegated agent, carrying tools composed from the child's own
+  state
 - **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
   the registered packs rather than from the parent's tool list
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
@@ -244,8 +243,8 @@ src/DemaConsulting.AgentKit.Tools/
 ├── Agent/
 │   ├── AgentPack.cs             — publishes the agent family as one pack, and composes a child
 │   ├── AgentProfile.cs          — one named child agent the application registered
-│   ├── AgentRunTool.cs          — the agent_run tool and the child-composition seam
-│   └── ChildAgentRequest.cs     — what the host's runner is handed for one delegated agent
+│   └── AgentRunTool.cs          — the agent_run tool, the child-composition seam, and what the
+│                                  host's runner is handed for one delegated agent
 ├── File/
 │   ├── FileCopyTool.cs          — the file_copy tool
 │   ├── FileDeleteTool.cs        — the file_delete tool
@@ -267,9 +266,9 @@ src/DemaConsulting.AgentKit.Tools/
 │   ├── MemoryOptions.cs         — the author's near-duplicate threshold and recall count
 │   ├── MemoryPack.cs            — publishes the memory family as one pack
 │   ├── MemoryRecallTool.cs      — the memory_recall tool
-│   ├── MemoryRecord.cs          — one memory, and one memory as a search found it
 │   ├── MemoryReviseTool.cs      — the memory_revise tool, with settable provenance
-│   ├── MemoryStore.cs           — the persistence contract and its in-process default
+│   ├── MemoryStore.cs           — the memory and match records, the persistence contract and its
+│   │                              in-process default
 │   └── MemoryUpdateTool.cs      — the memory_update tool
 ├── Todo/
 │   ├── TodoListTool.cs          — the todo_list tool

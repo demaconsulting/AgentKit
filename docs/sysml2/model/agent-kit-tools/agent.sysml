@@ -8,7 +8,6 @@ package AgentKitTools {
         comment reqRef /* Requirements: docs/reqstream/agent-kit-tools/agent.yaml */
 
         part agentProfile : AgentProfile;
-        part childAgentRequest : ChildAgentRequest;
         part agentRunTool : AgentRunTool;
         part agentPack : AgentPack;
     }

@@ -110,7 +110,7 @@ sections:
               AIFunction, the pack takes IToolPack instances, and each delegated run composes
               them afresh through a fresh ToolPackBuilder against the child's own policy.
             children:
-              - AgentKitTools-Agent-Request-DescribesTheChild
+              - AgentKitTools-Agent-RunTool-RequestDescribesTheChild
               - AgentKitTools-Agent-RunTool-ComposesNamedProfileOnly
               - AgentKitTools-Agent-Pack-ChildToolsSubset
               - AgentKitTools-Agent-Pack-ChildToolsComposedAfresh
@@ -170,7 +170,7 @@ sections:
               misconfiguration, and reporting either as a refusal would tell the model
               something the library does not know.
             children:
-              - AgentKitTools-Agent-Request-RunnerContract
+              - AgentKitTools-Agent-RunTool-RunnerContract
               - AgentKitTools-Agent-RunTool-MalformedRequestRefused
               - AgentKitTools-Agent-RunTool-UnknownProfileRefused
               - AgentKitTools-Agent-RunTool-ChildResultReporting

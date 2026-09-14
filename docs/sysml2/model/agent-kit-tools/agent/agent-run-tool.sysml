@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def AgentRunTool {
-        doc /* Publishes the agent_run tool, which starts one of the application's registered agents on a task and returns what it said; refuses an absent request, an unknown profile, and a call at the delegation depth ceiling; and composes each child's tools through an internal seam so that no expression at this call site can hand a parent's tool list down. */
+        doc /* Publishes the agent_run tool, which starts one of the application's registered agents on a task and returns what it said; refuses an absent request, an unknown profile, and a call at the delegation depth ceiling; and composes each child's tools through an internal seam so that no expression at this call site can hand a parent's tool list down. Also defines the immutable, library-authored request bundle the host's runner receives for one delegated agent. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/Agent/AgentRunTool.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/Agent/AgentRunToolTests.cs */
