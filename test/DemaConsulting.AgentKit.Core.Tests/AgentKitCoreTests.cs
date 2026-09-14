@@ -249,7 +249,7 @@ public class AgentKitCoreTests
         var function = GuardedToolFactory.Create(
             (Func<Task<object>>)(() => Task.FromResult(
                 ToolResult.Image(bytes, "image/png", "A screenshot of the failing dialog."))),
-            ToolName.Create("image_file", "read"),
+            ToolName.Create("image", "read"),
             "Reads an image file and returns it with a caption.");
 
         // Act: invoke the tool through the runtime's own entry point
@@ -367,7 +367,7 @@ public class AgentKitCoreTests
         var textFile = new StubToolPack(
             "text_file",
             HostCapabilities.None,
-            [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_write")]);
+            [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_create")]);
         var image = new StubToolPack(
             "image",
             HostCapabilities.Vision,
@@ -382,7 +382,7 @@ public class AgentKitCoreTests
 
         // Assert: every tool, in the order the application attached its packs
         Assert.Equal(
-            ["text_file_read", "text_file_write", "image_read"],
+            ["text_file_read", "text_file_create", "image_read"],
             tools.Select(tool => tool.Name));
         Assert.Same(policy, image.LastPolicy);
     }

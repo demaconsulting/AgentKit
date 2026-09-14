@@ -114,7 +114,7 @@ public class TextFileCreateToolTests
         Assert.DoesNotContain("Use the '", text, StringComparison.Ordinal);
         Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
         Assert.DoesNotContain("text_file_replace", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("text_file_delete", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("file_delete", text, StringComparison.Ordinal);
     }
 
     /// <summary>

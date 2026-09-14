@@ -35,8 +35,8 @@ composed:
 | Member           | Type           | Description                                                     |
 |------------------|----------------|-----------------------------------------------------------------|
 | `DenialPrefix`   | `const string` | The fixed word introducing a refusal.                           |
-| `RedirectPrefix` | `const string` | The fixed opening of the sentence naming a better tool.         |
-| `RedirectSuffix` | `const string` | The fixed close of the sentence naming a better tool.           |
+| `RedirectPrefix` | `const string` | The fixed opening of the classification sentence.               |
+| `RedirectSuffix` | `const string` | The fixed close of the classification sentence.                 |
 
 `DenialReason` names the situations a tool may refuse for:
 
@@ -129,6 +129,14 @@ non-empty; `redirectToolName`, when supplied, is a valid tool name.
 
 The redirect is validated through `ToolName.Validate`, so a refusal cannot direct the model at a
 name no tool could legally carry.
+
+`redirectToolName` is not a general recovery hint. The library's rule is that **a denial states a
+fact and never prescribes a remedy** — a denial that suggested another tool was measured pushing a
+model into a destructive workaround the user had explicitly forbidden. The redirect survives that
+rule in exactly two places, and only because in both the naming _is_ the fact being stated rather
+than a route around what was withheld: binary content is offered to `image_read`, and an `.svg`,
+which genuinely is text, is offered to `text_file_read`. Every other refusal — including every
+policy refusal — passes `null`.
 
 **Throws:** `ArgumentOutOfRangeException` for an undefined reason; `ArgumentNullException` /
 `ArgumentException` for a missing or empty message; `ArgumentException` for an invalid redirect

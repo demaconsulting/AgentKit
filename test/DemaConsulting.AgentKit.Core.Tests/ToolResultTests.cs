@@ -207,19 +207,21 @@ public class ToolResultTests
     }
 
     /// <summary>
-    ///     Proves that a refusal carrying a redirect names the tool to use instead.
+    ///     Proves that a refusal carrying a classification redirect names the reader for that
+    ///     kind of content.
     /// </summary>
     /// <remarks>
-    ///     An agent told only "no" will retry the same tool; an agent told which tool to use
-    ///     instead makes progress.
+    ///     The redirect is the one exception to the rule that a denial states a fact and never
+    ///     prescribes a remedy, and it is an exception only because the naming is part of the
+    ///     fact: the file is an image, and <c>image_read</c> is what reads images.
     /// </remarks>
     [Fact]
     public void ToolResult_Denied_WithRedirect_NamesTheRedirectTool()
     {
-        // Arrange: a refusal for which a better tool exists
-        const string redirect = "image_file_read";
+        // Arrange: the reader for the kind of content this refusal has classified the file as
+        const string redirect = "image_read";
 
-        // Act: refuse and redirect
+        // Act: refuse and classify
         var result = ToolResult.Denied(
             DenialReason.UnsupportedMediaType,
             "this tool reads text only",

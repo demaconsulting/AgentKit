@@ -73,7 +73,7 @@ public enum DenialReason
 ///     <para>
 ///     The three result shapes a guarded tool commonly returns. Every member returns
 ///     <see cref="object"/>, the union type a tool's delegate is declared with; a refusal is a
-///     returned value, not a thrown exception, and may name a better tool to redirect the model to.
+///     returned value, not a thrown exception, and states a fact without prescribing a remedy.
 ///     </para>
 ///     <code>
 ///     // Text: returned as the plain string a runtime already knows how to present.
@@ -82,12 +82,14 @@ public enum DenialReason
 ///     // Structured: a machine-readable shape, serialized to JSON on the way to the model.
 ///     object structured = ToolResult.Structured(new { sectionCount = 3, path = "notes.md" });
 ///
-///     // Denied: a refusal naming its reason, so the model can choose a permitted alternative.
+///     // Denied: a refusal naming its reason and stating the fact, and nothing more.
 ///     object refusal = ToolResult.Denied(
 ///         DenialReason.PathNotPermitted,
 ///         "The path lies outside the permitted workspace.");
 ///
-///     // Denied with a redirect: name the tool the model should use instead.
+///     // Denied with a redirect: reserved for a classification. The name is part of the fact
+///     // being stated - this is an image, and image_read is what reads images - not a route
+///     // around the refusal.
 ///     object redirect = ToolResult.Denied(
 ///         DenialReason.UnsupportedMediaType,
 ///         "The file is an image, not text.",
@@ -102,12 +104,14 @@ public static class ToolResult
     private const string DenialPrefix = "Denied";
 
     /// <summary>
-    ///     The fixed opening of the sentence directing the model to a more appropriate tool.
+    ///     The fixed opening of the sentence naming the tool that reads the kind of content the
+    ///     refusal has just classified.
     /// </summary>
     private const string RedirectPrefix = " Use the '";
 
     /// <summary>
-    ///     The fixed close of the sentence directing the model to a more appropriate tool.
+    ///     The fixed close of the sentence naming the tool that reads the kind of content the
+    ///     refusal has just classified.
     /// </summary>
     private const string RedirectSuffix = "' tool instead.";
 
@@ -266,7 +270,8 @@ public static class ToolResult
     }
 
     /// <summary>
-    ///     Constructs a refusal result naming its reason and, where useful, a better tool.
+    ///     Constructs a refusal result naming its reason and, for a classification, the tool that
+    ///     reads the kind of content the refused file actually is.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -282,8 +287,17 @@ public static class ToolResult
     ///     so a confined model learns where it may work.
     ///     </para>
     ///     <para>
-    ///     The redirect exists because an agent told only "no" will retry the same tool, while
-    ///     an agent told which tool to use instead makes progress.
+    ///     <b>A refusal states a fact and stops; the redirect is the one exception, and it is an
+    ///     exception only because the naming <em>is</em> the fact.</b> The library's rule is that a
+    ///     denial never prescribes a way around itself: a denial that suggested another tool was
+    ///     measured pushing a model into a destructive workaround the user had explicitly
+    ///     forbidden. <paramref name="redirectToolName"/> survives that rule in exactly two
+    ///     places, both classifications of what a file <em>is</em> rather than alternative routes
+    ///     to the content withheld — binary content offered to <c>image_read</c>, and an
+    ///     <c>.svg</c>, which genuinely is text, offered to <c>text_file_read</c>. It is not a
+    ///     general recovery hint, and a caller that reaches for it to help a model past a policy
+    ///     refusal is using it wrongly; such refusals pass <see langword="null"/> and say only
+    ///     what is so.
     ///     </para>
     /// </remarks>
     /// <param name="reason">
@@ -296,8 +310,9 @@ public static class ToolResult
     ///     the caller chooses to disclose — reaches the transcript.
     /// </param>
     /// <param name="redirectToolName">
-    ///     The name of a tool better suited to the request, or <see langword="null"/> when
-    ///     there is none. When supplied, it must be a valid tool name.
+    ///     The tool that reads the kind of content the refusal has classified the file as, or
+    ///     <see langword="null"/> — which is the case for every refusal that is not a
+    ///     classification. When supplied, it must be a valid tool name.
     /// </param>
     /// <returns>The composed refusal text.</returns>
     /// <exception cref="ArgumentOutOfRangeException">

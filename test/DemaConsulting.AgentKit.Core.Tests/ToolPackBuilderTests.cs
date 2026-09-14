@@ -52,7 +52,7 @@ public class ToolPackBuilderTests
         // Arrange: two packs publishing three tools between them
         var textFile = new StubToolPack(
             "text_file",
-            tools: [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_write")]);
+            tools: [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_create")]);
         var image = new StubToolPack("image", tools: [StubToolPack.Tool("image_read")]);
 
         // Act: compose
@@ -76,7 +76,7 @@ public class ToolPackBuilderTests
         // Arrange: a pack publishing two tools in a deliberate order, and a second pack
         var textFile = new StubToolPack(
             "text_file",
-            tools: [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_write")]);
+            tools: [StubToolPack.Tool("text_file_read"), StubToolPack.Tool("text_file_create")]);
         var image = new StubToolPack("image", tools: [StubToolPack.Tool("image_read")]);
 
         // Act: compose
@@ -84,7 +84,7 @@ public class ToolPackBuilderTests
 
         // Assert: the exact sequence, not merely the set
         Assert.Equal(
-            ["text_file_read", "text_file_write", "image_read"],
+            ["text_file_read", "text_file_create", "image_read"],
             tools.Select(tool => tool.Name));
     }
 

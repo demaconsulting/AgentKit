@@ -78,7 +78,7 @@ public class GuardedToolFactoryTests
         var function = GuardedToolFactory.Create(
             (Func<Task<object>>)(() => Task.FromResult(
                 ToolResult.Image(SampleBytes, "image/png", "A screenshot."))),
-            "image_probe",
+            "image_read",
             "Returns a captioned image.");
 
         // Act: invoke the tool as the runtime would

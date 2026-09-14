@@ -7,6 +7,7 @@ input-files:
   - docs/design/introduction.md
   - docs/design/agent-kit-core.md
   - docs/design/agent-kit-core/guarded-tool-factory.md
+  - docs/design/agent-kit-core/image-promoting-chat-client.md
   - docs/design/agent-kit-core/path-policy.md
   - docs/design/agent-kit-core/path-rule.md
   - docs/design/agent-kit-core/real-path-resolver.md
@@ -26,6 +27,7 @@ input-files:
   - docs/design/agent-kit-tools/text-file/text-file-create-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-replace-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-cut-lines-tool.md
+  - docs/design/agent-kit-tools/text-file/text-file-copy-lines-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-paste-lines-tool.md
   - docs/design/agent-kit-tools/text-file/text-file-line-buffers.md
   - docs/design/agent-kit-tools/text-file/text-file-pack.md
@@ -38,6 +40,27 @@ input-files:
   - docs/design/agent-kit-tools/markdown.md
   - docs/design/agent-kit-tools/markdown/markdown-outline-tool.md
   - docs/design/agent-kit-tools/markdown/markdown-pack.md
+  - docs/design/agent-kit-tools/todo.md
+  - docs/design/agent-kit-tools/todo/todo-list-tool.md
+  - docs/design/agent-kit-tools/todo/todo-set-tool.md
+  - docs/design/agent-kit-tools/todo/todo-remove-tool.md
+  - docs/design/agent-kit-tools/todo/todo-store.md
+  - docs/design/agent-kit-tools/todo/todo-pack.md
+  - docs/design/agent-kit-tools/memory.md
+  - docs/design/agent-kit-tools/memory/memory-file-tool.md
+  - docs/design/agent-kit-tools/memory/memory-recall-tool.md
+  - docs/design/agent-kit-tools/memory/memory-update-tool.md
+  - docs/design/agent-kit-tools/memory/memory-revise-tool.md
+  - docs/design/agent-kit-tools/memory/memory-forget-tool.md
+  - docs/design/agent-kit-tools/memory/memory-record.md
+  - docs/design/agent-kit-tools/memory/memory-store.md
+  - docs/design/agent-kit-tools/memory/memory-options.md
+  - docs/design/agent-kit-tools/memory/memory-pack.md
+  - docs/design/agent-kit-tools/agent.md
+  - docs/design/agent-kit-tools/agent/agent-run-tool.md
+  - docs/design/agent-kit-tools/agent/agent-profile.md
+  - docs/design/agent-kit-tools/agent/child-agent-request.md
+  - docs/design/agent-kit-tools/agent/agent-pack.md
   - docs/design/agent-kit-agents-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-copilot.md
