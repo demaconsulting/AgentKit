@@ -67,6 +67,7 @@ public class RealPathResolverTests
         ReparsePointFixture.WriteFile(fixture.Outside, "secret.txt", "outside-content");
         var link = fixture.CreateDirectoryLink("junction", fixture.Outside);
         var requested = Path.Combine(link, "secret.txt");
+        var textRoot = Path.GetFullPath(fixture.Root);
         var realRoot = RealPathResolver.Resolve(fixture.Root);
 
         // Act: resolve the leaf alone, then resolve through the full component walk
@@ -74,9 +75,13 @@ public class RealPathResolverTests
         var resolved = RealPathResolver.Resolve(requested);
 
         // Assert: the leaf is not itself a link, so leaf-only resolution reports nothing,
-        // while the component walk still reports a location outside the root
+        // while the component walk still reports a location outside the root. The text-based
+        // comparison is made against the root as it is spelled, because that is the value a
+        // check that never resolved anything would hold; comparing the unresolved request
+        // against the resolved root would test the two spellings of the temporary directory
+        // instead of the escape, and would fail wherever that directory is itself linked.
         Assert.Null(leafTarget);
-        Assert.True(IsBeneath(realRoot, Path.GetFullPath(requested)));
+        Assert.True(IsBeneath(textRoot, Path.GetFullPath(requested)));
         Assert.False(IsBeneath(realRoot, resolved));
     }
 

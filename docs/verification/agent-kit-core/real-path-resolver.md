@@ -66,9 +66,14 @@ an escape through a link anywhere in the path is detected.
 The regression guard that locks in why the component walk exists. Sets up the same escape, then
 asserts three things together: resolving only the leaf reports no link target, because a real
 file beneath a junction is not itself a reparse point; the requested path text *is* contained by
-the real root, so a text-based check would accept it; and the resolver nonetheless reports a
-location outside the root. If a future change replaces the walk with leaf-only or
-deepest-ancestor resolution, this scenario fails and states the reason.
+the root **as it is spelled**, so a text-based check would accept it; and the resolver
+nonetheless reports a location outside the root's real location. The text-based comparison is
+deliberately made against the spelled root rather than the resolved one, because the spelled
+root is the value a check that never resolved anything would hold; comparing an unresolved
+request against a resolved root would compare two spellings of the temporary directory instead
+of judging the escape, and would fail on any platform whose temporary directory is itself
+reached through a link. If a future change replaces the walk with leaf-only or deepest-ancestor
+resolution, this scenario fails and states the reason.
 
 #### AgentKitCore-RealPathResolver-LinkTargetAncestors: A Target Spelled Through Another Link Resolves Outside
 
