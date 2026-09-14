@@ -273,6 +273,35 @@ public class PathPolicyTests
     }
 
     /// <summary>
+    ///     Proves that a write into a file inside a granted read-only location is headlined as a
+    ///     permission fact, not as a location fact.
+    /// </summary>
+    /// <remarks>
+    ///     The grant list beneath a denial already carries <c>(read-only)</c>, but a headline of
+    ///     "outside every permitted location" contradicts it about a path that is squarely inside
+    ///     one. The headline is what the model reads first, so it is asserted here.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_TryResolveWrite_InsideReadOnlyGrant_DenialHeadlineNamesThePermission()
+    {
+        // Arrange: a single read-only grant over the anchor
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "input.txt", "source");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
+        var requested = Path.Combine(RealPathResolver.Resolve(fixture.Root), "input.txt");
+
+        // Act: write to a file that lies inside the permitted location
+        var permitted = policy.TryResolveWrite(requested, out _, out var denial);
+
+        // Assert: the headline states the permission fact, not a location that would be untrue
+        Assert.False(permitted);
+        Assert.StartsWith(
+            "Denied: inside a permitted location, but no grant there permits this access.",
+            denial,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves that a location readable through a read-only grant is not thereby writable, while a
     ///     wider read grant still authorizes the read.
     /// </summary>
@@ -1045,6 +1074,39 @@ public class PathPolicyTests
         // Assert: every permitted file appears, at any depth
         Assert.Contains("top.txt", files);
         Assert.Contains("deep.txt", files);
+    }
+
+    /// <summary>
+    ///     Proves that a dot-prefixed file the platform reports as hidden still appears in a
+    ///     listing.
+    /// </summary>
+    /// <remarks>
+    ///     On Unix, .NET derives <see cref="FileAttributes.Hidden"/> from a leading dot, so the
+    ///     <see cref="EnumerationOptions"/> default of skipping hidden entries would drop
+    ///     <c>.gitignore</c>, <c>.github</c> and everything beneath a dot-prefixed directory from
+    ///     every listing while leaving them readable and writable by direct path. Windows does not
+    ///     derive the attribute from the name, so the attribute is set explicitly there to state
+    ///     the same scenario on both platforms. Excluding a name is the author's decision, made
+    ///     through a grant's deny patterns.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_EnumerateFiles_HiddenDotPrefixedFile_IsListed()
+    {
+        // Arrange: a dot-prefixed file the platform reports as hidden
+        using var fixture = new TempDirectoryFixture();
+        var dotFile = TempDirectoryFixture.WriteFile(fixture.Root, ".gitignore", "bin/");
+        if (OperatingSystem.IsWindows())
+        {
+            File.SetAttributes(dotFile, File.GetAttributes(dotFile) | FileAttributes.Hidden);
+        }
+
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: enumerate the permitted subtree
+        var files = policy.EnumerateFiles(policy.WorkingDirectory, "*").Select(Path.GetFileName).ToArray();
+
+        // Assert: discovery reports what direct access would permit, hidden or not
+        Assert.Contains(".gitignore", files);
     }
 
     /// <summary>

@@ -138,16 +138,23 @@ sections:
           - id: AgentKitCore-PathPolicy-EnumerationFiltered
             title: >-
               A path policy shall exclude from directory enumeration every file whose location it
-              would deny, shall list every file it would permit, and shall enumerate its working
-              directory when no directory is named.
+              would deny, shall list every file it would permit — including a file the platform
+              reports as hidden — and shall enumerate its working directory when no directory is
+              named.
             justification: |
               Listing is how an agent discovers what it may work on. A listing that is broader than
               what access permits discloses files the operator withheld; one that is narrower hides
-              work the agent was asked to do. A request naming no directory is the first question an
-              agent asks about a workspace it has not seen, and answering it with the working
-              directory is what keeps that question from becoming a refusal.
+              work the agent was asked to do, and a model that cannot see a file it may still write
+              is invited to invent a path and write to the wrong target. On Unix the platform
+              reports every dot-prefixed name as hidden, so excluding hidden entries would silently
+              withhold `.github`, `.gitignore` and everything beneath a dot-prefixed directory;
+              excluding a name is the author's decision, made through a grant's deny patterns. A
+              request naming no directory is the first question an agent asks about a workspace it
+              has not seen, and answering it with the working directory is what keeps that question
+              from becoming a refusal.
             tests:
               - PathPolicy_EnumerateFiles_PermittedFiles_AreListed
+              - PathPolicy_EnumerateFiles_HiddenDotPrefixedFile_IsListed
               - PathPolicy_EnumerateFiles_DeniedDirectory_ReturnsEmpty
               - PathPolicy_EnumerateFiles_OmittedDirectory_ListsTheAnchor
               - PathPolicy_EnumerateFiles_RelativeDirectory_ListsThatDirectory
@@ -175,7 +182,10 @@ sections:
 
           - id: AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
             title: >-
-              A denial reported by a path policy shall echo the caller's request, shall state the
+              A denial reported by a path policy shall state as its headline reason whether the
+              path matches a protected pattern, lies inside a permitted location that no grant
+              permits this access to, or lies outside every permitted location; shall echo the
+              caller's request; shall state the
               canonical (normalized) absolute location the request was interpreted as, with `.` and
               `..` collapsed, when and only when the request was relative, and shall enumerate the
               permitted locations with their access levels, or state that none are permitted.
@@ -190,8 +200,14 @@ sections:
               guess. This makes a silent wrong-target impossible to miss. The interpreted location
               must name a place the model can navigate to, so it is reported with `.` and `..`
               collapsed; a location that cannot be normalized is reported as-interpreted rather than
-              raising, keeping the non-throwing contract.
+              raising, keeping the non-throwing contract. The headline reason is distinguished
+              three ways rather than two because a write into a file inside a granted read-only
+              location is neither a protected-pattern hit nor outside every permitted location;
+              headlining it as a location denial states something untrue and contradicts the
+              `(read-only)` grant listed beneath it, which is precisely the distinction between
+              "wrong place" and "right place, wrong permission" the denial exists to make.
             tests:
+              - PathPolicy_TryResolveWrite_InsideReadOnlyGrant_DenialHeadlineNamesThePermission
               - PathPolicy_TryResolveRead_RelativeDenial_EchoesInterpretsAndEnumerates
               - PathPolicy_TryResolveRead_AbsoluteDenial_HasNoInterpretationClause
               - PathPolicy_TryResolveRead_BareSegmentUnderEmptyGrants_ProducesTheWorkedExample

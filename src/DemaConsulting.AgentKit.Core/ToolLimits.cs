@@ -33,12 +33,6 @@ namespace DemaConsulting.AgentKit.Core;
 ///     content this library accepts is content a provider will accept.
 ///     </para>
 ///     <para>
-///     <see cref="DefaultMaxAttachmentsPerTurn"/> is 4. This is a liveness and cost control
-///     rather than a safety control: an agent that attaches a dozen images in one turn exhausts
-///     the provider's per-request budget and stalls, and the resulting error is not something a
-///     model can reason its way out of.
-///     </para>
-///     <para>
 ///     <see cref="DefaultMaxAgentDepth"/> is 2. It bounds how deep a chain of delegated agents may
 ///     run — a root agent at depth zero may start a child, and that child may start one more. It
 ///     sits here rather than as a constant on the delegating tool because it is the same kind of
@@ -95,11 +89,6 @@ public sealed class ToolLimits
     public const int DefaultMaxBinaryBytes = 8 * 1024 * 1024;
 
     /// <summary>
-    ///     The default ceiling on the attachments a tool may add in one turn.
-    /// </summary>
-    public const int DefaultMaxAttachmentsPerTurn = 4;
-
-    /// <summary>
     ///     The default ceiling on how deep a chain of delegated agents may run.
     /// </summary>
     /// <remarks>
@@ -129,9 +118,6 @@ public sealed class ToolLimits
     /// <param name="maxBinaryBytes">
     ///     The ceiling on the bytes of binary content a tool may return. Must not be negative.
     /// </param>
-    /// <param name="maxAttachmentsPerTurn">
-    ///     The ceiling on the attachments a tool may add in one turn. Must not be negative.
-    /// </param>
     /// <param name="maxAgentDepth">
     ///     The ceiling on how deep a chain of delegated agents may run, counted from a root agent
     ///     at depth zero. Must not be negative; zero forbids delegation entirely.
@@ -143,7 +129,6 @@ public sealed class ToolLimits
         int maxReadBytes = DefaultMaxReadBytes,
         int maxResultCharacters = DefaultMaxResultCharacters,
         int maxBinaryBytes = DefaultMaxBinaryBytes,
-        int maxAttachmentsPerTurn = DefaultMaxAttachmentsPerTurn,
         int maxAgentDepth = DefaultMaxAgentDepth)
     {
         // Validate before any assignment so a rejected instance never exists even briefly. A
@@ -152,13 +137,11 @@ public sealed class ToolLimits
         ArgumentOutOfRangeException.ThrowIfNegative(maxReadBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(maxResultCharacters);
         ArgumentOutOfRangeException.ThrowIfNegative(maxBinaryBytes);
-        ArgumentOutOfRangeException.ThrowIfNegative(maxAttachmentsPerTurn);
         ArgumentOutOfRangeException.ThrowIfNegative(maxAgentDepth);
 
         MaxReadBytes = maxReadBytes;
         MaxResultCharacters = maxResultCharacters;
         MaxBinaryBytes = maxBinaryBytes;
-        MaxAttachmentsPerTurn = maxAttachmentsPerTurn;
         MaxAgentDepth = maxAgentDepth;
     }
 
@@ -186,11 +169,6 @@ public sealed class ToolLimits
     ///     Gets the ceiling on the bytes of binary content a tool may return.
     /// </summary>
     public int MaxBinaryBytes { get; }
-
-    /// <summary>
-    ///     Gets the ceiling on the attachments a tool may add in one turn.
-    /// </summary>
-    public int MaxAttachmentsPerTurn { get; }
 
     /// <summary>
     ///     Gets the ceiling on how deep a chain of delegated agents may run.

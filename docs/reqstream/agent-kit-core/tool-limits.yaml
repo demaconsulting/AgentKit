@@ -27,7 +27,7 @@ sections:
               the documented default for every other ceiling.
             justification: |
               A host normally has an opinion about one ceiling and none about the rest. Forcing it
-              to restate all four invites a transcription error that silently widens a ceiling
+              to restate all of them invites a transcription error that silently widens a ceiling
               nobody intended to change.
             tests:
               - ToolLimits_Constructor_SingleCeilingOverridden_RetainsOtherDefaults
@@ -40,13 +40,12 @@ sections:
             justification: |
               A negative ceiling has no meaning and would be interpreted differently by every tool
               that consulted it. Zero, by contrast, is the expressible way for a host to turn an
-              operation off entirely — a tool permitted to attach nothing, or an agent forbidden
-              to delegate — so the two must not be rejected together.
+              operation off entirely — an agent forbidden to delegate — so the two must not be
+              rejected together.
             tests:
               - ToolLimits_Constructor_NegativeMaxReadBytes_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxResultCharacters_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxBinaryBytes_ThrowsArgumentOutOfRangeException
-              - ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_ZeroCeiling_IsAccepted
 

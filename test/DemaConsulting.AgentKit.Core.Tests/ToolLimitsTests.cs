@@ -5,8 +5,8 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 /// </summary>
 /// <remarks>
 ///     The default-value scenario asserts against literal numbers rather than against the
-///     published constants. Asserting a constant against itself is vacuous, and these four
-///     values appear in the design document, in requirement text and in the public API surface;
+///     published constants. Asserting a constant against itself is vacuous, and these values
+///     appear in the design document, in requirement text and in the public API surface;
 ///     this test is what stops them drifting silently.
 /// </remarks>
 public class ToolLimitsTests
@@ -24,14 +24,12 @@ public class ToolLimitsTests
         var readBytes = limits.MaxReadBytes;
         var resultCharacters = limits.MaxResultCharacters;
         var binaryBytes = limits.MaxBinaryBytes;
-        var attachments = limits.MaxAttachmentsPerTurn;
         var agentDepth = limits.MaxAgentDepth;
 
         // Assert: the literal published values, so a silent change to a constant fails here
         Assert.Equal(65536, readBytes);
         Assert.Equal(32000, resultCharacters);
         Assert.Equal(8388608, binaryBytes);
-        Assert.Equal(4, attachments);
         Assert.Equal(2, agentDepth);
     }
 
@@ -51,7 +49,6 @@ public class ToolLimitsTests
         Assert.Equal(expected.MaxReadBytes, limits.MaxReadBytes);
         Assert.Equal(expected.MaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(expected.MaxBinaryBytes, limits.MaxBinaryBytes);
-        Assert.Equal(expected.MaxAttachmentsPerTurn, limits.MaxAttachmentsPerTurn);
         Assert.Equal(expected.MaxAgentDepth, limits.MaxAgentDepth);
     }
 
@@ -75,7 +72,6 @@ public class ToolLimitsTests
         Assert.Equal(customBinaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(ToolLimits.DefaultMaxReadBytes, limits.MaxReadBytes);
         Assert.Equal(ToolLimits.DefaultMaxResultCharacters, limits.MaxResultCharacters);
-        Assert.Equal(ToolLimits.DefaultMaxAttachmentsPerTurn, limits.MaxAttachmentsPerTurn);
         Assert.Equal(ToolLimits.DefaultMaxAgentDepth, limits.MaxAgentDepth);
     }
 
@@ -85,21 +81,19 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues()
     {
-        // Arrange: five values that are distinguishable from each other and from the defaults
+        // Arrange: four values that are distinguishable from each other and from the defaults
         const int readBytes = 11;
         const int resultCharacters = 22;
         const int binaryBytes = 33;
-        const int attachments = 44;
         const int agentDepth = 55;
 
         // Act: supply every ceiling positionally, in the documented order
-        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, attachments, agentDepth);
+        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, agentDepth);
 
         // Assert: each ceiling lands on its own property, so the order cannot have transposed
         Assert.Equal(readBytes, limits.MaxReadBytes);
         Assert.Equal(resultCharacters, limits.MaxResultCharacters);
         Assert.Equal(binaryBytes, limits.MaxBinaryBytes);
-        Assert.Equal(attachments, limits.MaxAttachmentsPerTurn);
         Assert.Equal(agentDepth, limits.MaxAgentDepth);
     }
 
@@ -134,16 +128,6 @@ public class ToolLimitsTests
     }
 
     /// <summary>
-    ///     Proves that a negative attachment ceiling is rejected.
-    /// </summary>
-    [Fact]
-    public void ToolLimits_Constructor_NegativeMaxAttachmentsPerTurn_ThrowsArgumentOutOfRangeException()
-    {
-        // Act & Assert: every ceiling is validated
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxAttachmentsPerTurn: -1));
-    }
-
-    /// <summary>
     ///     Proves that a negative delegation-depth ceiling is rejected.
     /// </summary>
     [Fact]
@@ -157,21 +141,20 @@ public class ToolLimitsTests
     ///     Proves that a ceiling of zero is accepted.
     /// </summary>
     /// <remarks>
-    ///     Zero is the expressible way for a host to disable an operation entirely — a tool
-    ///     permitted to attach nothing, for instance. Treating it as invalid alongside a
+    ///     Zero is the expressible way for a host to disable an operation entirely — an agent
+    ///     forbidden to delegate, for instance. Treating it as invalid alongside a
     ///     negative value would remove a meaningful configuration.
     /// </remarks>
     [Fact]
     public void ToolLimits_Constructor_ZeroCeiling_IsAccepted()
     {
         // Act: disable every operation by configuring a ceiling of zero
-        var limits = new ToolLimits(0, 0, 0, 0, 0);
+        var limits = new ToolLimits(0, 0, 0, 0);
 
         // Assert: the zero ceilings are accepted and reported back unchanged
         Assert.Equal(0, limits.MaxReadBytes);
         Assert.Equal(0, limits.MaxResultCharacters);
         Assert.Equal(0, limits.MaxBinaryBytes);
-        Assert.Equal(0, limits.MaxAttachmentsPerTurn);
         Assert.Equal(0, limits.MaxAgentDepth);
     }
 }

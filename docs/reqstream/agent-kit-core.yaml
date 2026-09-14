@@ -158,10 +158,9 @@ sections:
       - id: AgentKitCore-ToolLimits-BudgetCeilings
         title: >-
           The library shall define ceilings on the bytes a tool may read, the characters a tool
-          result may return to the model, the bytes of binary content a tool may return, the
-          attachments a tool may add in one turn, and how deep a chain of delegated agents may
-          run, and shall carry those ceilings with the access policy so that every tool observes
-          the same budget.
+          result may return to the model, the bytes of binary content a tool may return, and how
+          deep a chain of delegated agents may run, and shall carry those ceilings with the access
+          policy so that every tool observes the same budget.
         tags: [system]
         justification: |
           A tool that returns an unbounded amount of text exhausts the model's context window in

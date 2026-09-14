@@ -46,7 +46,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all forty-seven scenarios below pass without error or exception beyond
+A unit test run passes when all forty-nine scenarios below pass without error or exception beyond
 those explicitly asserted. Any escaping path that is permitted, any excluded file that
 appears in a listing, any relative request resolved against the process working directory, any
 missing working directory accepted, any null grant accepted, any empty grant set permitting access,
@@ -132,6 +132,17 @@ with its read-only level.
 Constructs a policy anchored at a read-only work folder with a separate read-write session folder.
 The scenario proves the agent can read the work input, write the session output, and still cannot
 write back into the read-only work location.
+
+#### AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates: A Read-Only Location Is Headlined as a Permission Fact
+
+**Test**: `PathPolicy_TryResolveWrite_InsideReadOnlyGrant_DenialHeadlineNamesThePermission`
+
+Attempts a write to a file squarely inside a granted read-only location and asserts the denial
+_headline_ — not merely the grant list beneath it — reads
+`Denied: inside a permitted location, but no grant there permits this access.` A headline of
+"outside every permitted location" would state something untrue and contradict the `(read-only)`
+grant printed below, losing the distinction between "wrong place" and "right place, wrong
+permission".
 
 #### AgentKitCore-PathPolicy-GrantPermissionModel: A Readable Location Is Not Thereby Writable
 
@@ -384,6 +395,16 @@ interpretation.
 
 Normal operation: files at the top of the permitted location and nested within it both appear, so
 the filtering is not over-broad.
+
+#### AgentKitCore-PathPolicy-EnumerationFiltered: A Hidden Dot-Prefixed File Is Listed
+
+**Test**: `PathPolicy_EnumerateFiles_HiddenDotPrefixedFile_IsListed`
+
+Creates a `.gitignore` in the permitted location and, on Windows, sets the hidden attribute the
+Unix platform derives from the leading dot, so the same scenario is stated on both platforms. The
+scenario proves discovery reports what direct access would permit: a listing narrower than the
+access it describes would hide `.github`, `.gitignore` and everything beneath a dot-prefixed
+directory while leaving those files writable by direct path.
 
 #### AgentKitCore-PathPolicy-EnumerationFiltered: A Refused Directory Lists Nothing
 

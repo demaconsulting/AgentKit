@@ -131,8 +131,8 @@ bare "no".
 ## Tool Limits
 
 `ToolLimits` carries the ceilings a tool observes: the bytes it may read, the characters its
-result may return to the model, the bytes of binary content it may return, the attachments it
-may add in one turn, and how deep a chain of delegated agents may run. Limits are carried with
+result may return to the model, the bytes of binary content it may return, and how deep a chain
+of delegated agents may run. Limits are carried with
 the policy, through `PathPolicy.Limits`, so every
 tool an application attaches observes one budget rather than each inventing its own. A host that
 configures nothing still operates within the published defaults.
@@ -281,13 +281,16 @@ using Microsoft.Extensions.AI;
 
 var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
 
-IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
-    .WithHostCapabilities(HostCapabilities.Vision)
-    .Add(new TextFilePack())
-    .Add(new FilePack())
-    .Add(new MarkdownPack())
-    .Add(new ImagePack())
-    .Build();
+IList<AIFunction> tools =
+[
+    .. new ToolPackBuilder(policy)
+        .WithHostCapabilities(HostCapabilities.Vision)
+        .Add(new TextFilePack())
+        .Add(new FilePack())
+        .Add(new MarkdownPack())
+        .Add(new ImagePack())
+        .Build()
+];
 
 // Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
 ```

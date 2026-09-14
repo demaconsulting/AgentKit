@@ -281,6 +281,22 @@ Private helper constructing a denial in the order the model needs to recover:
 **Denials state facts and prescribe no remedy.** The message says what was asked, how it was
 read, and what is permitted; what to do about a refusal is the reader's decision.
 
+#### ClassifyDenial(string resolved, bool requireWrite)
+
+Private helper choosing the headline reason a denial leads with, one of three facts:
+
+1. `matches a protected pattern` — a grant of the required access carries a deny pattern that
+   matches a segment of the path, so the file is withheld however it is spelled.
+2. `inside a permitted location, but no grant there permits this access` — some grant permits the
+   path, but none at the access the request needed. Reading is permitted by any grant, so this can
+   only arise for a write into a read-only location.
+3. `outside every permitted location` — no grant covers the path at all.
+
+The second reason exists because the first and third are both untrue of a write into a granted
+read-only location, and headlining it as a location denial contradicts the `(read-only)` grant
+listed beneath it. Distinguishing them is what lets the model tell "wrong place" from "right
+place, wrong permission".
+
 ### Error Handling
 
 | Condition                                   | Handling                                                   |
@@ -293,6 +309,7 @@ read, and what is permitted; what to do about a refusal is the reader's decision
 | Omitted or placeholder `path` / `directory` | Handled locally; denotes the working directory             |
 | Real location cannot be determined          | Handled locally; denial with the resolution reason         |
 | Location outside every permitted location   | Handled locally; denial with the location reason           |
+| Location permitted, but not for this access | Handled locally; denial with the permission reason         |
 | Location matches a denied pattern           | Handled locally; denial with the pattern reason            |
 | Directory cannot be listed                  | Handled locally; empty sequence                            |
 | Empty grant collection                      | Accepted; the policy permits nothing                       |
@@ -339,6 +356,14 @@ re-implementation of containment. A future change must not introduce a second co
 for listings: a listing that is broader than what access permits discloses files the operator
 withheld.
 
+**Enumeration must not skip a file on a platform attribute.** The enumeration options state
+`AttributesToSkip = FileAttributes.None` explicitly, because the `EnumerationOptions` default is
+`Hidden | System` and on Unix .NET reports any dot-prefixed name as hidden. Taking that default
+would drop `.github`, `.gitignore` and everything beneath a dot-prefixed directory from every
+listing while leaving those same files readable and writable by direct path — a listing narrower
+than what access permits, which invites a model to invent a path and write to the wrong target.
+Excluding a name is the author's decision, expressed through a grant's deny patterns.
+
 **Denials must enumerate the truthful map.** A refusal is reported as `false` with an `out
 string? denialMessage`. The message deliberately includes permitted locations and access levels,
 because a confined model needs the map of where it may work. It must not report an
@@ -375,7 +400,7 @@ last segment, the request is not aliased. It is interpreted beneath the working 
 denied with the permitted locations listed, because guessing would be worse than refusing.
 
 **Resource ceilings ride with the policy.** `ToolLimits` — the ceilings on bytes read, characters
-returned to the model, bytes of binary content returned and attachments per turn — is carried as
+returned to the model, bytes of binary content returned and delegated-agent depth — is carried as
 a `Limits` property rather than being passed per call. A tool therefore receives one object and
 cannot end up observing a different budget from its neighbor, which is what "every pack observes
 the same budget" means in practice. The three-argument constructor states the ceilings

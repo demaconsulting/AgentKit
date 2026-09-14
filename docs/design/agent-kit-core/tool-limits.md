@@ -39,12 +39,6 @@ content this library accepts is content a provider will accept. A tool that hand
 attachment the provider rejects produces an opaque failure at the far end of the call, which is
 exactly what this ceiling exists to prevent.
 
-**`MaxAttachmentsPerTurn` = 4.** This is a liveness and cost control rather than a safety control.
-An agent that attaches a dozen images in one turn will exhaust the provider's per-request budget
-and stall, and the resulting error is not something a model can reason its way out of. Four is
-enough for a comparison or a short sequence and few enough that the turn stays affordable and
-responsive.
-
 **`MaxAgentDepth` = 2.** This bounds how deep a chain of delegated agents may run: the root agent
 an application starts is at depth zero, so at 2 that agent may start a child and that child may
 start one more, and the grandchild's own attempt to delegate is refused. It sits here rather than
@@ -69,16 +63,14 @@ An instance is immutable after construction and is safe for concurrent use.
 | `MaxReadBytes`                  | `int`        | Ceiling on the bytes a tool may read from one source.             |
 | `MaxResultCharacters`           | `int`        | Ceiling on the characters a tool result may return to the model.  |
 | `MaxBinaryBytes`                | `int`        | Ceiling on the bytes of binary content a tool may return.         |
-| `MaxAttachmentsPerTurn`         | `int`        | Ceiling on the attachments a tool may add in one turn.            |
 | `MaxAgentDepth`                 | `int`        | Ceiling on how deep a chain of delegated agents may run.          |
 | `Default`                       | `ToolLimits` | Shared instance a host receives when it configures nothing.       |
 | `DefaultMaxReadBytes`           | `const int`  | The published default for `MaxReadBytes`, 65,536.                 |
 | `DefaultMaxResultCharacters`    | `const int`  | The published default for `MaxResultCharacters`, 32,000.          |
 | `DefaultMaxBinaryBytes`         | `const int`  | The published default for `MaxBinaryBytes`, 8,388,608.            |
-| `DefaultMaxAttachmentsPerTurn`  | `const int`  | The published default for `MaxAttachmentsPerTurn`, 4.             |
 | `DefaultMaxAgentDepth`          | `const int`  | The published default for `MaxAgentDepth`, 2.                     |
 
-The five constants exist so that this document, the requirement text and the tests can all name
+The four constants exist so that this document, the requirement text and the tests can all name
 one source of truth rather than repeating literals.
 
 Invariants:
@@ -89,12 +81,12 @@ Invariants:
 
 ### Key Methods
 
-#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAttachmentsPerTurn, int maxAgentDepth)
+#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAgentDepth)
 
 The only constructor. Every parameter is optional and defaults to the corresponding published
 constant, which is what delivers per-ceiling customization without a builder: a host writes
-`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other four defaults. `maxAgentDepth` is last
-so that every existing positional call keeps binding to the parameter it always bound to.
+`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other three defaults. `maxAgentDepth` is last
+because it was the most recently added ceiling.
 
 **Preconditions:** every supplied ceiling is zero or greater.
 
@@ -103,7 +95,7 @@ is applied.
 
 **Zero is permitted.** A zero ceiling is the expressible way to disable an operation entirely and
 is a meaningful host configuration, not a mistake. Rejecting it alongside a negative value would
-remove the only way to say "this tool may attach nothing", or "this agent may not delegate".
+remove the only way to say "this agent may not delegate".
 
 **Throws:** `ArgumentOutOfRangeException` when any ceiling is negative.
 

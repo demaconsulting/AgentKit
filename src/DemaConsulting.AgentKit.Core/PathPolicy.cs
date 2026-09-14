@@ -147,16 +147,29 @@ public sealed class PathPolicy
     ///     The enumeration options used when listing candidate files.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Recursion is required because a caller asks for a subtree, and inaccessible entries
     ///     are ignored so that one unreadable directory does not turn a listing into a failure.
     ///     Note that recursion deliberately does <em>not</em> imply trust: every candidate the
     ///     enumeration surfaces is filtered afterwards by the same decision a direct access
     ///     makes.
+    ///     </para>
+    ///     <para>
+    ///     <see cref="FileAttributes.None"/> is stated explicitly because the
+    ///     <see cref="EnumerationOptions"/> default is <c>Hidden | System</c>, and on Unix the
+    ///     platform reports any dot-prefixed name as hidden. Taking that default would drop
+    ///     <c>.github</c>, <c>.gitignore</c> and everything beneath a dot-prefixed directory from
+    ///     every listing while leaving those same files readable and writable by direct path — a
+    ///     listing narrower than what access permits, which is exactly the silent wrong-target
+    ///     case enumeration exists to prevent. Excluding a name is the author's decision to make
+    ///     through a grant's deny patterns, not a platform attribute's.
+    ///     </para>
     /// </remarks>
     private static readonly EnumerationOptions RecursiveEnumeration = new()
     {
         RecurseSubdirectories = true,
-        IgnoreInaccessible = true
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.None
     };
 
     /// <summary>
@@ -718,22 +731,34 @@ public sealed class PathPolicy
     }
 
     /// <summary>
-    ///     Chooses the reason phrase for a denial: a protected-pattern hit, or being outside every
-    ///     permitted location.
+    ///     Chooses the reason phrase for a denial: a protected-pattern hit, a location that is
+    ///     permitted but not for this access, or being outside every permitted location.
     /// </summary>
     /// <remarks>
-    ///     A deny-pattern hit is reported as such because it is actionable in a different way — the
-    ///     file is withheld however it is spelled — whereas an out-of-location denial invites the
-    ///     model to re-address. Only grants of the required access are consulted, matching which
-    ///     grants the decision itself consulted.
+    ///     A deny-pattern hit is reported as such because the file is withheld however it is
+    ///     spelled. The remaining two are distinguished because they are different facts: a write
+    ///     into a location a read-only grant covers is not "outside every permitted location", and
+    ///     headlining it that way contradicts the grant list printed beneath it and hides the one
+    ///     thing the model needs to know — that the place is right and the permission is not. Only
+    ///     grants of the required access are consulted for the pattern test, matching which grants
+    ///     the decision itself consulted; the containment test consults every grant, because that
+    ///     is what makes "inside a permitted location" true.
     /// </remarks>
     /// <param name="resolved">The resolved real path that was refused.</param>
     /// <param name="requireWrite">Whether the decision required a read-write grant.</param>
     /// <returns>The reason phrase for the denial.</returns>
     private string ClassifyDenial(string resolved, bool requireWrite)
     {
-        return Applicable(requireWrite).Any(grant => grant.MatchesDenyPattern(resolved))
-            ? "matches a protected pattern"
+        if (Applicable(requireWrite).Any(grant => grant.MatchesDenyPattern(resolved)))
+        {
+            return "matches a protected pattern";
+        }
+
+        // Some grant permits this path, just not at the access the request needed. Reading is
+        // permitted by any grant, so this can only arise for a write; stating it as a location
+        // denial would be untrue.
+        return _grants.Any(grant => grant.Allows(resolved))
+            ? "inside a permitted location, but no grant there permits this access"
             : "outside every permitted location";
     }
 
