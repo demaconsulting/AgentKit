@@ -33,8 +33,11 @@ policy, its grants, and the pack builder fit together.
 agent work across turns rather than within one: `todo` to plan, `memory` to remember, and `agent` to
 delegate. It researches a read-only corpus, writes its conclusions into a separate notes folder, and
 makes the mechanisms observable — a plan written down before work starts, a finding filed with the
-document it came from, a contradicting restatement *refused* as a near-duplicate with the
-conflicting memory named, and a child agent started with a task its parent stated. A final
+document it came from, a contradiction the agent notices by reading and corrects in place with
+`memory_revise` (5 of 5 neutral live runs, `claude-sonnet-5`, `--embeddings local`), and a child
+agent started with a task its parent stated. Near-duplicate refusal sits underneath that as a
+backstop for the conflict a model does *not* notice: it fired in 0 of the 8 live runs measured, and
+the sample's own README states where it does fire. A final
 `--recall-question` turn answers on a fresh session with the memory tools and no way to read
 anything, so recall — rather than the conversation it would otherwise still be sitting in — is
 demonstrably what the answer rests on.

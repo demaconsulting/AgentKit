@@ -14,6 +14,8 @@ This user guide covers:
 - Installation of the library
 - What the library provides today, and how each part is used
 - The path policy, tool limits, naming, result and tool pack contracts
+- Three runnable samples: consuming the shipped tools (*document assistant*), an agent whose work
+  spans turns (*research assistant*), and writing your own guarded tools (*custom tools*)
 
 # Continuous Compliance
 
@@ -63,8 +65,8 @@ lacks a documentation summary, so the reference is complete by construction.
 
 AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
 every tool an application writes for itself, is built against. Ready-made guarded tool families
-ship in `DemaConsulting.AgentKit.Tools` — the text file, file, markdown and image families
-described under
+ship in `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
+agent families described under
 [Tool Families](#tool-families) below — so a consumer can attach shipped tools directly, or write
 its own tools against this contract.
 
@@ -149,7 +151,13 @@ by forgetting it.
 `ToolResult` constructs what a tool returns: `Text` for text, `Structured` for data that is
 neither text nor content, `Binary` and `Image` for
 content carrying a media type and an optional caption, and `Denied` for a refusal. A refusal names
-its reason and may redirect the model to a more appropriate tool. Text and content reach the
+its reason and states the fact that caused it; **a denial states a fact and never prescribes a
+remedy**, because a denial that helpfully suggested another tool was measured pushing a model into
+a destructive workaround. The optional redirect survives that rule in exactly two places, where
+naming the tool *is* the fact being stated rather than a route around what was withheld: binary
+content is offered to `image_read`, and an `.svg`, which genuinely is text, is offered to
+`text_file_read`. Every other refusal — including every policy refusal — carries no redirect. Text
+and content reach the
 provider in the form the tool produced them rather than as serialized JSON, which is what allows a
 returned image to be recognized as an image; a structured result is serialized to JSON on the way
 out, because JSON is the form in which a provider can read structured data.
@@ -184,9 +192,13 @@ create its tools at all, so the model is never offered a tool it cannot use.
 
 # Tool Families
 
-`DemaConsulting.AgentKit.Tools` ships four ready-made guarded tool families. Each family is a pack
+`DemaConsulting.AgentKit.Tools` ships seven ready-made guarded tool families. Each family is a pack
 an application adds to a `ToolPackBuilder`; the builder gates each pack on the host capabilities it
-requires and returns the `AIFunction` list to hand to an agent framework.
+requires and returns the `AIFunction` list to hand to an agent framework. The table below is the
+single place in the user-facing documentation that names every shipped tool; `lint.ps1` checks it
+against the tool-name and family-prefix constants in the source, in both directions, so a tool the
+library ships but this table omits — and a tool this table names but the library does not ship —
+fails the build.
 
 ## Available Tools
 
@@ -205,12 +217,40 @@ requires and returns the `AIFunction` list to hand to an agent framework.
 | File      | `file_delete`           | Deletes a single file within the policy          | None                |
 | Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
 | Image     | `image_read`            | Reads an image or PDF for a vision-capable agent | `Vision`            |
+| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None                |
+| Todo      | `todo_set`              | Records a step, or updates the step with that id | None                |
+| Todo      | `todo_remove`           | Drops a step by id from the task list            | None                |
+| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None                |
+| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None                |
+| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None                |
+| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None                |
+| Memory    | `memory_forget`         | Removes one memory permanently                   | None                |
+| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation`        |
 
-The text file family (`TextFilePack`), the file family (`FilePack`), and the Markdown family
-(`MarkdownPack`) require no host capability. The image family (`ImagePack`)
-requires the `Vision` host capability: unless the host declares `HostCapabilities.Vision`, the
-builder never asks the pack to create `image_read`, so a model is never offered a tool its host
-cannot use.
+The text file (`TextFilePack`), file (`FilePack`), Markdown (`MarkdownPack`), todo (`TodoPack`) and
+memory (`MemoryPack`) families require no host capability. Two families are gated. The image family
+(`ImagePack`) requires the `Vision` host capability, and the agent family (`AgentPack`) requires
+`Delegation`: unless the host declares the capability, the builder never asks the pack to create
+its tools, so a model is never offered a tool its host cannot use.
+
+Three of the families carry state or collaborators beyond the path policy, and an application
+should know what it is attaching:
+
+- **Todo** keeps a flat task list — an ordered sequence of steps, with no nesting and no
+  dependencies. `TodoPack` allocates a fresh list per `CreateTools` call, so a delegated agent
+  composed through `AgentPack` keeps its own list and cannot write into its parent's.
+  `TodoPack.SuggestedInstruction` publishes wording an application can append rather than
+  transcribe.
+- **Memory** requires an `IEmbeddingGenerator<string, Embedding<float>>` that the application
+  supplies; `MemoryPack` never inspects which backend it wraps. Only a memory's one-sentence
+  descriptor is embedded and searched — never its details. Supplying no store gives each
+  composition a fresh `InMemoryMemoryStore`, which **does not persist**: its memories live exactly
+  as long as the composition. An application that supplies a store gets exactly that store, shared
+  by every composition it is handed to. `MemoryPack.SuggestedInstruction` publishes the wording
+  that the measurements in the design documentation were taken against.
+- **Agent** takes the profiles a child may be run under, a runner, and the *packs* a child may draw
+  on — never built tools — so a child's tools are composed afresh against the child's own policy
+  and per-composition state stays with the child that owns it.
 
 ## Composing a Tool List
 
@@ -245,6 +285,10 @@ also reads a path the same way, so a name `file_list` reported can be handed str
 permitted location. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
+
+The todo, memory and agent packs are added the same way, but take constructor arguments of their
+own — a supplied store, an embedding generator, or the profiles, runner and child packs a delegated
+agent is built from. *Sample: Research Assistant* below shows all three composed onto one policy.
 
 # Building an Agent
 

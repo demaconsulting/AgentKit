@@ -229,10 +229,13 @@ behavior: whether a corrected memory should cite the new source, keep the first,
 author's policy over their own corpus, and a library that decided it would be governing rather than
 guaranteeing.
 
-**No adherence figure is claimed for the memory instruction.** The task-list family has a measured
-comparison — a soft instruction used in 1 of 5 runs against an explicit one in 3 of 3 — and that
-number belongs to that family's wording. Nothing equivalent has been measured for this family's
-suggested instruction, so none is stated here or anywhere else.
+**The task-list family's adherence figures are not transferred to this family.** The task-list
+family has a measured comparison of its own — a soft instruction used in 1 of 5 runs against an
+explicit one in 3 of 3 — and that number belongs to that family's wording; nothing here inherits
+it. What is measured for this family's suggested instruction is narrower and is stated above: over
+eight live `research-assistant` runs pinned to `claude-sonnet-5` with `--embeddings local`, the
+subject-only descriptor rule was obeyed 5 of 5 in the neutral arm (n = 5) and 0 of 3 in the
+adversarial arm (n = 3). No figure beyond those is claimed here or anywhere else.
 
 **Recall applies no similarity floor, and an application should say so.** `memory_recall` returns
 the nearest memories the store holds up to the author's configured count, whatever their similarity,

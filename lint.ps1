@@ -223,23 +223,31 @@ if (Test-Path docs/sysml2/model) {
     }
 }
 
-# [PROJECT-SPECIFIC] Tool names named in user-facing prose must exist.
+# [PROJECT-SPECIFIC] Tool names named in user-facing prose must exist, and none may be missing.
 #
 # The shipped tool set and its family prefixes are read from the source constants rather than
-# restated here, so this check cannot itself go stale. A backtick-quoted, lower-case token
-# carrying a shipped family prefix is a claim that such a tool exists; if it is not in the
-# shipped set, either the prose is stale or the tool was renamed.
+# restated here, so this check cannot itself go stale. It runs in three directions:
+#
+#   1. Prose to source: a backtick-quoted, lower-case token carrying a shipped family prefix is a
+#      claim that such a tool exists; if it is not in the shipped set, either the prose is stale
+#      or the tool was renamed.
+#   2. Source to prose: every shipped tool name must be named somewhere in the user guide, whose
+#      'Available Tools' table is the one place that enumerates them. This catches a family that
+#      shipped and was never written up - the todo, memory and agent families, nine tools, were
+#      absent from all user-facing documentation while every other gate passed.
+#   3. Counts: a spelled-out or numeric count preceding "tool families" must equal the number of
+#      family-prefix constants. The documents said "four" long after the seventh family shipped.
 #
 # Scope is deliberately README.md and the user guide. Extending it to the design and
 # verification documents was measured and rejected: those documents legitimately name tools
 # that were considered and not built (for example 'memory_merge' in the memory subsystem
 # design), so the check would report a correct document as an error.
 #
-# LIMIT, stated plainly: this does NOT catch prose that paraphrases the tool set in English.
-# The defect that motivated it - the README describing the text-file family as "read, write,
-# list" long after the surface became search/read/create/replace/cut/copy/paste - used no tool
-# name at all and would still pass. No mechanical check was found for that; it remains a
-# reviewer's responsibility.
+# LIMIT, stated plainly: this does NOT catch prose that paraphrases what a tool set *does* in
+# English. The defect that motivated direction 1 - the README describing the text-file family as
+# "read, write, list" long after the surface became search/read/create/replace/cut/copy/paste -
+# used no tool name and no family count, and would still pass. No mechanical check was found for
+# that; it remains a reviewer's responsibility.
 Write-Host "Linting: tool names in user-facing prose..."
 
 $toolSources = Get-ChildItem src -Recurse -Filter *.cs -ErrorAction SilentlyContinue |
@@ -270,6 +278,56 @@ if ($toolSources) {
                     $token = $_.Value.Trim('`')
                     if ($shippedTools -notcontains $token) {
                         Write-Host "tool-names: ${source}:${line} names '$token', which the library does not ship"
+                        $script:lintError = $true
+                    }
+                }
+            }
+
+        # Reverse direction: every shipped tool must be named in the user guide.
+        #
+        # The check above catches prose naming a tool that was renamed or removed. It cannot see a
+        # tool that shipped and was never written up - which is the defect that put the whole todo,
+        # memory and agent surface, nine tools, outside the documentation while every gate passed.
+        # The user guide's 'Available Tools' table is the one place that names every shipped tool,
+        # so requiring each shipped name to appear there makes that table complete by construction
+        # and removes the reader-facing tool list from the set of hand-maintained facts.
+        $guideFiles = Get-ChildItem docs/user_guide -Recurse -Filter *.md -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '[\\/]generated[\\/]' } | ForEach-Object { $_.FullName }
+
+        if ($guideFiles) {
+            $guideText = (Get-Content -Path $guideFiles -Raw) -join "`n"
+            foreach ($tool in $shippedTools) {
+                if ($guideText -notmatch ('`' + [regex]::Escape($tool) + '`')) {
+                    Write-Host "tool-names: docs/user_guide names no '$tool', which the library ships"
+                    $lintError = $true
+                }
+            }
+        }
+
+        # Family counts written in prose must equal the number of shipped families.
+        #
+        # A count is the one fact about the tool surface that cannot be checked by looking for a
+        # token, and it is the fact that went stale: the documents said "four" for months after the
+        # seventh family shipped. Any spelled-out or numeric count immediately preceding
+        # "tool families" in user-facing prose is compared against the family-prefix constants.
+        $numberWords = @{
+            'one' = 1; 'two' = 2; 'three' = 3; 'four' = 4; 'five' = 5; 'six' = 6;
+            'seven' = 7; 'eight' = 8; 'nine' = 9; 'ten' = 10; 'eleven' = 11; 'twelve' = 12
+        }
+        $countPattern = '\b([A-Za-z]+|\d+)\s+(?:ready-made\s+)?(?:guarded\s+)?tool families\b'
+
+        Select-String -Path ($proseFiles | Where-Object { Test-Path $_ }) -Pattern $countPattern -AllMatches |
+            ForEach-Object {
+                $source = $_.Path
+                $line = $_.LineNumber
+                $_.Matches | ForEach-Object {
+                    $word = $_.Groups[1].Value
+                    $claimed = $null
+                    if ($word -match '^\d+$') { $claimed = [int]$word }
+                    elseif ($numberWords.ContainsKey($word.ToLowerInvariant())) { $claimed = $numberWords[$word.ToLowerInvariant()] }
+
+                    if ($null -ne $claimed -and $claimed -ne $familyPrefixes.Count) {
+                        Write-Host "tool-names: ${source}:${line} claims $claimed tool families; the library ships $($familyPrefixes.Count)"
                         $script:lintError = $true
                     }
                 }

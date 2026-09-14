@@ -16,8 +16,8 @@ permission-governed set of tools to the agent framework of its choice, bounded b
 application configures and a tool cannot omit.
 
 > **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
-> construction, tool results, and the tool pack contract — is implemented; four guarded tool
-> families, text file, file, markdown and image, are built on it in
+> construction, tool results, and the tool pack contract — is implemented; seven guarded tool
+> families — text file, file, markdown, image, todo, memory and agent — are built on it in
 > `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
 > a GitHub Copilot `CopilotClient`.
@@ -30,13 +30,17 @@ section below.
 
 ## Capabilities
 
-- **Guarded tool families**: each family is bound at construction to a policy that constrains what
-  it may touch. Four families ship today — **text file** (search, read, create, replace, and
+- **Guarded tool families**: each family is bound at construction to the policy, store, or
+  collaborators that constrain what it may touch, and is added as a pack. The families shipping in
+  `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type), **markdown** (outline a document's headings with their line ranges),
-  and **image** (read images and PDF documents for a vision-capable agent) — in
-  `DemaConsulting.AgentKit.Tools`. Transfer buffer, work queue, user interaction, and sub-agent
-  delegation families are planned.
+  **image** (read images and PDF documents for a vision-capable agent, gated on the `Vision` host
+  capability), **todo** (a flat task list the agent records, updates and drops steps in), **memory**
+  (file, recall, update, revise and forget memories, over an embedding generator the application
+  supplies), and **agent** (delegate a task to an application-defined child agent profile, gated on
+  the `Delegation` host capability). The user guide's *Available Tools* table names every tool in
+  each family; this README deliberately does not restate it.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
 - **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
@@ -53,8 +57,8 @@ abstraction. Microsoft Agent Framework supplies those.
 
 - **`DemaConsulting.AgentKit.Core`** — policy primitives, guarded tool construction, tool result
   helpers, and the tool-pack contract.
-- **`DemaConsulting.AgentKit.Tools`** — ready-made guarded tool families (text file, file, markdown
-  and image), each composed onto a policy through the pack contract.
+- **`DemaConsulting.AgentKit.Tools`** — the ready-made guarded tool families listed under
+  [Capabilities](#capabilities), each composed onto a policy through the pack contract.
 - **`DemaConsulting.AgentKit.Agents.ChatClient`** — builds a Microsoft Agent Framework agent from any
   `IChatClient`, installing the image-promoting decorator on every agent so a tool-returned image
   reaches the model even on a provider that would otherwise drop it.
@@ -195,8 +199,11 @@ of what each demonstrates and when to read it.
   — *the agent-infrastructure path.* A console application composing the `todo`, `memory`, and
   `agent` families onto one policy: it plans its work as a task list, files what it learns as
   searchable memories with the document each came from, and delegates the reading of a single
-  document to a child agent. Its corpus is granted read-only and contains a superseding revision, so
-  a contradicting restatement is genuinely refused as a near-duplicate rather than filed twice. It
+  document to a child agent. Its corpus is granted read-only and contains a superseding revision, and
+  in the eight live runs measured (`claude-sonnet-5`, `--embeddings local`) the agent noticed the
+  contradiction by reading and corrected the memory in place with `memory_revise` in 5 of 5 of the
+  neutral runs; the near-duplicate refusal — the backstop for a conflict the model has *not*
+  noticed — fired in 0 of the 8. It
   supplies its own offline embedding generator — `MemoryPack` requires one and never inspects it —
   so it runs from a fresh clone with no server, no credential, and no model binary in the
   repository; `--embeddings ollama` swaps in a real model and changes nothing else. The packs a
