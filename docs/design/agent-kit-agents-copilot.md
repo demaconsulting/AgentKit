@@ -48,7 +48,8 @@ and in the _Microsoft.Agents.AI.GitHub.Copilot Design_.
 ## Dependency Isolation
 
 This system carries `Microsoft.Agents.AI.GitHub.Copilot` (and, transitively, the Microsoft Agent
-Framework runtime and the native Copilot SDK). `architecture.md` bars that weight from Core.
+Framework runtime and the native Copilot SDK). Core admits none of that weight: it takes exactly
+one runtime dependency, as recorded in _AgentKitCore System Design_.
 Isolating it in its own package is exactly what the dependency justifies: an application that never
 builds a Copilot agent never takes the dependency or its native runtime. The system references Core
 and `Microsoft.Agents.AI.GitHub.Copilot` and nothing else.

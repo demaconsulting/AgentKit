@@ -28,8 +28,9 @@ loop, and no provider abstraction — those belong to Microsoft Agent Framework,
 
 ## Dependency Isolation
 
-This system carries `Microsoft.Agents.AI`, the Microsoft Agent Framework runtime, which
-`architecture.md` bars from Core because of its size and monthly churn. Isolating it in its own
+This system carries `Microsoft.Agents.AI`, the Microsoft Agent Framework runtime, whose size and
+monthly churn bar it from Core, which takes exactly one runtime dependency; see _AgentKitCore
+System Design_. Isolating it in its own
 package is exactly what that dependency justifies: Core stays small and slow-moving, and an
 application that never builds an agent through this adapter never takes the dependency. The system
 references Core (for `ImagePromotingChatClient`) and `Microsoft.Agents.AI` (for `AIAgent` and
