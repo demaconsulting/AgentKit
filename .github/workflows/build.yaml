@@ -490,6 +490,8 @@ jobs:
           --report docs/code_quality/generated/codeql-quality.md
           --heading "AgentKit CodeQL Analysis"
           --report-depth 1
+          --exclude "**/obj/**"
+          --exclude "**/bin/**"
 
       - name: Display CodeQL Quality Report
         shell: bash
