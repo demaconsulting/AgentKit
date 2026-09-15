@@ -45,7 +45,7 @@ indistinguishable from a healthy one — precisely the condition that most needs
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
-Sends one message and returns the answer, compacting first if the window requires it.
+Sends one message and returns the answer, compacting afterwards if the window requires it.
 
 **Preconditions:** `message` is not null, empty or blank; the session has not been disposed.
 

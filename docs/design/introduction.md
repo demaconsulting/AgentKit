@@ -247,7 +247,7 @@ The `SoftwareStructureView.svg` above renders all five systems.
 
 The demonstration samples under `samples/` are not among them. They are runnable examples rather
 than deliverables, belong to no software package, and are excluded from the software-item tree for
-the reasons given under Scope above; the structure view renders only the four shipped systems.
+the reasons given under Scope above; the structure view renders only the five shipped systems.
 
 ## Folder Layout
 

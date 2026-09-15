@@ -526,7 +526,11 @@ public sealed class ContextLayout
 
         // Then the verbatim recent history, in the order it happened.
         seed.AddRange(Transcript.Entries);
-        return seed;
+
+        // Published as a genuine read-only view rather than the list itself. The seed is handed
+        // straight to a provider-session factory, and a caller that cast it back to List<T> could
+        // alter the history a fresh session is created from between building it and using it.
+        return Array.AsReadOnly(seed.ToArray());
     }
 
     /// <summary>

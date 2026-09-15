@@ -79,7 +79,8 @@ from the code that put it there.
 **Tests**: `SessionTranscript_SplitAtBudget_RetainsNewestWithinBudget`,
 `SessionTranscript_SplitAtBudget_OversizedEntry_RetainsNothing`,
 `SessionTranscript_SplitAtBudget_EverythingFits_ReturnsSameInstance`,
-`SessionTranscript_SplitAtBudget_NegativeBudget_Throws`
+`SessionTranscript_SplitAtBudget_NegativeBudget_Throws`,
+`SessionTranscript_SplitAtBudget_Overflow_CannotBeCastAndMutated`
 
 Normal operation and three boundaries. Five entries of twenty tokens split at forty retains exactly
 the two newest and overflows the three oldest, oldest first. A single entry larger than the whole
@@ -87,6 +88,11 @@ budget retains nothing and overflows — reported honestly, because retaining it
 break the bound the budget exists to enforce. A transcript that already fits is returned as the same
 instance, so a rotation needing no aging allocates and consolidates nothing. A negative budget is
 refused as a programming error rather than treated as zero.
+
+The last asserts the overflow is not a bare array and that writing through it is refused. The
+overflow is the material a consolidation is about to be handed, so a caller able to cast it back
+could change what the summarizer sees after the split had already decided it — the same defect
+`Entries` is protected against, applied to the other collection this type publishes.
 
 #### AgentKitSessions-SessionTranscript-SnapsToolBoundary: A Boundary Inside a Tool Pair Snaps
 

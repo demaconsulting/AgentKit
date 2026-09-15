@@ -57,6 +57,54 @@ public class InMemoryProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a responder that throws leaves no ghost message behind. Recording the incoming
+    ///     message ahead of the answer would leave the fake holding a turn no responder ever
+    ///     answered, while <see cref="CompactingAgentSession"/> correctly records nothing when
+    ///     <c>SendAsync</c> fails — and a shipped fake whose history diverges from the engine's
+    ///     transcript is worse than no fake, because adapter authors read it as the reference.
+    /// </summary>
+    [Fact]
+    public async Task InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry()
+    {
+        // Arrange: a session whose responder always fails
+        await using var session = new InMemoryProviderSession(
+            new ProviderSessionSeed(null, [], []),
+            _ => throw new InvalidOperationException("the model refused"),
+            1000);
+
+        // Act
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("please read", TestContext.Current.CancellationToken));
+
+        // Assert: nothing was recorded and no turn was counted
+        Assert.Empty(session.History);
+        Assert.Equal(0, session.TurnCount);
+    }
+
+    /// <summary>
+    ///     Proves a responder returning null is refused without leaving a ghost message either. The
+    ///     null is a defect in the test's own responder, and the session it was handed to must be
+    ///     left exactly as it was so the defect is not compounded by a history that gained an entry.
+    /// </summary>
+    [Fact]
+    public async Task InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry()
+    {
+        // Arrange: a session whose responder returns nothing at all
+        await using var session = new InMemoryProviderSession(
+            new ProviderSessionSeed(null, [], []),
+            _ => null!,
+            1000);
+
+        // Act
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("please read", TestContext.Current.CancellationToken));
+
+        // Assert: nothing was recorded and no turn was counted
+        Assert.Empty(session.History);
+        Assert.Equal(0, session.TurnCount);
+    }
+
+    /// <summary>
     ///     Proves usage is reported as provider-supplied and grows with the conversation, which is
     ///     what lets a test exercise the branch where the engine prefers a provider's own figures.
     /// </summary>

@@ -88,6 +88,22 @@ public class ContextUsageTests
     }
 
     /// <summary>
+    ///     Proves an undefined origin is refused rather than quietly treated as an estimate.
+    ///     Everything that reads the origin asks only whether it is
+    ///     <see cref="ContextUsageOrigin.Provider"/>, so a cast integer would take the
+    ///     configured-window threshold path and skip the reported-window bound check entirely —
+    ///     silently selecting a materially different behavior from a value that names nothing.
+    /// </summary>
+    [Fact]
+    public void ContextUsage_Construct_UndefinedOrigin_Throws()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ContextUsage(100, 8000, (ContextUsageOrigin)99));
+
+        Assert.Equal("origin", error.ParamName);
+    }
+
+    /// <summary>
     ///     Proves a reporter may answer "I do not know", which is how a provider that reveals
     ///     nothing is represented without inventing a number.
     /// </summary>

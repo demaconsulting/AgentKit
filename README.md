@@ -75,9 +75,9 @@ long-running agent behaves the same way on every provider.
   allow-list from the supplied tools.
 - **`DemaConsulting.AgentKit.Sessions`** — the provider-agnostic session engine: a session that
   keeps its own transcript out of session and, when the context window fills, consolidates older
-  history into fixed-budget tiers, disposes the provider session and creates a fresh one seeded with
-  the preserved content. Ships an in-memory provider session so the whole lifecycle can be exercised
-  without a live model. Provider wiring is a later increment.
+  history into fixed-budget tiers, creates a fresh provider session seeded with the preserved
+  content, and only then disposes the one it replaced. Ships an in-memory provider session so the
+  whole lifecycle can be exercised without a live model. Provider wiring is a later increment.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 

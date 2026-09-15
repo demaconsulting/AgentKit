@@ -87,12 +87,16 @@ sections:
               application is for. Naming the tier and the figures is what makes the report actionable
               rather than merely alarming, and a null signal is refused for the same reason the
               session response refuses one - an outcome holding one reports itself saturated while
-              the consumer that goes to read the signal cannot.
+              the consumer that goes to read the signal cannot. An undefined saturation reason is
+              refused for the same reason a transcript entry's kind and a usage figure's origin are:
+              the signal exists for an application to decide on, and a cast integer matches no branch
+              it could write.
             tests:
               - RotationEngine_RotateAsync_ConsolidationDoesNotReduce_ReportsNoRedundancy
               - RotationEngine_RotateAsync_CascadeReRecordingDoesNotReduce_ReportsNoRedundancy
               - RotationEngine_RotateAsync_CoarsestTierCannotFit_ReportsTierOverBudget
               - SaturationSignal_Construct_InvalidFigures_Throws
+              - SaturationSignal_Construct_UndefinedReason_Throws
               - RotationOutcome_Construct_NullLayout_Throws
               - RotationOutcome_Construct_NullSaturationEntry_Throws
 

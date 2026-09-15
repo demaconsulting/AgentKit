@@ -249,6 +249,36 @@ public class ContextLayoutTests
     }
 
     /// <summary>
+    ///     Proves the seed a rotation hands to a provider-session factory cannot be cast back and
+    ///     altered. The seed is the whole history a fresh session is created from, and a caller able
+    ///     to edit it between building it and using it could seed a session with material the
+    ///     layout never held.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_BuildSeed_CannotBeCastAndMutated()
+    {
+        // Arrange: a layout carrying a consolidated record and some verbatim history
+        var layout = ContextLayout
+            .Create(SessionTestData.SmallPolicy, 0, 0)
+            .WithTiers(
+                SessionTestData.TranscriptOf(2, 10),
+                [
+                    ContextTier.Empty(1, 60).WithContent("tier one"),
+                    ContextTier.Empty(2, 40),
+                    ContextTier.Empty(3, 30),
+                ]);
+
+        // Act: build the seed
+        var seed = layout.BuildSeed();
+
+        // Assert: it is a read-only view, and writing through it is refused
+        Assert.IsNotType<List<TranscriptEntry>>(seed);
+        Assert.IsNotType<TranscriptEntry[]>(seed);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<TranscriptEntry>)seed)[0] = TranscriptEntry.User("forged"));
+    }
+
+    /// <summary>
     ///     Proves a tier knows whether its record still fits, which is the test the rotation engine
     ///     makes after every consolidation.
     /// </summary>

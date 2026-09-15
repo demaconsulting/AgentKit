@@ -57,6 +57,26 @@ public class SessionTranscriptTests
     }
 
     /// <summary>
+    ///     Proves the overflow slice a split hands out cannot be cast back to an array and mutated.
+    ///     The overflow is the material a consolidation is about to be given, so a caller able to
+    ///     edit it could change what the summarizer sees after the split decided it.
+    /// </summary>
+    [Fact]
+    public void SessionTranscript_SplitAtBudget_Overflow_CannotBeCastAndMutated()
+    {
+        // Arrange: three entries of ten tokens each and a budget that retains only the newest
+        var transcript = SessionTestData.TranscriptOf(3, 10);
+
+        // Act
+        var (_, overflow) = transcript.SplitAtBudget(10);
+
+        // Assert: the slice is a read-only view, and writing through it is refused
+        Assert.Equal(2, overflow.Count);
+        Assert.IsNotType<TranscriptEntry[]>(overflow);
+        Assert.Throws<NotSupportedException>(() => ((IList<TranscriptEntry>)overflow)[0] = null!);
+    }
+
+    /// <summary>
     ///     Proves a run of entries appends in order, which is how one tool-using turn is recorded.
     /// </summary>
     [Fact]

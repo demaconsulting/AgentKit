@@ -40,15 +40,21 @@ sections:
 
           - id: AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
             title: >-
-              A context usage figure shall reject a negative occupied count and a non-positive window
-              size.
+              A context usage figure shall reject a negative occupied count, a non-positive window
+              size, and an undefined origin.
             justification: |
               A negative occupied count could only come from a defect and would make every threshold
               comparison meaningless. A window of zero would leave nothing for the occupied fraction
-              to be a fraction of.
+              to be a fraction of. An undefined origin is refused because everything that reads the
+              origin asks only whether it is Provider: a cast integer would be accepted and then
+              silently read as an estimate, taking the configured-window rotation threshold and
+              skipping the reported-window bound check entirely. A value that names nothing must not
+              select behavior, so it is refused where the caller wrote it, following the precedent
+              set for a transcript entry's kind.
             tests:
               - ContextUsage_Construct_NegativeUsage_Throws
               - ContextUsage_Construct_ZeroWindow_Throws
+              - ContextUsage_Construct_UndefinedOrigin_Throws
 
           - id: AgentKitSessions-ContextUsage-OptionalReportingContract
             title: >-

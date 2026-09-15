@@ -215,8 +215,8 @@ public sealed class ProviderTurn
 ///     <para>
 ///     <b>Deliberately minimal.</b> The interface says nothing about streaming, tool invocation,
 ///     retries, or provider configuration, because the compaction engine needs none of that: it
-///     sends a message, records what came back, and eventually disposes the session so a fresh one
-///     can replace it. Everything an adapter has to do beyond that is the adapter's business.
+///     sends a message, records what came back, and eventually disposes the session once a fresh
+///     one has replaced it. Everything an adapter has to do beyond that is the adapter's business.
 ///     </para>
 ///     <para>
 ///     <b>A session is disposable because rotation disposes it.</b> Disposal is the mechanism that

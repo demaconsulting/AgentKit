@@ -48,8 +48,8 @@ one it replaced.
 
 ### Rotation, Not In-Place Reduction
 
-When the context fills, this system summarizes older history, disposes the provider session, and
-creates a fresh one seeded with the preserved content.
+When the context fills, this system summarizes older history, creates a fresh provider session
+seeded with the preserved content, and only then disposes the one it replaced.
 
 **This is the only reduction mechanism both provider shapes support.** One provider shape re-sends
 the whole history on every turn and would accept an edited history; the other keeps history

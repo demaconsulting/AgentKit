@@ -13,9 +13,9 @@ replacement. This class owns the sequencing and nothing else, which is what keep
 independently testable.
 
 **Rotation is a replacement, not an edit.** When the conversation crosses the rotation threshold, the
-engine consolidates older history, the live provider session is disposed, and a new one is created
-seeded from the preserved content. That is the only reduction both provider shapes support, and it
-is why the behavior is identical on either.
+engine consolidates older history, a new provider session is created and adopted seeded from the
+preserved content, and only then is the session it replaced disposed. That is the only reduction
+both provider shapes support, and it is why the behavior is identical on either.
 
 **The transcript is kept here, out of session.** Consolidation is a separate stateless call that
 receives the material as input, never a request to the live session to summarize itself: doing that
@@ -51,10 +51,13 @@ history, because there is none yet; the instructions and tools it carries are th
 later rotation will carry.
 
 A static asynchronous factory rather than a constructor, because creating the first provider session
-is asynchronous and a constructor cannot await.
+is asynchronous and a constructor cannot await. A provider that reports its window from the outset
+is checked against the construction bound here, and a session whose provider cannot hold that bound
+is refused with the provider released; see *SendAsync* below for why.
 
 **Throws:** `ArgumentNullException` for a null options or factory; `InvalidOperationException` when
-the factory returns null; `OperationCanceledException` on cancellation.
+the factory returns null or the created session reports a window smaller than the construction
+bound; `OperationCanceledException` on cancellation.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
@@ -66,11 +69,13 @@ the factory returns null; `OperationCanceledException` on cancellation.
    produced to the transcript, in that order.
 4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
    layout against the configured window.
-5. Compute conversation tokens as usage less the options' fixed overhead, and compare against the
+5. Refuse a reported window smaller than the layout's construction bound, releasing the live
+   provider first.
+6. Compute conversation tokens as usage less the options' fixed overhead, and compare against the
    rotation threshold derived from the window that usage figure was measured against: the provider's
    reported window when the provider reported one, the configured window otherwise.
-6. Below the threshold, return the answer with `RotationOccurred` false.
-7. At or above it, rotate, and return the answer with `RotationOccurred` true and any saturation the
+7. Below the threshold, return the answer with `RotationOccurred` false.
+8. At or above it, rotate, and return the answer with `RotationOccurred` true and any saturation the
    rotation reported.
 
 **Why conversation tokens rather than raw usage.** The threshold is a fraction of the effective
@@ -101,8 +106,29 @@ the session exactly as it was.
 arrived, and the replacement is prepared for the turn after. A caller therefore never waits on a
 summarizer before receiving an answer the session could already give.
 
+**Why a reported window below the construction bound is refused rather than adapted.** The bound is
+the most the layout can ever occupy: the fixed overhead, every tier budget, and the framing each
+seeded tier record carries. A window below it cannot hold a freshly rotated context, so rotation
+cannot make progress. Left unchecked, the threshold derived from the reported window would be
+crossed on nearly every turn while `RotateAsync` still split tier zero at the policy's budget, so
+each rotation would hand back a layout still over the reported window and re-seed it — a thrash loop
+spending a summarizer call and a provider session per turn without converging. Adapting was
+considered and rejected: shrinking the tier budgets to fit would silently discard the compaction
+policy the host configured and would have to re-consolidate records already written against larger
+budgets, which is precisely what an immutable layout exists to prevent; ignoring the reported window
+would reinstate the defect the reported-window override removes, letting the session run past the
+provider's own compactor. `AgentSessionOptions` already refuses a *configured* window that cannot
+hold the bound, so failing here keeps one rule — a window that cannot hold the bound is refused —
+and differs only in when the figure becomes knowable. The check runs at creation and after every
+turn, because a provider may only begin reporting, or report a smaller window, once it has answered
+something. The live provider is released before the exception is thrown, since the session is being
+abandoned mid-life and the caller has no handle to dispose; a failure to release is swallowed rather
+than allowed to replace the configuration error the caller can act on, and the release flag stays
+false so an explicit `DisposeAsync` still retries it.
+
 **Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
-`OperationCanceledException` on cancellation.
+`InvalidOperationException` when the live provider reports a window smaller than the construction
+bound; `OperationCanceledException` on cancellation.
 
 #### RotateAsync(CancellationToken cancellationToken)
 
@@ -168,6 +194,8 @@ sites that need a usage figure, is what keeps the two provider families on one c
 - **Null options or provider factory** — `ArgumentNullException` propagates
 - **Provider factory returns null** — `InvalidOperationException` propagates
 - **Blank message** — `ArgumentException` propagates
+- **Provider reports a window smaller than the construction bound** — `InvalidOperationException`
+  propagates; the live provider is released first and the session refuses further turns
 - **Use after disposal** — `ObjectDisposedException` propagates
 - **Summarizer fails during rotation** — Propagates; the session is left intact and still able to answer
 - **Superseded provider session fails to dispose during rotation** — Caught and not reported; the
@@ -182,16 +210,16 @@ sites that need a usage figure, is what keeps the two provider families on one c
 ### Dependencies
 
 - **AgentSession** — implements `IAgentSession` and returns `AgentSessionResponse`; see
-  _AgentSession Unit Design_.
-- **AgentSessionOptions** — the configuration and every derived figure; see _AgentSessionOptions
-  Unit Design_.
-- **ContextLayout** — the state a rotation acts on, and the seed builder; see _ContextLayout Unit
-  Design_.
-- **SessionTranscript** — the append-only record of each turn; see _SessionTranscript Unit Design_.
-- **RotationEngine** — performs the rotation; see _RotationEngine Unit Design_.
-- **ProviderSession** — the seed, the session and the factory; see _ProviderSession Unit Design_.
-- **ContextUsage** — the usage figure and the optional reporting contract; see _ContextUsage Unit
-  Design_.
+  *AgentSession Unit Design*.
+- **AgentSessionOptions** — the configuration and every derived figure; see *AgentSessionOptions
+  Unit Design*.
+- **ContextLayout** — the state a rotation acts on, and the seed builder; see *ContextLayout Unit
+  Design*.
+- **SessionTranscript** — the append-only record of each turn; see *SessionTranscript Unit Design*.
+- **RotationEngine** — performs the rotation; see *RotationEngine Unit Design*.
+- **ProviderSession** — the seed, the session and the factory; see *ProviderSession Unit Design*.
+- **ContextUsage** — the usage figure and the optional reporting contract; see *ContextUsage Unit
+  Design*.
 
 ### Callers
 

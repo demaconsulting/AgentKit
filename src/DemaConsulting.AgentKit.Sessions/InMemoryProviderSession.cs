@@ -164,19 +164,29 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    ///     The responder runs before anything is recorded. A responder that throws, or returns
+    ///     <see langword="null"/>, therefore leaves this session exactly as it was rather than
+    ///     holding a user message no turn ever answered — the same rule
+    ///     <see cref="CompactingAgentSession"/> applies to its own transcript. A fake whose history
+    ///     diverged from the engine's transcript under failure would make the engine's own guarantee
+    ///     untestable.
+    /// </remarks>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Record the incoming message before answering, so the history matches what a provider
-        // holding the conversation server-side would have.
-        _history.Add(TranscriptEntry.User(message));
-
+        // Answer first, record second. Recording the incoming message ahead of the responder would
+        // leave a ghost message behind whenever the responder failed, and a real provider that
+        // rejects a turn holds nothing either.
         var turn = _responder(message)
             ?? throw new InvalidOperationException("The responder returned null; it must return a turn.");
 
+        // Both halves of the turn are appended together, so the history a caller can observe never
+        // holds a message without the turn that answered it.
+        _history.Add(TranscriptEntry.User(message));
         _history.AddRange(turn.Entries);
         TurnCount++;
         return Task.FromResult(turn);

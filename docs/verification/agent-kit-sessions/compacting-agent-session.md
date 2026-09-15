@@ -20,8 +20,10 @@ in-memory session's disposal cannot fail, so a small hand-written factory and se
 the disposal attempts made on them and throw for a configurable number of them, live alongside the
 tests in `CompactingAgentSessionTests.cs`. An endless failure count gives the rotation scenario its
 adapter that can never release; a count of one gives the disposal scenario the transient failure a
-retry recovers from. They exist only to reach those paths; everything else is still driven through
-the shipped fake.
+retry recovers from. A second hand-written pair reports nothing until it has answered a turn, which
+the shipped session also cannot express — it either reports from the outset or never at all — and
+which is what makes the moment a provider's window first becomes knowable reachable. They exist only
+to reach those paths; everything else is still driven through the shipped fake.
 
 The rotation scenario is sized arithmetically rather than by trial. A 400-token window with a
 four-tier policy of 100, 60, 40 and 30 tokens gives a rotation threshold of 280 conversation tokens;
@@ -40,7 +42,8 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. **No provider, no model and no network access is used**
 - **Mocking**: The shipped in-memory provider factory and a hand-written fake summarizer; no mocking
-  framework. One scenario adds a hand-written provider whose disposal fails
+  framework. Two scenarios add hand-written providers: one whose disposal fails, and one that
+  reports its window only after answering a turn
 - **Isolation**: Each test constructs its own factory, summarizer, options and session; no state is
   shared
 
@@ -49,8 +52,9 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any turn not recorded in the transcript, any answer missing from it, any
 rotation that fails to dispose the session it replaced, any replacement seeded without the preserved
-content, any failed release that cannot be retried, any usage figure taken from the wrong source, or
-any invalid argument accepted rather than refused constitutes a failure.
+content, any failed release that cannot be retried, any usage figure taken from the wrong source, any
+provider-reported window below the construction bound accepted rather than refused, or any invalid
+argument accepted rather than refused constitutes a failure.
 
 ### Test Scenarios
 
@@ -110,6 +114,31 @@ replacement's transcript. It also asserts that explicit disposal of the session 
 failure, which is the deliberate asymmetry: a caller that asked for a session to be released is
 entitled to learn that it was not, while a caller taking a turn is not served by being told a
 successful rotation failed.
+
+#### AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow: A Window That Cannot Hold the Bound Is Refused
+
+**Tests**: `CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows`,
+`CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows`
+
+The scenario the reported-window override made reachable. Both tests configure a 4,000-token window
+against a provider reporting 100, under a policy whose construction bound is 311 tokens — 230 of
+tier budgets plus 81 of seeded record framing, with no fixed overhead. Allowed through, the reported
+window would set a rotation threshold of 70 conversation tokens while a rotation still split tier
+zero at the policy's 100-token budget, so every turn would cross the threshold, rotate into a layout
+still over the reported window, and re-seed it: a summarizer call and a provider session spent per
+turn, forever, with the context never converging. Both tests therefore assert an
+`InvalidOperationException` and that the live provider session was released, because the session is
+being abandoned mid-life and the caller is left with no handle to dispose. The first asserts the
+message names both figures, so a host can see which to change.
+
+The two differ in **when the window first becomes knowable**. The first uses the shipped in-memory
+session, which reports from the moment it exists, so the refusal happens at creation and no turn is
+ever spent. The second uses a hand-written provider that reports nothing until it has answered
+something — a shape the shipped session cannot express, and precisely the shape that motivated
+making usage reporting optional — so the refusal happens on the first turn instead. It further
+asserts the abandoned session refuses later turns with `ObjectDisposedException` and that disposing
+it again releases nothing a second time. A check placed only at creation would pass the first test
+and fail the second.
 
 #### AgentKitSessions-CompactingAgentSession-PrefersProviderUsage: The Better Measurement Wins
 

@@ -52,10 +52,10 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves the central behavior: crossing the threshold consolidates older history, disposes
-    ///     the live provider session, and creates a fresh one seeded from the preserved content.
-    ///     Rotation rather than in-place editing is what makes the behavior identical on a provider
-    ///     that re-sends history and one that holds it server-side.
+    ///     Proves the central behavior: crossing the threshold consolidates older history, creates a
+    ///     fresh provider session seeded from the preserved content, and only then disposes the one
+    ///     it replaced. Rotation rather than in-place editing is what makes the behavior identical on
+    ///     a provider that re-sends history and one that holds it server-side.
     /// </summary>
     [Fact]
     public async Task CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession()
@@ -364,6 +364,67 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves a provider reporting a window too small to hold the construction bound is refused
+    ///     at creation, and that the session it was created for releases the provider on the way
+    ///     out. Allowing it would derive a rotation threshold from the reported window while
+    ///     rotation still split tier zero at the policy's budget, so every turn would cross the
+    ///     threshold, rotate into a layout still over the reported window, and re-seed it — a thrash
+    ///     loop spending a summarizer call and a provider session per turn without ever converging.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows()
+    {
+        // Arrange: the small policy's bound is 311 tokens with no fixed overhead - 230 of tier
+        // budgets plus 81 of seeded record framing - against a provider reporting 100
+        var factory = new InMemoryProviderSessionFactory(windowTokens: 100);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        // Assert: the failure names both figures, so a host can see which one to change
+        Assert.Contains("100", error.Message, StringComparison.Ordinal);
+        Assert.Contains("311", error.Message, StringComparison.Ordinal);
+
+        // Assert: the session was abandoned mid-life, so the provider it had already created was
+        // released rather than left holding a conversation the caller has no handle to
+        Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+    }
+
+    /// <summary>
+    ///     Proves the same refusal applies to a provider that only begins reporting its window after
+    ///     a turn. A check made only at creation would miss every provider that reveals nothing
+    ///     until it has answered something, which is precisely the shape that motivated the optional
+    ///     usage-reporting interface.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows()
+    {
+        // Arrange: a provider silent until it has answered, then reporting 100 tokens against the
+        // small policy's 311-token bound
+        var factory = new LateReportingProviderSessionFactory(reportedWindowTokens: 100);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+
+        // Act: the first turn is the first moment the window is knowable
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("hello", TestContext.Current.CancellationToken));
+
+        // Assert: the live provider was released and the session refuses further turns
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.Equal(1, factory.Sessions[0].DisposeAttempts);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("again", TestContext.Current.CancellationToken));
+
+        // Assert: disposing the abandoned session again is permitted and releases nothing further
+        await session.DisposeAsync();
+        Assert.Equal(1, factory.Sessions[0].DisposeAttempts);
+    }
+
+    /// <summary>
     ///     Proves a missing configuration or provider factory is refused where the host wrote it,
     ///     rather than at the first conversation.
     /// </summary>
@@ -494,6 +555,93 @@ internal sealed class ThrowingDisposeProviderSessionFactory(
         cancellationToken.ThrowIfCancellationRequested();
 
         var session = new ThrowingDisposeProviderSession(seed, responder, disposeFailures);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}
+
+/// <summary>
+///     A provider session that reports nothing until it has answered a turn, and then reports a
+///     fixed window.
+/// </summary>
+/// <remarks>
+///     Models the adapter that learns its own limits only from a response. The shipped in-memory
+///     session cannot express that: it either reports from the outset or never reports at all, so
+///     the moment a window first becomes knowable is unreachable through it.
+/// </remarks>
+/// <param name="reportedWindowTokens">The window reported once a turn has been answered.</param>
+internal sealed class LateReportingProviderSession(int reportedWindowTokens)
+    : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The tokens reported as occupied, grown by each turn.
+    /// </summary>
+    private int _usedTokens;
+
+    /// <summary>
+    ///     Whether a turn has been answered, and so whether a window can be reported.
+    /// </summary>
+    private bool _answered;
+
+    /// <summary>
+    ///     Gets how many times disposal was attempted on this session.
+    /// </summary>
+    /// <remarks>
+    ///     Counted rather than flagged, so a test can show that abandoning the session released the
+    ///     provider exactly once and that a later explicit disposal does not release it again.
+    /// </remarks>
+    public int DisposeAttempts { get; private set; }
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    public ContextUsage? CurrentUsage =>
+        _answered ? ContextUsage.FromProvider(_usedTokens, reportedWindowTokens) : null;
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _answered = true;
+        _usedTokens += TokenEstimator.EstimateTokens(message);
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        DisposeAttempts++;
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="LateReportingProviderSession"/> instances and remembers every one it made.
+/// </summary>
+/// <param name="reportedWindowTokens">The window each created session reports once it has answered.</param>
+internal sealed class LateReportingProviderSessionFactory(int reportedWindowTokens) : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<LateReportingProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var session = new LateReportingProviderSession(reportedWindowTokens);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

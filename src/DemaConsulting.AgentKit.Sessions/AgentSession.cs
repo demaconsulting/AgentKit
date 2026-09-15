@@ -71,9 +71,10 @@ public sealed class AgentSessionResponse
     ///     Gets a value indicating whether the session rotated during this turn.
     /// </summary>
     /// <remarks>
-    ///     A rotation consolidated older history, disposed the provider session, and created a fresh
-    ///     one seeded from the preserved content. The answer in <see cref="Text"/> was produced
-    ///     before that happened, by the session being replaced.
+    ///     A rotation consolidated older history, created a fresh provider session seeded from the
+    ///     preserved content, and then disposed the one it replaced. The answer in
+    ///     <see cref="Text"/> was produced before any of that happened, by the session being
+    ///     replaced.
     /// </remarks>
     public bool RotationOccurred { get; }
 
@@ -138,7 +139,7 @@ public interface IAgentSession : IAsyncDisposable
     int RotationCount { get; }
 
     /// <summary>
-    ///     Sends one message and returns the answer, compacting first if the window requires it.
+    ///     Sends one message and returns the answer, compacting afterwards if the window requires it.
     /// </summary>
     /// <remarks>
     ///     Compaction, when it happens, happens after the answer is produced: the turn is served by

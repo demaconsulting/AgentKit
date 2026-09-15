@@ -52,15 +52,32 @@ public sealed class ContextUsage
     /// </remarks>
     /// <param name="usedTokens">The tokens currently occupied. Must not be negative.</param>
     /// <param name="windowTokens">The size of the window they are occupied from. Must be positive.</param>
-    /// <param name="origin">Whether the figures were reported by the provider or estimated.</param>
+    /// <param name="origin">
+    ///     Whether the figures were reported by the provider or estimated. Must be a defined
+    ///     <see cref="ContextUsageOrigin"/> member.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="usedTokens"/> is negative, or <paramref name="windowTokens"/> is not
-    ///     positive.
+    ///     <paramref name="usedTokens"/> is negative, <paramref name="windowTokens"/> is not
+    ///     positive, or <paramref name="origin"/> is not a defined
+    ///     <see cref="ContextUsageOrigin"/> member.
     /// </exception>
     public ContextUsage(int usedTokens, int windowTokens, ContextUsageOrigin origin)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(usedTokens);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
+
+        // An undefined origin is a defect in the caller, not a measurement. It would be accepted
+        // and then read as "not Provider" by everything that asks - the session's rotation
+        // threshold would take the configured-window path, and the reported-window bound check
+        // would be skipped entirely - so a cast integer would silently select a materially
+        // different code path. Refused here, following TranscriptEntry's precedent.
+        if (!Enum.IsDefined(origin))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(origin),
+                origin,
+                "The usage origin must be a defined ContextUsageOrigin member.");
+        }
 
         UsedTokens = usedTokens;
         WindowTokens = windowTokens;

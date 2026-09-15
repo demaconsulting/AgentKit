@@ -16,7 +16,7 @@ sections:
             justification: |
               This is the whole interface between the compaction engine and a provider adapter, and
               it is deliberately minimal: the engine sends a message, records what came back, and
-              eventually disposes the session so a fresh one can replace it. Everything else -
+              eventually disposes the session once a fresh one has replaced it. Everything else -
               streaming, tool invocation, retries, provider configuration - is the adapter's
               business, and putting it here would tie the engine to a provider shape. The factory is
               separate from the session because rotation must create a replacement while the engine

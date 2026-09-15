@@ -136,6 +136,11 @@ cannot tell which supersedes which.
 own configuration rather than as history, which is exactly why they are accounted for here as fixed
 overhead and not as entries.
 
+**The seed is published as a genuine read-only view**, not as the list it was built in, following the
+same idiom as `CoarseTiers` and `SessionTranscript.Entries`. The seed is handed straight to a
+provider-session factory, so a caller able to cast it back to `List<TranscriptEntry>` could alter the
+history a fresh session is created from between building it and using it.
+
 ### Error Handling
 
 - **Null policy, transcript or tier list** — `ArgumentNullException` propagates

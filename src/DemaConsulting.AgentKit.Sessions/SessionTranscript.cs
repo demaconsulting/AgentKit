@@ -386,6 +386,11 @@ public sealed class SessionTranscript
     ///     the whole run is consolidated together, which is the only split that keeps every pair
     ///     intact.
     ///     </para>
+    ///     <para>
+    ///     The overflow is published as a genuine read-only view over a slice this transcript owns,
+    ///     for the same reason <see cref="Entries"/> is: a caller that cast it back to an array
+    ///     could alter the material a consolidation is about to be given.
+    ///     </para>
     /// </remarks>
     /// <param name="budgetTokens">
     ///     The verbatim token budget the retained entries must fit within. Must not be negative;
@@ -438,7 +443,7 @@ public sealed class SessionTranscript
             return (this, []);
         }
 
-        return (new SessionTranscript(_entries[first..]), _entries[..first]);
+        return (new SessionTranscript(_entries[first..]), Array.AsReadOnly(_entries[..first]));
     }
 
     /// <summary>

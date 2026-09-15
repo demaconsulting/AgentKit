@@ -32,8 +32,9 @@ sections:
 
       - id: AgentKitSessions-Compaction-ByRotation
         title: >-
-          The library shall reduce a full context by consolidating older history, disposing the
-          provider session, and creating a fresh provider session seeded with the preserved content.
+          The library shall reduce a full context by consolidating older history, creating a fresh
+          provider session seeded with the preserved content, and only then disposing the session it
+          replaced.
         tags: [system]
         justification: |
           Two provider shapes must behave identically: one re-sends the whole history on every turn,
@@ -42,7 +43,8 @@ sections:
           session, seed the replacement - is the only reduction mechanism both support, so it is the
           one the library implements. Disposing the session it replaces is part of the mechanism
           rather than housekeeping: for a provider holding the conversation server-side, disposal is
-          what actually discards it.
+          what actually discards it. It happens last, once the replacement exists and has been
+          adopted, so a failure anywhere earlier leaves the session still able to answer.
         children:
           - AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
           - AgentKitSessions-ContextLayout-SeedsMostStableFirst
@@ -85,20 +87,24 @@ sections:
       - id: AgentKitSessions-Compaction-BoundedByConstruction
         title: >-
           The library shall bound the context it sends to the system prompt, plus the tool
-          declarations, plus the sum of the tier budgets, and shall refuse a configuration whose
-          effective window cannot accommodate that bound.
+          declarations, plus the sum of the tier budgets, and shall refuse a configured or
+          provider-reported window that cannot accommodate that bound.
         tags: [system]
         justification: |
           An arrangement that merely tends to stay small is one that will eventually not. Because
           every tier carries a fixed budget, the total is a property of the configuration alone and
           can be stated before a session starts, which is what lets an application reason about cost
-          and about whether its window is large enough. A configuration whose effective window cannot
-          hold the tier budgets would rotate into a context already over budget and could never
-          converge, so it is refused where the application wrote it rather than discovered from a
-          session that never settles.
+          and about whether its window is large enough. A window that cannot hold the tier budgets
+          would rotate into a context already over budget and could never converge, so it is refused
+          rather than discovered from a session that never settles. That applies to both roads a
+          window figure arrives by: a configured window is refused where the application wrote it,
+          and a provider-reported one - which overrides the configured figure for threshold purposes
+          - is refused as soon as the provider reports it, with the live provider session released
+          on the way out.
         children:
           - AgentKitSessions-AgentSessionOptions-AssertsTheBound
           - AgentKitSessions-ContextLayout-PublishesTheBound
+          - AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow
           - AgentKitSessions-TokenEstimator-DeterministicEstimate
           - AgentKitSessions-TokenEstimator-ChargesEntryFraming
           - AgentKitSessions-TokenEstimator-EstimatesToolDeclarations

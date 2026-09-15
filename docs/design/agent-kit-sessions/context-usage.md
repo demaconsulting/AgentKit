@@ -54,6 +54,12 @@ Validates before any assignment so an unusable figure never exists even briefly.
 occupied count could only come from a defect and would make every threshold comparison meaningless;
 a window of zero would leave nothing for the occupied fraction to be a fraction of.
 
+`origin` must be a defined `ContextUsageOrigin` member, checked with `Enum.IsDefined` as
+`TranscriptEntry` checks its kind. Everything that reads the origin asks only whether it is
+`Provider`, so a cast integer would be accepted and then silently read as an estimate: it would take
+the configured-window threshold path and skip the reported-window bound check entirely. A value that
+names nothing must not select behavior, so it is refused where the caller wrote it.
+
 #### FromProvider(int usedTokens, int windowTokens)
 
 Creates a figure marked `ContextUsageOrigin.Provider`. Used by an adapter reporting its provider's
@@ -68,6 +74,7 @@ live provider session offers nothing.
 
 - **Negative occupied count** — `ArgumentOutOfRangeException` propagates
 - **Non-positive window size** — `ArgumentOutOfRangeException` propagates
+- **Undefined origin** — `ArgumentOutOfRangeException` propagates
 - **Provider cannot account for its window** — Reported as `null` from `CurrentUsage`; not an error
 
 The last row is the important one: not knowing is a legitimate answer, expressed as an absence

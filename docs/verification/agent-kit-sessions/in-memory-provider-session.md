@@ -36,8 +36,9 @@ Unit tests reside in `InMemoryProviderSessionTests.cs` within the
 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any session that loses its seeded history, that fails to record what a turn
-produced, that reports usage when configured not to, that accepts a turn after disposal, or any
-factory that forgets a session it created constitutes a failure.
+produced, that records anything when its responder failed, that reports usage when configured not
+to, that accepts a turn after disposal, or any factory that forgets a session it created constitutes
+a failure.
 
 ### Test Scenarios
 
@@ -45,6 +46,8 @@ factory that forgets a session it created constitutes a failure.
 
 **Tests**: `InMemoryProviderSession_Construct_StartsHoldingTheSeededHistory`,
 `InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn`,
+`InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry`,
+`InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry`,
 `InMemoryProviderSessionFactory_DefaultResponder_Answers`
 
 The first asserts a session created from a seed carrying a consolidated record and one verbatim turn
@@ -52,9 +55,19 @@ starts holding both, and exposes the seed itself so a rotation's preserved conte
 The second drives a turn whose responder calls a tool and asserts the incoming message, both tool
 entries and the answer that ends the turn were recorded in order — the history a provider holding the
 conversation server-side would have, and the same history the engine's own transcript holds, because
-both record a turn's entries and those entries end with the answer. The third asserts the default
-responder answers and names the message, so a scenario about the session lifecycle is not obliged to
-also invent what a model says.
+both record a turn's entries and those entries end with the answer.
+
+The next two are the failure half of the same rule, and are the reason the responder runs before
+anything is recorded. One responder throws and one returns null; each asserts the history is empty
+and the turn count is still zero. Recording the incoming message first left a ghost user message
+behind in both cases, while `CompactingAgentSession` correctly records nothing when a provider
+refuses a turn — so the shipped fake's history diverged from the engine's transcript under exactly
+the condition the engine's own rule exists for. This fake is shipped and adapter authors read it as
+the reference implementation, so a divergence here is a defect in published guidance, not merely in
+a test double.
+
+The last asserts the default responder answers and names the message, so a scenario about the
+session lifecycle is not obliged to also invent what a model says.
 
 #### AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes: Usage Is Reported, or Withheld
 

@@ -11,16 +11,24 @@ sections:
           - id: AgentKitSessions-InMemoryProviderSession-ContactsNothing
             title: >-
               The in-memory provider session shall hold its seeded history, answer from a supplied
-              responder, and contact no provider and no network.
+              responder, record nothing when the responder fails or returns nothing, and contact no
+              provider and no network.
             justification: |
               The system's promise is only believable if it can be exercised end to end without a
               live model, and a demonstration needing one is neither deterministic nor repeatable in
               a build. It is shipped rather than confined to this library's own tests because an
               application author writing a summarizer, choosing tier budgets, or deciding what to do
-              about a saturation signal needs exactly the same ability.
+              about a saturation signal needs exactly the same ability. Because it is shipped,
+              adapter authors read it as the reference implementation, so it must observe the same
+              rule the session engine does: the responder runs first and nothing is recorded until
+              it has produced a turn, so a responder that throws or returns nothing leaves no user
+              message behind that no turn ever answered. A fake whose history diverges from the
+              engine's transcript under failure is worse than no fake.
             tests:
               - InMemoryProviderSession_Construct_StartsHoldingTheSeededHistory
               - InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn
+              - InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry
+              - InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry
               - InMemoryProviderSessionFactory_DefaultResponder_Answers
 
           - id: AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes

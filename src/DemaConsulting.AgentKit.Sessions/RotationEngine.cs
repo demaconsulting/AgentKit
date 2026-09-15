@@ -42,15 +42,31 @@ public sealed class SaturationSignal
     /// <param name="tierIndex">The tier whose consolidation saturated. Must be one or greater.</param>
     /// <param name="inputTokens">The estimated tokens handed to the consolidation. Must not be negative.</param>
     /// <param name="outputTokens">The estimated tokens it returned. Must not be negative.</param>
-    /// <param name="reason">Why the result was treated as saturated.</param>
+    /// <param name="reason">
+    ///     Why the result was treated as saturated. Must be a defined
+    ///     <see cref="SaturationReason"/> member.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="tierIndex"/> is less than one, or a token count is negative.
+    ///     <paramref name="tierIndex"/> is less than one, a token count is negative, or
+    ///     <paramref name="reason"/> is not a defined <see cref="SaturationReason"/> member.
     /// </exception>
     public SaturationSignal(int tierIndex, int inputTokens, int outputTokens, SaturationReason reason)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(tierIndex, 1);
         ArgumentOutOfRangeException.ThrowIfNegative(inputTokens);
         ArgumentOutOfRangeException.ThrowIfNegative(outputTokens);
+
+        // A saturation signal is handed to the application to decide on - warn, stop, split the
+        // task, start fresh - and an undefined reason gives it nothing to decide from while
+        // matching no branch it could write. Refused for the same reason the other enum-carrying
+        // constructors in this package refuse one, so the rule is the same everywhere.
+        if (!Enum.IsDefined(reason))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(reason),
+                reason,
+                "The saturation reason must be a defined SaturationReason member.");
+        }
 
         TierIndex = tierIndex;
         InputTokens = inputTokens;
@@ -167,10 +183,13 @@ public sealed class RotationOutcome
 /// <remarks>
 ///     <para>
 ///     <b>Rotation, not in-place reduction.</b> When the context fills, older history is
-///     consolidated, the provider session is disposed, and a fresh one is created seeded with the
-///     preserved content. This is the only reduction mechanism both provider shapes support: one
-///     re-sends the whole history on every turn and would accept an edit, the other keeps history
-///     server-side and would not. Rotating is what makes the two behave identically.
+///     consolidated and a fresh provider session is created seeded with the preserved content,
+///     after which the session it replaces is disposed. This is the only reduction mechanism both
+///     provider shapes support: one re-sends the whole history on every turn and would accept an
+///     edit, the other keeps history server-side and would not. Rotating is what makes the two
+///     behave identically. This class performs the consolidation half alone: it is a pure function
+///     over a layout and owns no provider session, so creating the replacement and disposing the
+///     one it supersedes belong to <see cref="CompactingAgentSession"/>.
 ///     </para>
 ///     <para>
 ///     <b>Aging happens only here, and in one batch.</b> Between rotations the context is strictly

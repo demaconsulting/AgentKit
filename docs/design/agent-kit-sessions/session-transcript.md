@@ -103,6 +103,10 @@ whole run is consolidated together, which is the only split that keeps every pai
 papered over: the oversized entry is consolidated like any other overflow and the caller sees an
 empty retained set. Retaining it anyway would silently break the bound the budget exists to enforce.
 
+**The overflow is published as a genuine read-only view** over a slice the transcript owns, for the
+same reason `Entries` is: it is the material a consolidation is about to be given, so a caller able
+to cast it back to an array could change what the summarizer sees after the split decided it.
+
 **Preconditions:** `budgetTokens` is not negative; zero retains nothing.
 
 #### ToTranscriptLine() and Render(IEnumerable&lt;TranscriptEntry&gt; entries)

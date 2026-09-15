@@ -101,10 +101,17 @@ update would still produce correct-looking layouts while breaking every such com
 #### AgentKitSessions-ContextLayout-SeedsMostStableFirst: The Seed Is Emitted Coarsest First
 
 **Tests**: `ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory`,
-`ContextLayout_BuildSeed_EmptyLayout_EmitsNothing`
+`ContextLayout_BuildSeed_EmptyLayout_EmitsNothing`,
+`ContextLayout_BuildSeed_CannotBeCastAndMutated`
 
 Builds a layout with records in tiers one and two, an empty tier three and one verbatim turn, then
 asserts by position that tier two's record comes first, tier one's second, the empty tier is skipped
 entirely, and the verbatim turn comes last. Stability decreasing from left to right is what allows a
 provider's prompt cache to match the longest possible prefix; seeding an empty record would spend
 framing tokens to say nothing. A layout that has held no conversation seeds nothing at all.
+
+The third asserts the seed is neither the `List<TranscriptEntry>` it was built in nor a bare array,
+and that writing through it is refused. The seed goes straight to a provider-session factory, so a
+caller able to cast it back could seed a fresh session with material the layout never held — the
+same defect the tier list is already protected against, applied to the one collection that actually
+leaves the package.

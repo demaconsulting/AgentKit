@@ -68,9 +68,13 @@ displayed or inspected the response rather than where it was produced.
 #### Supporting Corner Cases
 
 **Tests**: `SaturationSignal_Construct_InvalidFigures_Throws`,
+`SaturationSignal_Construct_UndefinedReason_Throws`,
 `RotationOutcome_Construct_NullLayout_Throws`
 
 Defensive scenarios for the two engine result types this unit reports. A saturation signal refuses a
 tier index below one and a negative token count, so the one report an application acts on cannot
-itself be nonsense; a rotation outcome refuses a missing layout, because the layout is what a fresh
-provider session is seeded from and there is no recovery from its absence.
+itself be nonsense, and refuses an undefined `SaturationReason` for the same reason a transcript
+entry refuses an undefined kind and a usage figure an undefined origin: the signal exists to be
+decided on, and a cast integer matches no branch an application could write. A rotation outcome
+refuses a missing layout, because the layout is what a fresh provider session is seeded from and
+there is no recovery from its absence.

@@ -56,11 +56,18 @@ room, but the over-full condition itself must remain visible.
 
 #### AgentKitSessions-ContextUsage-RejectsMeaninglessFigures: Impossible Figures Are Refused
 
-**Tests**: `ContextUsage_Construct_NegativeUsage_Throws`, `ContextUsage_Construct_ZeroWindow_Throws`
+**Tests**: `ContextUsage_Construct_NegativeUsage_Throws`, `ContextUsage_Construct_ZeroWindow_Throws`,
+`ContextUsage_Construct_UndefinedOrigin_Throws`
 
-Two error paths. A negative occupied count could only come from a defect and would make every
+Three error paths. A negative occupied count could only come from a defect and would make every
 threshold comparison meaningless. A window of zero would leave nothing for the occupied fraction to
 be a fraction of.
+
+The third constructs a figure with a cast integer origin and asserts the parameter name on the
+refusal. It is the one whose absence was not merely untidy: every consumer of the origin asks only
+whether it is `Provider`, so an undefined value would have been accepted and then read as an
+estimate — taking the configured-window rotation threshold and skipping the reported-window bound
+check entirely. A value that names nothing would have selected a materially different code path.
 
 #### AgentKitSessions-ContextUsage-OptionalReportingContract: A Reporter May Say It Does Not Know
 

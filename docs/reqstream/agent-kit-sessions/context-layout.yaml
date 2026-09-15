@@ -88,7 +88,11 @@ sections:
               with its level. An empty tier is skipped because seeding an empty record would spend
               framing tokens to say nothing. The system prompt and tool declarations are not seeded
               as history because providers accept them as configuration, which is also why they are
-              accounted for as fixed overhead.
+              accounted for as fixed overhead. The seed is published as a read-only view rather than
+              the list it was built in, following the same idiom as the tier list: it is handed
+              straight to a provider-session factory, so a caller able to cast it back could alter
+              the history a fresh session is created from.
             tests:
               - ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory
               - ContextLayout_BuildSeed_EmptyLayout_EmitsNothing
+              - ContextLayout_BuildSeed_CannotBeCastAndMutated

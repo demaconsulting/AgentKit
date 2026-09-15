@@ -7,11 +7,13 @@ the current layout and an injected summarizer to the next layout. It is the hear
 
 ### Purpose
 
-**Rotation, not in-place reduction.** When the context fills, older history is consolidated, the
-provider session is disposed, and a fresh one is created seeded with the preserved content. This is
-the only reduction mechanism both provider shapes support: one re-sends the whole history on every
-turn and would accept an edit, the other keeps history server-side and would not. Rotating is what
-makes the two behave identically.
+**Rotation, not in-place reduction.** When the context fills, older history is consolidated and a
+fresh provider session is created seeded with the preserved content, after which the session it
+replaces is disposed. This is the only reduction mechanism both provider shapes support: one
+re-sends the whole history on every turn and would accept an edit, the other keeps history
+server-side and would not. Rotating is what makes the two behave identically. This class performs
+the consolidation half alone: it is a pure function over a layout and owns no provider session, so
+creating the replacement and disposing the one it supersedes belong to `CompactingAgentSession`.
 
 **Aging happens only here, and in one batch.** Between rotations the context is strictly append-only
 — nothing already sent is rewritten — which is what preserves a provider's prompt cache. At rotation
@@ -40,6 +42,11 @@ function from the caller's point of view.
   remove
 - **`TierOverBudget`** — The consolidated record still exceeds its tier's budget, and there was no coarser tier
   left to age the older record into
+
+A `SaturationSignal` refuses an undefined `SaturationReason`, checked with `Enum.IsDefined` as
+`TranscriptEntry` and `ContextUsage` check their own enum parameters. The signal exists for an
+application to decide on — warn, stop, split the task, start fresh — and a cast integer matches no
+branch it could write, so it names nothing to decide from.
 
 `SaturationSignal` properties, immutable after construction: `TierIndex` (one or greater),
 `InputTokens` and `OutputTokens` (neither negative), and `Reason`.
@@ -130,6 +137,7 @@ drift from what actually happened.
 
 - **Null layout or summarizer** — `ArgumentNullException` propagates
 - **Null entry in an outcome's `saturations`** — `ArgumentException` propagates
+- **Invalid saturation figures or an undefined saturation reason** — `ArgumentOutOfRangeException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
 - **Cancellation** — `OperationCanceledException` propagates, from the check after argument
   validation or from the summarizer call

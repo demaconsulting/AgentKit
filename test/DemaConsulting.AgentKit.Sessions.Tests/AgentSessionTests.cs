@@ -114,6 +114,20 @@ public class AgentSessionTests
     }
 
     /// <summary>
+    ///     Proves an undefined saturation reason is refused. The signal exists for an application to
+    ///     decide on — warn, stop, split the task, start fresh — and a cast integer matches no branch
+    ///     it could write, so it names nothing to decide from.
+    /// </summary>
+    [Fact]
+    public void SaturationSignal_Construct_UndefinedReason_Throws()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SaturationSignal(1, 100, 100, (SaturationReason)99));
+
+        Assert.Equal("reason", error.ParamName);
+    }
+
+    /// <summary>
     ///     Proves a rotation outcome refuses a missing layout, because the layout is what a fresh
     ///     provider session is seeded from and there is no recovery from its absence.
     /// </summary>
