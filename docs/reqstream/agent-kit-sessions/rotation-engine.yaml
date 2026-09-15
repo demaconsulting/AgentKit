@@ -91,12 +91,20 @@ sections:
           - id: AgentKitSessions-RotationEngine-RejectsMalformedConsolidation
             title: >-
               The engine shall reject a summarizer that returns nothing at all, and shall honor
-              cancellation between consolidations.
+              cancellation on every path, including the path where the transcript already fits and
+              there is no work to do.
             justification: |
               A null record would be stored and would surface as a missing tier at a later rotation,
               far from the implementation that caused it; an implementation with nothing to say
               returns an empty string instead. Cancellation is honored so that a host shutting down
-              is not held open by a summarizer round trip.
+              is not held open by a summarizer round trip. It is checked once after argument
+              validation rather than only between consolidations, because the no-work path returns
+              before any consolidation is reached: a check placed only there would hand a caller a
+              successful rotation result for a rotation it had already canceled, whenever the
+              transcript happened to fit. Argument validation still comes first, because a malformed
+              call is a defect in the caller and is worth reporting as such even on a canceled
+              token.
             tests:
               - RotationEngine_RotateAsync_SummarizerReturnsNull_Throws
               - RotationEngine_RotateAsync_Canceled_Throws
+              - RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws

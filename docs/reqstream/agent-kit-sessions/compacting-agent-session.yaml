@@ -30,17 +30,27 @@ sections:
             title: >-
               The session shall rotate once the conversation tokens reach the configured threshold,
               consolidating the layout, creating a replacement provider session seeded from the
-              result, and only then disposing the session it replaced.
+              result, adopting it together with the layout and the counters in one step, and only
+              then disposing the session it replaced.
             justification: |
               Comparing conversation tokens - usage with the fixed overhead removed - rather than raw
               usage is what makes the comparison mean the same thing whether the figure came from the
               provider or from the library's own estimate. The ordering is deliberate: consolidate,
-              create, then dispose. A summarizer failure therefore leaves the session exactly as it
-              was, still able to answer, rather than leaving it with no provider session at all.
+              create, adopt, then dispose. A summarizer failure therefore leaves the session exactly
+              as it was, still able to answer, rather than leaving it with no provider session at
+              all. Adopting the replacement before the disposal, in a step with nothing to suspend
+              on, is what makes the transition exception-safe: updating the state after awaiting the
+              disposal would let an adapter whose disposal fails leave the session pointing at the
+              replacement while its layout and counters still described the session it replaced, so
+              the next turn would append to - and might rotate - the wrong transcript. For the same
+              reason a failed disposal is not reported as a rotation failure: by then the rotation
+              has succeeded and the session is coherent against its replacement, and reporting a
+              failure would tell the caller the opposite while repairing nothing.
               Compaction happens after the answer is produced, so a caller never waits on a
               summarizer before receiving the answer to a question the session could already answer.
             tests:
               - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession
+              - CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
             title: >-

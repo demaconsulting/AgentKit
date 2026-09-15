@@ -12,16 +12,23 @@ sections:
             title: >-
               The layout shall hold the fixed overhead, one coarse tier per tier budget above tier
               zero, and the verbatim tier-zero history, allocating the coarse tiers to match the
-              policy at creation.
+              policy at creation and refusing any replacement tier whose index or budget disagrees
+              with the policy.
             justification: |
               Tier zero holds verbatim history and is therefore a transcript rather than a
               consolidated record, so it is not represented as a coarse tier. Allocating the coarse
               tiers up front means the hierarchy always matches the policy and no code path has to
               grow it later - a tier appearing mid-session would make the bound unverifiable at the
-              moment it mattered most.
+              moment it mattered most. Validating the count alone is not enough for the same reason:
+              a tier's position in the list is what rotation reads the policy's budget by, what the
+              seed labels the record by, and what the bound is computed from, so a tier-one slot
+              carrying tier three's index or budget would leave the policy, the tiers, the labels
+              and the bound describing different hierarchies while each looked individually correct.
             tests:
               - ContextLayout_Create_AllocatesOneCoarseTierPerBudgetAboveTierZero
               - ContextLayout_WithTiers_WrongTierCount_Throws
+              - ContextLayout_WithTiers_TierIndexDisagreesWithThePolicy_Throws
+              - ContextLayout_WithTiers_TierBudgetDisagreesWithThePolicy_Throws
               - ContextTier_Construct_TierZero_Throws
 
           - id: AgentKitSessions-ContextLayout-PublishesTheBound

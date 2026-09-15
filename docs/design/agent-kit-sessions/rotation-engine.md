@@ -61,14 +61,19 @@ and because a test asserting that only the overflowing tiers were consolidated n
 
 **Algorithm:**
 
-1. Split the verbatim history at tier zero's budget, newest first, snapping the boundary so a tool
+1. Validate the arguments, then honor cancellation. The check sits here, before any work is decided
+   on, because step 2 can return without ever reaching a consolidation: a token checked only around
+   the summarizer calls would let an already-canceled rotation return a successful result whenever
+   the transcript happened to fit. Argument validation still comes first, because a malformed call
+   is a defect in the caller and is worth reporting as such even on a canceled token.
+2. Split the verbatim history at tier zero's budget, newest first, snapping the boundary so a tool
    call is never separated from its result. The retained suffix stays verbatim.
-2. If nothing overflowed, return the layout unchanged with no summarizer call and no saturation.
+3. If nothing overflowed, return the layout unchanged with no summarizer call and no saturation.
    That is the correct outcome for a session whose recent history already fits, and it costs
    nothing: the rotation is a pure re-seed.
-3. Otherwise render the overflow as labeled material and fold it into tier one through the private
+4. Otherwise render the overflow as labeled material and fold it into tier one through the private
    aging recursion below.
-4. Return a layout built from the retained transcript and the aged tiers, together with the
+5. Return a layout built from the retained transcript and the aged tiers, together with the
    saturation reports and the consolidation count.
 
 **Postconditions:** the returned layout's tier list matches the policy; every consolidation the
@@ -114,7 +119,8 @@ drift from what actually happened.
 
 - **Null layout or summarizer** — `ArgumentNullException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
-- **Cancellation** — `OperationCanceledException` propagates from the summarizer call
+- **Cancellation** — `OperationCanceledException` propagates, from the check after argument
+  validation or from the summarizer call
 - **Consolidation cannot reduce** — Reported as a `SaturationSignal`; not an exception
 - **Record exceeds its tier with nowhere coarser to go** — Reported as a `SaturationSignal`; not an exception
 

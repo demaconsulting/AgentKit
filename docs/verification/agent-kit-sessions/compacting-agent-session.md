@@ -15,6 +15,11 @@ every session it made and each session already reports whether it was disposed, 
 that matter — one session per rotation plus the original, every superseded session released — are
 made against real recorded state rather than against verified call expectations.
 
+One scenario needs a provider the shipped one cannot imitate: an adapter whose disposal fails. The
+in-memory session's disposal cannot fail, so a small hand-written factory and session, which record
+that disposal was attempted and then throw, live alongside the tests in `CompactingAgentSessionTests.cs`.
+They exist only to reach the failure path; everything else is still driven through the shipped fake.
+
 The rotation scenario is sized arithmetically rather than by trial. A 300-token window with a
 four-tier policy of 100, 60, 40 and 30 tokens gives a rotation threshold of 210 conversation tokens;
 turns of roughly 108 tokens therefore leave the first turn below the threshold and put the second
@@ -31,7 +36,7 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. **No provider, no model and no network access is used**
 - **Mocking**: The shipped in-memory provider factory and a hand-written fake summarizer; no mocking
-  framework
+  framework. One scenario adds a hand-written provider whose disposal fails
 - **Isolation**: Each test constructs its own factory, summarizer, options and session; no state is
   shared
 
@@ -62,7 +67,8 @@ which would still be consolidated at the next rotation and seeded into the repla
 
 #### AgentKitSessions-CompactingAgentSession-RotatesAtThreshold: Crossing the Threshold Replaces the Session
 
-**Test**: `CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession`
+**Tests**: `CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession`,
+`CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent`
 
 The central scenario, and the one that pins the mechanism. Drives two turns across a deliberately
 small window and asserts: the second turn reported a rotation; the rotation count is exactly one;
@@ -70,6 +76,16 @@ consolidations were performed; two provider sessions now exist; the first is dis
 is not; the replacement's seeded history begins with a consolidated record and also contains
 verbatim material; and the replacement carries the same tools, because rotation replaces history
 rather than capability.
+
+The second test drives the same arithmetic against a hand-written provider whose `DisposeAsync`
+throws — a shape the shipped in-memory session cannot express, because its disposal cannot fail — and
+asserts the rotation is still reported as the success it was, that the disposal was attempted, and
+that the session describes its replacement rather than the session it replaced: the layout was
+consolidated into tier one, it sits within its bound, and a further turn is appended to the
+replacement's transcript. It also asserts that explicit disposal of the session does propagate the
+failure, which is the deliberate asymmetry: a caller that asked for a session to be released is
+entitled to learn that it was not, while a caller taking a turn is not served by being told a
+successful rotation failed.
 
 #### AgentKitSessions-CompactingAgentSession-PrefersProviderUsage: The Better Measurement Wins
 

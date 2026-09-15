@@ -86,8 +86,14 @@ turn as the transcript grows.
 
 Returns a layout carrying both a different history and different coarse tiers. Both are replaced
 together because a rotation changes both at once, and applying them separately would produce an
-intermediate layout that never actually exists. The tier list is validated to match the policy's
-count and copied, so a layout whose hierarchy disagrees with its own budgets can never exist.
+intermediate layout that never actually exists. Every tier is validated against the policy before
+being copied — the list must hold one fewer tier than the policy's tier count, and the tier at
+position `i` must carry index `i + 1` and the policy's budget for that index — so a layout whose
+hierarchy disagrees with its own budgets can never exist. Validating the count alone would not
+achieve that: the position in the list is what rotation reads the policy's budget by, what the seed
+labels the record by, and what the bound is computed from, so a tier-one slot carrying tier three's
+budget would leave those accounts describing different hierarchies while every one of them looked
+individually correct.
 
 #### SeedFramingTokens(CompactionPolicy policy)
 
@@ -129,6 +135,8 @@ overhead and not as entries.
 - **Tier index below one, or non-positive tier budget** — `ArgumentOutOfRangeException` propagates
 - **Null tier content** — `ArgumentNullException` propagates
 - **Tier list of the wrong length** — `ArgumentException` propagates, naming both counts
+- **Tier whose index disagrees with its position** — `ArgumentException` propagates, naming both indexes
+- **Tier whose budget disagrees with the policy** — `ArgumentException` propagates, naming both budgets
 - **Null tier within the list** — `ArgumentException` propagates
 
 ### Dependencies

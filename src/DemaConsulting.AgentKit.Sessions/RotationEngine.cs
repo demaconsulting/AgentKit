@@ -213,7 +213,11 @@ public static class RotationEngine
     ///     The out-of-session summarizer performing each consolidation. Must not be
     ///     <see langword="null"/>, and must not return <see langword="null"/>.
     /// </param>
-    /// <param name="cancellationToken">Cancels the rotation between consolidations.</param>
+    /// <param name="cancellationToken">
+    ///     Cancels the rotation. Checked once after argument validation, so an already-canceled
+    ///     rotation is refused even when the transcript fits and there is no work to do, and again
+    ///     between consolidations.
+    /// </param>
     /// <returns>The aged layout, the saturation reports, and the consolidation count.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="layout"/> or <paramref name="summarizer"/> is <see langword="null"/>.
@@ -229,6 +233,14 @@ public static class RotationEngine
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(summarizer);
+
+        // Honor cancellation before any work is decided on, not merely between consolidations. The
+        // no-work path below returns without ever reaching a consolidation, so a check placed only
+        // there would hand a caller a successful rotation result for a rotation it had already
+        // canceled, whenever the transcript happened to fit. Argument validation comes first,
+        // because a malformed call is a defect in the caller and is worth reporting as such even on
+        // a canceled token.
+        cancellationToken.ThrowIfCancellationRequested();
 
         var policy = layout.Policy;
 

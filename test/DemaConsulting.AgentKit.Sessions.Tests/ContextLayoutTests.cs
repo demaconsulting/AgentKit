@@ -128,6 +128,50 @@ public class ContextLayoutTests
     }
 
     /// <summary>
+    ///     Proves a tier carrying the wrong index is refused. The position in the list is what the
+    ///     policy's budget is read by and what the seed labels the record by, so a tier whose own
+    ///     index disagrees with its slot would leave the policy, the labels and the bound describing
+    ///     different hierarchies.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_WithTiers_TierIndexDisagreesWithThePolicy_Throws()
+    {
+        // Arrange: a four-tier layout, and a tier list whose first slot claims to be tier three
+        var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 0, 0);
+        ContextTier[] tiers =
+        [
+            new(3, 60, string.Empty),
+            ContextTier.Empty(2, 40),
+            ContextTier.Empty(3, 30)
+        ];
+
+        // Act / Assert: refused rather than producing a layout that indexes one tier and labels another
+        Assert.Throws<ArgumentException>(() => layout.WithTiers(SessionTranscript.Empty, tiers));
+    }
+
+    /// <summary>
+    ///     Proves a tier carrying a budget the policy did not give it is refused. Rotation indexes
+    ///     the policy's budget for the slot while the tier reports its own, so a tier-one slot
+    ///     carrying tier three's budget would be consolidated against one figure and charged against
+    ///     another.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_WithTiers_TierBudgetDisagreesWithThePolicy_Throws()
+    {
+        // Arrange: a four-tier layout, and a tier-one slot carrying tier three's budget
+        var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 0, 0);
+        ContextTier[] tiers =
+        [
+            ContextTier.Empty(1, 30),
+            ContextTier.Empty(2, 40),
+            ContextTier.Empty(3, 30)
+        ];
+
+        // Act / Assert: refused rather than letting the budgets disagree with the policy
+        Assert.Throws<ArgumentException>(() => layout.WithTiers(SessionTranscript.Empty, tiers));
+    }
+
+    /// <summary>
     ///     Proves the seed is emitted most stable first — coarsest records, then finer records, then
     ///     the verbatim recent turns — which is what lets a provider's prompt cache match the longest
     ///     possible prefix.

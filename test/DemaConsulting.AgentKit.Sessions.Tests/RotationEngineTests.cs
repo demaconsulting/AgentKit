@@ -291,4 +291,25 @@ public class RotationEngineTests
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             RotationEngine.RotateAsync(layout, summarizer, source.Token));
     }
+
+    /// <summary>
+    ///     Proves a rotation that has nothing to do still honors an already-canceled token. The
+    ///     no-work path returns before any consolidation, so a check placed only between
+    ///     consolidations would hand a caller a successful rotation result for a rotation it had
+    ///     already canceled, whenever the transcript happened to fit.
+    /// </summary>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws()
+    {
+        // Arrange: a transcript of 60 tokens against a tier-zero budget of 100, so nothing
+        // overflows and the rotation is a pure re-seed, and a token canceled before the call
+        var summarizer = new FakeSummarizer();
+        var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
+        using var source = new CancellationTokenSource();
+        await source.CancelAsync();
+
+        // Act / Assert: refused rather than reported as a successful rotation
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            RotationEngine.RotateAsync(layout, summarizer, source.Token));
+    }
 }

@@ -96,13 +96,31 @@ Ages the context by one rotation and replaces the live provider session with one
 result.
 
 **Algorithm:** consolidate through `RotationEngine`; build a seed from the new layout; create the
-replacement; swap it in; dispose the one it replaced; update the layout, the rotation count, the
-consolidation total and the usage; return the saturation reports.
+replacement; adopt it — swapping the provider reference and updating the layout, the rotation count,
+the consolidation total and the usage in one step containing no `await`; dispose the one it
+replaced; return the saturation reports.
 
-**The order is deliberate: consolidate first, create the replacement second, dispose the old session
-last.** A summarizer failure therefore leaves the session exactly as it was, still able to answer,
-rather than leaving it with no provider session at all. Disposing only once the replacement exists
-is also what makes the swap atomic from a caller's point of view.
+**The order is deliberate: consolidate first, create the replacement second, adopt it third, dispose
+the old session last.** A summarizer failure therefore leaves the session exactly as it was, still
+able to answer, rather than leaving it with no provider session at all. Disposing only once the
+replacement exists is also what makes the swap atomic from a caller's point of view.
+
+**Why the adoption precedes the disposal, and carries no await.** Updating the state after awaiting
+the disposal is not exception-safe: an adapter whose `DisposeAsync` fails leaves this session
+pointing at the replacement while its layout and counters still describe the session it replaced, so
+the next turn appends to — and may rotate — the wrong transcript. Performing the whole transition
+before that await, with nothing to suspend on in the middle, means the provider reference, the
+layout and the counters describe the same session at every point an exception could be observed.
+
+**Why a failed disposal does not fail the rotation.** By the time the superseded session is
+disposed, the rotation has already succeeded: the context was consolidated, the replacement was
+created, and this session is coherent against it. The exception is caught and not rethrown, because
+throwing it on would report the opposite to the caller and leave it holding a session it would
+reasonably believe to be broken. The cost of an adapter that cannot release its session is a
+provider-side session that outlives its use — the adapter's own defect, which discarding a good
+session on top of it does not repair. Explicit `DisposeAsync` on this session is a different matter
+and does propagate: a caller that asked for the session to be released is entitled to learn that it
+was not.
 
 #### DisposeAsync()
 
@@ -125,6 +143,10 @@ sites that need a usage figure, is what keeps the two provider families on one c
 - **Blank message** — `ArgumentException` propagates
 - **Use after disposal** — `ObjectDisposedException` propagates
 - **Summarizer fails during rotation** — Propagates; the session is left intact and still able to answer
+- **Superseded provider session fails to dispose during rotation** — Caught and not reported; the
+  rotation already succeeded and the session is coherent against its replacement
+- **Live provider session fails to dispose on `DisposeAsync`** — Propagates; a caller that asked for
+  the session to be released is entitled to learn that it was not
 - **Rotation reports saturation** — Surfaced on the response; not an exception
 - **Second disposal** — Permitted; does nothing
 

@@ -40,6 +40,8 @@ constitutes a failure.
 
 **Tests**: `ContextLayout_Create_AllocatesOneCoarseTierPerBudgetAboveTierZero`,
 `ContextLayout_WithTiers_WrongTierCount_Throws`,
+`ContextLayout_WithTiers_TierIndexDisagreesWithThePolicy_Throws`,
+`ContextLayout_WithTiers_TierBudgetDisagreesWithThePolicy_Throws`,
 `ContextTier_Construct_TierZero_Throws`
 
 Asserts a new layout allocates one coarse tier per non-verbatim budget, numbered from one and
@@ -47,6 +49,13 @@ carrying the policy's budget for each index, all empty. Asserts a replacement ti
 length is refused rather than silently truncating the hierarchy, and that tier zero cannot be
 constructed as a coarse tier at all — it holds verbatim history and is a transcript. A tier
 appearing or vanishing mid-session would make the bound unverifiable at the moment it mattered most.
+
+Two further scenarios supply a list of the right length whose tiers disagree with the policy: one
+whose first slot claims to be tier three, and one whose tier-one slot carries tier three's budget.
+Both are refused. The count alone is not sufficient validation, because the position in the list is
+what rotation reads the policy's budget by, what the seed labels the record by, and what the bound
+is computed from; a mismatched slot would leave those accounts describing different hierarchies
+while each looked individually correct.
 
 #### AgentKitSessions-ContextLayout-PublishesTheBound: The Accounting Follows From the Configuration
 

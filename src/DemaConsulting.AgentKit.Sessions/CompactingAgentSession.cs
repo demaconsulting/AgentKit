@@ -169,6 +169,11 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     A turn is recorded only once the provider has accepted it. A provider that cancels or
     ///     fails before taking the turn leaves this session exactly as it was, with no record of a
     ///     message no provider ever saw.
+    ///     <para>
+    ///     Where the turn triggers a rotation, a failure to dispose the superseded provider session
+    ///     is not reported: the rotation itself succeeded and this session is coherent against its
+    ///     replacement, so the turn is answered normally.
+    ///     </para>
     /// </remarks>
     public async Task<AgentSessionResponse> SendAsync(
         string message,
@@ -231,9 +236,13 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     from the result.
     /// </summary>
     /// <remarks>
-    ///     The order is deliberate: consolidate first, create the replacement second, dispose the
-    ///     old session last. A summarizer failure therefore leaves the session exactly as it was,
-    ///     still able to answer, rather than leaving it with no provider session at all.
+    ///     The order is deliberate: consolidate first, create the replacement second, adopt it and
+    ///     update this session's state third, dispose the old session last. A summarizer failure
+    ///     therefore leaves the session exactly as it was, still able to answer, rather than leaving
+    ///     it with no provider session at all. The adoption carries no await, so the live provider,
+    ///     the layout and the counters can never be observed describing different sessions; and a
+    ///     provider that fails to dispose does not fail the rotation, because by then the rotation
+    ///     has already succeeded.
     /// </remarks>
     /// <param name="cancellationToken">Cancels the rotation.</param>
     /// <returns>Any saturation the rotation reported.</returns>
@@ -252,16 +261,38 @@ public sealed class CompactingAgentSession : IAgentSession
         var replacement = await _factory.CreateAsync(seed, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The provider session factory returned null.");
 
-        // The previous session is finished with only once its replacement exists. For a provider
-        // holding history server-side this is what actually discards it.
+        // The whole state transition happens here, as one block containing no await: the provider
+        // reference, the layout and the counters describe the same session at every point an
+        // exception could be observed. Doing it before disposal - rather than around it, as it was
+        // - is what makes that true, because the await on disposal was the one place this object
+        // could be left pointing at the replacement while its layout and counters still described
+        // the session it replaced, and the next turn would then append to, and possibly rotate, the
+        // wrong transcript.
         var previous = _provider;
         _provider = replacement;
-        await previous.DisposeAsync().ConfigureAwait(false);
-
         Layout = outcome.Layout;
         RotationCount++;
         ConsolidationCount += outcome.ConsolidationCount;
         Usage = ReadUsage(replacement, _options, Layout);
+
+        // The previous session is finished with only once its replacement exists and has been
+        // adopted. For a provider holding history server-side this is what actually discards it.
+        //
+        // A failure to release it is deliberately not allowed to surface as a rotation failure. The
+        // rotation has already succeeded: the context was consolidated, the replacement was created
+        // and this session is coherent against it. Throwing it on would report the opposite to the
+        // caller and leave it holding a session it would reasonably believe to be broken. The cost
+        // of an adapter that cannot dispose is a provider-side session that outlives its use - the
+        // adapter's own defect, which discarding a good session on top of it does not repair.
+        try
+        {
+            await previous.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Intentionally swallowed; see above. Nothing is caught that the caller could act on:
+            // the session being disposed is one this object has already given up all reference to.
+        }
 
         return outcome.Saturations;
     }

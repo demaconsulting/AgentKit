@@ -14,11 +14,13 @@ Verification Design_, and their use by the engine is verified in _CompactingAgen
 Verification Design_.
 
 One scenario is worth singling out: `ProviderTurn_Construct_WithEntries_PreservesThemExactly`
-asserts the supplied entry list is carried through by **reference**, not merely by equality. An
-adapter that recorded a tool-using turn must have exactly those entries reach the engine's
-transcript, because the transcript is what a tier boundary is snapped against; a defensive copy
-would be harmless but a transformation would not, and reference identity is the strongest available
-statement that nothing happened to them.
+asserts the supplied entries are preserved **unchanged** — equal, in the same order, with nothing
+added, dropped or transformed. It does not assert, and must not be read as asserting, that the same
+list instance is retained: the implementation deliberately copies the entries into owned read-only
+storage, because a turn is documented as immutable. An adapter that recorded a tool-using turn must
+have exactly those entries reach the engine's transcript, because the transcript is what a tier
+boundary is snapped against; a defensive copy is harmless and is what is done, whereas a
+transformation would not be, and equality of the whole sequence is what rules a transformation out.
 
 Unit tests reside in `ProviderSessionTests.cs` within the
 `DemaConsulting.AgentKit.Sessions.Tests` project.

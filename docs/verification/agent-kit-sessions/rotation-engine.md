@@ -129,9 +129,16 @@ latter because a session that silently never compacted would fail much later and
 #### AgentKitSessions-RotationEngine-RejectsMalformedConsolidation: A Null Record and Cancellation
 
 **Tests**: `RotationEngine_RotateAsync_SummarizerReturnsNull_Throws`,
-`RotationEngine_RotateAsync_Canceled_Throws`
+`RotationEngine_RotateAsync_Canceled_Throws`,
+`RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws`
 
 A summarizer returning null is refused with `InvalidOperationException` rather than stored, because
 a null record would surface as a missing tier at a later rotation, far from the implementation that
 caused it. A canceled token aborts the rotation, so a host shutting down is not held open by a
 summarizer round trip.
+
+The third scenario is the one that pins the contract rather than the common case: it cancels the
+token before the call and rotates a transcript of 60 tokens against a tier-zero budget of 100, so
+nothing overflows and the rotation would otherwise return a successful result without ever reaching
+a consolidation. Cancellation is asserted there too, because a contract honored only where work
+happens to be required is not a contract a caller can rely on.

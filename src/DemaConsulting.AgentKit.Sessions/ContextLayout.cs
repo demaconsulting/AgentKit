@@ -384,16 +384,19 @@ public sealed class ContextLayout
     /// <param name="transcript">The new tier-zero history. Must not be <see langword="null"/>.</param>
     /// <param name="coarseTiers">
     ///     The new coarse tiers, tier one first. Must not be <see langword="null"/>, must contain no
-    ///     <see langword="null"/> entry, and must hold exactly one fewer element than the policy's
-    ///     tier count.
+    ///     <see langword="null"/> entry, must hold exactly one fewer element than the policy's tier
+    ///     count, and each element must carry the index and the budget the policy gives that slot:
+    ///     the element at position <c>i</c> must have <c>Index == i + 1</c> and
+    ///     <c>BudgetTokens == Policy.TierBudgetTokens[i + 1]</c>.
     /// </param>
     /// <returns>A new layout; this one is unchanged.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="transcript"/> or <paramref name="coarseTiers"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="coarseTiers"/> holds the wrong number of tiers, or contains a
-    ///     <see langword="null"/> entry.
+    ///     <paramref name="coarseTiers"/> holds the wrong number of tiers, contains a
+    ///     <see langword="null"/> entry, or contains a tier whose index or budget disagrees with the
+    ///     policy.
     /// </exception>
     public ContextLayout WithTiers(SessionTranscript transcript, IReadOnlyList<ContextTier> coarseTiers)
     {
@@ -411,8 +414,35 @@ public sealed class ContextLayout
         var copied = new ContextTier[coarseTiers.Count];
         for (var index = 0; index < coarseTiers.Count; index++)
         {
-            copied[index] = coarseTiers[index]
+            var tier = coarseTiers[index]
                 ?? throw new ArgumentException("A tier in the list is null.", nameof(coarseTiers));
+
+            // A tier's position in this list is what every other part of the layout reads it by:
+            // rotation indexes the policy's budget for slot i+1, the seed labels the record by the
+            // tier's own index, and the bound is computed from the policy. A tier whose index or
+            // budget disagrees with the policy would leave those four accounts describing different
+            // things - a tier-one slot carrying tier three's budget is consolidated against one
+            // budget and charged against another - so it is refused here rather than allowed to
+            // produce a layout that is internally inconsistent.
+            var expectedIndex = index + 1;
+            if (tier.Index != expectedIndex)
+            {
+                throw new ArgumentException(
+                    $"The tier at position {index} has index {tier.Index}, but the policy places tier "
+                    + $"{expectedIndex} there.",
+                    nameof(coarseTiers));
+            }
+
+            var expectedBudget = Policy.TierBudgetTokens[expectedIndex];
+            if (tier.BudgetTokens != expectedBudget)
+            {
+                throw new ArgumentException(
+                    $"Tier {expectedIndex} carries a budget of {tier.BudgetTokens} tokens, but the "
+                    + $"policy budgets it {expectedBudget}.",
+                    nameof(coarseTiers));
+            }
+
+            copied[index] = tier;
         }
 
         return new ContextLayout(Policy, SystemTokens, ToolDeclarationTokens, transcript, copied);
