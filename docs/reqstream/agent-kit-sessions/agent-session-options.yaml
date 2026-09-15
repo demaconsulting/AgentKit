@@ -11,38 +11,51 @@ sections:
           - id: AgentKitSessions-AgentSessionOptions-CarriesConfiguration
             title: >-
               The options shall carry the summarizer, the system instructions, the tools, the
-              provider window size and the compaction policy, requiring only the summarizer and
-              defaulting the rest.
+              provider window size and the compaction policy, requiring only the summarizer,
+              defaulting the rest, and copying the supplied tools into storage the options own.
             justification: |
               These five are everything the engine needs and nothing it does not. The summarizer is
               required because compaction cannot happen without one and defaulting it would give an
               application a session that silently never compacts - the exact failure this package
               exists to prevent. Everything else has a defensible default, so a session can be
-              configured in one line and refined later.
+              configured in one line and refined later. The tools are copied because the declaration
+              tokens are measured once at construction: a caller able to add or remove a tool
+              afterwards would change what every future rotation seeds without changing the effective
+              window or the threshold derived from it.
             tests:
               - AgentSessionOptions_Construct_Defaults_CarryThePublishedWindowAndPolicy
               - AgentSessionOptions_Construct_NullSummarizer_Throws
+              - AgentSessionOptions_Construct_CopiesTheSuppliedTools
 
           - id: AgentKitSessions-AgentSessionOptions-MeasuresFixedOverhead
             title: >-
               The options shall measure the system prompt and the tool declarations as fixed
-              overhead and subtract it from the provider window before applying the rotation
-              threshold.
+              overhead, subtract it from the provider window before applying the rotation threshold,
+              and derive a rotation threshold of at least one token.
             justification: |
               Tool declarations are sent with every request and are never consolidated; for a
               realistic tool set they run to thousands of tokens. Applying the rotation percentage to
               the raw window instead would make the rotation point drift with how many tools an
               application attached: attach more tools and the agent silently gets less conversation
-              before rotating, with nothing in the configuration saying so.
+              before rotating, with nothing in the configuration saying so. The derived threshold is
+              clamped to at least one token because truncation can otherwise produce zero, and a
+              threshold of zero is satisfied by a conversation of no tokens at all - so the session
+              would be willing to rotate a context holding nothing, spending summarizer work and a
+              fresh provider session on material that does not exist. The clamp removes that
+              degenerate case only: a host that asks to rotate at a fraction of a token has asked to
+              rotate on every turn and receives exactly that.
             tests:
               - AgentSessionOptions_Construct_SubtractsFixedOverheadBeforeTheThreshold
+              - AgentSessionOptions_Construct_SubTokenThreshold_ClampsToOneToken
 
           - id: AgentKitSessions-AgentSessionOptions-AssertsTheBound
             title: >-
               The options shall refuse a configuration whose window is consumed by the fixed
-              overhead, or whose effective window cannot hold the policy's tier budgets.
+              overhead, or whose effective window cannot hold the policy's tier budgets together
+              with the framing their seeded records carry.
             justification: |
-              A session whose effective window is smaller than the sum of its tier budgets would
+              A session whose effective window is smaller than the sum of its tier budgets and the
+              framing their seeded records carry would
               rotate into a context already over budget and could never converge; a session whose
               overhead consumed the window would have no room for a conversation at all. Both are
               defects in the composing application, refused where the application wrote them rather
@@ -52,7 +65,7 @@ sections:
             tests:
               - AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws
               - AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws
-              - AgentSessionOptions_Construct_WindowExactlyFitsTierBudgets_IsAccepted
+              - AgentSessionOptions_Construct_WindowExactlyFitsTheBound_IsAccepted
 
           - id: AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
             title: >-

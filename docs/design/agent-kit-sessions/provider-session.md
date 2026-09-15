@@ -27,10 +27,15 @@ disposal is what actually releases it.
 `ProviderSessionSeed` properties, immutable after construction:
 
 - **`Instructions`** (`string?`) — Null when there are none
-- **`Tools`** (`IReadOnlyList<AIFunction>`) — Never null; never contains null; may be empty. Identical across every
-  rotation of one logical session
-- **`History`** (`IReadOnlyList<TranscriptEntry>`) — Never null; never contains null; most stable first, as
-  produced by `ContextLayout.BuildSeed`. Empty for the first session of a conversation
+- **`Tools`** (`IReadOnlyList<AIFunction>`) — Never null; never contains null; may be empty; a read-only view over a
+  copy taken at construction. Identical across every rotation of one logical session
+- **`History`** (`IReadOnlyList<TranscriptEntry>`) — Never null; never contains null; a read-only view over a copy
+  taken at construction; most stable first, as produced by `ContextLayout.BuildSeed`. Empty for the first session of
+  a conversation
+
+Both lists are copied because a seed is an immutable snapshot an adapter may hold across a rotation:
+retaining the caller's lists would let the adapter observe a later mutation and start a session from
+something other than what was validated here.
 
 The instructions and tools are carried separately from the history because providers accept them
 separately — as configuration rather than as messages — which is also why they are accounted for as
@@ -39,7 +44,8 @@ fixed overhead rather than as conversation. Rotation replaces history, never cap
 `ProviderTurn` properties, immutable after construction:
 
 - **`ResponseText`** (`string`) — Never null; may be empty
-- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Never null or empty; never contains null
+- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Never null or empty; never contains null; a read-only view over a
+  copy taken at construction, for the same reason the seed copies its lists
 
 The answer and the history entries are separate because they answer different questions. The text is
 what the application shows or acts on; the entries are what the engine records, and for a tool-using

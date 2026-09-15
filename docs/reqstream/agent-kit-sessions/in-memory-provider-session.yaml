@@ -41,14 +41,18 @@ sections:
           - id: AgentKitSessions-InMemoryProviderSession-RecordsRotationEvidence
             title: >-
               The in-memory provider session shall make its disposal observable and refuse further
-              turns once disposed, and its factory shall record every session it created.
+              turns once disposed, and its factory shall record every session it created, including
+              when several are created concurrently.
             justification: |
               Rotation creates a replacement session and disposes its predecessor, and both halves
               have to be observable for that behavior to be verifiable at all. Against a real
               provider a leaked session holds a server-side conversation open and keeps being billed
               for, so a rotation that failed to dispose one must be detectable rather than merely
-              suspected.
+              suspected. The factory is required to be safe for concurrent use because an
+              application may run several sessions against one factory, and an unsynchronized record
+              can lose a session or be observed halfway through an addition.
             tests:
               - InMemoryProviderSession_DisposeAsync_MarksDisposedAndRefusesFurtherTurns
               - InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes
+              - InMemoryProviderSessionFactory_CreateAsync_ConcurrentCreations_RecordsEveryOne
               - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession

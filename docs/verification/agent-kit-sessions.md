@@ -69,7 +69,8 @@ working, and nothing is leaked doing it.
 **Test**: `AgentKitSessions_LongConversation_StaysWithinItsConstructionBound`
 
 Runs the same conversation and checks the bound **at the moment of every rotation**, not merely at
-the end. The bound — fixed overhead plus the sum of the tier budgets — is a property of the
+the end. The bound — fixed overhead, the sum of the tier budgets, and the framing each tier record
+carries when it is seeded — is a property of the
 configuration alone, so a rotation that left the context outside it would mean the arrangement is
 not in fact bounded. Checking at each rotation rather than once at the end is what makes a transient
 violation detectable.

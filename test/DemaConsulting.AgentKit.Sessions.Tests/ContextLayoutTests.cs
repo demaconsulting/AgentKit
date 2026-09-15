@@ -25,8 +25,9 @@ public class ContextLayoutTests
     }
 
     /// <summary>
-    ///     Proves the construction bound is the fixed overhead plus every tier budget — the single
-    ///     claim the whole arrangement exists to make good on.
+    ///     Proves the construction bound is the fixed overhead, every tier budget, and the framing
+    ///     every seeded tier record carries — the single claim the whole arrangement exists to make
+    ///     good on.
     /// </summary>
     [Fact]
     public void ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget()
@@ -35,7 +36,45 @@ public class ContextLayoutTests
         var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 100, 200);
 
         // Act / Assert: the bound follows from the configuration alone
-        Assert.Equal(100 + 200 + SessionTestData.SmallPolicy.TotalTierBudgetTokens, layout.MaximumBoundTokens);
+        Assert.Equal(
+            100 + 200 + SessionTestData.SmallPolicy.TotalTierBudgetTokens
+            + ContextLayout.SeedFramingTokens(SessionTestData.SmallPolicy),
+            layout.MaximumBoundTokens);
+        Assert.True(layout.IsWithinBound);
+    }
+
+    /// <summary>
+    ///     Proves the bound covers what a provider is actually sent. Every tier record is seeded
+    ///     wrapped in a label and an entry envelope, so a bound counting only raw tier content would
+    ///     be exceeded by a layout in which every tier sat exactly within its budget — and for a
+    ///     provider that reports no usage, that under-count is what drives rotation.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord()
+    {
+        // Arrange: every coarse tier filled to exactly its budget, and tier zero exactly at its own
+        var policy = SessionTestData.SmallPolicy;
+        var layout = ContextLayout
+            .Create(policy, 100, 200)
+            .WithTiers(
+                SessionTestData.TranscriptOf(5, 20),
+                [
+                    ContextTier.Empty(1, 60).WithContent(new string('a', 60 * TokenEstimator.CharactersPerToken)),
+                    ContextTier.Empty(2, 40).WithContent(new string('b', 40 * TokenEstimator.CharactersPerToken)),
+                    ContextTier.Empty(3, 30).WithContent(new string('c', 30 * TokenEstimator.CharactersPerToken))
+                ]);
+
+        // Act: measure what a fresh provider session would actually receive
+        var seedTokens = layout.BuildSeed().Sum(entry => entry.EstimatedTokens);
+
+        // Assert: the seed exceeds the raw sum of the tier budgets, and the bound still covers it
+        Assert.True(
+            seedTokens > policy.TotalTierBudgetTokens,
+            $"The seed held {seedTokens} tokens against {policy.TotalTierBudgetTokens} tokens of budget.");
+        Assert.True(
+            100 + 200 + seedTokens <= layout.MaximumBoundTokens,
+            $"The seed plus overhead held {100 + 200 + seedTokens} tokens against a bound of "
+            + $"{layout.MaximumBoundTokens}.");
         Assert.True(layout.IsWithinBound);
     }
 
@@ -130,6 +169,23 @@ public class ContextLayoutTests
 
         // Assert: nothing to seed
         Assert.Empty(seed);
+    }
+
+    /// <summary>
+    ///     Proves the tier list a layout hands out cannot be cast back to its backing array and
+    ///     mutated. A replaced element would change both <c>ConversationTokens</c> and the next seed
+    ///     of a layout documented as immutable.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_CoarseTiers_CannotBeCastAndMutated()
+    {
+        // Arrange: a layout and the tier list it publishes
+        var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 0, 0);
+
+        // Act / Assert: the list is a read-only view, and writing through it is refused
+        Assert.IsNotType<ContextTier[]>(layout.CoarseTiers);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<ContextTier>)layout.CoarseTiers)[0] = ContextTier.Empty(1, 60).WithContent("forged"));
     }
 
     /// <summary>

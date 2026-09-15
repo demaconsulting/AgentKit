@@ -41,6 +41,22 @@ public class SessionTranscriptTests
     }
 
     /// <summary>
+    ///     Proves the entry list a transcript hands out cannot be cast back to its backing array and
+    ///     mutated. A replaced entry — including a null one — would corrupt the token total cached
+    ///     at construction and every rotation decision taken from it.
+    /// </summary>
+    [Fact]
+    public void SessionTranscript_Entries_CannotBeCastAndMutated()
+    {
+        // Arrange: a transcript holding one entry
+        var transcript = SessionTranscript.Empty.Append(TranscriptEntry.User("first"));
+
+        // Act / Assert: the list is a read-only view, and writing through it is refused
+        Assert.IsNotType<TranscriptEntry[]>(transcript.Entries);
+        Assert.Throws<NotSupportedException>(() => ((IList<TranscriptEntry>)transcript.Entries)[0] = null!);
+    }
+
+    /// <summary>
     ///     Proves a run of entries appends in order, which is how one tool-using turn is recorded.
     /// </summary>
     [Fact]

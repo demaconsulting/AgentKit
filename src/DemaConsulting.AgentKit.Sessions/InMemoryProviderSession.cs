@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
@@ -43,6 +45,11 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     private readonly List<TranscriptEntry> _history;
 
     /// <summary>
+    ///     The read-only view handed out by <see cref="History"/>.
+    /// </summary>
+    private readonly ReadOnlyCollection<TranscriptEntry> _historyView;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="InMemoryProviderSession"/> class.
     /// </summary>
     /// <param name="seed">What the session starts from. Must not be <see langword="null"/>.</param>
@@ -77,6 +84,7 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
         _reportsUsage = reportsUsage;
         WindowTokens = windowTokens;
         _history = [.. seed.History];
+        _historyView = _history.AsReadOnly();
 
         // The fixed overhead a real provider would charge for instructions and declarations is
         // charged here too, so a test exercising the rotation threshold sees the same arithmetic
@@ -107,7 +115,12 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     /// <summary>
     ///     Gets the history, seeded entries first and everything since after them.
     /// </summary>
-    public IReadOnlyList<TranscriptEntry> History => _history;
+    /// <remarks>
+    ///     A live read-only view rather than the backing list: the history grows as the session
+    ///     takes turns, and a caller holding this list should see that, but must not be able to cast
+    ///     it back and edit a conversation the session believes it holds.
+    /// </remarks>
+    public IReadOnlyList<TranscriptEntry> History => _historyView;
 
     /// <summary>
     ///     Gets the number of turns this session has answered.
@@ -193,12 +206,21 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
 ///     disposed, and what the newest one was seeded with.
 ///     </para>
 ///     <para>
-///     Instances are not safe for concurrent use: the record of created sessions is an ordinary
-///     list, and a factory serves one session's rotations in sequence.
+///     Instances are safe for concurrent use, as <see cref="IProviderSessionFactory"/> requires:
+///     an application may run several sessions against one factory, and their rotations can create
+///     replacements at the same moment. Creation is serialized and <see cref="Sessions"/> hands
+///     back a snapshot, so a concurrent rotation can neither corrupt the record nor be seen halfway
+///     through adding to it. The sessions it produces remain single-conversation objects and are
+///     not themselves safe for concurrent use.
 ///     </para>
 /// </remarks>
 public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
 {
+    /// <summary>
+    ///     Guards the record of created sessions.
+    /// </summary>
+    private readonly Lock _gate = new();
+
     /// <summary>
     ///     Produces the turn for a given message.
     /// </summary>
@@ -252,9 +274,20 @@ public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
     /// </summary>
     /// <remarks>
     ///     One entry per rotation plus one for the original session, so the count is the rotation
-    ///     count plus one for a conversation that ran to completion.
+    ///     count plus one for a conversation that ran to completion. Each read returns a snapshot
+    ///     taken under the factory's lock, so a concurrent creation can neither be observed halfway
+    ///     through nor invalidate a list a caller is walking.
     /// </remarks>
-    public IReadOnlyList<InMemoryProviderSession> Sessions => _sessions;
+    public IReadOnlyList<InMemoryProviderSession> Sessions
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return Array.AsReadOnly<InMemoryProviderSession>([.. _sessions]);
+            }
+        }
+    }
 
     /// <inheritdoc/>
     public Task<IProviderSession> CreateAsync(
@@ -265,7 +298,15 @@ public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         var session = new InMemoryProviderSession(seed, _responder, WindowTokens, ReportsUsage);
-        _sessions.Add(session);
+
+        // Serialize the record. An unsynchronized List<T>.Add from two rotations at once can lose a
+        // session or leave the list internally inconsistent, and this factory is the one an
+        // application is invited to run several sessions against.
+        lock (_gate)
+        {
+            _sessions.Add(session);
+        }
+
         return Task.FromResult<IProviderSession>(session);
     }
 }

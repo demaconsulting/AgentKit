@@ -62,12 +62,12 @@ public class CompactingAgentSessionTests
     {
         // Arrange: a small window and a small policy, with turns large enough to fill it in two
         var factory = new InMemoryProviderSessionFactory(
-            _ => new ProviderTurn(new string('r', 50 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 300);
+            _ => new ProviderTurn(new string('r', 70 * TokenEstimator.CharactersPerToken)),
+            windowTokens: 400);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(), providerWindowTokens: 300, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
-        var message = new string('m', 50 * TokenEstimator.CharactersPerToken);
+        var message = new string('m', 70 * TokenEstimator.CharactersPerToken);
 
         // Act: two turns, the second of which crosses the threshold
         await session.SendAsync(message, TestContext.Current.CancellationToken);
@@ -91,6 +91,31 @@ public class CompactingAgentSessionTests
         // Assert: the replacement carries the same capability, because rotation replaces history
         // rather than capability
         Assert.Equal(options.Tools, factory.Sessions[1].Seed.Tools);
+    }
+
+    /// <summary>
+    ///     Proves a turn the provider never accepted leaves no trace. A provider may honor
+    ///     cancellation or fail before taking the turn; a message recorded ahead of that would be a
+    ///     turn no provider ever saw, which a later rotation would nonetheless consolidate and seed
+    ///     into the replacement session.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderRejectsTheTurn_RecordsNoGhostEntry()
+    {
+        // Arrange: a live session and a token that was canceled before the turn was taken
+        var factory = new InMemoryProviderSessionFactory(windowTokens: 100_000);
+        var options = new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: 100_000);
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+        using var canceled = new CancellationTokenSource();
+        await canceled.CancelAsync();
+
+        // Act: the provider refuses the turn
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            session.SendAsync("never seen by any provider", canceled.Token));
+
+        // Assert: neither the engine's transcript nor the provider's history holds the message
+        Assert.Empty(session.Layout.Transcript.Entries);
+        Assert.Empty(factory.Sessions[0].History);
     }
 
     /// <summary>

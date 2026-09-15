@@ -24,6 +24,7 @@ sections:
               - SessionTranscript_Append_LeavesTheOriginalUnchanged
               - SessionTranscript_AppendMany_PreservesOrder
               - SessionTranscript_AppendMany_Empty_ReturnsSameInstance
+              - SessionTranscript_Entries_CannotBeCastAndMutated
 
           - id: AgentKitSessions-SessionTranscript-PairedEntries
             title: >-

@@ -17,10 +17,10 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     </para>
 ///     <para>
 ///     <b>The bound is asserted at construction.</b> A configuration whose effective window cannot
-///     hold the sum of the tier budgets is refused outright, because such a session would rotate
-///     into a context that was already over budget and would never converge. That check is the
-///     "bounded by construction" property made real: if these options construct, the arrangement
-///     fits.
+///     hold the sum of the tier budgets — together with the framing each tier record is seeded with
+///     — is refused outright, because such a session would rotate into a context that was already
+///     over budget and would never converge. That check is the "bounded by construction" property
+///     made real: if these options construct, the arrangement fits.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
@@ -90,7 +90,8 @@ public sealed class AgentSessionOptions
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="providerWindowTokens"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> contains a <see langword="null"/> entry, or the window left after
-    ///     the system prompt and tool declarations cannot hold the policy's tier budgets.
+    ///     the system prompt and tool declarations cannot hold the policy's tier budgets and the
+    ///     framing their seeded records carry.
     /// </exception>
     public AgentSessionOptions(
         ISummarizer summarizer,
@@ -122,24 +123,35 @@ public sealed class AgentSessionOptions
                 nameof(providerWindowTokens));
         }
 
-        if (effective < policy.TotalTierBudgetTokens)
+        if (effective < policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy))
         {
             throw new ArgumentException(
                 $"The effective window of {effective} tokens cannot hold the policy's "
-                + $"{policy.TotalTierBudgetTokens} tokens of tier budgets; the session could never "
-                + "rotate back within its bound.",
+                + $"{policy.TotalTierBudgetTokens} tokens of tier budgets and the "
+                + $"{ContextLayout.SeedFramingTokens(policy)} tokens of framing their seeded records "
+                + "carry; the session could never rotate back within its bound.",
                 nameof(compaction));
         }
 
         Summarizer = summarizer;
         Instructions = instructions;
-        Tools = toolList;
+
+        // Copy the caller's tools into storage these options own, exposed only as a read-only view.
+        // ToolDeclarationTokens is measured once, just above: a caller that could add or remove a
+        // tool afterwards would change what every future rotation seeds without changing the
+        // effective window or the threshold derived from it.
+        Tools = Array.AsReadOnly<AIFunction>([.. toolList]);
         ProviderWindowTokens = providerWindowTokens;
         Compaction = policy;
         SystemTokens = systemTokens;
         ToolDeclarationTokens = toolTokens;
         EffectiveWindowTokens = effective;
-        RotationThresholdTokens = (int)(effective * policy.RotationThreshold);
+
+        // Never below one token. A policy whose threshold is a small enough fraction of this window
+        // truncates to zero, and a threshold of zero is satisfied by a conversation of no tokens at
+        // all - so the session would be willing to rotate a context holding nothing, spending
+        // summarizer work and a provider session on material that does not exist.
+        RotationThresholdTokens = Math.Max(1, (int)(effective * policy.RotationThreshold));
     }
 
     /// <summary>
@@ -156,7 +168,9 @@ public sealed class AgentSessionOptions
     ///     Gets the tools the agent may call.
     /// </summary>
     /// <remarks>
-    ///     Carried across every rotation unchanged: rotation replaces history, never capability.
+    ///     Carried across every rotation unchanged: rotation replaces history, never capability. The
+    ///     list is a read-only view over a copy taken at construction, so the declarations measured
+    ///     into <see cref="ToolDeclarationTokens"/> are the same ones every future seed carries.
     /// </remarks>
     public IReadOnlyList<AIFunction> Tools { get; }
 
@@ -203,10 +217,13 @@ public sealed class AgentSessionOptions
     ///     Gets the conversation size at which the session rotates.
     /// </summary>
     /// <remarks>
-    ///     The effective window multiplied by the policy's rotation threshold, truncated. Compared
-    ///     against conversation tokens — that is, usage with the fixed overhead subtracted — so the
-    ///     comparison means the same thing whether the figure came from a provider or from an
-    ///     estimate.
+    ///     The effective window multiplied by the policy's rotation threshold, truncated, and never
+    ///     below one token. Compared against conversation tokens — that is, usage with the fixed
+    ///     overhead subtracted — so the comparison means the same thing whether the figure came from
+    ///     a provider or from an estimate. The floor of one token is what keeps a threshold too
+    ///     small to survive truncation from meaning "rotate a conversation holding nothing"; it does
+    ///     not make such a policy rotate rarely, because a host that asks to rotate at a fraction of
+    ///     a token has asked to rotate on every turn and receives exactly that.
     /// </remarks>
     public int RotationThresholdTokens { get; }
 }

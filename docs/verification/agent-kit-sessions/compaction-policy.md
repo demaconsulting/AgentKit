@@ -43,11 +43,15 @@ that keeps the documents and the code from diverging.
 
 #### AgentKitSessions-CompactionPolicy-TierBudgets: A Supplied Budget List Cannot Be Mutated Afterwards
 
-**Test**: `CompactionPolicy_Construct_CopiesTheSuppliedBudgets`
+**Tests**: `CompactionPolicy_Construct_CopiesTheSuppliedBudgets`,
+`CompactionPolicy_TierBudgetTokens_CannotBeCastAndMutated`
 
 Hands the constructor a mutable list, mutates it afterwards, and asserts the policy is unaffected. A
 caller that could change the budgets a session is already running under would silently alter the
-bound mid-conversation, which is the one property the arrangement is supposed to guarantee.
+bound mid-conversation, which is the one property the arrangement is supposed to guarantee. The
+second scenario closes the other route to the same outcome: the published list is asserted not to be
+the backing array and to refuse a write through an `IList` cast, for the policy's own budgets and
+for the published defaults, because `TotalTierBudgetTokens` is summed once and would go stale.
 
 #### AgentKitSessions-CompactionPolicy-ValidatedDefaults: One Control Can Be Replaced Alone
 
@@ -64,7 +68,8 @@ budgets at their defaults. This is the convention the rest of AgentKit's option 
 `CompactionPolicy_Construct_NonPositiveBudget_Throws`,
 `CompactionPolicy_Construct_GrowingBudgets_Throws`,
 `CompactionPolicy_Construct_ThresholdOutOfRange_Throws`,
-`CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws`
+`CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws`,
+`CompactionPolicy_Construct_NaNControl_Throws`
 
 Boundary and error paths. A single tier is refused because with nowhere for overflowing history to
 age into the arrangement degenerates to dropping the oldest turns outright. A non-positive budget is

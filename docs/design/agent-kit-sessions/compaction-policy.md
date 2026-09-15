@@ -55,9 +55,9 @@ establish that no host configuration was applied.
 1. Select the supplied budgets, or `DefaultTierBudgetTokens`.
 2. Reject fewer than two budgets.
 3. For each budget: reject a non-positive value, and reject a value larger than the budget before it.
-4. Reject a rotation threshold or saturation ratio outside the range greater than zero and at most
-   one.
-5. Copy the budgets, assign, and sum them into `TotalTierBudgetTokens`.
+4. Reject a rotation threshold or saturation ratio that is `NaN`, or that lies outside the range
+   greater than zero and at most one.
+5. Copy the budgets into storage the policy owns, assign, and sum them into `TotalTierBudgetTokens`.
 
 **Why at least two tiers.** One tier is not a hierarchy. With a single verbatim tier there is
 nowhere for overflowing history to age into, and the arrangement degenerates to dropping the oldest
@@ -66,13 +66,24 @@ turns outright — which is the behavior this system exists to avoid.
 **Why budgets must not grow.** A coarser tier allowed more room than the finer tier it ages from is
 the opposite of what consolidation is for, and would mean the hierarchy never reduces.
 
-**Why the budgets are copied.** A caller that mutated the list it supplied could otherwise change
-the policy a session is already running under, silently altering the bound mid-conversation.
+**Why the budgets are copied and published as a read-only view.** A caller that mutated the list it
+supplied could otherwise change the policy a session is already running under, silently altering the
+bound mid-conversation; and an `IReadOnlyList` over a bare array can be cast back to `int[]` and
+written through, which would do the same while `TotalTierBudgetTokens`, summed once at construction,
+went stale.
+
+**Why `NaN` is rejected explicitly.** Every ordered comparison against `NaN` is false, so a range
+check built from them accepts a `NaN` that carries no sign bit. The policy it configures then
+compares false against every conversation size and every consolidation result, silently disabling
+rotation or saturation reporting rather than announcing that it had been misconfigured. The same
+defect, with the same reasoning, is recorded on the `MemoryOptions` near-duplicate threshold in
+AgentKit Tools.
 
 ### Error Handling
 
 - **Fewer than two tier budgets** — `ArgumentException` propagates
 - **Non-positive tier budget** — `ArgumentOutOfRangeException` propagates, naming the tier and the value
+- **`NaN` rotation threshold or saturation ratio** — `ArgumentOutOfRangeException` propagates, naming the control
 - **Tier budget larger than the tier before it** — `ArgumentException` propagates, naming both tiers and both
   values
 - **Rotation threshold at or below zero, or above one** — `ArgumentOutOfRangeException` propagates

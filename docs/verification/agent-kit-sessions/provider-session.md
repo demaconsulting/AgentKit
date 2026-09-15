@@ -41,12 +41,16 @@ loses the entries an adapter recorded, or any turn with no entries at all consti
 
 #### AgentKitSessions-ProviderSession-AdapterInterface: A Seed Carries Its Three Parts Separately
 
-**Test**: `ProviderSessionSeed_Construct_CarriesInstructionsToolsAndHistorySeparately`
+**Tests**: `ProviderSessionSeed_Construct_CarriesInstructionsToolsAndHistorySeparately`,
+`ProviderSessionSeed_Construct_CopiesTheSuppliedLists`
 
 Constructs a seed for a rotation that preserved one consolidated record and one verbatim turn, and
 asserts the instructions, the tools and the history are each available in their own right. Providers
 accept instructions and tools as configuration rather than as messages, which is exactly why they
-are accounted for as fixed overhead and not as conversation.
+are accounted for as fixed overhead and not as conversation. The copy scenario clears the caller's
+history list after construction and refuses a write through an `IList` cast on the seed's own
+lists: a seed is an immutable snapshot an adapter may hold across a rotation, and either route would
+let it start a session from something other than what was validated.
 
 #### AgentKitSessions-ProviderSession-RecordsWhatATurnProduced: A Turn Records What Actually Happened
 

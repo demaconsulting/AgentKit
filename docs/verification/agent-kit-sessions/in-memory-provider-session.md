@@ -68,10 +68,16 @@ ships unexercised.
 #### AgentKitSessions-InMemoryProviderSession-RecordsRotationEvidence: Disposal and Creation Are Both Observable
 
 **Tests**: `InMemoryProviderSession_DisposeAsync_MarksDisposedAndRefusesFurtherTurns`,
-`InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes`
+`InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes`,
+`InMemoryProviderSessionFactory_CreateAsync_ConcurrentCreations_RecordsEveryOne`
 
 The first disposes a session that has taken a turn, disposes it a second time to confirm that is
 permitted, and asserts disposal is visible, the history was released, and a further turn is refused
 with `ObjectDisposedException`. The second creates two sessions as a conversation with one rotation
 would, and asserts both are recorded oldest first carrying their own seeds. These two scenarios are
-what make the rotation assertions elsewhere possible at all.
+what make the rotation assertions elsewhere possible at all. The third creates two thousand sessions
+from many threads at once and asserts every one was recorded, and that a list already handed out is a
+snapshot a later creation cannot disturb. The factory is required to be safe for concurrent use
+because an application may run several sessions against one, and an unsynchronized record can lose a
+session or be observed halfway through an addition — a defect a single-threaded scenario cannot
+detect.

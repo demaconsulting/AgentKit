@@ -144,6 +144,37 @@ public class InMemoryProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves the factory records every session when rotations create them concurrently.
+    ///     <see cref="IProviderSessionFactory"/> requires a concurrent-safe implementation because an
+    ///     application may run several sessions against one factory, and an unsynchronized list can
+    ///     lose a session or leave its record internally inconsistent.
+    /// </summary>
+    [Fact]
+    public async Task InMemoryProviderSessionFactory_CreateAsync_ConcurrentCreations_RecordsEveryOne()
+    {
+        // Arrange: one factory, as several logical sessions rotating at once would share
+        var factory = new InMemoryProviderSessionFactory(windowTokens: 1000);
+        var seed = new ProviderSessionSeed(null, [], []);
+        const int Creations = 2_000;
+
+        // Act: create sessions from many threads at once
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, Creations),
+            TestContext.Current.CancellationToken,
+            async (_, token) => await factory.CreateAsync(seed, token));
+
+        // Assert: every session was recorded
+        var recorded = factory.Sessions;
+        Assert.Equal(Creations, recorded.Count);
+        Assert.All(recorded, Assert.NotNull);
+
+        // Assert: the list handed out is a snapshot, so a later creation cannot disturb it
+        await factory.CreateAsync(seed, TestContext.Current.CancellationToken);
+        Assert.Equal(Creations, recorded.Count);
+        Assert.Equal(Creations + 1, factory.Sessions.Count);
+    }
+
+    /// <summary>
     ///     Proves the default responder answers without a test having to supply one, so a test about
     ///     the session lifecycle is not obliged to also invent what a model says.
     /// </summary>

@@ -47,14 +47,18 @@ from the wrong source, or any invalid argument accepted rather than refused cons
 #### AgentKitSessions-CompactingAgentSession-AnswersTurns: A Session Starts Clean and Answers Cleanly
 
 **Tests**: `CompactingAgentSession_CreateAsync_SeedsOneEmptyProviderSession`,
-`CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating`
+`CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating`,
+`CompactingAgentSession_SendAsync_ProviderRejectsTheTurn_RecordsNoGhostEntry`
 
 The first asserts creation produces exactly one provider session, seeded with no history and
 carrying the configured instructions, with no rotations yet. The second takes one turn with plenty
 of room and asserts the answer came back, nothing rotated, still only one provider session exists,
 and **both halves of the turn** — the outgoing message and the answer — are in the engine's own
 transcript. That transcript is where a later consolidation reads from, so a turn recorded only half
-would lose material silently.
+would lose material silently. The third sends against a token canceled before the call and asserts
+neither the engine's transcript nor the provider's history holds the message: a provider may refuse
+a turn it never took, and a message recorded ahead of the call would be a turn no provider ever saw,
+which would still be consolidated at the next rotation and seeded into the replacement session.
 
 #### AgentKitSessions-CompactingAgentSession-RotatesAtThreshold: Crossing the Threshold Replaces the Session
 

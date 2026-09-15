@@ -10,7 +10,9 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     holds the most recent turns exactly as they happened; each higher tier holds a
 ///     progressively coarser record of older history. This policy carries one token budget per
 ///     tier, and those budgets are what makes the whole arrangement bounded: the context can never
-///     exceed the system prompt, plus the tool declarations, plus the sum of the tier budgets.
+///     exceed the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus
+///     the framing each tier record is seeded with — see
+///     <see cref="ContextLayout.MaximumBoundTokens"/>.
 ///     </para>
 ///     <para>
 ///     <b>Why tiers rather than one rolling summary.</b> A single rolling summary is a downward
@@ -43,9 +45,10 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///         tierBudgetTokens: [2000, 1200, 900, 700, 500],
 ///         rotationThreshold: 0.60);
 ///
-///     // The whole arrangement is bounded by construction: this is the most conversation
-///     // context the session can ever hold.
-///     var bound = policy.TotalTierBudgetTokens;
+///     // The tier budgets bound the conversation context; the layout's own bound adds the
+///     // framing each seeded record carries.
+///     var budgeted = policy.TotalTierBudgetTokens;
+///     var framing = ContextLayout.SeedFramingTokens(policy);
 ///     </code>
 /// </example>
 public sealed class CompactionPolicy
@@ -96,12 +99,12 @@ public sealed class CompactionPolicy
     ///     <see langword="null"/> selects <see cref="DefaultTierBudgetTokens"/>.
     /// </param>
     /// <param name="rotationThreshold">
-    ///     The fraction of the effective window at which a session rotates. Must be greater than
-    ///     zero and at most one.
+    ///     The fraction of the effective window at which a session rotates. Must be a number
+    ///     greater than zero and at most one.
     /// </param>
     /// <param name="saturationRatio">
     ///     The output-to-input ratio at or above which a consolidation is reported as saturated.
-    ///     Must be greater than zero and at most one.
+    ///     Must be a number greater than zero and at most one.
     /// </param>
     /// <exception cref="ArgumentException">
     ///     <paramref name="tierBudgetTokens"/> holds fewer than two budgets, or a budget is larger
@@ -109,8 +112,8 @@ public sealed class CompactionPolicy
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     A tier budget is not positive, or <paramref name="rotationThreshold"/> or
-    ///     <paramref name="saturationRatio"/> lies outside the range greater than zero and at most
-    ///     one.
+    ///     <paramref name="saturationRatio"/> is <see cref="double.NaN"/> or lies outside the range
+    ///     greater than zero and at most one.
     /// </exception>
     public CompactionPolicy(
         IReadOnlyList<int>? tierBudgetTokens = null,
@@ -152,12 +155,39 @@ public sealed class CompactionPolicy
         }
 
         // A threshold at or below zero would rotate on every turn; above one it could never fire.
+        // NaN is rejected explicitly because both comparisons against it are false, so a NaN
+        // threshold or ratio would pass a range check and then compare false against every
+        // conversation size - silently disabling the policy rather than announcing that it had
+        // been misconfigured. The same defect, and the same reasoning, is recorded on
+        // MemoryOptions' near-duplicate threshold.
+        if (double.IsNaN(rotationThreshold))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(rotationThreshold),
+                rotationThreshold,
+                "The rotation threshold must be a number; NaN compares false against every "
+                + "conversation size and would silently disable rotation.");
+        }
+
+        if (double.IsNaN(saturationRatio))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(saturationRatio),
+                saturationRatio,
+                "The saturation ratio must be a number; NaN compares false against every "
+                + "consolidation result and would silently disable saturation reporting.");
+        }
+
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rotationThreshold);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rotationThreshold, 1.0);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(saturationRatio);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(saturationRatio, 1.0);
 
-        TierBudgetTokens = [.. budgets];
+        // Copy the caller's budgets into storage this policy owns, and hand out only a read-only
+        // view of that copy: an IReadOnlyList over a bare array can be cast back to int[] and
+        // mutated, which would change an allegedly immutable policy while TotalTierBudgetTokens
+        // went stale.
+        TierBudgetTokens = Array.AsReadOnly<int>([.. budgets]);
         RotationThreshold = rotationThreshold;
         SaturationRatio = saturationRatio;
         TotalTierBudgetTokens = TierBudgetTokens.Sum();
@@ -176,7 +206,8 @@ public sealed class CompactionPolicy
     ///     constants precisely so an application with a different window or a different task shape
     ///     can replace them.
     /// </remarks>
-    public static IReadOnlyList<int> DefaultTierBudgetTokens { get; } = [2000, 1200, 900, 700];
+    public static IReadOnlyList<int> DefaultTierBudgetTokens { get; } =
+        Array.AsReadOnly<int>([2000, 1200, 900, 700]);
 
     /// <summary>
     ///     Gets the policy an application receives when it configures nothing.
@@ -193,8 +224,9 @@ public sealed class CompactionPolicy
     /// </summary>
     /// <remarks>
     ///     Tier zero's budget bounds the verbatim history; every higher budget bounds one
-    ///     consolidated record. The list is a defensive copy taken at construction, so a caller
-    ///     that mutates the list it supplied cannot change this policy afterwards.
+    ///     consolidated record. The list is a read-only view over a defensive copy taken at
+    ///     construction, so neither a caller that mutates the list it supplied nor one that casts
+    ///     this list back to an array can change the policy afterwards.
     /// </remarks>
     public IReadOnlyList<int> TierBudgetTokens { get; }
 
@@ -217,11 +249,12 @@ public sealed class CompactionPolicy
     ///     Gets the most conversation context this policy can ever hold, in tokens.
     /// </summary>
     /// <remarks>
-    ///     The sum of every tier budget. Together with the system prompt and the tool declarations
-    ///     this is the bound the whole arrangement is constructed to respect, and
-    ///     <see cref="AgentSessionOptions"/> refuses a configuration whose effective window cannot
-    ///     accommodate it. The bound is a post-rotation property: between rotations tier zero grows
-    ///     past its budget, which is precisely the headroom the rotation threshold reserves.
+    ///     The sum of every tier budget. Together with the system prompt, the tool declarations and
+    ///     the framing each seeded tier record carries, this is the bound the whole arrangement is
+    ///     constructed to respect, and <see cref="AgentSessionOptions"/> refuses a configuration
+    ///     whose effective window cannot accommodate it. The bound is a post-rotation property:
+    ///     between rotations tier zero grows past its budget, which is precisely the headroom the
+    ///     rotation threshold reserves.
     /// </remarks>
     public int TotalTierBudgetTokens { get; }
 }

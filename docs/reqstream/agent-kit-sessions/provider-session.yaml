@@ -24,6 +24,7 @@ sections:
               is the mechanism that discards server-side history.
             tests:
               - ProviderSessionSeed_Construct_CarriesInstructionsToolsAndHistorySeparately
+              - ProviderSessionSeed_Construct_CopiesTheSuppliedLists
               - InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes
 
           - id: AgentKitSessions-ProviderSession-RecordsWhatATurnProduced

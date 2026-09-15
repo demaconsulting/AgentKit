@@ -44,10 +44,14 @@ inspects compaction must never be misled, and one that does must see a clean tur
 
 #### AgentKitSessions-AgentSession-ReportsCompaction: A Saturating Rotation Is Visible
 
-**Test**: `AgentSessionResponse_Construct_SaturatedRotation_SurfacesTheSignals`
+**Tests**: `AgentSessionResponse_Construct_SaturatedRotation_SurfacesTheSignals`,
+`AgentSessionResponse_Saturations_CannotBeCastAndMutated`
 
 Constructs a response for a rotation that could not reduce and asserts both the rotation and the
-saturation signal are visible, with the signal instance carried through unchanged. A saturated agent
+saturation signal are visible, with the signal instance carried through unchanged. The second
+scenario clears the caller's list after construction and refuses a write through an `IList` cast on
+the response's own list, because either route would change `IsSaturated` after the turn it
+describes. A saturated agent
 must be distinguishable from a healthy one, or the condition is invisible to the application.
 
 #### AgentKitSessions-AgentSession-RejectsMalformedTurnReport: A Malformed Report Is Refused

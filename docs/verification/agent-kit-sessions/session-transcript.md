@@ -45,12 +45,16 @@ malformed entry accepted constitutes a failure.
 **Tests**: `SessionTranscript_Empty_HoldsNothing`,
 `SessionTranscript_Append_LeavesTheOriginalUnchanged`,
 `SessionTranscript_AppendMany_PreservesOrder`,
-`SessionTranscript_AppendMany_Empty_ReturnsSameInstance`
+`SessionTranscript_AppendMany_Empty_ReturnsSameInstance`,
+`SessionTranscript_Entries_CannotBeCastAndMutated`
 
 Asserts the shared empty transcript holds nothing and costs nothing; that appending returns a new
 transcript and leaves the original at its previous length; that a run of entries — the shape one
 tool-using turn produces — appends in the order it happened; and that appending nothing returns the
-very same instance rather than an equal copy.
+very same instance rather than an equal copy; and that the published entry list is not the backing
+array and refuses a write through an `IList` cast. An entry replaced that way — including with a
+null — would corrupt the token total cached at construction and every rotation decision taken from
+it.
 
 #### AgentKitSessions-SessionTranscript-PairedEntries: The Pairing Identifier Is Required Exactly Where It Means Something
 

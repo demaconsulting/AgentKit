@@ -165,6 +165,11 @@ public sealed class CompactingAgentSession : IAgentSession
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    ///     A turn is recorded only once the provider has accepted it. A provider that cancels or
+    ///     fails before taking the turn leaves this session exactly as it was, with no record of a
+    ///     message no provider ever saw.
+    /// </remarks>
     public async Task<AgentSessionResponse> SendAsync(
         string message,
         CancellationToken cancellationToken = default)
@@ -176,14 +181,18 @@ public sealed class CompactingAgentSession : IAgentSession
             throw new ArgumentException("A session message must not be blank.", nameof(message));
         }
 
-        // Record the outgoing message in our own transcript before sending it, so the transcript
-        // matches what the provider holds even if the turn fails partway through.
-        Layout = Layout.WithTranscript(Layout.Transcript.Append(TranscriptEntry.User(message)));
-
         // Take the turn against the live session. The answer belongs to this session; any rotation
         // below prepares the replacement for the turn after.
+        //
+        // Nothing is recorded until the provider has accepted the message. A provider is entitled
+        // to honor cancellation or fail before it takes the turn - the in-memory provider does
+        // exactly that for a token that was already canceled - and a message recorded ahead of that
+        // would be a turn no provider ever saw, which a later rotation would nonetheless
+        // consolidate and seed into the replacement session.
         var turn = await _provider.SendAsync(message, cancellationToken).ConfigureAwait(false);
-        Layout = Layout.WithTranscript(Layout.Transcript.Append(turn.Entries));
+
+        Layout = Layout.WithTranscript(
+            Layout.Transcript.Append(TranscriptEntry.User(message)).Append(turn.Entries));
 
         Usage = ReadUsage(_provider, _options, Layout);
 

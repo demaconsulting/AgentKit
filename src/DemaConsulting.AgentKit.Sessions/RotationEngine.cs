@@ -113,7 +113,11 @@ public sealed class RotationOutcome
         ArgumentOutOfRangeException.ThrowIfNegative(consolidationCount);
 
         Layout = layout;
-        Saturations = saturations;
+
+        // Copy the signals into storage this outcome owns, exposed only as a read-only view: the
+        // rotation hands over its own mutable working list, and an outcome documented as immutable
+        // must not remain a window onto it.
+        Saturations = Array.AsReadOnly<SaturationSignal>([.. saturations]);
         ConsolidationCount = consolidationCount;
     }
 

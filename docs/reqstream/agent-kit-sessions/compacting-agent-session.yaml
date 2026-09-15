@@ -11,15 +11,20 @@ sections:
           - id: AgentKitSessions-CompactingAgentSession-AnswersTurns
             title: >-
               The session shall record each outgoing message and everything the turn produced in its
-              own transcript, and return the provider's answer.
+              own transcript once the provider has accepted the turn, and return the provider's
+              answer.
             justification: |
               The transcript is recorded here, out of session, because that is what allows
               consolidation to be a separate stateless call rather than a request to the live session
-              to summarize itself. The outgoing message is recorded before it is sent so that the
-              transcript matches what the provider holds even if the turn fails partway through.
+              to summarize itself. Nothing is recorded until the provider has accepted the turn: a
+              provider may honor cancellation or fail before taking it, and a message recorded ahead
+              of that would be a turn no provider ever saw - one that would nonetheless survive in
+              the transcript, be consolidated at the next rotation, and be seeded into the
+              replacement session as though it had happened.
             tests:
               - CompactingAgentSession_CreateAsync_SeedsOneEmptyProviderSession
               - CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating
+              - CompactingAgentSession_SendAsync_ProviderRejectsTheTurn_RecordsNoGhostEntry
 
           - id: AgentKitSessions-CompactingAgentSession-RotatesAtThreshold
             title: >-

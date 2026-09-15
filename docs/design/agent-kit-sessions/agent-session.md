@@ -37,7 +37,8 @@ indistinguishable from a healthy one — precisely the condition that most needs
 - **`Usage`** (`ContextUsage`) — Never null
 - **`RotationOccurred`** (`bool`) — True when the session rotated during this turn
 - **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Never null; never contains null; empty when the rotation
-  reduced normally
+  reduced normally; a read-only view over a copy taken at construction, so `IsSaturated` cannot change after the turn
+  it describes
 - **`IsSaturated`** (`bool`) — Derived: `Saturations.Count > 0`
 
 ### Key Methods

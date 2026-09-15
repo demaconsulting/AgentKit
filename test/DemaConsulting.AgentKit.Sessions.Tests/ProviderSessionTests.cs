@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+
 namespace DemaConsulting.AgentKit.Sessions.Tests;
 
 /// <summary>
@@ -90,7 +92,28 @@ public class ProviderSessionTests
         var turn = new ProviderTurn("the answer", entries);
 
         // Assert: the supplied entries are carried through unchanged
-        Assert.Same(entries, turn.Entries);
+        Assert.Equal(entries, turn.Entries);
+    }
+
+    /// <summary>
+    ///     Proves a seed copies the lists it is given and publishes read-only views of the copies.
+    ///     A seed is an immutable snapshot an adapter may hold across a rotation: retaining the
+    ///     caller's lists would let it start a session from something other than what was validated.
+    /// </summary>
+    [Fact]
+    public void ProviderSessionSeed_Construct_CopiesTheSuppliedLists()
+    {
+        // Arrange: a mutable history handed to the seed
+        var history = new List<TranscriptEntry> { TranscriptEntry.User("first") };
+        var seed = new ProviderSessionSeed(null, [], history);
+
+        // Act: mutate the caller's list afterwards
+        history.Clear();
+
+        // Assert: the seed is unaffected, and neither list it publishes can be written through
+        Assert.Single(seed.History);
+        Assert.Throws<NotSupportedException>(() => ((IList<TranscriptEntry>)seed.History).Clear());
+        Assert.Throws<NotSupportedException>(() => ((IList<AIFunction>)seed.Tools).Clear());
     }
 
     /// <summary>

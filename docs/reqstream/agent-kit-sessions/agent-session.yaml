@@ -37,6 +37,7 @@ sections:
               one, which is precisely the condition that most needs to be visible.
             tests:
               - AgentSessionResponse_Construct_SaturatedRotation_SurfacesTheSignals
+              - AgentSessionResponse_Saturations_CannotBeCastAndMutated
               - AgentSessionResponse_Construct_OrdinaryTurn_ReportsNoCompaction
 
           - id: AgentKitSessions-AgentSession-RejectsMalformedTurnReport

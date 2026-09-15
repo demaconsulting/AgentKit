@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
@@ -117,8 +119,12 @@ public sealed class ContextTier
 ///     </para>
 ///     <para>
 ///     <b>Bounded by construction.</b> The most this layout can ever hold is the system prompt,
-///     plus the tool declarations, plus the sum of the tier budgets — published as
-///     <see cref="MaximumBoundTokens"/>. <see cref="IsWithinBound"/> asserts it. The bound is a
+///     plus the tool declarations, plus the sum of the tier budgets, plus the framing
+///     <see cref="BuildSeed"/> wraps each tier record in — published as
+///     <see cref="MaximumBoundTokens"/>. <see cref="IsWithinBound"/> asserts it. The framing is
+///     part of the bound because it is part of what the provider receives: a bound that counted
+///     only raw tier content would be an under-count, and for a provider that reports no usage
+///     that under-count is what would drive the rotation decision. The bound is a
 ///     <em>post-rotation</em> property and is documented as one: between rotations the context is
 ///     strictly append-only, so tier zero grows past its budget until the next rotation batches
 ///     everything back inside the bound. That growth is exactly what the rotation threshold's
@@ -133,9 +139,30 @@ public sealed class ContextTier
 public sealed class ContextLayout
 {
     /// <summary>
+    ///     The text preceding a tier's own index in a seeded record's label.
+    /// </summary>
+    private const string RecordLabelPrefix = "Consolidated record of earlier work (detail level ";
+
+    /// <summary>
+    ///     The text following a tier's own index in a seeded record's label.
+    /// </summary>
+    private const string RecordLabelSuffix = ", coarser levels cover older material):\n";
+
+    /// <summary>
     ///     The coarse tiers, tier one first.
     /// </summary>
     private readonly ContextTier[] _coarseTiers;
+
+    /// <summary>
+    ///     The read-only view handed out by <see cref="CoarseTiers"/>.
+    /// </summary>
+    /// <remarks>
+    ///     Built once at construction rather than per read, because the property is consulted on
+    ///     every rotation. Handing out the backing array instead would let a caller cast it back to
+    ///     <c>ContextTier[]</c> and replace an element, changing both <see cref="ConversationTokens"/>
+    ///     and the next <see cref="BuildSeed"/> of a layout documented as immutable.
+    /// </remarks>
+    private readonly ReadOnlyCollection<ContextTier> _coarseTiersView;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContextLayout"/> class.
@@ -162,6 +189,7 @@ public sealed class ContextLayout
         ToolDeclarationTokens = toolDeclarationTokens;
         Transcript = transcript;
         _coarseTiers = coarseTiers;
+        _coarseTiersView = Array.AsReadOnly(coarseTiers);
     }
 
     /// <summary>
@@ -197,16 +225,21 @@ public sealed class ContextLayout
     /// </summary>
     /// <remarks>
     ///     Holds one fewer element than <see cref="CompactionPolicy.TierCount"/>, because tier zero
-    ///     is the transcript rather than a consolidated record. Element zero is tier one.
+    ///     is the transcript rather than a consolidated record. Element zero is tier one. The list
+    ///     is a genuine read-only view: a caller cannot reach the backing array through it.
     /// </remarks>
-    public IReadOnlyList<ContextTier> CoarseTiers => _coarseTiers;
+    public IReadOnlyList<ContextTier> CoarseTiers => _coarseTiersView;
 
     /// <summary>
-    ///     Gets the tokens the conversation occupies: the coarse tiers plus the verbatim history.
+    ///     Gets the tokens the conversation occupies: the coarse tiers, the framing their records
+    ///     are seeded with, and the verbatim history.
     /// </summary>
     /// <remarks>
     ///     Excludes the fixed overhead, so this is the figure the rotation threshold — expressed as
-    ///     a fraction of the effective window — is compared against.
+    ///     a fraction of the effective window — is compared against. A non-empty tier is charged the
+    ///     framing <see cref="BuildSeed"/> wraps it in as well as its own content, because that
+    ///     framing is part of what the provider is sent; an empty tier is charged nothing because it
+    ///     is not seeded at all.
     /// </remarks>
     public int ConversationTokens
     {
@@ -216,6 +249,11 @@ public sealed class ContextLayout
             foreach (var tier in _coarseTiers)
             {
                 total += tier.EstimatedTokens;
+
+                if (!tier.IsEmpty)
+                {
+                    total += RecordFramingTokens(tier.Index);
+                }
             }
 
             return total;
@@ -228,14 +266,18 @@ public sealed class ContextLayout
     public int TotalEstimatedTokens => SystemTokens + ToolDeclarationTokens + ConversationTokens;
 
     /// <summary>
-    ///     Gets the most this layout can ever occupy: fixed overhead plus every tier budget.
+    ///     Gets the most this layout can ever occupy: fixed overhead, every tier budget, and the
+    ///     framing every tier record is seeded with.
     /// </summary>
     /// <remarks>
     ///     This is the bound the whole arrangement exists to respect. It is a property of the
     ///     configuration alone — it does not depend on what the session has done — which is what
-    ///     makes it something an application can reason about before starting.
+    ///     makes it something an application can reason about before starting. The framing allowance
+    ///     assumes every coarse tier holds a record, which is the worst case and therefore the only
+    ///     honest one for a bound.
     /// </remarks>
-    public int MaximumBoundTokens => SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens;
+    public int MaximumBoundTokens =>
+        SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy);
 
     /// <summary>
     ///     Gets a value indicating whether the context currently sits within its construction bound.
@@ -247,6 +289,44 @@ public sealed class ContextLayout
     ///     question; see the class remarks.
     /// </remarks>
     public bool IsWithinBound => TotalEstimatedTokens <= MaximumBoundTokens;
+
+    /// <summary>
+    ///     Gets the tokens the framing of the seeded tier records adds for a policy, over and above
+    ///     the tier budgets themselves.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <see cref="BuildSeed"/> does not hand a provider a tier's raw content: it wraps each
+    ///     non-empty tier in a transcript entry carrying a label that says which detail level the
+    ///     record belongs to, and every entry is charged
+    ///     <see cref="TokenEstimator.PerEntryOverheadTokens"/> of message framing on top. Both are
+    ///     tokens the provider actually receives, so both belong in the bound; counting only the
+    ///     raw content would let the seed exceed <see cref="MaximumBoundTokens"/> even with every
+    ///     tier exactly within its budget.
+    ///     </para>
+    ///     <para>
+    ///     Published as a static function of the policy because
+    ///     <see cref="AgentSessionOptions"/> must refuse a window that cannot hold the bound, and it
+    ///     has to compute that bound before any layout exists.
+    ///     </para>
+    /// </remarks>
+    /// <param name="policy">The policy whose coarse tiers are counted. Must not be <see langword="null"/>.</param>
+    /// <returns>The framing tokens every coarse tier record costs when seeded, summed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
+    public static int SeedFramingTokens(CompactionPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+
+        // One record per coarse tier - every tier above the verbatim tier zero - because a bound
+        // must assume every tier holds a record.
+        var total = 0;
+        for (var tierIndex = 1; tierIndex < policy.TierCount; tierIndex++)
+        {
+            total += RecordFramingTokens(tierIndex);
+        }
+
+        return total;
+    }
 
     /// <summary>
     ///     Creates an empty layout for a policy and a measured fixed overhead.
@@ -369,12 +449,37 @@ public sealed class ContextLayout
                 continue;
             }
 
-            seed.Add(TranscriptEntry.ContextRecord(
-                $"Consolidated record of earlier work (detail level {tier.Index}, coarser levels cover older material):\n{tier.Content}"));
+            seed.Add(TranscriptEntry.ContextRecord(RecordLabel(tier.Index) + tier.Content));
         }
 
         // Then the verbatim recent history, in the order it happened.
         seed.AddRange(Transcript.Entries);
         return seed;
     }
+
+    /// <summary>
+    ///     Builds the label a tier's record carries when it is seeded.
+    /// </summary>
+    /// <remarks>
+    ///     Shared by <see cref="BuildSeed"/> and <see cref="RecordFramingTokens"/> so the text that
+    ///     is emitted and the text that is charged for can never drift apart — which is exactly how
+    ///     the bound came to under-count the seed in the first place.
+    /// </remarks>
+    /// <param name="tierIndex">The tier the record belongs to.</param>
+    /// <returns>The label, ending in the newline that separates it from the record.</returns>
+    private static string RecordLabel(int tierIndex) =>
+        $"{RecordLabelPrefix}{tierIndex}{RecordLabelSuffix}";
+
+    /// <summary>
+    ///     Estimates the tokens one tier's seeded record costs beyond the record itself.
+    /// </summary>
+    /// <remarks>
+    ///     The label plus the per-entry message framing. Estimating the label separately from the
+    ///     content can only over-state the combined estimate, never under-state it, because the
+    ///     estimator rounds up — which is the direction a bound must err in.
+    /// </remarks>
+    /// <param name="tierIndex">The tier the record belongs to.</param>
+    /// <returns>The framing tokens the seeded record costs.</returns>
+    private static int RecordFramingTokens(int tierIndex) =>
+        TokenEstimator.EstimateTokens(RecordLabel(tierIndex)) + TokenEstimator.PerEntryOverheadTokens;
 }

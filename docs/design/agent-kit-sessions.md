@@ -179,9 +179,13 @@ providers rather than merely intended to be, and it is what allows the whole eng
 against `InMemoryProviderSession` with no network access, no credentials and no model.
 
 The second control is that the context is **bounded by construction** rather than by convention. The
-total is the system prompt, plus the tool declarations, plus the sum of the tier budgets, and
+total is the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus the
+framing each tier record carries when it is seeded into a replacement session, and
 `AgentSessionOptions` refuses at construction any configuration whose effective window cannot
-accommodate that sum. A session that constructs is one whose arrangement fits.
+accommodate that total. The framing is counted because it is part of what the provider receives: a
+bound counting raw tier content alone would be exceeded by a seed in which every tier sat exactly
+within its budget, and for a provider that reports no usage that under-count is what would drive
+rotation. A session that constructs is one whose arrangement fits.
 
 The third is **saturation detection**. An agent whose context holds no redundancy left will keep
 crossing the rotation threshold, spending summarizer tokens and buying nothing, while every rotation
@@ -192,9 +196,9 @@ because what to do about a saturated agent depends on what the application is fo
 
 ```text
 application message
-  -> CompactingAgentSession records it in SessionTranscript (inside ContextLayout)
   -> IProviderSession.SendAsync
-  -> ProviderTurn (answer + entries) recorded in SessionTranscript
+  -> on success, the message and the ProviderTurn (answer + entries) are recorded together in
+     SessionTranscript (inside ContextLayout); a turn the provider never accepted records nothing
   -> usage read from IContextUsageReporter, or estimated by TokenEstimator
   -> if conversation tokens < threshold: return the answer
   -> otherwise:
@@ -216,6 +220,11 @@ application message
   the heart of the system unit-testable without a model.
 - **Tool call and result pairs are indivisible.** A tier boundary falling between them is snapped,
   because some providers reject an orphaned pair outright and no model can interpret one.
+- **Published collections are owned copies behind read-only views.** Every type in this system that
+  publishes an `IReadOnlyList` copies the caller's collection at construction and hands out a
+  read-only view of that copy, never the array or list itself. An `IReadOnlyList` over a bare array
+  can be cast back to the array and written through, which for these types would let a cached token
+  total, a saturation verdict or a validated seed disagree with its own contents.
 - **Bounded by construction, asserted.** See _Risk Control Measures_ above. The bound is a
   post-rotation property: between rotations tier zero is append-only and grows past its budget,
   which is precisely what the rotation threshold's headroom is reserved for.

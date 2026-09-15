@@ -63,8 +63,13 @@ public sealed class ProviderSessionSeed
         }
 
         Instructions = instructions;
-        Tools = tools;
-        History = history;
+
+        // Copy both lists into storage this seed owns, exposed only as read-only views. A seed is
+        // an immutable snapshot that an adapter may hold across a rotation: retaining the caller's
+        // lists would let it observe a later mutation and start a session from something other than
+        // what was validated here.
+        Tools = Array.AsReadOnly<AIFunction>([.. tools]);
+        History = Array.AsReadOnly<TranscriptEntry>([.. history]);
     }
 
     /// <summary>
@@ -134,9 +139,13 @@ public sealed class ProviderTurn
         }
 
         ResponseText = responseText;
+
+        // Copy into storage this turn owns, exposed only as a read-only view, for the same reason
+        // the seed does: the entries are what the engine records as history, and a turn is
+        // documented as immutable.
         Entries = entries is null || entries.Count == 0
-            ? [TranscriptEntry.Assistant(responseText)]
-            : entries;
+            ? Array.AsReadOnly<TranscriptEntry>([TranscriptEntry.Assistant(responseText)])
+            : Array.AsReadOnly<TranscriptEntry>([.. entries]);
     }
 
     /// <summary>

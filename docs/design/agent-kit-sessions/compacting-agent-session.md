@@ -60,9 +60,9 @@ the factory returns null; `OperationCanceledException` on cancellation.
 **Algorithm:**
 
 1. Reject use after disposal, and reject a blank message.
-2. Append the outgoing message to the transcript **before** sending it, so the transcript matches
-   what the provider holds even if the turn fails partway through.
-3. Take the turn against the live provider session and append everything it produced.
+2. Take the turn against the live provider session.
+3. **Once the provider has accepted it**, append the outgoing message and everything the turn
+   produced to the transcript, in that order.
 4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
    layout against the configured window.
 5. Compute conversation tokens as usage less the options' fixed overhead, and compare against the
@@ -75,6 +75,13 @@ the factory returns null; `OperationCanceledException` on cancellation.
 window, so the comparison must exclude the fixed overhead. Subtracting it is what makes the
 comparison mean the same thing whether the figure came from the provider or from the library's own
 estimate.
+
+**Why nothing is recorded until the provider accepts the turn.** A provider is entitled to honor
+cancellation or fail before taking the turn — the in-memory provider does exactly that for a token
+that was already canceled. A message recorded ahead of that would be a turn no provider ever saw,
+which would survive in the transcript, be consolidated at the next rotation, and be seeded into the
+replacement session as though it had happened. Recording after the call means a refused turn leaves
+the session exactly as it was.
 
 **Why compaction happens after the answer.** The turn is served by the session that was live when it
 arrived, and the replacement is prepared for the turn after. A caller therefore never waits on a

@@ -47,7 +47,8 @@ function from the caller's point of view.
 `RotationOutcome` properties, immutable after construction:
 
 - **`Layout`** (`ContextLayout`) — The layout after rotation; what a fresh provider session is seeded from
-- **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Empty when the rotation reduced normally
+- **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Empty when the rotation reduced normally; a read-only view
+  over a copy of the rotation's own working list, which is mutable while the rotation runs
 - **`ConsolidationCount`** (`int`) — How many consolidations the rotation performed
 - **`IsSaturated`** (`bool`) — Derived: `Saturations.Count > 0`
 

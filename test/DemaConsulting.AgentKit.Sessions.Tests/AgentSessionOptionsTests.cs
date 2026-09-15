@@ -108,19 +108,68 @@ public class AgentSessionOptionsTests
     }
 
     /// <summary>
-    ///     Proves a window exactly large enough for the tier budgets is accepted, so the bound is a
-    ///     genuine boundary rather than an approximation with hidden slack.
+    ///     Proves a window exactly large enough for the bound — the tier budgets plus the framing
+    ///     their seeded records carry — is accepted, so the bound is a genuine boundary rather than
+    ///     an approximation with hidden slack.
     /// </summary>
     [Fact]
-    public void AgentSessionOptions_Construct_WindowExactlyFitsTierBudgets_IsAccepted()
+    public void AgentSessionOptions_Construct_WindowExactlyFitsTheBound_IsAccepted()
     {
-        // Arrange / Act: a window equal to the default policy's total tier budget
-        var options = new AgentSessionOptions(
-            new FakeSummarizer(),
-            providerWindowTokens: CompactionPolicy.Default.TotalTierBudgetTokens);
+        // Arrange: a window equal to the default policy's bound
+        var bound = CompactionPolicy.Default.TotalTierBudgetTokens
+            + ContextLayout.SeedFramingTokens(CompactionPolicy.Default);
+
+        // Act: configure a session in exactly that window
+        var options = new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: bound);
 
         // Assert: accepted, with the whole window available for conversation
-        Assert.Equal(CompactionPolicy.Default.TotalTierBudgetTokens, options.EffectiveWindowTokens);
+        Assert.Equal(bound, options.EffectiveWindowTokens);
+
+        // Assert: one token less is refused, so the boundary is where it is claimed to be
+        Assert.Throws<ArgumentException>(() =>
+            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: bound - 1));
+    }
+
+    /// <summary>
+    ///     Proves a rotation threshold too small to survive truncation still leaves a positive token
+    ///     threshold. A threshold of zero is satisfied by a conversation of no tokens at all, so the
+    ///     session would be willing to rotate a context holding nothing — spending summarizer work
+    ///     and a fresh provider session on material that does not exist.
+    /// </summary>
+    [Fact]
+    public void AgentSessionOptions_Construct_SubTokenThreshold_ClampsToOneToken()
+    {
+        // Arrange: a threshold whose product with the effective window is below one token
+        var policy = new CompactionPolicy(rotationThreshold: 0.0001);
+
+        // Act: configure a session around it
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 5_000, compaction: policy);
+
+        // Assert: truncation cannot take the threshold below one token
+        Assert.Equal(1, options.RotationThresholdTokens);
+    }
+
+    /// <summary>
+    ///     Proves the tools are copied at construction and published as a read-only view. The
+    ///     declaration tokens are measured once, so a caller able to add or remove a tool afterwards
+    ///     would change what every future rotation seeds without changing the effective window or
+    ///     the threshold derived from it.
+    /// </summary>
+    [Fact]
+    public void AgentSessionOptions_Construct_CopiesTheSuppliedTools()
+    {
+        // Arrange: a mutable tool list handed to the options
+        var tool = AIFunctionFactory.Create((string input) => input, "example_tool", "An example tool.");
+        var tools = new List<AIFunction> { tool };
+        var options = new AgentSessionOptions(new FakeSummarizer(), tools: tools);
+
+        // Act: mutate the caller's list afterwards
+        tools.Clear();
+
+        // Assert: the options are unaffected, and the list they publish cannot be written through
+        Assert.Same(tool, Assert.Single(options.Tools));
+        Assert.Throws<NotSupportedException>(() => ((IList<AIFunction>)options.Tools).Clear());
     }
 
     /// <summary>

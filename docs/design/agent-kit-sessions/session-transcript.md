@@ -43,7 +43,8 @@ that supplies one learns it misunderstood the model.
 
 `SessionTranscript` properties:
 
-- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Oldest first; never contains null
+- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Oldest first; never contains null; a read-only view over the
+  transcript's own array, so an entry cannot be replaced behind the cached token total
 - **`EstimatedTokens`** (`int`) — The sum of every entry's estimate, computed once at construction
 
 `Empty` is a single shared instance, safe because the type is immutable.

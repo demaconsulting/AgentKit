@@ -27,31 +27,42 @@ sections:
           - id: AgentKitSessions-ContextLayout-PublishesTheBound
             title: >-
               The layout shall publish the conversation tokens excluding fixed overhead, the total
-              including it, the construction bound of fixed overhead plus every tier budget, and
-              whether it currently sits within that bound.
+              including it, the construction bound of fixed overhead plus every tier budget plus the
+              framing each tier record carries when it is seeded, and whether it currently sits
+              within that bound.
             justification: |
               The rotation threshold is a fraction of the effective window, so the figure it is
               compared against must exclude the fixed overhead; publishing both makes the comparison
-              unambiguous rather than something each caller re-derives. The bound depends on the
+              unambiguous rather than something each caller re-derives. The bound counts the seed
+              framing because that framing is part of what the provider receives: a bound counting
+              raw tier content alone is an under-count that a seed with every tier exactly within
+              its budget would exceed, and for a provider reporting no usage that under-count is
+              what would drive rotation. The bound depends on the
               configuration alone and not on what the session has done, which is what makes it
               something an application can reason about before starting. It is a post-rotation
               property: between rotations tier zero is append-only and grows past its budget, which
               is exactly what the rotation threshold's headroom is reserved for.
             tests:
               - ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget
+              - ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord
               - ContextLayout_ConversationTokens_ExcludeTheFixedOverhead
               - ContextTier_IsWithinBudget_ReflectsTheRecordSize
 
           - id: AgentKitSessions-ContextLayout-Immutable
             title: >-
               The layout shall be immutable, every change returning a new layout and leaving the
-              original unmodified.
+              original unmodified, and the tier list it publishes shall not be castable back to its
+              backing array.
             justification: |
               Immutability is what makes the rotation engine a pure function of the layout it was
               handed and lets a test compare a before and an after. It also means a caller holding a
-              layout snapshot across a turn is never surprised by it changing underneath them.
+              layout snapshot across a turn is never surprised by it changing underneath them. An
+              IReadOnlyList over a bare array can be cast back and written through, which would
+              change both the conversation tokens and the next seed of a layout documented as
+              immutable, so a read-only view is published instead.
             tests:
               - ContextLayout_WithTranscript_LeavesTheOriginalUnchanged
+              - ContextLayout_CoarseTiers_CannotBeCastAndMutated
 
           - id: AgentKitSessions-ContextLayout-SeedsMostStableFirst
             title: >-

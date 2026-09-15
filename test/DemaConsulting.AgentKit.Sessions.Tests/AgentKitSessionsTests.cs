@@ -23,9 +23,9 @@ public class AgentKitSessionsTests
         // Arrange: a small window, a small policy, and turns large enough to fill it quickly
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 40 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 300);
+            windowTokens: 400);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.1), providerWindowTokens: 300, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(0.1), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
         var message = new string('m', 40 * TokenEstimator.CharactersPerToken);
 
@@ -56,9 +56,9 @@ public class AgentKitSessionsTests
         // Arrange: a session whose bound is small enough to be violated if rotation misbehaved
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 40 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 300);
+            windowTokens: 400);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.1), providerWindowTokens: 300, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(0.1), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
         var message = new string('m', 40 * TokenEstimator.CharactersPerToken);
 
@@ -96,9 +96,9 @@ public class AgentKitSessionsTests
                 : request.PreviousRecord + "\n" + request.Material);
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn("noted"),
-            windowTokens: 300);
+            windowTokens: 400);
         var options = new AgentSessionOptions(
-            summarizer, providerWindowTokens: 300, compaction: SessionTestData.SmallPolicy);
+            summarizer, providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         // Act: state a distinctive fact first, then bury it under many later turns
@@ -127,10 +127,10 @@ public class AgentKitSessionsTests
         // Arrange: a summarizer that cannot reduce what it is given
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 40 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 300);
+            windowTokens: 400);
         var options = new AgentSessionOptions(
             new FakeSummarizer(request => request.Material),
-            providerWindowTokens: 300,
+            providerWindowTokens: 400,
             compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
         var message = new string('m', 40 * TokenEstimator.CharactersPerToken);
@@ -200,10 +200,10 @@ public class AgentKitSessionsTests
     {
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 40 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 300,
+            windowTokens: 400,
             reportsUsage: reportsUsage);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.1), providerWindowTokens: 300, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(0.1), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         for (var turn = 0; turn < 12; turn++)

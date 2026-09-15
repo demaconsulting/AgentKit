@@ -49,7 +49,11 @@ public sealed class AgentSessionResponse
         Text = text;
         Usage = usage;
         RotationOccurred = rotationOccurred;
-        Saturations = saturations ?? [];
+
+        // Copy the signals into storage this response owns, exposed only as a read-only view. A
+        // response is documented as immutable, and a caller that retained the list it supplied - or
+        // that cast this one back to an array - could otherwise change IsSaturated after the fact.
+        Saturations = Array.AsReadOnly<SaturationSignal>([.. saturations ?? []]);
     }
 
     /// <summary>

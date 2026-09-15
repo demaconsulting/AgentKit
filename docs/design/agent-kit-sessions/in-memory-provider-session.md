@@ -45,9 +45,10 @@ Private state: the responder producing a turn for a message, and the `reportsUsa
 session created so far, oldest first. For a conversation that ran to completion, `Sessions.Count`
 equals the rotation count plus one.
 
-**Instances are not safe for concurrent use**, consistent with `IProviderSession`, and the factory's
-record of created sessions is an ordinary list because a factory serves one session's rotations in
-sequence.
+**Sessions are not safe for concurrent use**, consistent with `IProviderSession`: one session serves
+one conversation. **The factory is**, as `IProviderSessionFactory` requires: it serializes creation
+under its own lock and returns a snapshot from `Sessions`, so several sessions rotating against one
+factory can neither lose a created session nor observe the record halfway through an addition.
 
 ### Key Methods
 
@@ -80,7 +81,7 @@ a test. Disposing twice is permitted and does nothing the second time.
 
 #### InMemoryProviderSessionFactory.CreateAsync(ProviderSessionSeed seed, CancellationToken cancellationToken)
 
-Creates a session, records it in `Sessions`, and returns it. The default responder — selected when
+Creates a session, records it under the factory's lock, and returns it. The default responder — selected when
 none is supplied — echoes the message back as an assistant answer, which is enough to exercise the
 lifecycle when what the model says does not matter, and names the message so a test can tell turns
 apart.

@@ -68,6 +68,23 @@ public class CompactionPolicyTests
     }
 
     /// <summary>
+    ///     Proves the budget list a policy hands out cannot be cast back to an array and mutated.
+    ///     A mutated budget would change an allegedly immutable policy while
+    ///     <c>TotalTierBudgetTokens</c>, computed once at construction, went stale.
+    /// </summary>
+    [Fact]
+    public void CompactionPolicy_TierBudgetTokens_CannotBeCastAndMutated()
+    {
+        // Arrange: a policy and the budget list it publishes
+        var policy = new CompactionPolicy([100, 50]);
+
+        // Act / Assert: the list is a read-only view, and writing through it is refused
+        Assert.IsNotType<int[]>(policy.TierBudgetTokens);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)policy.TierBudgetTokens)[0] = 9999);
+        Assert.Throws<NotSupportedException>(() => ((IList<int>)CompactionPolicy.DefaultTierBudgetTokens)[0] = 1);
+    }
+
+    /// <summary>
     ///     Proves a single tier is refused: with nowhere for overflowing history to age into, the
     ///     arrangement degenerates to dropping the oldest turns outright.
     /// </summary>
@@ -123,5 +140,29 @@ public class CompactionPolicyTests
     public void CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws(double ratio)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new CompactionPolicy(saturationRatio: ratio));
+    }
+
+    /// <summary>
+    ///     Proves a <c>NaN</c> control is refused whichever sign bit it carries. Every ordered
+    ///     comparison against <c>NaN</c> is false, so a range check built from them accepts a
+    ///     positive <c>NaN</c>, and the policy it configures then compares false against everything —
+    ///     silently disabling rotation or saturation reporting rather than announcing that it had
+    ///     been misconfigured.
+    /// </summary>
+    [Fact]
+    public void CompactionPolicy_Construct_NaNControl_Throws()
+    {
+        // Arrange: the literal NaN carries a set sign bit; this one does not
+        var positiveNaN = Math.Abs(double.NaN);
+
+        // Act / Assert: both forms are refused, for both controls
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CompactionPolicy(rotationThreshold: double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CompactionPolicy(rotationThreshold: positiveNaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CompactionPolicy(saturationRatio: double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CompactionPolicy(saturationRatio: positiveNaN));
     }
 }

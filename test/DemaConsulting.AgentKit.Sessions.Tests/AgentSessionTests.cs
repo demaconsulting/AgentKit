@@ -44,6 +44,31 @@ public class AgentSessionTests
     }
 
     /// <summary>
+    ///     Proves the saturation list a response hands out is its own copy and cannot be written
+    ///     through. A response is documented as immutable, and a caller able to add or remove a
+    ///     signal would change <c>IsSaturated</c> after the turn it describes.
+    /// </summary>
+    [Fact]
+    public void AgentSessionResponse_Saturations_CannotBeCastAndMutated()
+    {
+        // Arrange: a response built from a mutable list of signals
+        var signals = new List<SaturationSignal>
+        {
+            new(1, 900, 880, SaturationReason.NoRedundancy)
+        };
+        var response = new AgentSessionResponse(
+            "answer", ContextUsage.FromEstimate(900, 1000), true, signals);
+
+        // Act: mutate the caller's list afterwards
+        signals.Clear();
+
+        // Assert: the response still reports the saturation, and refuses a write through its list
+        Assert.True(response.IsSaturated);
+        Assert.Throws<NotSupportedException>(() =>
+            ((IList<SaturationSignal>)response.Saturations).Clear());
+    }
+
+    /// <summary>
     ///     Proves a missing answer is refused; a null response text would surface as a failure in the
     ///     application that displayed it rather than in the adapter that produced it.
     /// </summary>

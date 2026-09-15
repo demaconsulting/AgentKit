@@ -36,11 +36,22 @@ holds verbatim history and is a `SessionTranscript`.
 - **`ToolDeclarationTokens`** (`int`) — Not negative; fixed overhead
 - **`Transcript`** (`SessionTranscript`) — Tier zero; never null
 - **`CoarseTiers`** (`IReadOnlyList<ContextTier>`) — Exactly `Policy.TierCount - 1` entries, tier one first; never
-  contains null
-- **`ConversationTokens`** (`int`) — Derived: transcript plus every coarse tier
+  contains null; a read-only view over the layout's own array
+- **`ConversationTokens`** (`int`) — Derived: transcript, every coarse tier, and the seed framing of each non-empty
+  tier
 - **`TotalEstimatedTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens + ConversationTokens`
-- **`MaximumBoundTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens`
+- **`MaximumBoundTokens`** (`int`) — Derived:
+  `SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy)`
 - **`IsWithinBound`** (`bool`) — Derived: `TotalEstimatedTokens <= MaximumBoundTokens`
+
+**The bound counts the seed framing, not raw tier content.** `BuildSeed` does not hand a provider a
+tier's content: it wraps each non-empty tier in a transcript entry carrying a label that names the
+detail level, and every entry is charged the estimator's per-entry allowance on top. Both are tokens
+the provider actually receives. A bound counting raw content alone is an under-count that a seed
+with every tier exactly within its budget would exceed — and for a provider reporting no usage, that
+under-count is what drives the rotation decision. `ConversationTokens` charges the framing for
+non-empty tiers only, because an empty tier is not seeded; `MaximumBoundTokens` charges it for every
+coarse tier, because a bound must assume the worst case.
 
 **`ConversationTokens` excludes the fixed overhead** because the rotation threshold is a fraction of
 the effective window rather than of the whole one. Publishing both figures makes the comparison
@@ -52,8 +63,10 @@ past its budget until the next rotation batches everything back inside. That gro
 the rotation threshold's headroom is reserved for, and a caller checking this outside a
 post-rotation assertion is asking the wrong question.
 
-**Instances are immutable**: every change returns a new layout. That is what makes the rotation
-engine a pure function and lets a test compare a before and an after.
+**Instances are immutable**: every change returns a new layout, and the tier list it publishes is a
+read-only view rather than its backing array, so a caller cannot replace an element and change both
+`ConversationTokens` and the next seed. That is what makes the rotation engine a pure function and
+lets a test compare a before and an after.
 
 ### Key Methods
 
@@ -75,6 +88,15 @@ Returns a layout carrying both a different history and different coarse tiers. B
 together because a rotation changes both at once, and applying them separately would produce an
 intermediate layout that never actually exists. The tier list is validated to match the policy's
 count and copied, so a layout whose hierarchy disagrees with its own budgets can never exist.
+
+#### SeedFramingTokens(CompactionPolicy policy)
+
+Returns the tokens the framing of the seeded tier records adds for a policy: for every coarse tier,
+the estimate of its record label plus the per-entry allowance. Published as a static function of the
+policy because `AgentSessionOptions` must refuse a window that cannot hold the bound and has to
+compute that bound before any layout exists. The label is built by the same private helper
+`BuildSeed` uses, so what is emitted and what is charged for cannot drift apart — which is exactly
+how the bound came to under-count the seed.
 
 #### BuildSeed()
 

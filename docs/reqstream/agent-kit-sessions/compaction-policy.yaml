@@ -20,6 +20,7 @@ sections:
             tests:
               - CompactionPolicy_Default_CarriesThePublishedTierBudgets
               - CompactionPolicy_Construct_CopiesTheSuppliedBudgets
+              - CompactionPolicy_TierBudgetTokens_CannotBeCastAndMutated
 
           - id: AgentKitSessions-CompactionPolicy-ValidatedDefaults
             title: >-
@@ -44,18 +45,24 @@ sections:
           - id: AgentKitSessions-CompactionPolicy-RejectsUnworkableConfiguration
             title: >-
               The policy shall reject fewer than two tiers, a non-positive tier budget, a tier budget
-              larger than the tier it ages from, and a rotation threshold or saturation ratio outside
-              the range greater than zero and at most one.
+              larger than the tier it ages from, and a rotation threshold or saturation ratio that is
+              NaN or outside the range greater than zero and at most one.
             justification: |
               One tier is not a hierarchy: with nowhere for overflowing history to age into, the
               arrangement degenerates to dropping the oldest turns outright. A coarser tier allowed
               more room than the finer tier it ages from is the opposite of what consolidation is
               for and would never reduce. A threshold at or below zero would rotate on every turn and
-              above one could never fire. Each is a defect in the host's configuration code rather
-              than a runtime condition a model can provoke, so each is surfaced rather than clamped.
+              above one could never fire. NaN is rejected explicitly because every ordered
+              comparison against it is false, so a range check built from them accepts a NaN with no
+              sign bit and the policy then compares false against every conversation size and every
+              consolidation result - silently disabling rotation or saturation reporting rather than
+              announcing that it had been misconfigured. Each is a defect in the host's configuration
+              code rather than a runtime condition a model can provoke, so each is surfaced rather
+              than clamped.
             tests:
               - CompactionPolicy_Construct_SingleTier_Throws
               - CompactionPolicy_Construct_NonPositiveBudget_Throws
               - CompactionPolicy_Construct_GrowingBudgets_Throws
               - CompactionPolicy_Construct_ThresholdOutOfRange_Throws
               - CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws
+              - CompactionPolicy_Construct_NaNControl_Throws

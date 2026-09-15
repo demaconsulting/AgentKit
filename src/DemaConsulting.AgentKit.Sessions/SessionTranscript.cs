@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
@@ -229,6 +231,17 @@ public sealed class SessionTranscript
     private readonly TranscriptEntry[] _entries;
 
     /// <summary>
+    ///     The read-only view handed out by <see cref="Entries"/>.
+    /// </summary>
+    /// <remarks>
+    ///     Built once at construction rather than per read. Handing out the backing array would let
+    ///     a caller cast it back to <c>TranscriptEntry[]</c> and replace an entry — including with
+    ///     <see langword="null"/> — corrupting the token total cached below and every rotation
+    ///     decision taken from it.
+    /// </remarks>
+    private readonly ReadOnlyCollection<TranscriptEntry> _entriesView;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="SessionTranscript"/> class.
     /// </summary>
     /// <remarks>
@@ -240,6 +253,7 @@ public sealed class SessionTranscript
     private SessionTranscript(TranscriptEntry[] entries)
     {
         _entries = entries;
+        _entriesView = Array.AsReadOnly(entries);
 
         // Sum once at construction: the total is consulted on every turn to decide whether the
         // rotation threshold has been reached, and the entry list never changes afterwards.
@@ -264,7 +278,11 @@ public sealed class SessionTranscript
     /// <summary>
     ///     Gets the entries, oldest first.
     /// </summary>
-    public IReadOnlyList<TranscriptEntry> Entries => _entries;
+    /// <remarks>
+    ///     A genuine read-only view: a caller cannot reach the backing array through it, so the
+    ///     cached token total can never disagree with the entries it was computed from.
+    /// </remarks>
+    public IReadOnlyList<TranscriptEntry> Entries => _entriesView;
 
     /// <summary>
     ///     Gets the estimated tokens every entry in this transcript occupies together.

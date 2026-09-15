@@ -51,20 +51,33 @@ appearing or vanishing mid-session would make the bound unverifiable at the mome
 #### AgentKitSessions-ContextLayout-PublishesTheBound: The Accounting Follows From the Configuration
 
 **Tests**: `ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget`,
+`ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord`,
 `ContextLayout_ConversationTokens_ExcludeTheFixedOverhead`,
 `ContextTier_IsWithinBudget_ReflectsTheRecordSize`
 
-Asserts the bound is exactly the fixed overhead plus every tier budget and that a fresh layout sits
-within it; that conversation tokens count the transcript and tiers only, while the total adds the
+Asserts the bound is exactly the fixed overhead, every tier budget and the framing each tier record
+carries when seeded, and that a fresh layout sits within it; that conversation tokens count the
+transcript and tiers only, while the total adds the
 overhead back; and that a tier knows whether its record still fits, which is the test the rotation
 engine makes after every consolidation. The bound depending only on the configuration is what makes
 it something an application can reason about before a session starts.
 
+The framing scenario is the boundary case the bound exists for: it fills every coarse tier to exactly
+its budget and tier zero to exactly its own, measures what `BuildSeed` would actually hand a
+provider, and asserts both that the seed exceeds the raw sum of the tier budgets — which is why a
+bound counting raw content alone was an under-count — and that the published bound still covers it.
+For a provider reporting no usage, that estimate is what drives the rotation decision, so an
+under-count there rotates too late.
+
 #### AgentKitSessions-ContextLayout-Immutable: A Layout Is Never Modified in Place
 
-**Test**: `ContextLayout_WithTranscript_LeavesTheOriginalUnchanged`
+**Tests**: `ContextLayout_WithTranscript_LeavesTheOriginalUnchanged`,
+`ContextLayout_CoarseTiers_CannotBeCastAndMutated`
 
-Gives an empty layout a transcript and asserts the original is still empty. Immutability is what
+Gives an empty layout a transcript and asserts the original is still empty. The second scenario
+asserts the published tier list is not the backing array and refuses a write through an `IList`
+cast: an `IReadOnlyList` over a bare array can be cast back and an element replaced, which would
+change both the conversation tokens and the next seed of a layout documented as immutable. Immutability is what
 makes the rotation engine a pure function and lets a test compare a before and an after; a mutating
 update would still produce correct-looking layouts while breaking every such comparison.
 
