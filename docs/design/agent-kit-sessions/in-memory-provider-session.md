@@ -66,9 +66,11 @@ point of view that is exactly what it is.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
-Records the incoming message, invokes the responder, records everything the turn produced, increments
-`TurnCount` and returns the turn. Recording the message before answering is what makes the history
-match what a provider holding the conversation server-side would have.
+Records the incoming message, invokes the responder, records everything the turn produced — the tool
+work and the answer that ends it — increments `TurnCount` and returns the turn. Recording the message
+before answering is what makes the history match what a provider holding the conversation server-side
+would have, and recording the turn's entries in full is what keeps this session's history and the
+engine's transcript describing the same conversation.
 
 **Throws:** `ArgumentNullException` for a null message; `ObjectDisposedException` once disposed;
 `OperationCanceledException` on cancellation; `InvalidOperationException` when the responder returns

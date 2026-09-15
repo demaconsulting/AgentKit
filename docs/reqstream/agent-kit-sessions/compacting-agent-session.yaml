@@ -10,21 +10,26 @@ sections:
         requirements:
           - id: AgentKitSessions-CompactingAgentSession-AnswersTurns
             title: >-
-              The session shall record each outgoing message and everything the turn produced in its
-              own transcript once the provider has accepted the turn, and return the provider's
-              answer.
+              The session shall record each outgoing message and everything the turn produced,
+              including the answer, in its own transcript once the provider has accepted the turn,
+              and return the provider's answer.
             justification: |
               The transcript is recorded here, out of session, because that is what allows
               consolidation to be a separate stateless call rather than a request to the live session
-              to summarize itself. Nothing is recorded until the provider has accepted the turn: a
-              provider may honor cancellation or fail before taking it, and a message recorded ahead
-              of that would be a turn no provider ever saw - one that would nonetheless survive in
-              the transcript, be consolidated at the next rotation, and be seeded into the
-              replacement session as though it had happened.
+              to summarize itself. Recording everything the turn produced records the answer too,
+              because a provider turn's entries end with it: a tool-using turn whose answer was left
+              out would put the tool traffic in the transcript but not the conclusion drawn from it,
+              and an agent that uses tools on nearly every turn would then be seeded, after every
+              rotation, from a history holding almost none of its own output. Nothing is recorded
+              until the provider has accepted the turn: a provider may honor cancellation or fail
+              before taking it, and a message recorded ahead of that would be a turn no provider ever
+              saw - one that would nonetheless survive in the transcript, be consolidated at the next
+              rotation, and be seeded into the replacement session as though it had happened.
             tests:
               - CompactingAgentSession_CreateAsync_SeedsOneEmptyProviderSession
               - CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating
               - CompactingAgentSession_SendAsync_ProviderRejectsTheTurn_RecordsNoGhostEntry
+              - CompactingAgentSession_SendAsync_ToolUsingTurnRotates_SeedsTheAnswerIntoTheReplacement
 
           - id: AgentKitSessions-CompactingAgentSession-RotatesAtThreshold
             title: >-
@@ -79,13 +84,22 @@ sections:
 
           - id: AgentKitSessions-CompactingAgentSession-DisposesProviderSession
             title: >-
-              The session shall release the live provider session on disposal, permit repeated
-              disposal, and refuse further turns once disposed.
+              The session shall release the live provider session on disposal, report a failed
+              release while leaving it retryable by disposing again, permit repeated disposal once
+              released, and refuse further turns once disposed.
             justification: |
               For some providers the live session is server-side state that keeps being billed for
               until released. Sessions replaced by earlier rotations were already disposed at the
               moment they were replaced, so disposing the session releases everything it still holds.
-              Repeated disposal is permitted because a disposal pattern that threw on a second call
-              would make defensive cleanup harder than leaving the resource open.
+              A failed release is reported, unlike the same failure during a rotation, because a
+              caller that asked for the session to be released is entitled to learn that it was not.
+              Because it is reported, it must also stay retryable: the session is marked disposed
+              from the first call and refuses further turns either way, but the provider counts as
+              released only once its own disposal has completed, so a later call tries again instead
+              of returning as though the release had happened. Marking it released before awaiting
+              the release would turn a transient provider failure into a permanent leak. Repeated
+              disposal after a successful release is permitted because a disposal pattern that threw
+              on a second call would make defensive cleanup harder than leaving the resource open.
             tests:
               - CompactingAgentSession_DisposeAsync_ReleasesTheLiveProviderSession
+              - CompactingAgentSession_DisposeAsync_FirstReleaseFails_RetriesAndReleases

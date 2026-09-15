@@ -74,13 +74,15 @@ public class ProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves an adapter that did call tools can record exactly what happened, so the engine's
-    ///     transcript matches what the provider holds and a tier boundary can be snapped correctly.
+    ///     Proves a tool-using turn records what led to the answer and then the answer itself. The
+    ///     entries are what every consumer records — the engine's transcript and any session keeping
+    ///     its own history — so an answer absent from them is an answer absent from the history a
+    ///     later turn is seeded from.
     /// </summary>
     [Fact]
-    public void ProviderTurn_Construct_WithEntries_PreservesThemExactly()
+    public void ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer()
     {
-        // Arrange: the entries a tool-using turn produced
+        // Arrange: the entries a tool-using turn produced before answering
         TranscriptEntry[] entries =
         [
             TranscriptEntry.Assistant("let me look"),
@@ -91,8 +93,56 @@ public class ProviderSessionTests
         // Act: record the turn
         var turn = new ProviderTurn("the answer", entries);
 
-        // Assert: the supplied entries are carried through unchanged
+        // Assert: the supplied entries are carried through unchanged, in order, ahead of the answer
+        Assert.Equal(4, turn.Entries.Count);
+        Assert.Equal(entries, turn.Entries.Take(3));
+
+        // Assert: and the answer is the last entry
+        Assert.Equal(TranscriptEntryKind.AssistantMessage, turn.Entries[^1].Kind);
+        Assert.Equal("the answer", turn.Entries[^1].Text);
+    }
+
+    /// <summary>
+    ///     Proves an adapter that already ended its entries with the answer — one mapping a
+    ///     provider's own message list straight across — does not have it recorded twice, which
+    ///     would bill the conversation for it twice and show the model saying the same thing twice.
+    /// </summary>
+    [Fact]
+    public void ProviderTurn_Construct_EntriesAlreadyEndingWithTheAnswer_RecordItOnce()
+    {
+        // Arrange: entries whose final assistant message is the answer itself
+        TranscriptEntry[] entries =
+        [
+            TranscriptEntry.ToolCall("c1", "read"),
+            TranscriptEntry.ToolResult("c1", "contents"),
+            TranscriptEntry.Assistant("the answer")
+        ];
+
+        // Act: record the turn
+        var turn = new ProviderTurn("the answer", entries);
+
+        // Assert: exactly the supplied entries, with the answer appearing once
         Assert.Equal(entries, turn.Entries);
+        Assert.Single(turn.Entries, entry =>
+            entry.Kind == TranscriptEntryKind.AssistantMessage && entry.Text == "the answer");
+    }
+
+    /// <summary>
+    ///     Proves an assistant entry that merely precedes the answer is not mistaken for it: only a
+    ///     trailing entry carrying the answer text is taken to be the answer already recorded.
+    /// </summary>
+    [Fact]
+    public void ProviderTurn_Construct_TrailingAssistantEntryWithDifferentText_AppendsTheAnswer()
+    {
+        // Arrange: a turn whose last entry is an assistant message saying something else
+        TranscriptEntry[] entries = [TranscriptEntry.Assistant("let me look")];
+
+        // Act: record the turn
+        var turn = new ProviderTurn("the answer", entries);
+
+        // Assert: the answer is appended rather than assumed present
+        Assert.Equal(2, turn.Entries.Count);
+        Assert.Equal("the answer", turn.Entries[^1].Text);
     }
 
     /// <summary>

@@ -103,8 +103,26 @@ public sealed class ProviderSessionSeed
 ///     <para>
 ///     The response text and the history entries are separate because they answer different
 ///     questions. The text is what the application shows or acts on; the entries are what the
-///     engine records, and for a tool-using turn there are several of them — an assistant message,
-///     then call and result pairs — none of which is the answer.
+///     engine records, and for a tool-using turn there are several of them — an assistant message
+///     announcing the work, then call and result pairs.
+///     </para>
+///     <para>
+///     <b>The answer is always the last entry, and is recorded exactly once.</b> An adapter
+///     describes what happened <em>before</em> the answer; this class appends the answer itself, on
+///     both paths — as the only entry when none were supplied, and after the supplied ones when
+///     they were. It is done here rather than in the engine because <see cref="Entries"/> is what
+///     <em>every</em> consumer records: the compaction engine's transcript, and any session that
+///     keeps its own history from the turns it produced. An answer appended by one consumer would
+///     be missing from the others, and the two records would describe different conversations. An
+///     agent that uses tools on nearly every turn would otherwise have almost none of its own
+///     output in the history that later turns are seeded from, which is precisely what the
+///     compaction engine exists to preserve.
+///     </para>
+///     <para>
+///     An adapter that has already recorded the answer as its final entry — one mapping a
+///     provider's own message list straight across, say — is not made to strip it: a trailing
+///     assistant entry whose text is the answer <em>is</em> the answer, and is not repeated. So
+///     either adapter style yields exactly one copy.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
@@ -116,16 +134,19 @@ public sealed class ProviderTurn
     ///     Initializes a new instance of the <see cref="ProviderTurn"/> class.
     /// </summary>
     /// <remarks>
-    ///     When no entries are supplied, the turn is recorded as a single assistant message
-    ///     carrying <paramref name="responseText"/>. That is the correct record for a provider that
-    ///     called no tools, and it spares a simple adapter from restating its own answer.
+    ///     <see cref="Entries"/> always ends with an assistant message carrying
+    ///     <paramref name="responseText"/>, whether or not <paramref name="entries"/> were supplied,
+    ///     and never carries it twice. An adapter therefore supplies what led to the answer and need
+    ///     not restate the answer itself.
     /// </remarks>
     /// <param name="responseText">
     ///     The provider's answer. Must not be <see langword="null"/>; may be empty.
     /// </param>
     /// <param name="entries">
-    ///     The history entries the turn produced, in order. <see langword="null"/> or empty records
-    ///     the turn as one assistant message. Must contain no <see langword="null"/> entry.
+    ///     What the turn produced <em>before</em> the answer, in order — typically an assistant
+    ///     message announcing the work, then tool call and result pairs. <see langword="null"/> or
+    ///     empty records the turn as the answer alone. Supplying the answer as the final entry is
+    ///     accepted and does not record it twice. Must contain no <see langword="null"/> entry.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="responseText"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="entries"/> contains a <see langword="null"/> entry.</exception>
@@ -143,9 +164,7 @@ public sealed class ProviderTurn
         // Copy into storage this turn owns, exposed only as a read-only view, for the same reason
         // the seed does: the entries are what the engine records as history, and a turn is
         // documented as immutable.
-        Entries = entries is null || entries.Count == 0
-            ? Array.AsReadOnly<TranscriptEntry>([TranscriptEntry.Assistant(responseText)])
-            : Array.AsReadOnly<TranscriptEntry>([.. entries]);
+        Entries = Array.AsReadOnly(Record(responseText, entries));
     }
 
     /// <summary>
@@ -154,9 +173,39 @@ public sealed class ProviderTurn
     public string ResponseText { get; }
 
     /// <summary>
-    ///     Gets the history entries the turn produced, in order. Never empty.
+    ///     Gets the history entries the turn produced, in order, ending with the answer. Never
+    ///     empty.
     /// </summary>
     public IReadOnlyList<TranscriptEntry> Entries { get; }
+
+    /// <summary>
+    ///     Builds the entries this turn records, ending with the answer exactly once.
+    /// </summary>
+    /// <param name="responseText">The provider's answer.</param>
+    /// <param name="entries">What the turn produced before the answer, if anything.</param>
+    /// <returns>A freshly allocated array this turn takes ownership of.</returns>
+    private static TranscriptEntry[] Record(string responseText, IReadOnlyList<TranscriptEntry>? entries)
+    {
+        // Nothing before the answer: the answer is the whole record. That is the correct history
+        // for a provider that called no tools.
+        if (entries is null || entries.Count == 0)
+        {
+            return [TranscriptEntry.Assistant(responseText)];
+        }
+
+        // An adapter that mapped a provider's own message list across has already ended with the
+        // answer. Appending it again would bill the conversation twice for it and show the model
+        // saying the same thing twice, so a trailing assistant entry carrying exactly the answer is
+        // taken to be the answer.
+        var last = entries[^1];
+        if (last.Kind == TranscriptEntryKind.AssistantMessage &&
+            string.Equals(last.Text, responseText, StringComparison.Ordinal))
+        {
+            return [.. entries];
+        }
+
+        return [.. entries, TranscriptEntry.Assistant(responseText)];
+    }
 }
 
 /// <summary>
@@ -191,8 +240,9 @@ public interface IProviderSession : IAsyncDisposable
     /// <remarks>
     ///     An implementation may call tools before answering; the entries it returns should record
     ///     those calls and their results so the engine's transcript matches what the provider
-    ///     actually holds. A session that has been disposed rejects the call rather than
-    ///     reconnecting.
+    ///     actually holds. The answer itself need not be among them — <see cref="ProviderTurn"/>
+    ///     records it as the final entry either way. A session that has been disposed rejects the
+    ///     call rather than reconnecting.
     /// </remarks>
     /// <param name="message">The message to send. Must not be <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the turn.</param>

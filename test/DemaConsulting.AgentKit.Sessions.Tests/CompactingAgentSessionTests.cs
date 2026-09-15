@@ -245,6 +245,89 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves the answer of a tool-using turn survives a rotation into the seed of the
+    ///     replacement session. A turn that called tools produces call and result entries that say
+    ///     what was looked at but not what was concluded; if the conclusion is not recorded too, the
+    ///     agent's own output is missing from the history every later turn is seeded from — and an
+    ///     agent that uses tools on nearly every turn would lose nearly all of it.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ToolUsingTurnRotates_SeedsTheAnswerIntoTheReplacement()
+    {
+        // Arrange: a summarizer that keeps everything it is given, so what survives is decided by
+        // the tier arrangement rather than by a model's discretion
+        var summarizer = new FakeSummarizer(request =>
+            string.IsNullOrEmpty(request.PreviousRecord)
+                ? request.Material
+                : request.PreviousRecord + "\n" + request.Material);
+
+        // Arrange: a provider that calls a tool on every turn and states its conclusion only in the
+        // answer, which is exactly how a real tool-using adapter reports a turn
+        var factory = new InMemoryProviderSessionFactory(
+            message => new ProviderTurn(
+                $"Concluded: {message}",
+                [TranscriptEntry.ToolCall("c1", "read the file"), TranscriptEntry.ToolResult("c1", "contents")]),
+            windowTokens: 400);
+        var options = new AgentSessionOptions(
+            summarizer, providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+
+        // Act: one distinctive tool-using turn, then enough routine turns to force a rotation
+        await session.SendAsync("where does the deployment key live", TestContext.Current.CancellationToken);
+        for (var turn = 0; turn < 10; turn++)
+        {
+            await session.SendAsync(
+                $"routine step {turn} " + new string('p', 30 * TokenEstimator.CharactersPerToken),
+                TestContext.Current.CancellationToken);
+        }
+
+        // Assert: the session rotated, so the newest provider session was seeded rather than grown
+        Assert.True(session.RotationCount >= 1, $"Expected a rotation, saw {session.RotationCount}.");
+        Assert.True(factory.Sessions.Count >= 2);
+
+        // Assert: the conclusion the agent reached on that first turn is in what the replacement was
+        // seeded with, not just the tool traffic that led to it
+        var seeded = string.Join("\n", factory.Sessions[^1].Seed.History.Select(entry => entry.Text));
+        Assert.Contains("Concluded: where does the deployment key live", seeded, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a failed release can be retried. Disposal that marked itself done before the
+    ///     provider had actually been released would turn a transient provider failure into a
+    ///     permanent leak: every later call would return at the disposed check while the provider
+    ///     still held server-side state.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_DisposeAsync_FirstReleaseFails_RetriesAndReleases()
+    {
+        // Arrange: a provider whose first disposal fails and whose second succeeds
+        var factory = new ThrowingDisposeProviderSessionFactory(
+            _ => new ProviderTurn("noted"),
+            disposeFailures: 1);
+        var options = new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: 100_000);
+        var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+        await session.SendAsync("hello", TestContext.Current.CancellationToken);
+
+        // Act: the first disposal propagates the failure, as a caller that asked for a release is
+        // entitled to learn that it did not happen
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await session.DisposeAsync());
+        Assert.False(factory.Sessions[0].IsDisposed);
+
+        // Act: retry
+        await session.DisposeAsync();
+
+        // Assert: the provider really was released on the retry, and a third call is a no-op
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.Equal(2, factory.Sessions[0].DisposeAttempts);
+        await session.DisposeAsync();
+        Assert.Equal(2, factory.Sessions[0].DisposeAttempts);
+
+        // Assert: the session refused turns from the first disposal onwards, failed release or not
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("again", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     Proves a missing configuration or provider factory is refused where the host wrote it,
     ///     rather than at the first conversation.
     /// </summary>
@@ -270,14 +353,34 @@ public class CompactingAgentSessionTests
 /// </remarks>
 /// <param name="seed">What the session was started from.</param>
 /// <param name="responder">Produces the turn for a given message.</param>
+/// <param name="disposeFailures">
+///     How many disposal attempts fail before one succeeds. The default never succeeds, which is
+///     the shape a rotation scenario needs; a finite count models the transient failure a retry
+///     recovers from.
+/// </param>
 internal sealed class ThrowingDisposeProviderSession(
     ProviderSessionSeed seed,
-    Func<string, ProviderTurn> responder) : IProviderSession
+    Func<string, ProviderTurn> responder,
+    int disposeFailures = int.MaxValue) : IProviderSession
 {
+    /// <summary>
+    ///     The disposal attempts still to fail before one succeeds.
+    /// </summary>
+    private int _remainingFailures = disposeFailures;
+
     /// <summary>
     ///     Gets what the session was started from.
     /// </summary>
     public ProviderSessionSeed Seed { get; } = seed;
+
+    /// <summary>
+    ///     Gets how many times disposal was attempted on this session.
+    /// </summary>
+    /// <remarks>
+    ///     Counted rather than flagged: a retry is only a retry if the release was actually
+    ///     attempted again, and a release already completed must not be attempted a third time.
+    /// </remarks>
+    public int DisposeAttempts { get; private set; }
 
     /// <summary>
     ///     Gets a value indicating whether disposal was attempted on this session.
@@ -286,7 +389,16 @@ internal sealed class ThrowingDisposeProviderSession(
     ///     Recorded rather than inferred: a rotation that swallows the disposal failure must still
     ///     be shown to have tried to release the session it replaced.
     /// </remarks>
-    public bool DisposeAttempted { get; private set; }
+    public bool DisposeAttempted => DisposeAttempts > 0;
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was actually released.
+    /// </summary>
+    /// <remarks>
+    ///     The distinction that matters to a retry: an attempt that threw left the session held,
+    ///     and only a completed disposal releases it.
+    /// </remarks>
+    public bool IsDisposed { get; private set; }
 
     /// <inheritdoc/>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
@@ -299,12 +411,21 @@ internal sealed class ThrowingDisposeProviderSession(
 
     /// <inheritdoc/>
     /// <remarks>
-    ///     Records the attempt and then fails, which is the whole point of this fake.
+    ///     Records the attempt and then fails while any failures remain, which is the whole point of
+    ///     this fake.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
-        DisposeAttempted = true;
-        throw new InvalidOperationException("The provider session could not be released.");
+        DisposeAttempts++;
+
+        if (_remainingFailures > 0)
+        {
+            _remainingFailures--;
+            throw new InvalidOperationException("The provider session could not be released.");
+        }
+
+        IsDisposed = true;
+        return default;
     }
 }
 
@@ -317,7 +438,10 @@ internal sealed class ThrowingDisposeProviderSession(
 ///     that a replacement was created, and that the session it replaced was asked to release itself.
 /// </remarks>
 /// <param name="responder">Produces the turn for a given message.</param>
-internal sealed class ThrowingDisposeProviderSessionFactory(Func<string, ProviderTurn> responder)
+/// <param name="disposeFailures">How many disposal attempts on each session fail before one succeeds.</param>
+internal sealed class ThrowingDisposeProviderSessionFactory(
+    Func<string, ProviderTurn> responder,
+    int disposeFailures = int.MaxValue)
     : IProviderSessionFactory
 {
     /// <summary>
@@ -333,7 +457,7 @@ internal sealed class ThrowingDisposeProviderSessionFactory(Func<string, Provide
         ArgumentNullException.ThrowIfNull(seed);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var session = new ThrowingDisposeProviderSession(seed, responder);
+        var session = new ThrowingDisposeProviderSession(seed, responder, disposeFailures);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

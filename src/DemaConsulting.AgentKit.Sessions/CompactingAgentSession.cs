@@ -74,9 +74,20 @@ public sealed class CompactingAgentSession : IAgentSession
     private IProviderSession _provider;
 
     /// <summary>
-    ///     Whether this session has been disposed.
+    ///     Whether this session has been disposed, and so refuses further turns.
     /// </summary>
     private bool _disposed;
+
+    /// <summary>
+    ///     Whether the live provider session has actually been released.
+    /// </summary>
+    /// <remarks>
+    ///     Tracked separately from <see cref="_disposed"/> because the two answer different
+    ///     questions: whether this session may still be used, and whether anything is still held on
+    ///     the provider's side. A release that failed leaves the second false, which is what allows
+    ///     it to be retried.
+    /// </remarks>
+    private bool _released;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="CompactingAgentSession"/> class.
@@ -196,6 +207,10 @@ public sealed class CompactingAgentSession : IAgentSession
         // consolidate and seed into the replacement session.
         var turn = await _provider.SendAsync(message, cancellationToken).ConfigureAwait(false);
 
+        // The turn's entries end with the answer, whether the adapter supplied entries or not, so
+        // recording them records the whole turn - message, any tool work, and what the agent
+        // concluded. That last part is what a later turn, seeded after a rotation from this very
+        // transcript, needs in order to see what it already decided.
         Layout = Layout.WithTranscript(
             Layout.Transcript.Append(TranscriptEntry.User(message)).Append(turn.Entries));
 
@@ -216,19 +231,40 @@ public sealed class CompactingAgentSession : IAgentSession
 
     /// <inheritdoc/>
     /// <remarks>
+    ///     <para>
     ///     Disposes whichever provider session is currently live. Sessions replaced by earlier
     ///     rotations were already disposed at the moment they were replaced, so nothing is left
-    ///     holding server-side state. Disposing twice is permitted and does nothing the second time.
+    ///     holding server-side state.
+    ///     </para>
+    ///     <para>
+    ///     A failure to release propagates, because a caller that asked for the session to be
+    ///     released is entitled to learn that it was not — the deliberate opposite of a rotation,
+    ///     which swallows the same failure because by then it has already succeeded and the session
+    ///     is coherent against its replacement.
+    ///     </para>
+    ///     <para>
+    ///     Because the failure propagates, disposal stays retryable: this session is marked disposed
+    ///     from the first call, so it refuses further turns either way, but the provider is
+    ///     considered released only once its own disposal has completed. A later call therefore
+    ///     tries again rather than returning as though the release had happened, so a transient
+    ///     provider failure does not become a permanent leak. Once the release has succeeded,
+    ///     disposing again is permitted and does nothing.
+    ///     </para>
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        // Marked before the release is attempted, and regardless of how it ends. The caller has
+        // given this session up; a turn taken after that would go to a provider session this object
+        // is in the middle of releasing.
+        _disposed = true;
+
+        if (_released)
         {
             return;
         }
 
-        _disposed = true;
         await _provider.DisposeAsync().ConfigureAwait(false);
+        _released = true;
     }
 
     /// <summary>

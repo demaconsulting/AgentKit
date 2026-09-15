@@ -32,7 +32,8 @@ Public properties:
 - **`ConsolidationCount`** (`int`) — The total consolidations every rotation of this session has performed
 
 Private state: the options, the provider-session factory, the live provider session (replaced at
-every rotation), and a disposal flag.
+every rotation), a disposal flag, and a release flag recording whether the live provider session has
+actually been released.
 
 `ConsolidationCount` is exposed because summarizer calls are the dominant cost of this arrangement,
 and the tiered scheme's advantage over a flat rolling summary is partly that it makes fewer of them.
@@ -126,8 +127,21 @@ was not.
 
 Disposes whichever provider session is currently live. Sessions replaced by earlier rotations were
 already disposed at the moment they were replaced, so nothing is left holding server-side state.
-Disposing twice is permitted and does nothing the second time, because a disposal pattern that threw
-on a second call would make defensive cleanup harder than leaving the resource open.
+
+A failure to release propagates — the deliberate opposite of a rotation, which swallows the same
+failure because by then it has already succeeded. **Because it propagates, disposal stays
+retryable.** The disposal flag and the release flag are separate, and they answer different
+questions: whether this session may still be used, and whether anything is still held on the
+provider's side. The first is set from the first call, so the session refuses further turns whether
+or not the release succeeded; the second is set only once the provider's own disposal has completed.
+A later call therefore attempts the release again rather than returning as though it had happened,
+so a transient provider failure does not become a permanent leak. Marking the session released
+before awaiting the release would make that impossible: every later call would return at the flag
+while the provider still held the conversation.
+
+Once the release has succeeded, disposing again is permitted and does nothing, because a disposal
+pattern that threw on a second call would make defensive cleanup harder than leaving the resource
+open.
 
 #### ReadUsage(IProviderSession provider, AgentSessionOptions options, ContextLayout layout)
 
@@ -146,9 +160,11 @@ sites that need a usage figure, is what keeps the two provider families on one c
 - **Superseded provider session fails to dispose during rotation** — Caught and not reported; the
   rotation already succeeded and the session is coherent against its replacement
 - **Live provider session fails to dispose on `DisposeAsync`** — Propagates; a caller that asked for
-  the session to be released is entitled to learn that it was not
+  the session to be released is entitled to learn that it was not, and the release may be retried by
+  disposing again
 - **Rotation reports saturation** — Surfaced on the response; not an exception
-- **Second disposal** — Permitted; does nothing
+- **Second disposal** — Permitted; releases the provider session if an earlier attempt failed,
+  otherwise does nothing
 
 ### Dependencies
 

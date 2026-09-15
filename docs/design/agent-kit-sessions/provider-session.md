@@ -44,13 +44,29 @@ fixed overhead rather than as conversation. Rotation replaces history, never cap
 `ProviderTurn` properties, immutable after construction:
 
 - **`ResponseText`** (`string`) — Never null; may be empty
-- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Never null or empty; never contains null; a read-only view over a
-  copy taken at construction, for the same reason the seed copies its lists
+- **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Never null or empty; never contains null; always **ends with an
+  assistant message carrying `ResponseText`**; a read-only view over a copy taken at construction, for the same reason
+  the seed copies its lists
 
 The answer and the history entries are separate because they answer different questions. The text is
-what the application shows or acts on; the entries are what the engine records, and for a tool-using
-turn there are several of them — an assistant message, then call and result pairs — none of which is
-the answer.
+what the application shows or acts on; the entries are what every consumer records, and for a
+tool-using turn there are several of them — an assistant message announcing the work, then call and
+result pairs.
+
+**The answer is recorded exactly once, by `ProviderTurn` itself, on both paths.** An adapter
+describes what happened *before* the answer and the turn appends the answer as the final entry: as
+the only entry when no others were supplied, and after the supplied ones when they were. Doing it
+here rather than in the compaction engine is deliberate, because `Entries` is what *every* consumer
+records — the engine's transcript, and any session keeping its own history from the turns it
+produced, `InMemoryProviderSession` among them. An answer appended by one consumer would be missing
+from the others, and the two records would then describe different conversations. The consequence of
+leaving it out of `Entries` altogether was worse still: an agent that uses tools on nearly every turn
+would have almost none of its own output in the history a rotation seeds the replacement session
+from, which is exactly the material the compaction engine exists to preserve.
+
+An adapter that mapped a provider's own message list straight across has already ended with the
+answer; it is not made to strip it. A trailing assistant entry whose text is the answer *is* the
+answer and is not repeated, so either adapter style yields exactly one copy.
 
 ### Key Methods
 
@@ -62,16 +78,21 @@ failure would otherwise be attributed to the provider rather than to the composi
 
 #### ProviderTurn(string responseText, IReadOnlyList&lt;TranscriptEntry&gt;? entries)
 
-When no entries are supplied, the turn is recorded as a single assistant message carrying
-`responseText`. That is the correct record for a provider that called no tools, and it spares a
-simple adapter from restating its own answer.
+Builds the entries the turn records, ending with the answer exactly once. When no entries are
+supplied, the turn is recorded as a single assistant message carrying `responseText` — the correct
+record for a provider that called no tools. When entries are supplied, they are carried through
+unchanged and an assistant message carrying `responseText` is appended after them, unless the last
+supplied entry is already an assistant message carrying exactly that text, in which case it is taken
+to be the answer and is not duplicated. Either way a simple adapter is spared from restating its own
+answer, and a faithful one is spared from stripping it.
 
 #### IProviderSession.SendAsync(string message, CancellationToken cancellationToken)
 
 Sends one message and returns what the provider produced. An implementation may call tools before
 answering; the entries it returns should record those calls and their results so the engine's
 transcript matches what the provider actually holds — which is what allows a tier boundary to be
-snapped correctly.
+snapped correctly. The answer itself need not be among them, because `ProviderTurn` records it as
+the final entry either way.
 
 **Preconditions:** `message` is not null; the session has not been disposed.
 

@@ -29,18 +29,26 @@ sections:
 
           - id: AgentKitSessions-ProviderSession-RecordsWhatATurnProduced
             title: >-
-              A provider turn shall carry the answer and the history entries the turn produced,
-              recording a turn with no explicit entries as a single assistant message.
+              A provider turn shall carry the answer and the history entries the turn produced, with
+              the entries always ending in an assistant message carrying the answer, recorded exactly
+              once.
             justification: |
               The answer and the history entries answer different questions: the answer is what the
-              application shows or acts on, while the entries are what the engine records, and for a
-              tool-using turn there are several of them - an assistant message, then call and result
-              pairs - none of which is the answer. Defaulting to one assistant message is the correct
-              record for a provider that called no tools and spares a simple adapter from restating
-              its own answer.
+              application shows or acts on, while the entries are what every consumer records - the
+              compaction engine's transcript, and any session keeping its own history from the turns
+              it produced. The turn appends the answer itself, on both paths, because an answer
+              appended by one consumer would be missing from the others and the two records would
+              then describe different conversations. Leaving it out of the entries altogether was
+              worse: an agent that uses tools on nearly every turn would have almost none of its own
+              output in the history a rotation seeds the replacement session from, which is the
+              material the engine exists to preserve. An adapter that already ended its entries with
+              the answer is not made to strip it - a trailing assistant entry carrying exactly the
+              answer is taken to be the answer - so either adapter style yields exactly one copy.
             tests:
               - ProviderTurn_Construct_NoEntries_RecordsOneAssistantMessage
-              - ProviderTurn_Construct_WithEntries_PreservesThemExactly
+              - ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer
+              - ProviderTurn_Construct_EntriesAlreadyEndingWithTheAnswer_RecordItOnce
+              - ProviderTurn_Construct_TrailingAssistantEntryWithDifferentText_AppendsTheAnswer
 
           - id: AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn
             title: >-

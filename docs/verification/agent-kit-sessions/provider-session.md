@@ -13,14 +13,17 @@ Their obligations are verified where an implementation exists, in _InMemoryProvi
 Verification Design_, and their use by the engine is verified in _CompactingAgentSession Unit
 Verification Design_.
 
-One scenario is worth singling out: `ProviderTurn_Construct_WithEntries_PreservesThemExactly`
+One scenario is worth singling out: `ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer`
 asserts the supplied entries are preserved **unchanged** — equal, in the same order, with nothing
-added, dropped or transformed. It does not assert, and must not be read as asserting, that the same
-list instance is retained: the implementation deliberately copies the entries into owned read-only
-storage, because a turn is documented as immutable. An adapter that recorded a tool-using turn must
-have exactly those entries reach the engine's transcript, because the transcript is what a tier
-boundary is snapped against; a defensive copy is harmless and is what is done, whereas a
-transformation would not be, and equality of the whole sequence is what rules a transformation out.
+dropped or transformed — and that the answer follows them as the final entry. It does not assert, and
+must not be read as asserting, that the same list instance is retained: the implementation
+deliberately copies the entries into owned read-only storage, because a turn is documented as
+immutable. An adapter that recorded a tool-using turn must have exactly those entries reach the
+engine's transcript, because the transcript is what a tier boundary is snapped against; a defensive
+copy is harmless and is what is done, whereas a transformation would not be, and equality of the
+supplied sequence is what rules a transformation out. The appended answer is not a transformation of
+what the adapter supplied but the part of the turn it was not asked to supply, and the scenarios
+either side of it pin down that it is recorded once and only once.
 
 Unit tests reside in `ProviderSessionTests.cs` within the
 `DemaConsulting.AgentKit.Sessions.Tests` project.
@@ -37,7 +40,8 @@ Unit tests reside in `ProviderSessionTests.cs` within the
 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any seed or turn that accepts a null collection or a null entry, any turn that
-loses the entries an adapter recorded, or any turn with no entries at all constitutes a failure.
+loses the entries an adapter recorded, any turn whose entries do not end with the answer or carry it
+twice, or any turn with no entries at all constitutes a failure.
 
 ### Test Scenarios
 
@@ -57,12 +61,23 @@ let it start a session from something other than what was validated.
 #### AgentKitSessions-ProviderSession-RecordsWhatATurnProduced: A Turn Records What Actually Happened
 
 **Tests**: `ProviderTurn_Construct_NoEntries_RecordsOneAssistantMessage`,
-`ProviderTurn_Construct_WithEntries_PreservesThemExactly`
+`ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer`,
+`ProviderTurn_Construct_EntriesAlreadyEndingWithTheAnswer_RecordItOnce`,
+`ProviderTurn_Construct_TrailingAssistantEntryWithDifferentText_AppendsTheAnswer`
 
 A plain answer with no explicit entries is recorded as a single assistant message carrying that
 answer — the correct history for a provider that called no tools, and one less thing a simple
-adapter has to restate. A tool-using turn's entries are carried through unchanged, so the engine's
-transcript matches what the provider holds and a tier boundary can be snapped correctly.
+adapter has to restate. A tool-using turn's entries are carried through unchanged and the answer is
+appended after them, so the engine's transcript matches what the provider holds, a tier boundary can
+be snapped correctly, **and the conclusion the agent reached is in the history too**. Without the
+last part a tool-using turn would record what was looked at and not what was decided, and an agent
+that uses tools on nearly every turn would be seeded after every rotation from a history holding
+almost none of its own output.
+
+The final two scenarios pin the "exactly once" half of the contract from both sides. An adapter that
+mapped a provider's own message list straight across has already ended with the answer, and it is not
+recorded twice; an assistant entry that merely precedes the answer — the model announcing the work it
+is about to do — is not mistaken for it, and the answer is still appended.
 
 #### AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn: A Malformed Seed or Turn Is Refused
 

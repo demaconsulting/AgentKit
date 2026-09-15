@@ -29,8 +29,9 @@ public class InMemoryProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves a turn records the incoming message and everything the turn produced, so the
-    ///     session's history matches what a provider holding the conversation server-side would have.
+    ///     Proves a turn records the incoming message and everything the turn produced — the tool
+    ///     work and the answer that followed it — so the session's history matches what a provider
+    ///     holding the conversation server-side would have.
     /// </summary>
     [Fact]
     public async Task InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn()
@@ -45,11 +46,13 @@ public class InMemoryProviderSessionTests
         // Act: take one turn
         var turn = await session.SendAsync("please read", TestContext.Current.CancellationToken);
 
-        // Assert: the message and both turn entries were recorded, in order
+        // Assert: the message, both turn entries and the answer were recorded, in order
         Assert.Equal("done", turn.ResponseText);
-        Assert.Equal(3, session.History.Count);
+        Assert.Equal(4, session.History.Count);
         Assert.Equal(TranscriptEntryKind.UserMessage, session.History[0].Kind);
         Assert.Equal(TranscriptEntryKind.ToolResult, session.History[2].Kind);
+        Assert.Equal(TranscriptEntryKind.AssistantMessage, session.History[3].Kind);
+        Assert.Equal("done", session.History[3].Text);
         Assert.Equal(1, session.TurnCount);
     }
 

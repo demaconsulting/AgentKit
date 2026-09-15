@@ -197,8 +197,9 @@ because what to do about a saturated agent depends on what the application is fo
 ```text
 application message
   -> IProviderSession.SendAsync
-  -> on success, the message and the ProviderTurn (answer + entries) are recorded together in
-     SessionTranscript (inside ContextLayout); a turn the provider never accepted records nothing
+  -> on success, the message and the ProviderTurn entries (which end with the answer) are recorded
+     together in SessionTranscript (inside ContextLayout); a turn the provider never accepted
+     records nothing
   -> usage read from IContextUsageReporter, or estimated by TokenEstimator
   -> if conversation tokens < threshold: return the answer
   -> otherwise:

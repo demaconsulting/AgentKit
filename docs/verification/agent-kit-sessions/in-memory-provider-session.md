@@ -49,10 +49,12 @@ factory that forgets a session it created constitutes a failure.
 
 The first asserts a session created from a seed carrying a consolidated record and one verbatim turn
 starts holding both, and exposes the seed itself so a rotation's preserved content can be inspected.
-The second drives a turn whose responder calls a tool and asserts the incoming message and both turn
-entries were recorded in order — the history a provider holding the conversation server-side would
-have. The third asserts the default responder answers and names the message, so a scenario about the
-session lifecycle is not obliged to also invent what a model says.
+The second drives a turn whose responder calls a tool and asserts the incoming message, both tool
+entries and the answer that ends the turn were recorded in order — the history a provider holding the
+conversation server-side would have, and the same history the engine's own transcript holds, because
+both record a turn's entries and those entries end with the answer. The third asserts the default
+responder answers and names the message, so a scenario about the session lifecycle is not obliged to
+also invent what a model says.
 
 #### AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes: Usage Is Reported, or Withheld
 
