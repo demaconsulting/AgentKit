@@ -399,7 +399,7 @@ public static class RotationEngine
             //
             // "An older record" means a record holding something, not merely a string of non-zero
             // length. A summarizer is permitted to return whitespace - ISummarizer forbids only null
-            // - and a whitespace previous record treated as cascadable material was handed to a
+            // - and a whitespace previous record treated as material to cascade was handed to a
             // ConsolidationRequest, which refuses blank material, throwing an ArgumentException out
             // of this method that RotateAsync does not document and SendAsync does not expect. The
             // whitespace record was permanent state by then, so every later rotation failed the same

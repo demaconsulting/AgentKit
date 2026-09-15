@@ -30,10 +30,10 @@ everything beyond a handful of rotations.
 `ConsolidationRequest` properties, immutable after construction:
 
 - **`TierIndex`** (`int`) — One or greater; tier zero is verbatim history and is never consolidated into
-- **`PreviousRecord`** (`string?`) — Null or empty when this is the first recording into the tier
+- **`PreviousRecord`** (`string?`) — Null, empty or blank when this is the first recording into the tier
 - **`Material`** (`string`) — Never null or blank; the new material, rendered as labeled transcript text
 - **`BudgetTokens`** (`int`) — Positive; supplied **for information only**
-- **`IsDegradation`** (`bool`) — Derived: true when there is no previous record
+- **`IsDegradation`** (`bool`) — Derived: true when there is no previous record, a blank one counting as none
 
 **`BudgetTokens` is not an instruction to the model, and must never be turned into one.** Asking a
 model to hit a token count does not work: in the compaction spike that preceded this package,

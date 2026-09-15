@@ -165,17 +165,20 @@ public class RotationEngineTests
     [Fact]
     public async Task RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult()
     {
-        // Arrange: interleaved runs of parallel calls, long enough to overflow tier zero and to put
-        // the boundary inside a run rather than tidily between two runs
+        // Arrange: six interleaved runs of parallel calls, each entry exactly 13 tokens. Tier zero's
+        // budget of 100 retains seven of them, which puts the boundary on index 17 - the second call
+        // of a run. That is the discriminating position: the first retained entry is a call, so a
+        // first-entry-only check sees nothing wrong, while that run's first result stays retained
+        // with its own call in the overflow.
         var summarizer = new FakeSummarizer();
         var transcript = SessionTranscript.Empty;
         for (var run = 0; run < 6; run++)
         {
             transcript = transcript
-                .Append(TranscriptEntry.ToolCall($"a{run}", new string('c', 11 * TokenEstimator.CharactersPerToken)))
-                .Append(TranscriptEntry.ToolCall($"b{run}", new string('c', 11 * TokenEstimator.CharactersPerToken)))
-                .Append(TranscriptEntry.ToolResult($"a{run}", new string('r', 11 * TokenEstimator.CharactersPerToken)))
-                .Append(TranscriptEntry.ToolResult($"b{run}", new string('r', 11 * TokenEstimator.CharactersPerToken)));
+                .Append(SessionTestData.ToolCallOfTokens(13, $"a{run}"))
+                .Append(SessionTestData.ToolCallOfTokens(13, $"b{run}"))
+                .Append(SessionTestData.ToolResultOfTokens(13, $"a{run}"))
+                .Append(SessionTestData.ToolResultOfTokens(13, $"b{run}"));
         }
 
         // Act: rotate
@@ -499,13 +502,12 @@ public class RotationEngineTests
     [Fact]
     public async Task RotationEngine_RotateAsync_CanceledMidCascade_StopsWithoutFinishingTheCascade()
     {
-        // Arrange: a summarizer that cancels on its first call, ignores the token, and always
+        // Arrange: a summarizer that cancels on its first call and then ignores the token entirely,
+        // exactly as a contract-conformant but inattentive implementation would, and that always
         // overflows its tier so the rotation would otherwise cascade through every tier
         using var source = new CancellationTokenSource();
-        var calls = 0;
-        var summarizer = new FakeSummarizer(request =>
+        var summarizer = new InattentiveSummarizer(request =>
         {
-            calls++;
             source.Cancel();
             return new string('x', 3 * request.BudgetTokens * TokenEstimator.CharactersPerToken);
         });
@@ -525,7 +527,8 @@ public class RotationEngineTests
             RotationEngine.RotateAsync(seeded, summarizer, source.Token));
 
         // Assert: it stopped at the cancellation instead of finishing the cascade. Exactly one
-        // consolidation ran - the one that did the canceling - and the engine refused the next.
-        Assert.Equal(1, calls);
+        // consolidation ran - the one that did the canceling - and the engine refused the next,
+        // which the summarizer itself would never have done.
+        Assert.Equal(1, summarizer.CallCount);
     }
 }

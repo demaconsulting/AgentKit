@@ -29,9 +29,11 @@ and a shared `Default` instance. An author who has configured tool limits needs 
 Published constants and defaults:
 
 - **`DefaultRotationThreshold`** (0.70) — Leaves 30 percent of the effective window as headroom, covering both the
-  error in a character-ratio estimate and the turn in flight when the threshold is crossed. Because the surviving
-  tiers are small, a rotation lands near 40 percent rather than just under the threshold, so rotation does not
-  immediately re-trigger
+  error in a character-ratio estimate and the turn in flight when the threshold is crossed. What guarantees rotation
+  does not immediately re-trigger is the convergence invariant `AgentSessionOptions` asserts — a rotated context
+  lands below the threshold — not this fraction on its own. How far below, and so how generous the hysteresis is,
+  depends on how the host sized its window against its tier budgets: sized several times the bound, a rotation lands
+  near 40 percent; sized near the invariant's minimum, it lands just under the threshold and buys one turn
 - **`DefaultSaturationRatio`** (0.90) — A genuine consolidation reduces its input substantially, so a result this
   close to its input is not a near miss but a signal that the material is as compressed as it will get
 - **`DefaultTierBudgetTokens`** (2000, 1200, 900, 700) — The shape matters more than the exact numbers: tier zero

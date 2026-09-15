@@ -106,39 +106,61 @@ the session exactly as it was.
 arrived, and the replacement is prepared for the turn after. A caller therefore never waits on a
 summarizer before receiving an answer the session could already give.
 
-**Why a reported window below the construction bound is refused rather than adapted.** The bound is
-the most the layout can ever occupy: the fixed overhead, every tier budget, and the framing each
-seeded tier record carries. A window below it cannot hold a freshly rotated context, so rotation
-cannot make progress. Left unchecked, the threshold derived from the reported window would be
-crossed on nearly every turn while `RotateAsync` still split tier zero at the policy's budget, so
-each rotation would hand back a layout still over the reported window and re-seed it — a thrash loop
-spending a summarizer call and a provider session per turn without converging. Adapting was
-considered and rejected: shrinking the tier budgets to fit would silently discard the compaction
-policy the host configured and would have to re-consolidate records already written against larger
-budgets, which is precisely what an immutable layout exists to prevent; ignoring the reported window
-would reinstate the defect the reported-window override removes, letting the session run past the
-provider's own compactor. `AgentSessionOptions` already refuses a *configured* window that cannot
-hold the bound, so failing here keeps one rule — a window that cannot hold the bound is refused —
+**Why a reported window a session could not converge in is refused rather than adapted.** A rotation
+leaves the conversation holding at most the tier budgets plus the framing each seeded tier record
+carries. The invariant the session needs is that this figure lands **below** the rotation threshold;
+merely holding it is the necessary condition, not the sufficient one, and asserting only that was
+the defect. For any window between the bound and the bound divided by the rotation fraction, the
+guard passed, the session rotated, the rotated layout was still at or above the threshold, and it
+rotated again on every following turn — spending a summarizer call and a provider session per turn
+while raising no saturation signal, because each individual consolidation reduced perfectly
+normally. Adapting was considered and rejected: shrinking the tier budgets to fit would silently
+discard the compaction policy the host configured and would have to re-consolidate records already
+written against larger budgets, which is precisely what an immutable layout exists to prevent;
+ignoring the reported window would reinstate the defect the reported-window override removes,
+letting the session run past the provider's own compactor. `AgentSessionOptions` already refuses a
+*configured* window on the same test, through the shared `ConvergesAt` predicate, so failing here
+keeps one rule — a window a session could not converge in is refused —
 and differs only in when the figure becomes knowable. The check runs at creation and after every
 turn, because a provider may only begin reporting, or report a smaller window, once it has answered
 something. The live provider is released before the exception is thrown, since the session is being
 abandoned mid-life and the caller has no handle to dispose; a failure to release is swallowed rather
 than allowed to replace the configuration error the caller can act on, and the release flag stays
-false so an explicit `DisposeAsync` still retries it.
+false so an explicit `DisposeAsync` still retries it. The release is unconditional: this method is
+reachable only from `CreateAsync`, holding a freshly created session, and from `SendAsync`, which
+has already refused a disposed session, so a guard on the release flag asserted something already
+known.
 
 **Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
-`InvalidOperationException` when the live provider reports a window smaller than the construction
-bound; `OperationCanceledException` on cancellation.
+`InvalidOperationException` when the live provider reports a window the session could not converge
+in; `OperationCanceledException` on cancellation.
 
 #### RotateAsync(CancellationToken cancellationToken)
 
 Ages the context by one rotation and replaces the live provider session with one seeded from the
 result.
 
-**Algorithm:** consolidate through `RotationEngine`; build a seed from the new layout; create the
-replacement; adopt it — swapping the provider reference and updating the layout, the rotation count,
-the consolidation total and the usage in one step containing no `await`; dispose the one it
-replaced; return the saturation reports.
+**Algorithm:** consolidate through `RotationEngine`; if it consolidated nothing, abandon the rotation
+and report that none occurred; otherwise build a seed from the new layout; create the replacement;
+adopt it — swapping the provider reference and updating the layout, the rotation count, the
+consolidation total and the usage in one step containing no `await`; dispose the one it replaced;
+return that a rotation occurred, with the saturation reports.
+
+**Why a rotation that consolidated nothing is abandoned.** The engine returns the layout unchanged
+when the transcript already fits tier zero, and for a pure function over a layout that genuinely
+costs nothing. It is not free here: carrying it out creates a replacement provider session, disposes
+the live one, increments the rotation count, and tells the caller a rotation happened — all to
+arrive at exactly the context the session already had. Repeated every turn that is a provider
+session per turn spent to achieve nothing, and it is invisible, because no consolidation ran and so
+nothing could saturate. Measured before this was fixed, a policy of `[100, 1]` in a 128-token window
+— accepted by both guards as they then stood — did that on 16 of 20 turns, creating 17 provider
+sessions while reporting no saturation at any point.
+
+The convergence invariant makes this case unreachable for a layout sitting within its tier budgets:
+the threshold it guarantees exceeds the coarse tiers and their framing by more than tier zero's
+budget, so anything able to cross the threshold must overflow tier zero. It remains reachable for a
+layout whose tier is over budget — precisely the saturated case the library exists to report — so
+the guard is kept rather than argued away.
 
 **The order is deliberate: consolidate first, create the replacement second, adopt it third, dispose
 the old session last.** A summarizer failure therefore leaves the session exactly as it was, still

@@ -32,9 +32,13 @@ sections:
               an author who has configured tool limits or memory options needs to learn nothing new.
               The default rotation threshold of 70 percent of the effective window leaves 30 percent
               of headroom, which covers both the error in a character-ratio token estimate and the
-              turn in flight when the threshold is crossed; because the surviving tiers are small,
-              a rotation lands the session near 40 percent rather than just under the threshold, so
-              rotation does not immediately re-trigger. The default budgets of 2,000, 1,200, 900 and
+              turn in flight when the threshold is crossed. What keeps rotation from re-triggering
+              immediately is the convergence invariant AgentSessionOptions asserts - a rotated
+              context lands below the rotation threshold - rather than this fraction by itself. How
+              far below, and so how generous the hysteresis is, is a property of how the host sized
+              its window against its tier budgets: sized several times the bound a rotation lands
+              near 40 percent, and sized near the invariant's minimum it lands just under the
+              threshold and buys a single turn. The default budgets of 2,000, 1,200, 900 and
               700 tokens are the starting values the compaction spike that preceded this package ran
               with (n = 50 rotations, one run, recorded in that spike); they are published as
               constants precisely so a different window or task shape can replace them.

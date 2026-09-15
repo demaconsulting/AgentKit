@@ -87,20 +87,30 @@ sections:
       - id: AgentKitSessions-Compaction-BoundedByConstruction
         title: >-
           The library shall bound the context it sends to the system prompt, plus the tool
-          declarations, plus the sum of the tier budgets, and shall refuse a configured or
-          provider-reported window that cannot accommodate that bound.
+          declarations, plus the sum of the tier budgets, plus the framing each tier record carries
+          when it is seeded, and shall refuse a configured or provider-reported window in which a
+          rotated context of that size would not land below the rotation threshold.
         tags: [system]
         justification: |
           An arrangement that merely tends to stay small is one that will eventually not. Because
           every tier carries a fixed budget, the total is a property of the configuration alone and
           can be stated before a session starts, which is what lets an application reason about cost
-          and about whether its window is large enough. A window that cannot hold the tier budgets
-          would rotate into a context already over budget and could never converge, so it is refused
-          rather than discovered from a session that never settles. That applies to both roads a
-          window figure arrives by: a configured window is refused where the application wrote it,
-          and a provider-reported one - which overrides the configured figure for threshold purposes
-          - is refused as soon as the provider reports it, with the live provider session released
-          on the way out.
+          and about whether its window is large enough. The seed framing is part of that total
+          because it is part of what the provider actually receives; omitting it from the statement
+          of the bound understates it by 81 of 311 tokens for the policy the tests use.
+
+          Fitting the window and settling in it are different conditions, and the requirement is the
+          second. A rotated context that merely fits still sits above the rotation threshold whenever
+          the window is smaller than the bound divided by the rotation fraction, so the next turn
+          rotates again and so does every turn after it - spending a summarizer call and a provider
+          session per turn while raising no saturation signal, because each individual consolidation
+          reduces perfectly normally. The invariant is therefore stated as a rotated context landing
+          below the rotation threshold, and a window that cannot satisfy it is refused rather than
+          discovered from a session that never settles. That applies to both roads a window figure
+          arrives by: a configured window is refused where the application wrote it, and a
+          provider-reported one - which overrides the configured figure for threshold purposes - is
+          refused as soon as the provider reports it, with the live provider session released on the
+          way out.
         children:
           - AgentKitSessions-AgentSessionOptions-AssertsTheBound
           - AgentKitSessions-ContextLayout-PublishesTheBound
@@ -112,6 +122,7 @@ sections:
           - AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
         tests:
           - AgentKitSessions_LongConversation_StaysWithinItsConstructionBound
+          - AgentKitSessions_SummarizerFillsEveryTier_StillConvergesBetweenRotations
 
       - id: AgentKitSessions-Compaction-OutOfSessionSummarizer
         title: >-

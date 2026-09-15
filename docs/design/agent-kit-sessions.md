@@ -41,10 +41,17 @@ A session runs as follows. `CompactingAgentSession` records each outgoing messag
 turn produced in its own `SessionTranscript`, held inside a `ContextLayout`. After each turn it asks
 the live provider session for its own account of the window, falling back to `TokenEstimator` when
 the provider offers none. When the conversation — usage with the fixed overhead removed — reaches
-the threshold `AgentSessionOptions` computed, it calls `RotationEngine`, which consolidates older
-history through the injected `ISummarizer` into the coarse tiers of the layout. The session then
-creates a replacement provider session from `ContextLayout.BuildSeed`, and only then disposes the
-one it replaced.
+the rotation threshold, it calls `RotationEngine`, which consolidates older history through the
+injected `ISummarizer` into the coarse tiers of the layout. The session then creates a replacement
+provider session from `ContextLayout.BuildSeed`, and only then disposes the one it replaced.
+
+**The threshold is derived from whichever window the usage figure was measured against.** A provider
+that reports its own window governs; the threshold `AgentSessionOptions` computed from the
+configured window governs only the family of providers that report nothing. Both apply identical
+arithmetic — subtract the fixed overhead, apply the policy's rotation fraction, floor at one token —
+so they differ only in which window they measure. Rotating at a fraction of the window exists to
+keep the provider's own compactor from ever firing, and that guarantee is about the window the
+provider actually has, so a configured window that disagrees with a reported one does not decide.
 
 ### Rotation, Not In-Place Reduction
 
@@ -109,9 +116,26 @@ that spike) — so subtracting them before the percentage is applied is what mak
 what it says.
 
 Seventy percent leaves 30 percent of headroom, which covers both the error in a character-ratio
-token estimate and the turn in flight when the threshold is crossed. Because the surviving tiers are
-sized in the low thousands of tokens, a rotation lands the session near 40 percent rather than just
-under the threshold, so the hysteresis is generous and rotation does not immediately re-trigger.
+token estimate and the turn in flight when the threshold is crossed.
+
+**A rotated context must land below the rotation threshold. That is the convergence invariant, and
+it is a constraint on sizing rather than a property of the mechanism.** A rotation leaves the
+conversation holding at most the sum of the tier budgets plus the framing their seeded records
+carry. If that figure is not strictly below the threshold, the layout a rotation produces is already
+over the threshold, so the next turn rotates again — and every turn after it, indefinitely, while
+raising no saturation signal, because each individual consolidation reduces perfectly normally. The
+tier budgets merely make a rotated context *fit* the window; landing below the threshold is what
+makes the session *settle*, and the two conditions are separated by a factor of the rotation
+fraction. `AgentSessionOptions` refuses any configuration that fails the invariant, and
+`CompactingAgentSession` refuses any provider-reported window that fails it.
+
+How much headroom there is beyond the one guaranteed turn depends on how generously the window was
+sized against the tier budgets. With the tiers sized in the low thousands of tokens against a window
+several times larger, a rotation lands the session near 40 percent rather than just under the
+threshold and rotation is comfortably infrequent; sized close to the invariant's minimum, the same
+mechanism guarantees only that a rotation is followed by at least one turn that does not rotate.
+The earlier claim that "a rotation lands the session near 40 percent" was stated as though it were a
+property of the mechanism; it is a property of that sizing.
 
 ### The Summarizer Runs Out of Session
 
@@ -157,7 +181,7 @@ conversion layer between them.
 
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, the tool currency the session
   options carry and the provider-session seed hands to an adapter; see
-  _Microsoft.Extensions.AI.Abstractions Design_.
+  *Microsoft.Extensions.AI.Abstractions Design*.
 
 **This system takes no reference on AgentKitCore.** It composes a session around tools an
 application already holds and needs none of Core's guarded-construction contract to do so. Adding an
@@ -180,12 +204,17 @@ against `InMemoryProviderSession` with no network access, no credentials and no 
 
 The second control is that the context is **bounded by construction** rather than by convention. The
 total is the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus the
-framing each tier record carries when it is seeded into a replacement session, and
-`AgentSessionOptions` refuses at construction any configuration whose effective window cannot
-accommodate that total. The framing is counted because it is part of what the provider receives: a
-bound counting raw tier content alone would be exceeded by a seed in which every tier sat exactly
-within its budget, and for a provider that reports no usage that under-count is what would drive
-rotation. A session that constructs is one whose arrangement fits.
+framing each tier record carries when it is seeded into a replacement session. The framing is
+counted because it is part of what the provider receives: a bound counting raw tier content alone
+would be exceeded by a seed in which every tier sat exactly within its budget, and for a provider
+that reports no usage that under-count is what would drive rotation.
+
+`AgentSessionOptions` refuses at construction any configuration in which a rotated context of that
+size would not land **below the rotation threshold**, and `CompactingAgentSession` applies the same
+refusal to a provider-reported window. Asserting only that the window *holds* the bound is the
+necessary condition, not the sufficient one: a window between the bound and the bound divided by the
+rotation fraction holds a rotated context and still rotates on every turn. A session that constructs
+is one whose arrangement fits **and** settles.
 
 The third is **saturation detection**. An agent whose context holds no redundancy left will keep
 crossing the rotation threshold, spending summarizer tokens and buying nothing, while every rotation
@@ -226,9 +255,20 @@ application message
   read-only view of that copy, never the array or list itself. An `IReadOnlyList` over a bare array
   can be cast back to the array and written through, which for these types would let a cached token
   total, a saturation verdict or a validated seed disagree with its own contents.
-- **Bounded by construction, asserted.** See _Risk Control Measures_ above. The bound is a
+- **Bounded by construction, asserted.** See *Risk Control Measures* above. The bound is a
   post-rotation property: between rotations tier zero is append-only and grows past its budget,
-  which is precisely what the rotation threshold's headroom is reserved for.
+  which is precisely what the rotation threshold's headroom is reserved for. The assertion is the
+  convergence invariant — a rotated context lands below the rotation threshold — not merely that it
+  fits the window.
+- **A rotation that consolidates nothing is not a rotation.** When the transcript already fits tier
+  zero the engine returns the layout unchanged and reports no consolidations, and
+  `CompactingAgentSession` treats that as a turn that did not rotate. Replacing a provider session
+  to arrive at the context the session already had costs a session per turn and is invisible,
+  because nothing consolidated and so nothing could saturate.
+- **One definition of empty.** A tier record, a cascade's older record, and a consolidation's
+  material are all judged blank by the same rule. `ISummarizer` forbids only null, so a whitespace
+  answer is contract-conformant and must not be seeded as content, cascaded as material, or
+  presented as a previous record to carry forward.
 - **Multi-platform and multi-runtime.** Windows, Linux and macOS; .NET 8, 9 and 10, matching the
   rest of the repository.
 

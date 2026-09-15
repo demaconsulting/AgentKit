@@ -28,6 +28,35 @@ internal static class SessionTestData
     }
 
     /// <summary>
+    ///     Builds a tool call entry occupying exactly the requested number of tokens.
+    /// </summary>
+    /// <remarks>
+    ///     Sized exactly, like <see cref="UserOfTokens"/>, because a test about where a tier
+    ///     boundary falls can only state which case it exercises if it can place that boundary on a
+    ///     chosen entry.
+    /// </remarks>
+    /// <param name="tokens">The tokens the entry must occupy, framing included.</param>
+    /// <param name="toolCallId">The identifier the matching result will answer.</param>
+    /// <returns>A tool call entry of exactly <paramref name="tokens"/> tokens.</returns>
+    public static TranscriptEntry ToolCallOfTokens(int tokens, string toolCallId)
+    {
+        var characters = (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken;
+        return TranscriptEntry.ToolCall(toolCallId, toolCallId.PadRight(characters, '.'));
+    }
+
+    /// <summary>
+    ///     Builds a tool result entry occupying exactly the requested number of tokens.
+    /// </summary>
+    /// <param name="tokens">The tokens the entry must occupy, framing included.</param>
+    /// <param name="toolCallId">The identifier of the call this answers.</param>
+    /// <returns>A tool result entry of exactly <paramref name="tokens"/> tokens.</returns>
+    public static TranscriptEntry ToolResultOfTokens(int tokens, string toolCallId)
+    {
+        var characters = (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken;
+        return TranscriptEntry.ToolResult(toolCallId, toolCallId.PadRight(characters, '.'));
+    }
+
+    /// <summary>
     ///     Builds a transcript of equally sized user entries, oldest first.
     /// </summary>
     /// <param name="count">How many entries to build.</param>

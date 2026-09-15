@@ -132,3 +132,38 @@ internal sealed class FakeSummarizer : ISummarizer
         return label.PadRight(target, '.');
     }
 }
+
+/// <summary>
+///     A summarizer that ignores the cancellation token it is handed, and records how many
+///     consolidations it was asked for.
+/// </summary>
+/// <remarks>
+///     <b>Contract-conformant, and that is the point.</b> <see cref="ISummarizer"/> documents only
+///     that an implementation <em>may</em> throw on cancellation, so an implementation that never
+///     looks at the token is within its rights — and a model-backed one that maps the token onto an
+///     HTTP call it cannot abort is a realistic example. The rotation engine therefore cannot
+///     delegate the check, and this is what proves it does not: handed to a cascade,
+///     it will keep answering for as long as the engine keeps asking.
+/// </remarks>
+/// <param name="responder">Computes the consolidated record for a request.</param>
+internal sealed class InattentiveSummarizer(Func<ConsolidationRequest, string> responder) : ISummarizer
+{
+    /// <summary>
+    ///     Gets how many consolidations this summarizer was asked to perform.
+    /// </summary>
+    public int CallCount { get; private set; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    ///     Deliberately never inspects <paramref name="cancellationToken"/>.
+    /// </remarks>
+    public Task<string> ConsolidateAsync(
+        ConsolidationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        CallCount++;
+        return Task.FromResult(responder(request));
+    }
+}

@@ -16,11 +16,23 @@ an application a session that silently never compacts — the exact failure this
 prevent. Everything else has a defensible default, so a session can be configured in one line and
 refined later.
 
-The class also **asserts the construction bound**. A configuration whose effective window cannot
-hold the policy's tier budgets — together with the framing each tier record carries when it is
-seeded, which `ContextLayout.SeedFramingTokens` measures — would rotate into a context already over
-budget and could never converge; a configuration whose overhead consumed the window would have no
-room for a conversation at all. Both are refused. If these options construct, the arrangement fits.
+The class also **asserts the convergence invariant**, which it states once for the whole package: *a
+rotated context must land strictly below the rotation threshold.* A rotation leaves the conversation
+holding at most the policy's tier budgets together with the framing each tier record carries when it
+is seeded, which `ContextLayout.SeedFramingTokens` measures. Holding that figure is only what makes
+a rotated context *fit* the window; landing below the threshold is what makes the session
+*converge*, and the two conditions are separated by a factor of the rotation fraction. A
+configuration that satisfies the first but not the second rotates, lands at or above the threshold,
+and rotates again on every following turn — silently, because each individual consolidation reduces
+normally and raises no saturation signal. A configuration whose overhead consumed the window would
+have no room for a conversation at all. All are refused. If these options construct, the arrangement
+fits **and** settles.
+
+`ConvergesAt` and `MinimumEffectiveWindowTokens` express the invariant, and `RotationThresholdFor`
+performs the threshold arithmetic. All three are shared with `CompactingAgentSession`, which applies
+the identical test to a provider-reported window — the guard that refuses a window and the
+comparison that decides when to rotate must be the same arithmetic, or the guard admits a window the
+comparison then thrashes on.
 
 ### Data Model
 
@@ -74,12 +86,12 @@ overhead. `CompactingAgentSession` subtracts `FixedOverheadTokens` from the usag
 which is what makes the comparison mean the same thing whether the usage came from a provider or
 from this library's own estimate. It applies the same arithmetic to a provider's own reported window
 when the provider reports one, because the two numbers must describe the same window for the
-comparison to mean anything; see _CompactingAgentSession Unit Design_.
+comparison to mean anything; see *CompactingAgentSession Unit Design*.
 
 **Why the threshold is clamped rather than the policy rejected.** A rotation threshold is a fraction
 of a window the policy knows nothing about, so the same policy is sensible in one window and
 sub-token in another; there is no point at which the policy itself could be refused, and refusing
-the _combination_ here would fail a configuration whose intent — rotate as early as possible — is
+the *combination* here would fail a configuration whose intent — rotate as early as possible — is
 perfectly expressible. Truncation is what makes it dangerous: a threshold of zero is satisfied by a
 conversation of no tokens at all, so the session would be willing to rotate a context holding
 nothing, spending summarizer work and a fresh provider session on material that does not exist. The
@@ -93,8 +105,9 @@ receives exactly that.
 - **Non-positive provider window** — `ArgumentOutOfRangeException` propagates
 - **Null tool in the list** — `ArgumentException` propagates
 - **Fixed overhead consumes the whole window** — `ArgumentException` propagates, naming both measured figures
-- **Effective window smaller than the bound** — `ArgumentException` propagates, naming the budgets, the framing and
-  the window
+- **Effective window too small for a rotated context to land below the rotation threshold** —
+  `ArgumentException` propagates, naming the budgets, the framing, the window and the minimum the
+  policy requires
 
 Every rejected condition is a defect in the composing application's configuration code, surfaced
 where the application wrote it rather than discovered from a session that never settles. Validation
@@ -102,11 +115,11 @@ happens before any assignment, so a rejected configuration never exists even bri
 
 ### Dependencies
 
-- **TokenEstimator** — measures the system prompt and the tool declarations; see _TokenEstimator
-  Unit Design_.
+- **TokenEstimator** — measures the system prompt and the tool declarations; see *TokenEstimator
+  Unit Design*.
 - **CompactionPolicy** — supplies the tier budgets and the rotation threshold fraction; see
-  _CompactionPolicy Unit Design_.
-- **Summarizer** — supplies the `ISummarizer` contract; see _Summarizer Unit Design_.
+  *CompactionPolicy Unit Design*.
+- **Summarizer** — supplies the `ISummarizer` contract; see *Summarizer Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`.
 
 ### Callers

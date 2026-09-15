@@ -61,9 +61,17 @@ public sealed class CompactionPolicy
     ///     tokens — so it should be infrequent, and it must never be late. Firing at 70 percent
     ///     leaves 30 percent of the effective window as headroom, which covers both the error in a
     ///     character-ratio token estimate and the turn in flight when the threshold is crossed.
-    ///     Because the surviving tiers are sized to a few thousand tokens, a rotation lands the
-    ///     session near 40 percent of the window rather than just under the threshold, so the
-    ///     hysteresis is generous and rotation does not re-trigger immediately.
+    ///     <para>
+    ///     <b>What keeps rotation from re-triggering immediately is the convergence invariant, not
+    ///     this fraction on its own.</b> <see cref="AgentSessionOptions"/> refuses any configuration
+    ///     in which a rotated context — the tier budgets plus the framing their seeded records carry
+    ///     — would not land below the rotation threshold, which guarantees a rotation is followed by
+    ///     at least one turn that does not rotate. How far below it lands, and so how generous the
+    ///     hysteresis is, is a property of how a host sized its window against its tier budgets
+    ///     rather than of this mechanism: with the tiers sized in the low thousands against a window
+    ///     several times larger, a rotation lands the session near 40 percent; sized close to the
+    ///     invariant's minimum, it lands just under the threshold and buys a single turn.
+    ///     </para>
     /// </remarks>
     public const double DefaultRotationThreshold = 0.70;
 

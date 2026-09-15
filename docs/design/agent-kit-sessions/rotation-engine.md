@@ -79,9 +79,12 @@ read the signal cannot, which is worse than reporting nothing at all.
    is a defect in the caller and is worth reporting as such even on a canceled token.
 2. Split the verbatim history at tier zero's budget, newest first, snapping the boundary so a tool
    call is never separated from its result. The retained suffix stays verbatim.
-3. If nothing overflowed, return the layout unchanged with no summarizer call and no saturation.
-   That is the correct outcome for a session whose recent history already fits, and it costs
-   nothing: the rotation is a pure re-seed.
+3. If nothing overflowed, return the layout unchanged with no summarizer call, no saturation, and a
+   consolidation count of zero. That is the correct outcome for a session whose recent history
+   already fits, and it costs this engine nothing. It is **not** free to a caller that would act on
+   it by replacing a provider session, so the zero consolidation count is the signal to do no such
+   thing; `CompactingAgentSession` treats it as a turn that did not rotate rather than as a re-seed
+   to be carried out.
 4. Otherwise render the overflow as labeled material and fold it into tier one through the private
    aging recursion below.
 5. Return a layout built from the retained transcript and the aged tiers, together with the
@@ -103,8 +106,8 @@ two cannot fit together.
 2. If the result is at least the policy's saturation ratio of the combined input, report
    `NoRedundancy`.
 3. If the result fits the tier's budget, store it and stop. This is the common case.
-4. If there is no previous record to age down, or no coarser tier to age it into, store the result
-   anyway and report `TierOverBudget`.
+4. If there is no previous record to age down — where a record of pure whitespace counts as none —
+   or no coarser tier to age it into, store the result anyway and report `TierOverBudget`.
 5. Otherwise age the **previous** record one tier coarser — the deliberate degradation the design
    allows — then re-consolidate the new material at this tier alone and store that. Apply the same
    redundancy test to that re-recording, reporting `NoRedundancy` when it is at least the policy's
@@ -124,6 +127,15 @@ would in fact have fitted once combined, degrading detail that did not need to d
 monotonic in age: coarser always means older. Aging the new material down instead would interleave
 recent and old material at the same level, and no later consolidation could untangle them.
 
+**Why a whitespace record counts as no record at all.** `ISummarizer` forbids only null, so a
+summarizer returning `"   "` is contract-conformant. Treated as a record, it was material to cascade
+and was handed to a `ConsolidationRequest`, which refuses blank material — throwing an
+`ArgumentException` out of `RotateAsync`, which documents no such exception, and out of `SendAsync`.
+The record was permanent state by then, so every later rotation failed the same way. `ContextTier`,
+this cascade test and `ConsolidationRequest` therefore share one definition: blank is empty. A
+whitespace tier is consequently not seeded either, rather than costing a label and per-entry framing
+to say nothing.
+
 **Recursion is bounded by the tier count**, so the worst case is one degradation per tier and one
 extra consolidation at each tier that cascaded.
 
@@ -133,6 +145,13 @@ Performs one consolidation and counts it. Centralizing the null check on the sum
 protects every call site, and centralizing the count means the reported `ConsolidationCount` cannot
 drift from what actually happened.
 
+**The cancellation token is checked here, before every consolidation.** A cascade is one summarizer
+call per tier — several model calls in production — and `ISummarizer` documents only that an
+implementation *may* honor the token, so an implementation that ignores it let a whole cascade run
+to completion after the caller had already canceled. The engine therefore does not delegate the
+check. It is placed before the count is incremented, so a consolidation that was refused is never
+counted as one that happened.
+
 ### Error Handling
 
 - **Null layout or summarizer** — `ArgumentNullException` propagates
@@ -140,7 +159,7 @@ drift from what actually happened.
 - **Invalid saturation figures or an undefined saturation reason** — `ArgumentOutOfRangeException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
 - **Cancellation** — `OperationCanceledException` propagates, from the check after argument
-  validation or from the summarizer call
+  validation, from the check before each consolidation, or from the summarizer call itself
 - **Consolidation cannot reduce** — Reported as a `SaturationSignal`; not an exception
 - **Record exceeds its tier with nowhere coarser to go** — Reported as a `SaturationSignal`; not an exception
 
@@ -153,14 +172,14 @@ refused immediately.
 
 ### Dependencies
 
-- **ContextLayout** — the state rotated, and the tier objects aged; see _ContextLayout Unit Design_.
+- **ContextLayout** — the state rotated, and the tier objects aged; see *ContextLayout Unit Design*.
 - **SessionTranscript** — supplies the boundary split and the material rendering; see
-  _SessionTranscript Unit Design_.
+  *SessionTranscript Unit Design*.
 - **CompactionPolicy** — supplies the tier budgets, the tier count and the saturation ratio; see
-  _CompactionPolicy Unit Design_.
-- **Summarizer** — supplies `ISummarizer` and `ConsolidationRequest`; see _Summarizer Unit Design_.
-- **TokenEstimator** — measures each consolidation's input and output; see _TokenEstimator Unit
-  Design_.
+  *CompactionPolicy Unit Design*.
+- **Summarizer** — supplies `ISummarizer` and `ConsolidationRequest`; see *Summarizer Unit Design*.
+- **TokenEstimator** — measures each consolidation's input and output; see *TokenEstimator Unit
+  Design*.
 
 ### Callers
 

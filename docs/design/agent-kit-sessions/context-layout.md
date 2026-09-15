@@ -24,9 +24,9 @@ holds verbatim history and is a `SessionTranscript`.
 
 - **`Index`** (`int`) — One or greater; tier zero is the transcript, not a tier object
 - **`BudgetTokens`** (`int`) — Positive
-- **`Content`** (`string`) — Never null; empty means the tier holds nothing yet
+- **`Content`** (`string`) — Never null; empty or blank means the tier holds nothing yet
 - **`EstimatedTokens`** (`int`) — Computed once at construction from `Content`
-- **`IsEmpty`** (`bool`) — Derived: `Content.Length == 0`
+- **`IsEmpty`** (`bool`) — Derived: `string.IsNullOrWhiteSpace(Content)`
 - **`IsWithinBudget`** (`bool`) — Derived: `EstimatedTokens <= BudgetTokens`
 
 `ContextLayout` properties:
@@ -107,7 +107,7 @@ individually correct.
 
 Returns the tokens the framing of the seeded tier records adds for a policy: for every coarse tier,
 the estimate of its record label plus the per-entry allowance. Published as a static function of the
-policy because `AgentSessionOptions` must refuse a window that cannot hold the bound and has to
+policy because `AgentSessionOptions` must refuse a window the session could not converge in and has to
 compute that bound before any layout exists. The label is built by the same private helper
 `BuildSeed` uses, so what is emitted and what is charged for cannot drift apart — which is exactly
 how the bound came to under-count the seed.
@@ -130,7 +130,13 @@ sits furthest from the live turn.
 **Why each record is labeled.** A model handed several consolidated records with no ordering cue
 cannot tell which supersedes which.
 
-**Why empty tiers are skipped.** Seeding an empty record would spend framing tokens to say nothing.
+**Why empty tiers are skipped, and why blank counts as empty.** Seeding an empty record would spend
+framing tokens to say nothing, and a record of pure whitespace says exactly as little. `ISummarizer`
+forbids only null, so a summarizer returning `"   "` is contract-conformant; treating that as
+content seeded a full label and per-entry framing for nothing, and — because `RotationEngine`'s
+cascade test and `ConsolidationRequest` disagreed with each other about the same string — eventually
+threw an undocumented `ArgumentException` out of every later rotation. `ContextTier.IsEmpty`, that
+cascade test and `ConsolidationRequest` now share one definition of blank.
 
 **Why the system prompt and tool declarations are not emitted.** Providers accept them through their
 own configuration rather than as history, which is exactly why they are accounted for here as fixed

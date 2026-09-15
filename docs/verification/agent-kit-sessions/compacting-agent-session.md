@@ -53,8 +53,9 @@ A unit test run passes when every scenario below passes without error or excepti
 explicitly asserted. Any turn not recorded in the transcript, any answer missing from it, any
 rotation that fails to dispose the session it replaced, any replacement seeded without the preserved
 content, any failed release that cannot be retried, any usage figure taken from the wrong source, any
-provider-reported window below the construction bound accepted rather than refused, or any invalid
-argument accepted rather than refused constitutes a failure.
+provider-reported window in which a rotated context could not land below the rotation threshold
+accepted rather than refused, any rotation reported for a turn that consolidated nothing, or any
+invalid argument accepted rather than refused constitutes a failure.
 
 ### Test Scenarios
 
