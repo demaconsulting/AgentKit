@@ -260,7 +260,7 @@ jobs:
           fetch-depth: 0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.37.9
+        uses: github/codeql-action/init@v4.38.0
         with:
           languages: csharp
           build-mode: manual
@@ -295,7 +295,7 @@ jobs:
           --property:Version=${{ inputs.version }}
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.37.9
+        uses: github/codeql-action/analyze@v4.38.0
         with:
           category: "/language:csharp"
           output: artifacts
@@ -490,6 +490,8 @@ jobs:
           --report docs/code_quality/generated/codeql-quality.md
           --heading "AgentKit CodeQL Analysis"
           --report-depth 1
+          --exclude "**/obj/**"
+          --exclude "**/bin/**"
 
       - name: Display CodeQL Quality Report
         shell: bash
