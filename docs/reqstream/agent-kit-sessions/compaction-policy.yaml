@@ -1,0 +1,61 @@
+---
+# Software Unit Requirements for CompactionPolicy
+#
+# These requirements describe the design-level behavior of the CompactionPolicy unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: CompactionPolicy Requirements
+        requirements:
+          - id: AgentKitSessions-CompactionPolicy-TierBudgets
+            title: >-
+              The policy shall carry one token budget per tier, tier zero first, and shall publish
+              their sum as the most conversation context the arrangement can hold.
+            justification: |
+              The per-tier budgets are what make the whole arrangement bounded rather than merely
+              well behaved. Because each is fixed, the total is a property of the configuration alone
+              and can be stated before a session starts. Tier zero comes first because it is the
+              verbatim tier: the recent history that has not yet been consolidated at all.
+            tests:
+              - CompactionPolicy_Default_CarriesThePublishedTierBudgets
+              - CompactionPolicy_Construct_CopiesTheSuppliedBudgets
+
+          - id: AgentKitSessions-CompactionPolicy-ValidatedDefaults
+            title: >-
+              The policy shall provide validated default budgets, rotation threshold and saturation
+              ratio, a shared default instance, and optional constructor parameters allowing any one
+              of them to be replaced without restating the others.
+            justification: |
+              This follows the convention the rest of AgentKit's option types already establish, so
+              an author who has configured tool limits or memory options needs to learn nothing new.
+              The default rotation threshold of 70 percent of the effective window leaves 30 percent
+              of headroom, which covers both the error in a character-ratio token estimate and the
+              turn in flight when the threshold is crossed; because the surviving tiers are small,
+              a rotation lands the session near 40 percent rather than just under the threshold, so
+              rotation does not immediately re-trigger. The default budgets of 2,000, 1,200, 900 and
+              700 tokens are the starting values the compaction spike that preceded this package ran
+              with (n = 50 rotations, one run, recorded in that spike); they are published as
+              constants precisely so a different window or task shape can replace them.
+            tests:
+              - CompactionPolicy_Default_IsShared
+              - CompactionPolicy_Construct_SingleOverride_KeepsOtherDefaults
+
+          - id: AgentKitSessions-CompactionPolicy-RejectsUnworkableConfiguration
+            title: >-
+              The policy shall reject fewer than two tiers, a non-positive tier budget, a tier budget
+              larger than the tier it ages from, and a rotation threshold or saturation ratio outside
+              the range greater than zero and at most one.
+            justification: |
+              One tier is not a hierarchy: with nowhere for overflowing history to age into, the
+              arrangement degenerates to dropping the oldest turns outright. A coarser tier allowed
+              more room than the finer tier it ages from is the opposite of what consolidation is
+              for and would never reduce. A threshold at or below zero would rotate on every turn and
+              above one could never fire. Each is a defect in the host's configuration code rather
+              than a runtime condition a model can provoke, so each is surfaced rather than clamped.
+            tests:
+              - CompactionPolicy_Construct_SingleTier_Throws
+              - CompactionPolicy_Construct_NonPositiveBudget_Throws
+              - CompactionPolicy_Construct_GrowingBudgets_Throws
+              - CompactionPolicy_Construct_ThresholdOutOfRange_Throws
+              - CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws

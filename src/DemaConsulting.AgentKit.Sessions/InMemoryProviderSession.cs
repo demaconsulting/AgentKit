@@ -1,0 +1,271 @@
+namespace DemaConsulting.AgentKit.Sessions;
+
+/// <summary>
+///     A provider session that contacts nothing: it holds its seeded history in memory, answers
+///     from a supplied responder, and accounts for its own context usage.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>Shipped rather than confined to this library's tests, deliberately.</b> The compaction
+///     engine's whole promise is that a long-running agent keeps the detail that matters, and that
+///     promise is only believable if it can be exercised end to end without a live model. An
+///     application author writing their own summarizer, choosing tier budgets, or deciding what to
+///     do about a saturation signal needs the same ability. Keeping the fake in the package makes
+///     that a supported activity instead of something each consumer reimplements.
+///     </para>
+///     <para>
+///     <b>It reports usage by default, so the provider-reported path is exercised.</b> Real
+///     providers differ: one reports current and limit figures, the other reports nothing. This
+///     session can be either, through the <c>reportsUsage</c> switch on its factory, so both engine
+///     paths are reachable from a test. When it reports, the figures are computed from its own
+///     seeded history and turns, marked <see cref="ContextUsageOrigin.Provider"/> because from the
+///     engine's point of view that is exactly what they are.
+///     </para>
+///     <para>
+///     Instances are not safe for concurrent use, consistent with <see cref="IProviderSession"/>.
+///     </para>
+/// </remarks>
+public sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The answer for a given message.
+    /// </summary>
+    private readonly Func<string, ProviderTurn> _responder;
+
+    /// <summary>
+    ///     Whether this session reports usage, standing in for a provider that does.
+    /// </summary>
+    private readonly bool _reportsUsage;
+
+    /// <summary>
+    ///     The history, seeded plus everything since.
+    /// </summary>
+    private readonly List<TranscriptEntry> _history;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="InMemoryProviderSession"/> class.
+    /// </summary>
+    /// <param name="seed">What the session starts from. Must not be <see langword="null"/>.</param>
+    /// <param name="responder">
+    ///     Produces the turn for a given message. Must not be <see langword="null"/>, and must not
+    ///     return <see langword="null"/>.
+    /// </param>
+    /// <param name="windowTokens">
+    ///     The context window this session pretends to have. Must be positive.
+    /// </param>
+    /// <param name="reportsUsage">
+    ///     Whether the session reports its own usage, standing in for a provider that does. When
+    ///     <see langword="false"/>, <see cref="CurrentUsage"/> returns <see langword="null"/> and
+    ///     the engine falls back to its own estimate.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="seed"/> or <paramref name="responder"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
+    public InMemoryProviderSession(
+        ProviderSessionSeed seed,
+        Func<string, ProviderTurn> responder,
+        int windowTokens,
+        bool reportsUsage = true)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        ArgumentNullException.ThrowIfNull(responder);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
+
+        Seed = seed;
+        _responder = responder;
+        _reportsUsage = reportsUsage;
+        WindowTokens = windowTokens;
+        _history = [.. seed.History];
+
+        // The fixed overhead a real provider would charge for instructions and declarations is
+        // charged here too, so a test exercising the rotation threshold sees the same arithmetic
+        // the engine performs against a real provider.
+        FixedOverheadTokens = TokenEstimator.EstimateTokens(seed.Instructions)
+            + TokenEstimator.EstimateToolDeclarationTokens(seed.Tools);
+    }
+
+    /// <summary>
+    ///     Gets what this session was seeded with.
+    /// </summary>
+    /// <remarks>
+    ///     Exposed so a test can assert what a rotation actually carried forward — which tier
+    ///     records survived, and which verbatim turns — without reaching into the engine.
+    /// </remarks>
+    public ProviderSessionSeed Seed { get; }
+
+    /// <summary>
+    ///     Gets the context window this session pretends to have.
+    /// </summary>
+    public int WindowTokens { get; }
+
+    /// <summary>
+    ///     Gets the tokens the instructions and tool declarations occupy on every turn.
+    /// </summary>
+    public int FixedOverheadTokens { get; }
+
+    /// <summary>
+    ///     Gets the history, seeded entries first and everything since after them.
+    /// </summary>
+    public IReadOnlyList<TranscriptEntry> History => _history;
+
+    /// <summary>
+    ///     Gets the number of turns this session has answered.
+    /// </summary>
+    public int TurnCount { get; private set; }
+
+    /// <summary>
+    ///     Gets a value indicating whether this session has been disposed.
+    /// </summary>
+    /// <remarks>
+    ///     Exposed so a test can assert that rotation disposed the previous session rather than
+    ///     leaking it — a leak that against a real provider would hold a server-side conversation
+    ///     open and keep being billed for.
+    /// </remarks>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    ///     Computed from this session's own history and its fixed overhead, and marked as
+    ///     provider-reported because that is what it stands in for. Returns <see langword="null"/>
+    ///     when the session was configured not to report, which is how a provider that reveals
+    ///     nothing is simulated.
+    /// </remarks>
+    public ContextUsage? CurrentUsage
+    {
+        get
+        {
+            if (!_reportsUsage)
+            {
+                return null;
+            }
+
+            var used = FixedOverheadTokens;
+            foreach (var entry in _history)
+            {
+                used += entry.EstimatedTokens;
+            }
+
+            return ContextUsage.FromProvider(used, WindowTokens);
+        }
+    }
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Record the incoming message before answering, so the history matches what a provider
+        // holding the conversation server-side would have.
+        _history.Add(TranscriptEntry.User(message));
+
+        var turn = _responder(message)
+            ?? throw new InvalidOperationException("The responder returned null; it must return a turn.");
+
+        _history.AddRange(turn.Entries);
+        TurnCount++;
+        return Task.FromResult(turn);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    ///     Marks the session disposed and drops its history, which is what makes a leaked session
+    ///     detectable in a test. Disposing twice is permitted and does nothing the second time.
+    /// </remarks>
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        _history.Clear();
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="InMemoryProviderSession"/> instances and remembers every one it made.
+/// </summary>
+/// <remarks>
+///     <para>
+///     The remembering is the point. Rotation creates a replacement session and disposes the
+///     previous one, and both halves of that have to be observable for the behavior to be
+///     verifiable at all: a test asserts how many sessions were created, that the earlier ones were
+///     disposed, and what the newest one was seeded with.
+///     </para>
+///     <para>
+///     Instances are not safe for concurrent use: the record of created sessions is an ordinary
+///     list, and a factory serves one session's rotations in sequence.
+///     </para>
+/// </remarks>
+public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Produces the turn for a given message.
+    /// </summary>
+    private readonly Func<string, ProviderTurn> _responder;
+
+    /// <summary>
+    ///     The sessions created so far, oldest first.
+    /// </summary>
+    private readonly List<InMemoryProviderSession> _sessions = [];
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="InMemoryProviderSessionFactory"/> class.
+    /// </summary>
+    /// <param name="responder">
+    ///     Produces the turn for a given message. <see langword="null"/> selects a responder that
+    ///     echoes the message back as an assistant answer, which is enough to exercise the
+    ///     lifecycle when what the model says does not matter.
+    /// </param>
+    /// <param name="windowTokens">
+    ///     The context window the sessions pretend to have. Must be positive.
+    /// </param>
+    /// <param name="reportsUsage">
+    ///     Whether the created sessions report their own usage. <see langword="false"/> simulates a
+    ///     provider that reveals nothing, so the engine falls back to its own estimate.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
+    public InMemoryProviderSessionFactory(
+        Func<string, ProviderTurn>? responder = null,
+        int windowTokens = AgentSessionOptions.DefaultProviderWindowTokens,
+        bool reportsUsage = true)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
+
+        _responder = responder ?? (message => new ProviderTurn($"Acknowledged: {message}"));
+        WindowTokens = windowTokens;
+        ReportsUsage = reportsUsage;
+    }
+
+    /// <summary>
+    ///     Gets the context window the created sessions pretend to have.
+    /// </summary>
+    public int WindowTokens { get; }
+
+    /// <summary>
+    ///     Gets a value indicating whether the created sessions report their own usage.
+    /// </summary>
+    public bool ReportsUsage { get; }
+
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    /// <remarks>
+    ///     One entry per rotation plus one for the original session, so the count is the rotation
+    ///     count plus one for a conversation that ran to completion.
+    /// </remarks>
+    public IReadOnlyList<InMemoryProviderSession> Sessions => _sessions;
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var session = new InMemoryProviderSession(seed, _responder, WindowTokens, ReportsUsage);
+        _sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}

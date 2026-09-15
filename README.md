@@ -20,7 +20,9 @@ application configures and a tool cannot omit.
 > families — text file, file, markdown, image, todo, memory and agent — are built on it in
 > `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
-> a GitHub Copilot `CopilotClient`.
+> a GitHub Copilot `CopilotClient`. A provider-agnostic session engine with tiered context
+> compaction is implemented in `DemaConsulting.AgentKit.Sessions`; wiring it to the two provider
+> adapters is the next increment.
 
 Three runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
 end to end: **document-assistant** demonstrates consuming the shipped tools,
@@ -53,8 +55,11 @@ section below.
   `DemaConsulting.AgentKit.Agents.Copilot` for the GitHub Copilot SDK (suppressing the runtime's
   built-in tools).
 
-AgentKit does not provide an agent runtime, context-window management, or provider
-abstraction. Microsoft Agent Framework supplies those.
+AgentKit does not provide an agent runtime or a provider abstraction. Microsoft Agent Framework
+supplies those. It does now provide **context-window management**: the
+`DemaConsulting.AgentKit.Sessions` package adds an AgentKit-owned session that compacts a full
+context by rotating into a fresh provider session seeded with tiered, consolidated history, so a
+long-running agent behaves the same way on every provider.
 
 ## Packages
 
@@ -68,6 +73,11 @@ abstraction. Microsoft Agent Framework supplies those.
 - **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
   allow-list from the supplied tools.
+- **`DemaConsulting.AgentKit.Sessions`** — the provider-agnostic session engine: a session that
+  keeps its own transcript out of session and, when the context window fills, consolidates older
+  history into fixed-budget tiers, disposes the provider session and creates a fresh one seeded with
+  the preserved content. Ships an in-memory provider session so the whole lifecycle can be exercised
+  without a live model. Provider wiring is a later increment.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 

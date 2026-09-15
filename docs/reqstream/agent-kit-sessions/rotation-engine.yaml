@@ -1,0 +1,102 @@
+---
+# Software Unit Requirements for RotationEngine
+#
+# These requirements describe the design-level behavior of the RotationEngine unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: RotationEngine Requirements
+        requirements:
+          - id: AgentKitSessions-RotationEngine-Deterministic
+            title: >-
+              The engine shall be a deterministic function of the layout it is given and the
+              summarizer it is injected with, producing identical output for identical input.
+            justification: |
+              Every decision the engine makes - where the tier boundary falls, whether it snaps,
+              which tiers overflow, whether a result saturated - is arithmetic over the layout it was
+              handed. Isolating the one non-deterministic collaborator behind an injected interface
+              means the whole engine can be exercised against a fake, which is the only way the
+              cascade ordering, the ratchet and the boundary snap can be asserted exactly rather than
+              approximately. Determinism is not a convenience here; it is what makes the heart of the
+              system verifiable at all.
+            tests:
+              - RotationEngine_RotateAsync_SameInputs_ProduceIdenticalOutput
+              - RotationEngine_RotateAsync_NullLayout_Throws
+              - RotationEngine_RotateAsync_NullSummarizer_Throws
+
+          - id: AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers
+            title: >-
+              The engine shall consolidate only where a tier has overflowed, making no summarizer
+              call and changing no tier when the verbatim history already fits.
+            justification: |
+              Summarizer calls are the dominant cost of this arrangement, and consolidating only the
+              tiers that actually overflowed is where the tiered scheme's measured cost advantage
+              over a flat rolling summary comes from - 381,440 against 461,173 summarizer tokens over
+              50 rotations (n = 50 rotations, one run per arrangement, recorded in the compaction
+              spike that preceded this package). A rotation whose recent history already fits is a
+              pure re-seed and should cost nothing.
+            tests:
+              - RotationEngine_RotateAsync_NothingOverflows_ConsolidatesNothing
+              - RotationEngine_RotateAsync_Overflow_FoldsIntoTierOneOnly
+
+          - id: AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
+            title: >-
+              The engine shall fold the verbatim history that overflows tier zero into tier one,
+              carrying tier one's existing record forward as an input to the consolidation.
+            justification: |
+              Carrying the previous record in as an input is the ratchet. Without it each
+              consolidation re-summarizes the previous summary, which is a downward ratchet that
+              loses detail repeatedly rather than once - the mechanism by which a flat rolling
+              summary's recall collapses to nothing beyond roughly fifteen rotations. With it, detail
+              an earlier consolidation decided to keep survives unless it is deliberately degraded to
+              a coarser tier.
+            tests:
+              - RotationEngine_RotateAsync_SecondRotation_CarriesThePreviousRecordForward
+              - RotationEngine_RotateAsync_AfterRotation_ContextIsWithinItsConstructionBound
+
+          - id: AgentKitSessions-RotationEngine-CascadesDegradation
+            title: >-
+              Where a tier's consolidated record exceeds its budget, the engine shall degrade that
+              tier's previous record into the next coarser tier and then record the new material at
+              the tier alone, cascading as far as the tiers allow.
+            justification: |
+              The record that ages down is the older one, which is what keeps the hierarchy monotonic
+              in age: coarser always means older. The overflow test is made after consolidating
+              rather than before, because a consolidation compresses - summing the previous record
+              and the new material first would cascade on material that would in fact have fitted
+              once combined, degrading detail that did not need to degrade. The cascade is bounded by
+              the tier count, so the worst case is one degradation per tier.
+            tests:
+              - RotationEngine_RotateAsync_TierOneOverflows_DegradesTheOlderRecordIntoTierTwo
+
+          - id: AgentKitSessions-RotationEngine-ReportsSaturation
+            title: >-
+              The engine shall report a consolidation whose output is at least the policy's
+              saturation ratio of its input, and a record that still exceeds its tier's budget with
+              no coarser tier to degrade into, naming the tier and the token figures.
+            justification: |
+              Consolidation works by removing redundancy; output nearly as large as its input means
+              there is none left to remove, and further rotations will spend summarizer tokens for no
+              reduction while every rotation continues to appear to succeed. Reporting rather than
+              acting on it is deliberate: what to do about a saturated agent depends on what the
+              application is for. Naming the tier and the figures is what makes the report actionable
+              rather than merely alarming.
+            tests:
+              - RotationEngine_RotateAsync_ConsolidationDoesNotReduce_ReportsNoRedundancy
+              - RotationEngine_RotateAsync_CoarsestTierCannotFit_ReportsTierOverBudget
+              - SaturationSignal_Construct_InvalidFigures_Throws
+              - RotationOutcome_Construct_NullLayout_Throws
+
+          - id: AgentKitSessions-RotationEngine-RejectsMalformedConsolidation
+            title: >-
+              The engine shall reject a summarizer that returns nothing at all, and shall honor
+              cancellation between consolidations.
+            justification: |
+              A null record would be stored and would surface as a missing tier at a later rotation,
+              far from the implementation that caused it; an implementation with nothing to say
+              returns an empty string instead. Cancellation is honored so that a host shutting down
+              is not held open by a summarizer round trip.
+            tests:
+              - RotationEngine_RotateAsync_SummarizerReturnsNull_Throws
+              - RotationEngine_RotateAsync_Canceled_Throws

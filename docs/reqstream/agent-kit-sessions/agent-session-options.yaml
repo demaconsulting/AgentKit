@@ -1,0 +1,67 @@
+---
+# Software Unit Requirements for AgentSessionOptions
+#
+# These requirements describe the design-level behavior of the AgentSessionOptions unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: AgentSessionOptions Requirements
+        requirements:
+          - id: AgentKitSessions-AgentSessionOptions-CarriesConfiguration
+            title: >-
+              The options shall carry the summarizer, the system instructions, the tools, the
+              provider window size and the compaction policy, requiring only the summarizer and
+              defaulting the rest.
+            justification: |
+              These five are everything the engine needs and nothing it does not. The summarizer is
+              required because compaction cannot happen without one and defaulting it would give an
+              application a session that silently never compacts - the exact failure this package
+              exists to prevent. Everything else has a defensible default, so a session can be
+              configured in one line and refined later.
+            tests:
+              - AgentSessionOptions_Construct_Defaults_CarryThePublishedWindowAndPolicy
+              - AgentSessionOptions_Construct_NullSummarizer_Throws
+
+          - id: AgentKitSessions-AgentSessionOptions-MeasuresFixedOverhead
+            title: >-
+              The options shall measure the system prompt and the tool declarations as fixed
+              overhead and subtract it from the provider window before applying the rotation
+              threshold.
+            justification: |
+              Tool declarations are sent with every request and are never consolidated; for a
+              realistic tool set they run to thousands of tokens. Applying the rotation percentage to
+              the raw window instead would make the rotation point drift with how many tools an
+              application attached: attach more tools and the agent silently gets less conversation
+              before rotating, with nothing in the configuration saying so.
+            tests:
+              - AgentSessionOptions_Construct_SubtractsFixedOverheadBeforeTheThreshold
+
+          - id: AgentKitSessions-AgentSessionOptions-AssertsTheBound
+            title: >-
+              The options shall refuse a configuration whose window is consumed by the fixed
+              overhead, or whose effective window cannot hold the policy's tier budgets.
+            justification: |
+              A session whose effective window is smaller than the sum of its tier budgets would
+              rotate into a context already over budget and could never converge; a session whose
+              overhead consumed the window would have no room for a conversation at all. Both are
+              defects in the composing application, refused where the application wrote them rather
+              than discovered from a session that never settles. This check is the
+              bounded-by-construction property made real: if the options construct, the arrangement
+              fits.
+            tests:
+              - AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws
+              - AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws
+              - AgentSessionOptions_Construct_WindowExactlyFitsTierBudgets_IsAccepted
+
+          - id: AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
+            title: >-
+              The options shall reject a non-positive provider window and a null tool.
+            justification: |
+              A non-positive window leaves nothing to rotate within. A null tool cannot have its
+              declaration estimated, and skipping it would understate the fixed overhead and delay
+              rotation past the point it was meant to fire - a quiet miscalculation rather than a
+              visible failure.
+            tests:
+              - AgentSessionOptions_Construct_NonPositiveWindow_Throws
+              - AgentSessionOptions_Construct_NullTool_Throws

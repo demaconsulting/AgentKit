@@ -1,0 +1,87 @@
+---
+# Software Unit Requirements for SessionTranscript
+#
+# These requirements describe the design-level behavior of the SessionTranscript unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: SessionTranscript Requirements
+        requirements:
+          - id: AgentKitSessions-SessionTranscript-KeptOutOfSession
+            title: >-
+              The transcript shall be an immutable append-only record held by the library itself,
+              with every append producing a new transcript rather than modifying an existing one.
+            justification: |
+              The library keeps its own record so that consolidation can run out of session: asking a
+              live session to summarize itself spends that session's context on the summary and
+              provokes the provider's built-in compactor. Holding the record here also means it is
+              still available when a provider session has been disposed, which is precisely when a
+              fresh one must be seeded. Immutability is what makes the rotation engine a pure
+              function of its inputs and lets a test hold a before-and-after pair.
+            tests:
+              - SessionTranscript_Empty_HoldsNothing
+              - SessionTranscript_Append_LeavesTheOriginalUnchanged
+              - SessionTranscript_AppendMany_PreservesOrder
+              - SessionTranscript_AppendMany_Empty_ReturnsSameInstance
+
+          - id: AgentKitSessions-SessionTranscript-PairedEntries
+            title: >-
+              A transcript entry shall require a pairing identifier for a tool call and a tool result
+              and shall reject one on any other kind of entry.
+            justification: |
+              Pairing a call with its result is what lets a tier boundary be snapped so the two never
+              separate, and an unidentified call could not be paired. An identifier on a plain
+              message would be meaningless; refusing it rather than ignoring it means a caller that
+              supplies one learns it misunderstood the model instead of silently producing an entry
+              that cannot be reasoned about.
+            tests:
+              - TranscriptEntry_Construct_ToolCallWithoutIdentifier_Throws
+              - TranscriptEntry_Construct_MessageWithIdentifier_Throws
+              - TranscriptEntry_Construct_NullText_Throws
+
+          - id: AgentKitSessions-SessionTranscript-SplitsAtTierBudget
+            title: >-
+              The transcript shall split into the newest entries fitting a supplied token budget and
+              the older entries to consolidate, retaining nothing when a single entry exceeds the
+              whole budget and returning itself unchanged when everything fits.
+            justification: |
+              The split is where tier zero's boundary is decided. Walking newest-first makes the
+              retained set a contiguous suffix - the most recent turns, held verbatim - which is what
+              tier zero is for. An entry larger than the whole budget is reported honestly rather
+              than retained anyway, because retaining it would silently break the bound the budget
+              exists to enforce. A transcript that already fits is returned unchanged so that a
+              rotation needing no aging allocates nothing and consolidates nothing.
+            tests:
+              - SessionTranscript_SplitAtBudget_RetainsNewestWithinBudget
+              - SessionTranscript_SplitAtBudget_OversizedEntry_RetainsNothing
+              - SessionTranscript_SplitAtBudget_EverythingFits_ReturnsSameInstance
+              - SessionTranscript_SplitAtBudget_NegativeBudget_Throws
+
+          - id: AgentKitSessions-SessionTranscript-SnapsToolBoundary
+            title: >-
+              The split shall move the boundary later past any leading tool result, so the retained
+              history never begins with a result whose call has been consolidated away.
+            justification: |
+              A boundary falling between a call and its result leaves the retained history beginning
+              with an orphaned result. Some providers reject that outright and a model presented with
+              it cannot tell what was asked. The boundary moves later rather than earlier because
+              moving later can only shrink the retained set and so can never push it back over
+              budget, whereas moving earlier to recover the call could.
+            tests:
+              - SessionTranscript_SplitAtBudget_BoundaryInsideToolPair_SnapsPastTheResult
+              - RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult
+
+          - id: AgentKitSessions-SessionTranscript-RendersLabeledMaterial
+            title: >-
+              The transcript shall render a run of entries as labeled text, one line per entry,
+              deterministically.
+            justification: |
+              The summarizer is a stateless call that receives text, so the material handed to it
+              must say who said what and which result answered which call. The labeling is fixed and
+              mechanical rather than prose so that the same history always renders to the same
+              string, which is what lets a fake summarizer in a test assert on exactly what the
+              engine asked it to consolidate.
+            tests:
+              - SessionTranscript_Render_LabelsEveryKind
+              - TranscriptEntry_ToTranscriptLine_ContextRecord_LabelsAsRecord

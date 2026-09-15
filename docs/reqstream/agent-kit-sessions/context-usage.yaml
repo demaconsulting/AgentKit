@@ -1,0 +1,65 @@
+---
+# Software Unit Requirements for ContextUsage
+#
+# These requirements describe the design-level behavior of the ContextUsage unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: ContextUsage Requirements
+        requirements:
+          - id: AgentKitSessions-ContextUsage-UsageShape
+            title: >-
+              A context usage figure shall carry the tokens occupied, the window size, whether the
+              figure was reported by the provider or estimated, and the derived free tokens and
+              occupied fraction.
+            justification: |
+              This is the single shape both provider families are reduced to, so the compaction
+              engine has one arithmetic rather than two. The origin is not decoration: a
+              provider-reported figure counts framing this library never sees, whereas an estimate is
+              only as good as its character ratio. Surfacing the difference lets an application log
+              it and lets a test assert that a provider's own numbers were preferred when offered.
+              The derived figures are computed rather than stored so they cannot disagree with the
+              counts they come from.
+            tests:
+              - ContextUsage_FromProvider_MarksTheOriginAsProvider
+              - ContextUsage_FromEstimate_MarksTheOriginAsEstimated
+              - ContextUsage_Derived_ReportsFreeTokensAndFraction
+
+          - id: AgentKitSessions-ContextUsage-ReportsOverFullHonestly
+            title: >-
+              A context usage figure shall report no free tokens when the window is over-full while
+              leaving the occupied count and fraction unclamped.
+            justification: |
+              A provider may genuinely report usage beyond its own limit, and that is exactly the
+              condition an application most needs to see. Clamping the counts would hide it; floors
+              on the remaining space simply reflect that a full window has no negative amount of
+              room.
+            tests:
+              - ContextUsage_OverFullWindow_ReportsNoFreeTokensButKeepsTheCounts
+
+          - id: AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
+            title: >-
+              A context usage figure shall reject a negative occupied count and a non-positive window
+              size.
+            justification: |
+              A negative occupied count could only come from a defect and would make every threshold
+              comparison meaningless. A window of zero would leave nothing for the occupied fraction
+              to be a fraction of.
+            tests:
+              - ContextUsage_Construct_NegativeUsage_Throws
+              - ContextUsage_Construct_ZeroWindow_Throws
+
+          - id: AgentKitSessions-ContextUsage-OptionalReportingContract
+            title: >-
+              The usage reporting contract shall be separate from the provider session contract and
+              shall allow an implementation to report that it does not know.
+            justification: |
+              Requiring every provider session to report usage would force an adapter for a provider
+              that reports nothing to invent a number, and an invented number is indistinguishable
+              from a real one at the point it is consumed. Keeping the capability in its own
+              interface lets an adapter say "I do not know" by simply not implementing it, and lets
+              an adapter that sometimes knows report nothing until it does.
+            tests:
+              - ContextUsage_Reporter_MayReportNothing
+              - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull

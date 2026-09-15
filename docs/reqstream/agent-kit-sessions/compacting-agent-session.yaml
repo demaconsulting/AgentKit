@@ -1,0 +1,76 @@
+---
+# Software Unit Requirements for CompactingAgentSession
+#
+# These requirements describe the design-level behavior of the CompactingAgentSession unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: CompactingAgentSession Requirements
+        requirements:
+          - id: AgentKitSessions-CompactingAgentSession-AnswersTurns
+            title: >-
+              The session shall record each outgoing message and everything the turn produced in its
+              own transcript, and return the provider's answer.
+            justification: |
+              The transcript is recorded here, out of session, because that is what allows
+              consolidation to be a separate stateless call rather than a request to the live session
+              to summarize itself. The outgoing message is recorded before it is sent so that the
+              transcript matches what the provider holds even if the turn fails partway through.
+            tests:
+              - CompactingAgentSession_CreateAsync_SeedsOneEmptyProviderSession
+              - CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating
+
+          - id: AgentKitSessions-CompactingAgentSession-RotatesAtThreshold
+            title: >-
+              The session shall rotate once the conversation tokens reach the configured threshold,
+              consolidating the layout, creating a replacement provider session seeded from the
+              result, and only then disposing the session it replaced.
+            justification: |
+              Comparing conversation tokens - usage with the fixed overhead removed - rather than raw
+              usage is what makes the comparison mean the same thing whether the figure came from the
+              provider or from the library's own estimate. The ordering is deliberate: consolidate,
+              create, then dispose. A summarizer failure therefore leaves the session exactly as it
+              was, still able to answer, rather than leaving it with no provider session at all.
+              Compaction happens after the answer is produced, so a caller never waits on a
+              summarizer before receiving the answer to a question the session could already answer.
+            tests:
+              - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession
+
+          - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
+            title: >-
+              The session shall use a provider's own account of its window when the provider reports
+              one, and its own estimate against the configured window otherwise.
+            justification: |
+              A provider's own figures count framing this library never sees, so they are the better
+              measurement whenever they are offered. Making the preference a single decision in one
+              place, rather than scattering it across the call sites that need a usage figure, is
+              what keeps the two provider families on one code path.
+            tests:
+              - CompactingAgentSession_SendAsync_ProviderReportsUsage_PrefersTheProviderFigures
+              - CompactingAgentSession_SendAsync_ProviderReportsNothing_UsesItsOwnEstimate
+
+          - id: AgentKitSessions-CompactingAgentSession-RejectsBlankMessage
+            title: >-
+              The session shall reject a blank message and a missing configuration or provider
+              factory.
+            justification: |
+              A blank turn spends context to say nothing and is a defect in the calling application
+              rather than something to forward to a provider. A missing configuration or factory is
+              refused where the host wrote it rather than at the first conversation.
+            tests:
+              - CompactingAgentSession_SendAsync_BlankMessage_Throws
+              - CompactingAgentSession_CreateAsync_NullArguments_Throw
+
+          - id: AgentKitSessions-CompactingAgentSession-DisposesProviderSession
+            title: >-
+              The session shall release the live provider session on disposal, permit repeated
+              disposal, and refuse further turns once disposed.
+            justification: |
+              For some providers the live session is server-side state that keeps being billed for
+              until released. Sessions replaced by earlier rotations were already disposed at the
+              moment they were replaced, so disposing the session releases everything it still holds.
+              Repeated disposal is permitted because a disposal pattern that threw on a second call
+              would make defensive cleanup harder than leaving the resource open.
+            tests:
+              - CompactingAgentSession_DisposeAsync_ReleasesTheLiveProviderSession

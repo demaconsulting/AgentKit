@@ -1,0 +1,11 @@
+package AgentKitSessions {
+    part def AgentSession {
+        doc /* The session contract an application programs against - send a message, read what the window looks like, dispose - together with what one turn reports back about the answer, the resulting usage, whether the session rotated and any saturation the rotation found. Deliberately small and provider-silent, so an application wanting a long-running agent need not know how compaction is achieved. */
+
+        comment sourceRef /* Source: src/DemaConsulting.AgentKit.Sessions/AgentSession.cs */
+        comment testRef /* Test: test/DemaConsulting.AgentKit.Sessions.Tests/AgentSessionTests.cs */
+        comment designRef /* Design: docs/design/agent-kit-sessions/agent-session.md */
+        comment verificationRef /* Verification: docs/verification/agent-kit-sessions/agent-session.md */
+        comment reqRef /* Requirements: docs/reqstream/agent-kit-sessions/agent-session.yaml */
+    }
+}

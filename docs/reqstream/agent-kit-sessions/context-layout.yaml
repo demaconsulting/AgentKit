@@ -1,0 +1,71 @@
+---
+# Software Unit Requirements for ContextLayout
+#
+# These requirements describe the design-level behavior of the ContextLayout unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: ContextLayout Requirements
+        requirements:
+          - id: AgentKitSessions-ContextLayout-TierModel
+            title: >-
+              The layout shall hold the fixed overhead, one coarse tier per tier budget above tier
+              zero, and the verbatim tier-zero history, allocating the coarse tiers to match the
+              policy at creation.
+            justification: |
+              Tier zero holds verbatim history and is therefore a transcript rather than a
+              consolidated record, so it is not represented as a coarse tier. Allocating the coarse
+              tiers up front means the hierarchy always matches the policy and no code path has to
+              grow it later - a tier appearing mid-session would make the bound unverifiable at the
+              moment it mattered most.
+            tests:
+              - ContextLayout_Create_AllocatesOneCoarseTierPerBudgetAboveTierZero
+              - ContextLayout_WithTiers_WrongTierCount_Throws
+              - ContextTier_Construct_TierZero_Throws
+
+          - id: AgentKitSessions-ContextLayout-PublishesTheBound
+            title: >-
+              The layout shall publish the conversation tokens excluding fixed overhead, the total
+              including it, the construction bound of fixed overhead plus every tier budget, and
+              whether it currently sits within that bound.
+            justification: |
+              The rotation threshold is a fraction of the effective window, so the figure it is
+              compared against must exclude the fixed overhead; publishing both makes the comparison
+              unambiguous rather than something each caller re-derives. The bound depends on the
+              configuration alone and not on what the session has done, which is what makes it
+              something an application can reason about before starting. It is a post-rotation
+              property: between rotations tier zero is append-only and grows past its budget, which
+              is exactly what the rotation threshold's headroom is reserved for.
+            tests:
+              - ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget
+              - ContextLayout_ConversationTokens_ExcludeTheFixedOverhead
+              - ContextTier_IsWithinBudget_ReflectsTheRecordSize
+
+          - id: AgentKitSessions-ContextLayout-Immutable
+            title: >-
+              The layout shall be immutable, every change returning a new layout and leaving the
+              original unmodified.
+            justification: |
+              Immutability is what makes the rotation engine a pure function of the layout it was
+              handed and lets a test compare a before and an after. It also means a caller holding a
+              layout snapshot across a turn is never surprised by it changing underneath them.
+            tests:
+              - ContextLayout_WithTranscript_LeavesTheOriginalUnchanged
+
+          - id: AgentKitSessions-ContextLayout-SeedsMostStableFirst
+            title: >-
+              The layout shall build the seed history most stable first - coarsest records, then
+              finer records, then the verbatim recent turns - labeling each record with its level and
+              omitting empty tiers.
+            justification: |
+              Stability decreasing from left to right is what allows a provider's prompt cache to
+              match the longest possible prefix between turns. A model handed several consolidated
+              records with no ordering cue cannot tell which supersedes which, so each is labeled
+              with its level. An empty tier is skipped because seeding an empty record would spend
+              framing tokens to say nothing. The system prompt and tool declarations are not seeded
+              as history because providers accept them as configuration, which is also why they are
+              accounted for as fixed overhead.
+            tests:
+              - ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory
+              - ContextLayout_BuildSeed_EmptyLayout_EmitsNothing
