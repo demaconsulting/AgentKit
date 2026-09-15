@@ -92,9 +92,9 @@ public class AgentSessionOptionsTests
     }
 
     /// <summary>
-    ///     Proves the construction bound is asserted: a window that cannot hold the tier budgets is
-    ///     refused, because such a session would rotate into a context already over budget and could
-    ///     never converge.
+    ///     Proves the convergence invariant is asserted: a window in which a rotated context could
+    ///     not land below the rotation threshold is refused, because such a session rotates on
+    ///     nearly every turn without ever settling.
     /// </summary>
     [Fact]
     public void AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws()
@@ -104,50 +104,70 @@ public class AgentSessionOptionsTests
         var exception = Assert.Throws<ArgumentException>(() =>
             new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: 4_000));
 
-        Assert.Contains("could never rotate back within its bound", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("cannot converge with this policy", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a window exactly large enough for the bound — the tier budgets plus the framing
-    ///     their seeded records carry — is accepted, so the bound is a genuine boundary rather than
-    ///     an approximation with hidden slack.
+    ///     Proves the accepted boundary is the window at which the session <em>converges</em>, not
+    ///     merely the one at which a rotated context <em>fits</em>.
     /// </summary>
+    /// <remarks>
+    ///     <b>These are different numbers, and asserting the wrong one was the defect.</b> A window
+    ///     equal to the construction bound holds a rotated context exactly — and leaves it sitting
+    ///     at 100 percent of a window whose rotation threshold is 70 percent, so the very next turn
+    ///     rotates again, and so does every turn after it, silently, because each individual
+    ///     consolidation reduces perfectly normally and raises no saturation signal. Convergence
+    ///     requires the rotated context to land <em>below</em> the threshold, which takes a window
+    ///     larger than the bound divided by the rotation fraction.
+    /// </remarks>
     [Fact]
-    public void AgentSessionOptions_Construct_WindowExactlyFitsTheBound_IsAccepted()
+    public void AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused()
     {
-        // Arrange: a window equal to the default policy's bound
-        var bound = CompactionPolicy.Default.TotalTierBudgetTokens
-            + ContextLayout.SeedFramingTokens(CompactionPolicy.Default);
+        // Arrange: the bound - what a rotated context occupies - and the threshold it must clear
+        var policy = CompactionPolicy.Default;
+        var bound = policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy);
 
-        // Act: configure a session in exactly that window
-        var options = new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: bound);
+        // Act / Assert: a window that merely holds the bound is refused, because a rotation lands on
+        // the threshold rather than below it
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: bound));
+        Assert.Contains("cannot converge with this policy", exception.Message, StringComparison.Ordinal);
 
-        // Assert: accepted, with the whole window available for conversation
-        Assert.Equal(bound, options.EffectiveWindowTokens);
+        // Assert: the smallest accepted window is the one at which the threshold first exceeds the
+        // bound, and one token less is refused - so the boundary is exactly where it is claimed
+        var minimum = (int)Math.Ceiling((bound + 1) / policy.RotationThreshold);
+        var options = new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: minimum);
+        Assert.True(
+            options.RotationThresholdTokens > bound,
+            $"A rotated context of {bound} tokens must land below the threshold of "
+            + $"{options.RotationThresholdTokens}.");
 
-        // Assert: one token less is refused, so the boundary is where it is claimed to be
         Assert.Throws<ArgumentException>(() =>
-            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: bound - 1));
+            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: minimum - 1));
     }
 
     /// <summary>
-    ///     Proves a rotation threshold too small to survive truncation still leaves a positive token
-    ///     threshold. A threshold of zero is satisfied by a conversation of no tokens at all, so the
-    ///     session would be willing to rotate a context holding nothing — spending summarizer work
-    ///     and a fresh provider session on material that does not exist.
+    ///     Proves a rotation fraction too small for any rotated context to land below is refused
+    ///     outright rather than quietly turned into a session that rotates on every turn.
     /// </summary>
+    /// <remarks>
+    ///     A threshold that truncates to nothing is satisfied by a conversation of no tokens at all,
+    ///     so the session would be willing to rotate a context holding nothing — spending summarizer
+    ///     work and a fresh provider session on material that does not exist. Refusing the
+    ///     configuration where the host wrote it is the repair; clamping the threshold to one token
+    ///     only made the symptom less extreme.
+    /// </remarks>
     [Fact]
-    public void AgentSessionOptions_Construct_SubTokenThreshold_ClampsToOneToken()
+    public void AgentSessionOptions_Construct_SubTokenThreshold_IsRefused()
     {
         // Arrange: a threshold whose product with the effective window is below one token
         var policy = new CompactionPolicy(rotationThreshold: 0.0001);
 
-        // Act: configure a session around it
-        var options = new AgentSessionOptions(
-            new FakeSummarizer(), providerWindowTokens: 5_000, compaction: policy);
+        // Act / Assert: refused, because no rotated context could ever land below it
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: 5_000, compaction: policy));
 
-        // Assert: truncation cannot take the threshold below one token
-        Assert.Equal(1, options.RotationThresholdTokens);
+        Assert.Contains("cannot converge with this policy", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

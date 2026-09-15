@@ -145,21 +145,37 @@ public class RotationEngineTests
     }
 
     /// <summary>
-    ///     Proves a tool call and its result are never separated by a rotation. A boundary falling
-    ///     between them would leave the seeded history beginning with a result whose call is gone,
-    ///     which some providers reject outright and no model can interpret.
+    ///     Proves a tool call and its result are never separated by a rotation, including when the
+    ///     boundary falls inside an interleaved run of parallel calls. A boundary leaving a result
+    ///     whose call was consolidated away produces history some providers reject outright and no
+    ///     model can interpret.
     /// </summary>
+    /// <remarks>
+    ///     <b>The sequence is interleaved, and that is the whole point of the test.</b> Written with
+    ///     sequential pairs — call, result, call, result — and asserting only that the first
+    ///     surviving entry is not a result, this test passes against the defective
+    ///     first-entry-only check as readily as against the correct one: with sequential pairs the
+    ///     two implementations snap to the identical boundary, so it could never fail for the reason
+    ///     it is named for. An interleaved run — call c1, call c2, result c1, result c2 — is what
+    ///     separates them, because a boundary landing on c2's call passes a first-entry check (a
+    ///     call is not a result) while leaving c1's result inside the retained window with its own
+    ///     call in the overflow. Parallel tool calls are ordinary agent traffic. The assertion is
+    ///     correspondingly over the whole retained window rather than its first entry.
+    /// </remarks>
     [Fact]
     public async Task RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult()
     {
-        // Arrange: a history of call-and-result pairs long enough to overflow tier zero
+        // Arrange: interleaved runs of parallel calls, long enough to overflow tier zero and to put
+        // the boundary inside a run rather than tidily between two runs
         var summarizer = new FakeSummarizer();
         var transcript = SessionTranscript.Empty;
-        for (var index = 0; index < 8; index++)
+        for (var run = 0; run < 6; run++)
         {
             transcript = transcript
-                .Append(TranscriptEntry.ToolCall($"c{index}", new string('c', 16 * TokenEstimator.CharactersPerToken)))
-                .Append(TranscriptEntry.ToolResult($"c{index}", new string('r', 16 * TokenEstimator.CharactersPerToken)));
+                .Append(TranscriptEntry.ToolCall($"a{run}", new string('c', 11 * TokenEstimator.CharactersPerToken)))
+                .Append(TranscriptEntry.ToolCall($"b{run}", new string('c', 11 * TokenEstimator.CharactersPerToken)))
+                .Append(TranscriptEntry.ToolResult($"a{run}", new string('r', 11 * TokenEstimator.CharactersPerToken)))
+                .Append(TranscriptEntry.ToolResult($"b{run}", new string('r', 11 * TokenEstimator.CharactersPerToken)));
         }
 
         // Act: rotate
@@ -168,9 +184,35 @@ public class RotationEngineTests
             summarizer,
             TestContext.Current.CancellationToken);
 
-        // Assert: what survives verbatim never begins with a result, so no call was orphaned
+        // Assert: something survived verbatim, and every retained result has its own call retained
+        // ahead of it. Checking the whole window is what a first-entry assertion cannot do.
+        var retained = outcome.Layout.Transcript.Entries;
+        Assert.NotEmpty(retained);
+
+        var callsRetained = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in retained)
+        {
+            if (entry.Kind == TranscriptEntryKind.ToolCall)
+            {
+                callsRetained.Add(entry.ToolCallId!);
+            }
+            else if (entry.Kind == TranscriptEntryKind.ToolResult)
+            {
+                Assert.True(
+                    callsRetained.Contains(entry.ToolCallId!),
+                    $"Retained result '{entry.ToolCallId}' has no retained call; the rotation "
+                    + "orphaned it. Retained kinds were: "
+                    + string.Join(", ", retained.Select(e => $"{e.Kind}:{e.ToolCallId}")));
+            }
+        }
+
+        // Assert: the boundary really did land inside a run, so the interleaving was exercised
+        // rather than incidentally avoided. Without this the test could silently degrade back into
+        // the sequential case it was rewritten to escape.
         Assert.NotEmpty(outcome.Layout.Transcript.Entries);
-        Assert.NotEqual(TranscriptEntryKind.ToolResult, outcome.Layout.Transcript.Entries[0].Kind);
+        Assert.True(
+            retained.Count < transcript.Entries.Count,
+            "Nothing overflowed, so no boundary was exercised at all.");
     }
 
     /// <summary>
@@ -378,5 +420,112 @@ public class RotationEngineTests
         // Act / Assert: refused rather than reported as a successful rotation
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             RotationEngine.RotateAsync(layout, summarizer, source.Token));
+    }
+
+    /// <summary>
+    ///     Proves a summarizer returning whitespace does not poison the session. Three neighboring
+    ///     validators used to disagree about whether such a record was empty, and the disagreement
+    ///     was permanent once the record was written.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A whitespace answer is contract-conformant:</b> <c>ISummarizer</c> forbids only
+    ///     <see langword="null"/>. It was nonetheless non-empty to <c>ContextTier.IsEmpty</c>, which
+    ///     seeded it with a full label and per-entry framing to say nothing, and non-empty to the
+    ///     rotation engine's cascade test, which handed it to a <c>ConsolidationRequest</c> that
+    ///     refuses blank material — throwing an <c>ArgumentException</c> out of <c>RotateAsync</c>,
+    ///     which documents no such exception, and out of <c>SendAsync</c>. The record was permanent
+    ///     state by then, so every later rotation failed the same way. All three now read blank as
+    ///     empty.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty()
+    {
+        // Arrange: whitespace on the first consolidation, then an answer far too large for its tier
+        // so the next rotation must try to cascade the whitespace record into a coarser tier
+        var calls = 0;
+        var summarizer = new FakeSummarizer(request =>
+        {
+            calls++;
+            return calls == 1
+                ? "   "
+                : new string('y', 3 * request.BudgetTokens * TokenEstimator.CharactersPerToken);
+        });
+
+        // Act: the first rotation records the whitespace
+        var first = await RotationEngine.RotateAsync(
+            SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20)),
+            summarizer,
+            TestContext.Current.CancellationToken);
+
+        // Assert: the whitespace record is empty, so it costs no framing and is not seeded at all
+        Assert.True(first.Layout.CoarseTiers[0].IsEmpty);
+        Assert.DoesNotContain(
+            first.Layout.BuildSeed(),
+            entry => entry.Kind == TranscriptEntryKind.ContextRecord);
+
+        // Act: a second rotation, which is where the disagreement used to surface
+        var grown = first.Layout.WithTranscript(
+            first.Layout.Transcript.Append(SessionTestData.TranscriptOf(10, 20).Entries));
+        var second = await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+
+        // Assert: it completed rather than throwing, and the whitespace was never offered as
+        // material to consolidate
+        Assert.True(second.ConsolidationCount > 0);
+        Assert.DoesNotContain(summarizer.Requests, request => string.IsNullOrWhiteSpace(request.Material));
+
+        // Assert: a consolidation carrying only a whitespace previous record is a degradation, not
+        // an extension - there is no detail in whitespace to ratchet forward
+        Assert.All(
+            summarizer.Requests.Where(request => string.IsNullOrWhiteSpace(request.PreviousRecord)),
+            request => Assert.True(request.IsDegradation));
+    }
+
+    /// <summary>
+    ///     Proves a cascade already under way stops when the token is canceled, rather than running
+    ///     every remaining consolidation to completion.
+    /// </summary>
+    /// <remarks>
+    ///     <b>Both other cancellation tests hand in a token that was already canceled, which is why
+    ///     this went unnoticed.</b> An already-canceled token is caught by the single check at the
+    ///     top of the rotation, so neither test ever reaches the cascade and neither can say
+    ///     anything about what happens once it is running. A cascade is one summarizer call per
+    ///     tier — several model calls in production — and <c>ISummarizer</c> documents only that an
+    ///     implementation <em>may</em> honor the token, so an implementation that simply ignores it
+    ///     let the whole cascade proceed after the caller had given up on it. The engine therefore
+    ///     checks for itself before every consolidation, and this exercises that by canceling from
+    ///     inside the summarizer and then deliberately ignoring the token, exactly as a
+    ///     contract-conformant but inattentive implementation would.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_CanceledMidCascade_StopsWithoutFinishingTheCascade()
+    {
+        // Arrange: a summarizer that cancels on its first call, ignores the token, and always
+        // overflows its tier so the rotation would otherwise cascade through every tier
+        using var source = new CancellationTokenSource();
+        var calls = 0;
+        var summarizer = new FakeSummarizer(request =>
+        {
+            calls++;
+            source.Cancel();
+            return new string('x', 3 * request.BudgetTokens * TokenEstimator.CharactersPerToken);
+        });
+
+        // Arrange: a layout already carrying records, so the rotation has a full cascade to run
+        var policy = SessionTestData.SmallPolicy;
+        var seeded = ContextLayout.Create(policy, 0, 0).WithTiers(
+            SessionTestData.TranscriptOf(10, 20),
+            [
+                new ContextTier(1, policy.TierBudgetTokens[1], new string('p', 50 * TokenEstimator.CharactersPerToken)),
+                new ContextTier(2, policy.TierBudgetTokens[2], new string('p', 35 * TokenEstimator.CharactersPerToken)),
+                new ContextTier(3, policy.TierBudgetTokens[3], new string('p', 25 * TokenEstimator.CharactersPerToken)),
+            ]);
+
+        // Act / Assert: the rotation is abandoned rather than carried through
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            RotationEngine.RotateAsync(seeded, summarizer, source.Token));
+
+        // Assert: it stopped at the cancellation instead of finishing the cascade. Exactly one
+        // consolidation ran - the one that did the canceling - and the engine refused the next.
+        Assert.Equal(1, calls);
     }
 }

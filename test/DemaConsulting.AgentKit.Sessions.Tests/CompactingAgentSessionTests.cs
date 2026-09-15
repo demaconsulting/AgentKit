@@ -60,16 +60,19 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession()
     {
-        // Arrange: a small window and a small policy, with turns large enough to fill it in two
+        // Arrange: a converging window and the small policy, with turns small enough that an entry
+        // still fits tier zero - so the rotation has something to retain verbatim as well as
+        // something to consolidate
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 70 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 400);
+            windowTokens: SessionTestData.ConvergentWindowTokens);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(), providerWindowTokens: SessionTestData.ConvergentWindowTokens, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
         var message = new string('m', 70 * TokenEstimator.CharactersPerToken);
 
-        // Act: two turns, the second of which crosses the threshold
+        // Act: three turns, the third of which crosses the 420-token threshold
+        await session.SendAsync(message, TestContext.Current.CancellationToken);
         await session.SendAsync(message, TestContext.Current.CancellationToken);
         var response = await session.SendAsync(message, TestContext.Current.CancellationToken);
 
@@ -167,30 +170,32 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne()
     {
-        // Arrange: a host that configured 4,000 tokens against a provider reporting 400. The
-        // configured threshold is 2,800 conversation tokens; the reported one is 280.
+        // Arrange: a host that configured 4,000 tokens against a provider reporting 600. The
+        // configured threshold is 2,800 conversation tokens; the reported one is 420.
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(new string('r', 70 * TokenEstimator.CharactersPerToken)),
-            windowTokens: 400);
+            windowTokens: SessionTestData.ConvergentWindowTokens);
         var options = new AgentSessionOptions(
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
         var message = new string('m', 70 * TokenEstimator.CharactersPerToken);
 
-        // Act: two turns of 148 tokens each, so the conversation reaches 296 tokens - past the
-        // reported threshold, nowhere near the configured one
+        // Act: turns of 148 tokens each, so the conversation passes the reported threshold of 420
+        // on the third turn while remaining nowhere near the configured one
         var first = await session.SendAsync(message, TestContext.Current.CancellationToken);
         var second = await session.SendAsync(message, TestContext.Current.CancellationToken);
+        var third = await session.SendAsync(message, TestContext.Current.CancellationToken);
 
         // Assert: the provider's own window is what the session is measured against
-        Assert.Equal(ContextUsageOrigin.Provider, second.Usage.Origin);
-        Assert.Equal(400, second.Usage.WindowTokens);
+        Assert.Equal(ContextUsageOrigin.Provider, third.Usage.Origin);
+        Assert.Equal(SessionTestData.ConvergentWindowTokens, third.Usage.WindowTokens);
         Assert.Equal(4000, options.ProviderWindowTokens);
         Assert.Equal(2800, options.RotationThresholdTokens);
 
-        // Assert: the first turn stayed below the reported threshold and the second crossed it
+        // Assert: the earlier turns stayed below the reported threshold and the third crossed it
         Assert.False(first.RotationOccurred);
-        Assert.True(second.RotationOccurred);
+        Assert.False(second.RotationOccurred);
+        Assert.True(third.RotationOccurred);
         Assert.Equal(1, session.RotationCount);
     }
 
@@ -244,14 +249,14 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent()
     {
-        // Arrange: the same arithmetic as the rotation scenario - a 400-token window, the small
-        // policy, and turns of roughly 140 tokens - against a provider that throws when disposed
+        // Arrange: the same arithmetic as the rotation scenario - a converging window, the small
+        // policy, and turns of roughly 220 tokens - against a provider that throws when disposed
         var factory = new ThrowingDisposeProviderSessionFactory(
-            _ => new ProviderTurn(new string('r', 70 * TokenEstimator.CharactersPerToken)));
+            _ => new ProviderTurn(new string('r', 110 * TokenEstimator.CharactersPerToken)));
         var options = new AgentSessionOptions(
-            new FakeSummarizer(), providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
+            new FakeSummarizer(), providerWindowTokens: SessionTestData.ConvergentWindowTokens, compaction: SessionTestData.SmallPolicy);
         var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
-        var message = new string('m', 70 * TokenEstimator.CharactersPerToken);
+        var message = new string('m', 110 * TokenEstimator.CharactersPerToken);
 
         // Act: two turns, the second of which rotates and so disposes the first session
         await session.SendAsync(message, TestContext.Current.CancellationToken);
@@ -303,9 +308,9 @@ public class CompactingAgentSessionTests
             message => new ProviderTurn(
                 $"Concluded: {message}",
                 [TranscriptEntry.ToolCall("c1", "read the file"), TranscriptEntry.ToolResult("c1", "contents")]),
-            windowTokens: 400);
+            windowTokens: SessionTestData.ConvergentWindowTokens);
         var options = new AgentSessionOptions(
-            summarizer, providerWindowTokens: 400, compaction: SessionTestData.SmallPolicy);
+            summarizer, providerWindowTokens: SessionTestData.ConvergentWindowTokens, compaction: SessionTestData.SmallPolicy);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         // Act: one distinctive tool-using turn, then enough routine turns to force a rotation
@@ -364,18 +369,19 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves a provider reporting a window too small to hold the construction bound is refused
-    ///     at creation, and that the session it was created for releases the provider on the way
-    ///     out. Allowing it would derive a rotation threshold from the reported window while
-    ///     rotation still split tier zero at the policy's budget, so every turn would cross the
-    ///     threshold, rotate into a layout still over the reported window, and re-seed it — a thrash
-    ///     loop spending a summarizer call and a provider session per turn without ever converging.
+    ///     Proves a provider reporting a window this session could not converge in is refused at
+    ///     creation, and that the session it was created for releases the provider on the way out.
+    ///     Allowing it would derive a rotation threshold from the reported window that a rotated
+    ///     context could not land below, so every turn would cross the threshold, rotate, and cross
+    ///     it again — a thrash loop spending a summarizer call and a provider session per turn
+    ///     without ever settling, and raising no saturation signal while doing it.
     /// </summary>
     [Fact]
     public async Task CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows()
     {
-        // Arrange: the small policy's bound is 311 tokens with no fixed overhead - 230 of tier
-        // budgets plus 81 of seeded record framing - against a provider reporting 100
+        // Arrange: the small policy needs 446 tokens to converge - a rotated context of 311, being
+        // 230 of tier budgets plus 81 of seeded record framing, landing below 70 percent of the
+        // window - against a provider reporting 100
         var factory = new InMemoryProviderSessionFactory(windowTokens: 100);
         var options = new AgentSessionOptions(
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
@@ -384,12 +390,43 @@ public class CompactingAgentSessionTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
 
-        // Assert: the failure names both figures, so a host can see which one to change
+        // Assert: the failure names the reported window, what a rotated context occupies, and what
+        // the policy actually requires, so a host can see which figure to change
         Assert.Contains("100", error.Message, StringComparison.Ordinal);
-        Assert.Contains("311", error.Message, StringComparison.Ordinal);
+        Assert.Contains("230", error.Message, StringComparison.Ordinal);
+        Assert.Contains("446", error.Message, StringComparison.Ordinal);
 
         // Assert: the session was abandoned mid-life, so the provider it had already created was
         // released rather than left holding a conversation the caller has no handle to
+        Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+    }
+
+    /// <summary>
+    ///     Proves a window that holds a rotated context but leaves it at or above the rotation
+    ///     threshold is refused, which is the case the guard used to admit.
+    /// </summary>
+    /// <remarks>
+    ///     <b>This is the reported-window twin of the configured-window case, and the band between
+    ///     the two conditions is where the defect lived.</b> A provider reporting 400 tokens holds
+    ///     the small policy's 311-token rotated context comfortably, so the old guard — which asked
+    ///     only whether the window held the bound — passed it. The rotation threshold at 400 tokens
+    ///     is 280, which a 311-token rotated context sits above, so the session rotated on nearly
+    ///     every turn forever. Nine tests in this suite ran at exactly this window.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ProviderWindowHoldsTheBoundButCannotConverge_ReleasesAndThrows()
+    {
+        // Arrange: a reported window larger than the 311-token rotated context but smaller than the
+        // 446 tokens convergence requires
+        var factory = new InMemoryProviderSessionFactory(windowTokens: 400);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act / Assert: refused, even though a rotated context would have fitted
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        Assert.Contains("446", error.Message, StringComparison.Ordinal);
         Assert.True(Assert.Single(factory.Sessions).IsDisposed);
     }
 
@@ -422,6 +459,82 @@ public class CompactingAgentSessionTests
         // Assert: disposing the abandoned session again is permitted and releases nothing further
         await session.DisposeAsync();
         Assert.Equal(1, factory.Sessions[0].DisposeAttempts);
+    }
+
+    /// <summary>
+    ///     Proves a rotation that consolidated nothing does not replace the provider session, does
+    ///     not count as a rotation, and is not reported as one.
+    /// </summary>
+    /// <remarks>
+    ///     <b>"A re-seed costs nothing" is true of the engine and false of this class.</b> When the
+    ///     transcript already fits tier zero the engine returns the layout unchanged, which for a
+    ///     pure function over a layout is genuinely free. Acting on it here is not: it creates a
+    ///     replacement provider session, disposes the live one, increments the rotation count and
+    ///     tells the caller a rotation happened — all to arrive at the context the session already
+    ///     had. Measured before this was fixed, a policy of <c>[100, 1]</c> in a 128-token window
+    ///     did that on 16 of 20 turns, creating 17 provider sessions and reporting no saturation at
+    ///     any point.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_RotationConsolidatesNothing_IsNotReportedAsARotation()
+    {
+        // Arrange: a layout whose coarse tiers are already full enough that the conversation crosses
+        // the threshold while the verbatim transcript still fits tier zero, so a rotation would find
+        // nothing to age out
+        var summarizer = FakeSummarizer.Filling();
+        var factory = new InMemoryProviderSessionFactory(
+            _ => new ProviderTurn("ok"),
+            windowTokens: SessionTestData.ConvergentWindowTokens,
+            reportsUsage: false);
+        var options = new AgentSessionOptions(
+            summarizer,
+            providerWindowTokens: SessionTestData.ConvergentWindowTokens,
+            compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+
+        // Act: run a long conversation of small turns
+        var reportedRotations = 0;
+        for (var turn = 0; turn < 30; turn++)
+        {
+            var response = await session.SendAsync(
+                $"{turn}-" + new string('m', 20 * TokenEstimator.CharactersPerToken),
+                TestContext.Current.CancellationToken);
+            if (response.RotationOccurred)
+            {
+                reportedRotations++;
+            }
+        }
+
+        // Assert: every rotation reported is a rotation that actually happened, every rotation that
+        // happened consolidated something, and each one created exactly one provider session
+        Assert.Equal(session.RotationCount, reportedRotations);
+        Assert.Equal(session.RotationCount + 1, factory.Sessions.Count);
+        Assert.True(
+            session.ConsolidationCount >= session.RotationCount,
+            $"{session.RotationCount} rotations performed only {session.ConsolidationCount} "
+            + "consolidations, so at least one replaced a provider session for nothing.");
+    }
+
+    /// <summary>
+    ///     Proves a rotation that consolidated nothing is a no-op at the engine boundary too: the
+    ///     layout is returned unchanged and the consolidation count is zero, which is the signal
+    ///     this class acts on.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_TranscriptFitsTierZero_KeepsTheLiveProviderSession()
+    {
+        // Arrange: a transcript that fits tier zero, rotated directly through the engine
+        var summarizer = new FakeSummarizer();
+        var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
+
+        // Act
+        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+
+        // Assert: nothing was consolidated and nothing changed, so there is no new context to seed a
+        // replacement provider session from
+        Assert.Equal(0, outcome.ConsolidationCount);
+        Assert.Same(layout, outcome.Layout);
+        Assert.Empty(summarizer.Requests);
     }
 
     /// <summary>

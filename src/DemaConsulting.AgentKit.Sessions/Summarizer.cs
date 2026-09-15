@@ -101,8 +101,14 @@ public sealed class ConsolidationRequest
     ///     True when there is no previous record to incorporate. The ratchet rule — never drop
     ///     detail an earlier consolidation kept — applies only when a previous record exists, so
     ///     this is what distinguishes a legitimate coarsening from an accidental loss.
+    ///     <para>
+    ///     A blank record counts as none, matching <see cref="ContextTier.IsEmpty"/> and the
+    ///     refusal of blank <see cref="Material"/> above. Whitespace holds no detail to carry
+    ///     forward, so presenting it to a summarizer as a record to preserve would ask for the
+    ///     impossible.
+    ///     </para>
     /// </remarks>
-    public bool IsDegradation => string.IsNullOrEmpty(PreviousRecord);
+    public bool IsDegradation => string.IsNullOrWhiteSpace(PreviousRecord);
 }
 
 /// <summary>

@@ -74,11 +74,26 @@ public sealed class ContextTier
     ///     Gets a value indicating whether the tier holds no record yet.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     An empty tier is the signal that a consolidation into it is a first recording rather than
     ///     an extension, which is what <see cref="ConsolidationRequest.IsDegradation"/> reports to
-    ///     the summarizer.
+    ///     the summarizer. It is also what <see cref="ContextLayout.BuildSeed"/> skips, so an empty
+    ///     tier costs no framing.
+    ///     </para>
+    ///     <para>
+    ///     <b>Blank counts as empty, which is the one definition this package uses.</b>
+    ///     <see cref="ConsolidationRequest"/> refuses blank material outright, so a record of pure
+    ///     whitespace is material no consolidation would accept; treating it as content here would
+    ///     make neighboring validators disagree about the same string. It did: a summarizer
+    ///     returning <c>"   "</c> — which <see cref="ISummarizer"/> permits, forbidding only
+    ///     <see langword="null"/> — produced a tier that was non-empty here, was seeded with a full
+    ///     label and framing to say nothing, and was then handed to a
+    ///     <see cref="ConsolidationRequest"/> that rejected it, throwing an undocumented
+    ///     <see cref="ArgumentException"/> out of a rotation and permanently out of every rotation
+    ///     afterwards.
+    ///     </para>
     /// </remarks>
-    public bool IsEmpty => Content.Length == 0;
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Content);
 
     /// <summary>
     ///     Gets a value indicating whether the record fits the tier's budget.

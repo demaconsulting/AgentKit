@@ -223,9 +223,12 @@ public static class RotationEngine
     ///     so a tool call is never separated from its result. The retained suffix stays verbatim.
     ///     </para>
     ///     <para>
-    ///     2. If nothing overflowed, the rotation is a re-seed: the layout is returned unchanged and
-    ///     no summarizer call is made. That is the correct outcome for a session whose recent
-    ///     history already fits, and it costs nothing.
+    ///     2. If nothing overflowed, no aging is required: the layout is returned unchanged, no
+    ///     summarizer call is made, and the reported consolidation count is zero. That is the
+    ///     correct outcome for a session whose recent history already fits, and it costs this
+    ///     engine nothing. It is <em>not</em> free to a caller that would act on it by replacing a
+    ///     provider session, so the zero consolidation count is the signal to do no such thing;
+    ///     <see cref="CompactingAgentSession"/> treats it as a turn that did not rotate.
     ///     </para>
     ///     <para>
     ///     3. Otherwise fold the overflow into tier one, cascading: a consolidation whose result
@@ -245,7 +248,10 @@ public static class RotationEngine
     /// <param name="cancellationToken">
     ///     Cancels the rotation. Checked once after argument validation, so an already-canceled
     ///     rotation is refused even when the transcript fits and there is no work to do, and again
-    ///     between consolidations.
+    ///     before each consolidation, so a cascade already under way stops at the next tier instead
+    ///     of running to completion. The check is made by this engine rather than left to the
+    ///     summarizer, because <see cref="ISummarizer"/> only documents that an implementation may
+    ///     honor the token.
     /// </param>
     /// <returns>The aged layout, the saturation reports, and the consolidation count.</returns>
     /// <exception cref="ArgumentNullException">
@@ -277,8 +283,8 @@ public static class RotationEngine
         // survives without the call that produced it.
         var (retained, overflow) = layout.Transcript.SplitAtBudget(policy.TierBudgetTokens[0]);
 
-        // Step 2: nothing aged out, so this rotation is purely a re-seed of the same content into a
-        // fresh provider session. No summarizer call is made and no tier changes.
+        // Step 2: nothing aged out, so no aging is required and no summarizer call is made. The zero
+        // consolidation count is what tells a caller this produced no new context to seed from.
         if (overflow.Count == 0)
         {
             return new RotationOutcome(layout, [], 0);
@@ -390,7 +396,16 @@ public static class RotationEngine
 
             // The combined record does not fit. Cascade only when there is an older record to move
             // down and somewhere coarser to move it to.
-            var canCascade = previous.Length > 0 && tierIndex + 1 < policy.TierCount;
+            //
+            // "An older record" means a record holding something, not merely a string of non-zero
+            // length. A summarizer is permitted to return whitespace - ISummarizer forbids only null
+            // - and a whitespace previous record treated as cascadable material was handed to a
+            // ConsolidationRequest, which refuses blank material, throwing an ArgumentException out
+            // of this method that RotateAsync does not document and SendAsync does not expect. The
+            // whitespace record was permanent state by then, so every later rotation failed the same
+            // way. ContextTier.IsEmpty and ConsolidationRequest.IsDegradation use this same
+            // definition, so all three now agree about the same string.
+            var canCascade = !string.IsNullOrWhiteSpace(previous) && tierIndex + 1 < policy.TierCount;
             if (!canCascade)
             {
                 Tiers[slot] = tier.WithContent(merged);
@@ -445,9 +460,10 @@ public static class RotationEngine
         /// <param name="previousRecord">The record to carry forward, empty when there is none.</param>
         /// <param name="material">The material to fold in.</param>
         /// <param name="budgetTokens">The tier's budget, passed for the summarizer's information.</param>
-        /// <param name="cancellationToken">Cancels the consolidation.</param>
+        /// <param name="cancellationToken">Cancels the consolidation, checked before it is made.</param>
         /// <returns>The consolidated record, never <see langword="null"/>.</returns>
         /// <exception cref="InvalidOperationException">The summarizer returned <see langword="null"/>.</exception>
+        /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
         private async Task<string> ConsolidateAsync(
             int tierIndex,
             string previousRecord,
@@ -456,6 +472,14 @@ public static class RotationEngine
             CancellationToken cancellationToken)
         {
             var request = new ConsolidationRequest(tierIndex, previousRecord, material, budgetTokens);
+
+            // Checked before every summarizer call, not merely once at the top of the rotation. A
+            // cascade is one model call per tier, and ISummarizer only documents that an
+            // implementation MAY honor the token - so an implementation that ignores it let a whole
+            // cascade run to completion after the caller had canceled, which is precisely the cost
+            // the check exists to avoid. Placed before the count is incremented so a refused
+            // consolidation is never counted as one that happened.
+            cancellationToken.ThrowIfCancellationRequested();
             ConsolidationCount++;
 
             var result = await summarizer.ConsolidateAsync(request, cancellationToken).ConfigureAwait(false);

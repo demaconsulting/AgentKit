@@ -58,6 +58,32 @@ internal sealed class FakeSummarizer : ISummarizer
     }
 
     /// <summary>
+    ///     Creates a summarizer that returns a record filling its tier's budget exactly.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This is the steady state, and its absence is what hid a convergence defect for five
+    ///     rounds.</b> Every other rotation test here compresses — this class's ratio constructor
+    ///     defaults to 25 percent, and the system tests ran at 10 — so the tiers never approach
+    ///     their budgets and the context a rotation lands on is far smaller than the one the
+    ///     configuration actually permits. A real session does not behave that way: consolidation
+    ///     removes redundancy until there is none left to remove, at which point each tier holds
+    ///     about what it is budgeted for. That is the layout the construction bound describes, and
+    ///     it is the only layout that can reveal whether a rotated context lands below the rotation
+    ///     threshold or on top of it.
+    ///     </para>
+    ///     <para>
+    ///     Filling exactly rather than overflowing is deliberate: overflowing produces saturation
+    ///     signals and exercises the cascade, which is a different property with its own tests. This
+    ///     summarizer stays within every budget, so a session using it is one the library claims
+    ///     should settle.
+    ///     </para>
+    /// </remarks>
+    /// <returns>A summarizer whose every answer occupies exactly the requested tier's budget.</returns>
+    public static FakeSummarizer Filling() =>
+        new(request => new string('s', request.BudgetTokens * TokenEstimator.CharactersPerToken));
+
+    /// <summary>
     ///     Gets every request this summarizer was given, in order.
     /// </summary>
     public List<ConsolidationRequest> Requests { get; } = [];

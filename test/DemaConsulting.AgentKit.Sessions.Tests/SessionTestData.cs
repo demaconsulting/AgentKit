@@ -67,4 +67,26 @@ internal static class SessionTestData
     ///     transcript of thousands of tokens.
     /// </remarks>
     public static CompactionPolicy SmallPolicy { get; } = new([100, 60, 40, 30]);
+
+    /// <summary>
+    ///     Gets a window in which a session using <see cref="SmallPolicy"/> converges.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Named rather than written as a literal, because the number is a conclusion.</b>
+    ///     <see cref="SmallPolicy"/> budgets 230 tokens across its tiers and costs 81 more in the
+    ///     framing their seeded records carry, so a rotated conversation occupies up to 311 tokens.
+    ///     For the session to settle, that has to land below the rotation threshold — 70 percent of
+    ///     the effective window — which takes at least 446 tokens. These tests carry no system
+    ///     prompt and no tools, so the effective window is the whole window.
+    ///     </para>
+    ///     <para>
+    ///     600 is chosen over the bare minimum to leave visible hysteresis: measured against a
+    ///     summarizer that fills every tier to its budget, a session here rotates roughly once every
+    ///     three or four turns rather than on every turn. Nine of these tests previously ran at 400,
+    ///     which holds the 311-token bound and so passed the guard as it was then written, but is
+    ///     below 446 and therefore rotates without ever settling.
+    ///     </para>
+    /// </remarks>
+    public static int ConvergentWindowTokens => 600;
 }

@@ -159,8 +159,7 @@ public sealed class CompactingAgentSession : IAgentSession
     /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="providerSessionFactory"/> returned <see langword="null"/>, or the created
-    ///     provider session reports a context window too small to hold the configured construction
-    ///     bound.
+    ///     provider session reports a context window this session could not converge in.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static async Task<CompactingAgentSession> CreateAsync(
@@ -177,11 +176,11 @@ public sealed class CompactingAgentSession : IAgentSession
 
         var session = new CompactingAgentSession(options, providerSessionFactory, provider);
 
-        // A provider that reports its window does so from the moment it exists, so a window that
-        // cannot hold the bound is knowable before the first turn is ever spent against it. Refused
-        // here for the same reason AgentSessionOptions refuses the equivalent configured window at
-        // construction: the session could never rotate back within its own bound.
-        await session.EnsureReportedWindowHoldsBoundAsync().ConfigureAwait(false);
+        // A provider that reports its window does so from the moment it exists, so a window the
+        // session could not converge in is knowable before the first turn is ever spent against it.
+        // Refused here for the same reason AgentSessionOptions refuses the equivalent configured
+        // window at construction: a rotated context would never land below the rotation threshold.
+        await session.EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
         return session;
     }
 
@@ -196,15 +195,15 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     replacement, so the turn is answered normally.
     ///     </para>
     ///     <para>
-    ///     A provider that reports a context window too small to hold this session's construction
-    ///     bound abandons the session: the live provider is released and an
+    ///     A provider that reports a context window this session could not converge in abandons the
+    ///     session: the live provider is released and an
     ///     <see cref="InvalidOperationException"/> is thrown. See
-    ///     <see cref="EnsureReportedWindowHoldsBoundAsync"/> for why that is preferred to adapting.
+    ///     <see cref="EnsureReportedWindowConvergesAsync"/> for why that is preferred to adapting.
     ///     </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     ///     The provider session factory returned <see langword="null"/> during a rotation, or the
-    ///     live provider reports a context window too small to hold the construction bound.
+    ///     live provider reports a context window this session could not converge in.
     /// </exception>
     public async Task<AgentSessionResponse> SendAsync(
         string message,
@@ -236,11 +235,11 @@ public sealed class CompactingAgentSession : IAgentSession
 
         Usage = ReadUsage(_provider, _options, Layout);
 
-        // A reported window too small to hold the construction bound makes rotation incapable of
-        // making progress, so it is refused here rather than allowed to thrash. A provider may only
-        // begin reporting - or report a smaller window - after a turn, so the check belongs on every
-        // turn and not merely at creation.
-        await EnsureReportedWindowHoldsBoundAsync().ConfigureAwait(false);
+        // A reported window this session could not converge in makes rotation incapable of settling,
+        // so it is refused here rather than allowed to thrash. A provider may only begin reporting -
+        // or report a smaller window - after a turn, so the check belongs on every turn and not
+        // merely at creation.
+        await EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
 
         // Compare conversation tokens - usage with the fixed overhead removed - against the
         // threshold, so the comparison means the same thing whether the figure came from the
@@ -252,8 +251,9 @@ public sealed class CompactingAgentSession : IAgentSession
             return new AgentSessionResponse(turn.ResponseText, Usage, rotationOccurred: false);
         }
 
-        var saturations = await RotateAsync(cancellationToken).ConfigureAwait(false);
-        return new AgentSessionResponse(turn.ResponseText, Usage, rotationOccurred: true, saturations);
+        var rotation = await RotateAsync(cancellationToken).ConfigureAwait(false);
+        return new AgentSessionResponse(
+            turn.ResponseText, Usage, rotation.Occurred, rotation.Saturations);
     }
 
     /// <inheritdoc/>
@@ -299,6 +299,7 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     from the result.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The order is deliberate: consolidate first, create the replacement second, adopt it and
     ///     update this session's state third, dispose the old session last. A summarizer failure
     ///     therefore leaves the session exactly as it was, still able to answer, rather than leaving
@@ -306,15 +307,39 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     the layout and the counters can never be observed describing different sessions; and a
     ///     provider that fails to dispose does not fail the rotation, because by then the rotation
     ///     has already succeeded.
+    ///     </para>
+    ///     <para>
+    ///     <b>A rotation that consolidated nothing is abandoned here rather than carried out.</b>
+    ///     The engine returns the layout unchanged when the transcript already fits tier zero, and
+    ///     for the engine — a pure function over a layout — that genuinely costs nothing. It is not
+    ///     free at this level: carrying it out would create a replacement provider session, dispose
+    ///     the live one, increment <see cref="RotationCount"/> and report a rotation to the caller,
+    ///     all to arrive at exactly the context the session already had. Repeated every turn, that
+    ///     is a provider session per turn spent to achieve nothing, and it is invisible, because no
+    ///     consolidation ran and so nothing saturated. The convergence invariant asserted by
+    ///     <see cref="AgentSessionOptions"/> makes this unreachable for a layout sitting within its
+    ///     tier budgets — the threshold it guarantees exceeds the coarse tiers and their framing by
+    ///     more than tier zero's budget, so anything able to cross the threshold must overflow tier
+    ///     zero. It stays reachable for a layout whose tier is over budget, which is precisely the
+    ///     saturated case, so the guard is kept rather than argued away.
+    ///     </para>
     /// </remarks>
     /// <param name="cancellationToken">Cancels the rotation.</param>
-    /// <returns>Any saturation the rotation reported.</returns>
+    /// <returns>Whether a rotation was actually carried out, and any saturation it reported.</returns>
     /// <exception cref="InvalidOperationException">The provider session factory returned null.</exception>
-    private async Task<IReadOnlyList<SaturationSignal>> RotateAsync(CancellationToken cancellationToken)
+    private async Task<(bool Occurred, IReadOnlyList<SaturationSignal> Saturations)> RotateAsync(
+        CancellationToken cancellationToken)
     {
         var outcome = await RotationEngine
             .RotateAsync(Layout, _options.Summarizer, cancellationToken)
             .ConfigureAwait(false);
+
+        // Nothing aged out, so there is no new context to seed a replacement from. Report the turn
+        // as the ordinary turn it was; see the remarks above for why this is not a rotation.
+        if (outcome.ConsolidationCount == 0)
+        {
+            return (false, outcome.Saturations);
+        }
 
         var seed = new ProviderSessionSeed(
             _options.Instructions,
@@ -357,23 +382,30 @@ public sealed class CompactingAgentSession : IAgentSession
             // the session being disposed is one this object has already given up all reference to.
         }
 
-        return outcome.Saturations;
+        return (true, outcome.Saturations);
     }
 
     /// <summary>
-    ///     Abandons this session when the live provider reports a context window too small to hold
-    ///     the layout's construction bound.
+    ///     Abandons this session when the live provider reports a context window too small for this
+    ///     session to converge.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>Failing rather than adapting, deliberately.</b> The bound is the most this layout can
-    ///     ever occupy: the fixed overhead, every tier budget, and the framing each seeded tier
-    ///     record carries. A window below it cannot hold a freshly rotated context, so rotation
-    ///     cannot make progress. With a reported window below the bound the threshold derived from
-    ///     it is crossed on nearly every turn while <see cref="RotateAsync"/> still splits tier zero
-    ///     at the policy's budget, so each rotation hands back a layout that is still over the
-    ///     reported window and re-seeds it — a thrash loop that spends a summarizer call and a
-    ///     provider session per turn and never converges.
+    ///     <b>The invariant being asserted: a rotated context must land strictly below the rotation
+    ///     threshold.</b> A rotation leaves the conversation holding at most the policy's tier
+    ///     budgets plus the framing their seeded records carry. If the threshold derived from the
+    ///     reported window is at or below that figure, the very layout a rotation produces is
+    ///     already over the threshold, so the next turn rotates again, and so does the one after —
+    ///     a summarizer call and a provider session spent per turn, forever, with no saturation
+    ///     signal raised because each individual consolidation reduces perfectly normally.
+    ///     </para>
+    ///     <para>
+    ///     <b>Failing rather than adapting, deliberately.</b> Requiring merely that the window
+    ///     <em>hold</em> the construction bound is the necessary condition, not the sufficient one,
+    ///     and asserting it was the defect: it admitted every window between the bound and the
+    ///     bound divided by the rotation fraction, which are exactly the windows that thrash.
+    ///     <see cref="AgentSessionOptions.MinimumEffectiveWindowTokens"/> computes the sufficient
+    ///     condition and is shared with the configured-window guard, so the two can never diverge.
     ///     </para>
     ///     <para>
     ///     Adapting was considered and rejected. Shrinking the tier budgets to fit would silently
@@ -385,7 +417,7 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     host configuration defect that the host alone can repair. The configured window is
     ///     already refused for exactly this condition, by
     ///     <see cref="AgentSessionOptions"/> at construction; failing here keeps one rule — a window
-    ///     that cannot hold the bound is refused — and differs only in when the figure becomes
+    ///     a session could not converge in is refused — and differs only in when the figure becomes
     ///     knowable.
     ///     </para>
     ///     <para>
@@ -398,41 +430,47 @@ public sealed class CompactingAgentSession : IAgentSession
     /// </remarks>
     /// <returns>A task that completes when the window has been accepted.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The provider reports a context window smaller than the construction bound.
+    ///     The provider reports a context window this session could not converge in.
     /// </exception>
-    private async Task EnsureReportedWindowHoldsBoundAsync()
+    private async Task EnsureReportedWindowConvergesAsync()
     {
         // Only a reported window is checked. An estimate carries the configured window, which
-        // AgentSessionOptions already refused if it could not hold the bound.
-        var bound = Layout.MaximumBoundTokens;
-        if (Usage.Origin != ContextUsageOrigin.Provider || Usage.WindowTokens >= bound)
+        // AgentSessionOptions already refused if the session could not converge in it.
+        var minimumEffective = AgentSessionOptions.MinimumEffectiveWindowTokens(_options.Compaction);
+        var effective = Usage.WindowTokens - _options.FixedOverheadTokens;
+        if (Usage.Origin != ContextUsageOrigin.Provider
+            || AgentSessionOptions.ConvergesAt(effective, _options.Compaction))
         {
             return;
         }
 
         _disposed = true;
-        if (!_released)
+
+        // Released unconditionally. This method is reachable only from CreateAsync, which holds a
+        // freshly created provider session, and from SendAsync, which has already thrown
+        // ObjectDisposedException if this session was disposed - so the release flag is false at
+        // every entry and a guard on it only asserted something already known.
+        try
         {
-            try
-            {
-                await _provider.DisposeAsync().ConfigureAwait(false);
-                _released = true;
-            }
-            catch (Exception)
-            {
-                // Intentionally swallowed. The configuration defect below is the failure the caller
-                // can act on, and replacing it with an adapter's disposal failure would hide it.
-                // The release flag stays false, so disposing this session again retries the release.
-            }
+            await _provider.DisposeAsync().ConfigureAwait(false);
+            _released = true;
+        }
+        catch (Exception)
+        {
+            // Intentionally swallowed. The configuration defect below is the failure the caller
+            // can act on, and replacing it with an adapter's disposal failure would hide it.
+            // The release flag stays false, so disposing this session again retries the release.
         }
 
         throw new InvalidOperationException(
-            $"The provider reports a context window of {Usage.WindowTokens} tokens, but this "
-            + $"session's construction bound is {bound} tokens: the fixed overhead of "
-            + $"{_options.FixedOverheadTokens}, the policy's {_options.Compaction.TotalTierBudgetTokens} "
-            + "tokens of tier budgets, and the framing their seeded records carry. A rotation could "
-            + "never bring the context back within the reported window, so the session has been "
-            + "released rather than left to rotate on every turn without making progress.");
+            $"The provider reports a context window of {Usage.WindowTokens} tokens, leaving "
+            + $"{effective} tokens once this session's fixed overhead of "
+            + $"{_options.FixedOverheadTokens} tokens is paid for. A rotated context occupies up to "
+            + $"{_options.Compaction.TotalTierBudgetTokens} tokens of tier budgets and "
+            + $"{ContextLayout.SeedFramingTokens(_options.Compaction)} tokens of framing for their "
+            + "seeded records, and must land below the rotation threshold, which requires at least "
+            + $"{minimumEffective} tokens. The session has been released rather than left to rotate "
+            + "on every turn without ever getting under its own threshold.");
     }
 
     /// <summary>
@@ -481,12 +519,12 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     so the threshold the options already computed is the matching one and is used unchanged.
     ///     </para>
     ///     <para>
-    ///     The fixed overhead is subtracted first and the result floored at one token, exactly as
-    ///     <see cref="AgentSessionOptions.RotationThresholdTokens"/> does, so the two paths differ
-    ///     only in which window they measure. The subtraction always leaves something to take a
-    ///     fraction of, because <see cref="EnsureReportedWindowHoldsBoundAsync"/> has already
-    ///     refused any reported window below the construction bound, and that bound exceeds the
-    ///     fixed overhead by every tier budget. The floor guards only against a rotation fraction
+    ///     Both paths call <see cref="AgentSessionOptions.RotationThresholdFor"/>, so they are
+    ///     literally the same arithmetic and differ only in which window they measure. The
+    ///     subtraction always leaves something to take a fraction of, because
+    ///     <see cref="EnsureReportedWindowConvergesAsync"/> has already refused any reported window
+    ///     this session could not converge in, and convergence requires an effective window larger
+    ///     than every tier budget put together. The floor guards only against a rotation fraction
     ///     small enough to truncate to zero.
     ///     </para>
     /// </remarks>
@@ -502,11 +540,12 @@ public sealed class CompactingAgentSession : IAgentSession
             return options.RotationThresholdTokens;
         }
 
-        // The subtraction always leaves a positive budget: a reported window below the construction
-        // bound has already been refused, and the bound exceeds the fixed overhead by every tier
-        // budget. The floor of one token guards only against a rotation fraction small enough to
-        // truncate away, exactly as the configured threshold does.
-        var effective = usage.WindowTokens - options.FixedOverheadTokens;
-        return Math.Max(1, (int)(effective * options.Compaction.RotationThreshold));
+        // The subtraction always leaves a positive budget: a reported window this session could not
+        // converge in has already been refused, and convergence requires an effective window larger
+        // than every tier budget put together. The floor of one token inside RotationThresholdFor
+        // guards only against a rotation fraction small enough to truncate away, exactly as the
+        // configured threshold does.
+        return AgentSessionOptions.RotationThresholdFor(
+            usage.WindowTokens - options.FixedOverheadTokens, options.Compaction);
     }
 }
