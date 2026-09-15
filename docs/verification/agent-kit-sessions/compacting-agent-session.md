@@ -23,11 +23,12 @@ adapter that can never release; a count of one gives the disposal scenario the t
 retry recovers from. They exist only to reach those paths; everything else is still driven through
 the shipped fake.
 
-The rotation scenario is sized arithmetically rather than by trial. A 300-token window with a
-four-tier policy of 100, 60, 40 and 30 tokens gives a rotation threshold of 210 conversation tokens;
-turns of roughly 108 tokens therefore leave the first turn below the threshold and put the second
-above it, so the scenario exercises both the no-rotation path and the rotation path in one
-conversation, at a boundary that can be checked by hand.
+The rotation scenario is sized arithmetically rather than by trial. A 400-token window with a
+four-tier policy of 100, 60, 40 and 30 tokens gives a rotation threshold of 280 conversation tokens;
+turns of 148 tokens — a 74-token message and a 74-token answer — therefore leave the first turn at
+148 tokens, below the threshold, and put the second at 296, above it, so the scenario exercises both
+the no-rotation path and the rotation path in one conversation, at a boundary that can be checked by
+hand.
 
 Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer in
 `FakeSummarizer.cs` and the shared small policy in `SessionTestData.cs`, all within the
@@ -81,6 +82,7 @@ transcript passes every other scenario here and fails this one.
 #### AgentKitSessions-CompactingAgentSession-RotatesAtThreshold: Crossing the Threshold Replaces the Session
 
 **Tests**: `CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession`,
+`CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne`,
 `CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent`
 
 The central scenario, and the one that pins the mechanism. Drives two turns across a deliberately
@@ -90,7 +92,16 @@ is not; the replacement's seeded history begins with a consolidated record and a
 verbatim material; and the replacement carries the same tools, because rotation replaces history
 rather than capability.
 
-The second test drives the same arithmetic against a hand-written provider whose `DisposeAsync`
+The second test pins **which window the threshold is taken from**. It configures a 4,000-token
+window against a provider reporting 400 — a mismatch a host gets wrong easily and a provider can
+introduce by itself — and asserts the session rotates on the second turn, at 296 conversation tokens
+against the reported window's threshold of 280, while the configured window's threshold of 2,800 is
+still four turns away. It asserts both thresholds explicitly, so the scenario states the
+disagreement rather than relying on one of the two numbers being invisible. Taking the threshold
+from the configured window let a provider reporting a smaller one run far past its own compactor's
+firing point, which is the single failure this package exists to prevent.
+
+The third test drives the same arithmetic against a hand-written provider whose `DisposeAsync`
 throws — a shape the shipped in-memory session cannot express, because its disposal cannot fail — and
 asserts the rotation is still reported as the success it was, that the disposal was attempted, and
 that the session describes its replacement rather than the session it replaced: the layout was

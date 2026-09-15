@@ -159,6 +159,42 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves the rotation threshold is derived from the window the usage figure was actually
+    ///     measured against. The package's whole promise is that it rotates before the provider's
+    ///     own compactor fires; a threshold taken from a configured window that disagrees with the
+    ///     one the provider reports voids that guarantee exactly when it matters.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne()
+    {
+        // Arrange: a host that configured 4,000 tokens against a provider reporting 400. The
+        // configured threshold is 2,800 conversation tokens; the reported one is 280.
+        var factory = new InMemoryProviderSessionFactory(
+            _ => new ProviderTurn(new string('r', 70 * TokenEstimator.CharactersPerToken)),
+            windowTokens: 400);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+        var message = new string('m', 70 * TokenEstimator.CharactersPerToken);
+
+        // Act: two turns of 148 tokens each, so the conversation reaches 296 tokens - past the
+        // reported threshold, nowhere near the configured one
+        var first = await session.SendAsync(message, TestContext.Current.CancellationToken);
+        var second = await session.SendAsync(message, TestContext.Current.CancellationToken);
+
+        // Assert: the provider's own window is what the session is measured against
+        Assert.Equal(ContextUsageOrigin.Provider, second.Usage.Origin);
+        Assert.Equal(400, second.Usage.WindowTokens);
+        Assert.Equal(4000, options.ProviderWindowTokens);
+        Assert.Equal(2800, options.RotationThresholdTokens);
+
+        // Assert: the first turn stayed below the reported threshold and the second crossed it
+        Assert.False(first.RotationOccurred);
+        Assert.True(second.RotationOccurred);
+        Assert.Equal(1, session.RotationCount);
+    }
+
+    /// <summary>
     ///     Proves a blank message is refused: a blank turn spends context to say nothing, and is a
     ///     defect in the calling application rather than something to forward to a provider.
     /// </summary>

@@ -41,6 +41,13 @@ boundary be snapped so the two never separate, and an unidentified call could no
 identifier on a plain message would be meaningless and is refused rather than ignored, so a caller
 that supplies one learns it misunderstood the model.
 
+**An undefined kind is refused before the pairing rules are applied.** It would otherwise satisfy
+every one of them — it is neither a call nor a result, so no identifier is required and none is
+rejected — be accepted, and then render through the default labeling branch as though it were a
+consolidated record. That is how malformed input would become part of the context an agent is seeded
+from. `ToolResult.Denied` in AgentKit Core sets the precedent, and the same
+`ArgumentOutOfRangeException` follows it.
+
 `SessionTranscript` properties:
 
 - **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — Oldest first; never contains null; a read-only view over the
@@ -70,19 +77,27 @@ consolidate.
 
 1. Walk backwards from the newest entry, accumulating estimated tokens, stopping when the next entry
    would not fit. The boundary index is the oldest retained entry.
-2. While the retained set begins with a `ToolResult`, move the boundary one entry later, pushing
-   that result into the overflow.
+2. While any retained entry is a `ToolResult` with no matching `ToolCall` earlier in the retained
+   set, move the boundary to one past that result, pushing it and everything before it into the
+   overflow. This repeats, because dropping the calls before an orphan can orphan a result that was
+   paired a moment ago.
 3. If nothing overflowed, return this very transcript and an empty overflow.
 4. Otherwise return the suffix as a new transcript and the prefix, oldest first, as the overflow.
 
 **Why newest-first.** Recency is what tier zero is for, so the retained set is always a contiguous
 suffix: the most recent turns, held verbatim.
 
-**Why the boundary snaps later rather than earlier.** A boundary falling between a call and its
-result would leave the retained set beginning with a result whose call is gone. Some providers reject
-that outright, and a model presented with it cannot tell what was asked. Moving later can only
+**Why the whole retained window is validated, not just its first entry.** A retained set holding a
+result whose call is gone is an orphan wherever it sits. Checking only the first entry missed the
+interleaved shape a parallel tool turn produces constantly — `call c1, call c2, result c1,
+result c2` — where the boundary can land on c2's call, which is not a result and so passes that
+check, while c1's result stays retained with its call in the overflow.
+
+**Why the boundary snaps later rather than earlier.** Some providers reject an orphaned result
+outright, and a model presented with one cannot tell what was asked. Moving later can only
 shrink the retained set, so snapping can never push it back over budget — whereas moving earlier to
-recover the call could.
+recover the call could. Where no orphan-free suffix fits the budget, nothing is retained and the
+whole run is consolidated together, which is the only split that keeps every pair intact.
 
 **An entry larger than the whole budget retains nothing.** That is reported honestly rather than
 papered over: the oversized entry is consolidated like any other overflow and the caller sees an
@@ -100,6 +115,7 @@ what lets a fake summarizer in a test assert on exactly what the engine asked it
 ### Error Handling
 
 - **Null entry text** — `ArgumentNullException` propagates
+- **Undefined entry kind** — `ArgumentOutOfRangeException` propagates, naming the kind
 - **`ToolCall` or `ToolResult` with a null or blank identifier** — `ArgumentException` propagates
 - **Any other kind carrying an identifier** — `ArgumentException` propagates, naming the kind
 - **Null entry appended** — `ArgumentNullException` propagates

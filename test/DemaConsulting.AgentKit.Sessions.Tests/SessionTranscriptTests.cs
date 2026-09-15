@@ -137,6 +137,19 @@ public class SessionTranscriptTests
     }
 
     /// <summary>
+    ///     Proves an undefined entry kind is refused. It satisfies every pairing rule — it is
+    ///     neither a call nor a result, so no identifier is required and none is rejected — and
+    ///     would then render through the default branch as a consolidated record, making malformed
+    ///     input part of the context an agent is seeded from.
+    /// </summary>
+    [Fact]
+    public void TranscriptEntry_Construct_UndefinedKind_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TranscriptEntry((TranscriptEntryKind)999, "not history"));
+    }
+
+    /// <summary>
     ///     Proves the split retains the newest entries that fit and overflows the rest, which is the
     ///     whole of what tier zero is for.
     /// </summary>
@@ -178,6 +191,41 @@ public class SessionTranscriptTests
         Assert.Single(retained.Entries);
         Assert.StartsWith("next", retained.Entries[0].Text, StringComparison.Ordinal);
         Assert.Equal(TranscriptEntryKind.ToolResult, overflow[^1].Kind);
+    }
+
+    /// <summary>
+    ///     Proves the pairing guarantee holds for an interleaved multi-tool turn, where the
+    ///     orphaned result is not the first retained entry. Parallel tool calls are ordinary agent
+    ///     traffic, and a boundary landing on the second call leaves the first call's result
+    ///     retained with its call consolidated away — the same orphan, one entry further in.
+    /// </summary>
+    [Fact]
+    public void SessionTranscript_SplitAtBudget_InterleavedToolPairs_RetainsNoOrphanedResult()
+    {
+        // Arrange: a valid interleaved turn - both calls issued, then both results
+        var text = new string('x', 16 * TokenEstimator.CharactersPerToken);
+        var transcript = SessionTranscript.Empty
+            .Append(TranscriptEntry.ToolCall("c1", text))
+            .Append(TranscriptEntry.ToolCall("c2", text))
+            .Append(TranscriptEntry.ToolResult("c1", text))
+            .Append(TranscriptEntry.ToolResult("c2", text));
+
+        // Act: split at a budget that holds three of the four entries, so the unsnapped boundary
+        // lands on c2's call and strands c1's result behind it
+        var (retained, overflow) = transcript.SplitAtBudget(60);
+
+        // Assert: every retained result still has its call
+        var calls = retained.Entries
+            .Where(entry => entry.Kind == TranscriptEntryKind.ToolCall)
+            .Select(entry => entry.ToolCallId)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain(
+            retained.Entries,
+            entry => entry.Kind == TranscriptEntryKind.ToolResult && !calls.Contains(entry.ToolCallId!));
+
+        // Assert: no orphan-free suffix fits the budget, so the whole run is consolidated together
+        Assert.Empty(retained.Entries);
+        Assert.Equal(4, overflow.Count);
     }
 
     /// <summary>

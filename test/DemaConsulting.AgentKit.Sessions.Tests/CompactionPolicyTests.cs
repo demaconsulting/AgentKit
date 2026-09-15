@@ -165,4 +165,20 @@ public class CompactionPolicyTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new CompactionPolicy(saturationRatio: positiveNaN));
     }
+
+    /// <summary>
+    ///     Proves a policy whose bound cannot be represented as a token count is refused as the
+    ///     argument error it is. Summing the budgets in a token-sized type surfaced an undocumented
+    ///     <see cref="OverflowException"/> instead, and every site that later adds the budgets to
+    ///     the seed framing — the session options' window check and the layout's own bound — would
+    ///     otherwise wrap into a negative figure that a window comparison silently passes.
+    /// </summary>
+    [Fact]
+    public void CompactionPolicy_Construct_UnrepresentableBound_Throws()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new CompactionPolicy([int.MaxValue, int.MaxValue]));
+
+        Assert.Equal("tierBudgetTokens", exception.ParamName);
+    }
 }

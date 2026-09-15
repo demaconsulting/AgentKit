@@ -61,6 +61,7 @@ while each looked individually correct.
 
 **Tests**: `ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget`,
 `ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord`,
+`ContextLayout_Create_UnrepresentableBound_Throws`,
 `ContextLayout_ConversationTokens_ExcludeTheFixedOverhead`,
 `ContextTier_IsWithinBudget_ReflectsTheRecordSize`
 
@@ -77,6 +78,13 @@ provider, and asserts both that the seed exceeds the raw sum of the tier budgets
 bound counting raw content alone was an under-count — and that the published bound still covers it.
 For a provider reporting no usage, that estimate is what drives the rotation decision, so an
 under-count there rotates too late.
+
+The rejection scenario probes the arithmetic instead of the values. A policy already refuses
+budgets whose own bound cannot be represented as a token count, so the fixed overhead is the only
+remaining way to exceed one; a system prompt and a declaration block of `int.MaxValue` each are
+refused at creation rather than allowed to wrap. A wrapped bound is negative, and an empty layout —
+which holds nothing at all — would then report itself outside the bound it was constructed to
+respect.
 
 #### AgentKitSessions-ContextLayout-Immutable: A Layout Is Never Modified in Place
 

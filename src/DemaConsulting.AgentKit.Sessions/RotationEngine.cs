@@ -93,8 +93,9 @@ public sealed class RotationOutcome
     /// </summary>
     /// <param name="layout">The layout after rotation. Must not be <see langword="null"/>.</param>
     /// <param name="saturations">
-    ///     The saturation reports, if any. Must not be <see langword="null"/>; an empty list means
-    ///     the rotation reduced what it was asked to reduce.
+    ///     The saturation reports, if any. Must not be <see langword="null"/> and must contain no
+    ///     <see langword="null"/> entry; an empty list means the rotation reduced what it was asked
+    ///     to reduce.
     /// </param>
     /// <param name="consolidationCount">
     ///     How many consolidations the rotation performed. Must not be negative.
@@ -102,6 +103,7 @@ public sealed class RotationOutcome
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="layout"/> or <paramref name="saturations"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="saturations"/> contains a <see langword="null"/> entry.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="consolidationCount"/> is negative.</exception>
     public RotationOutcome(
         ContextLayout layout,
@@ -111,6 +113,14 @@ public sealed class RotationOutcome
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(saturations);
         ArgumentOutOfRangeException.ThrowIfNegative(consolidationCount);
+
+        // Reject a null signal before anything is copied, exactly as AgentSessionResponse does: an
+        // outcome holding one would report IsSaturated true while the consumer that went to look at
+        // the signal could not read it, which is worse than reporting nothing at all.
+        if (saturations.Any(signal => signal is null))
+        {
+            throw new ArgumentException("A saturation signal in the list is null.", nameof(saturations));
+        }
 
         Layout = layout;
 
@@ -317,6 +327,12 @@ public static class RotationEngine
         ///     down; if its single consolidation still overflows, that is reported as
         ///     <see cref="SaturationReason.TierOverBudget"/> rather than papered over.
         ///     </para>
+        ///     <para>
+        ///     Both recordings a cascade performs — the merge that overflowed and the re-recording
+        ///     of the new material alone — are tested for redundancy. A re-recording that returns
+        ///     nearly as much as it was given has saturated whether or not it happened to fit the
+        ///     tier, and checking only the merge let that rotation report an unqualified success.
+        ///     </para>
         /// </remarks>
         /// <param name="tierIndex">The tier to fold into. One or greater, at most the coarsest tier.</param>
         /// <param name="material">The material to fold in, rendered as labeled text.</param>
@@ -373,11 +389,25 @@ public static class RotationEngine
             Tiers[slot] = tier.WithContent(alone);
 
             var aloneTokens = TokenEstimator.EstimateTokens(alone);
+            var aloneInputTokens = TokenEstimator.EstimateTokens(material);
+
+            // The same redundancy test the merge above is given. A re-recording that returns nearly
+            // as much as the material it was handed says the material holds nothing left to remove,
+            // and that is just as true on the cascade path as on the common one. Omitting it here
+            // let a rotation that had in fact saturated report a plain success, because a result at
+            // or above the saturation ratio that still fits the tier passes the over-budget check
+            // below and would then have been reported as nothing at all.
+            if (aloneInputTokens > 0 && aloneTokens >= policy.SaturationRatio * aloneInputTokens)
+            {
+                Saturations.Add(new SaturationSignal(
+                    tierIndex, aloneInputTokens, aloneTokens, SaturationReason.NoRedundancy));
+            }
+
             if (aloneTokens > budget)
             {
                 Saturations.Add(new SaturationSignal(
                     tierIndex,
-                    TokenEstimator.EstimateTokens(material),
+                    aloneInputTokens,
                     aloneTokens,
                     SaturationReason.TierOverBudget));
             }

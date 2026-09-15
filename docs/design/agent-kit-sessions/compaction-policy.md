@@ -54,10 +54,14 @@ establish that no host configuration was applied.
 
 1. Select the supplied budgets, or `DefaultTierBudgetTokens`.
 2. Reject fewer than two budgets.
-3. For each budget: reject a non-positive value, and reject a value larger than the budget before it.
-4. Reject a rotation threshold or saturation ratio that is `NaN`, or that lies outside the range
+3. For each budget: reject a non-positive value, and reject a value larger than the budget before it,
+   accumulating the running total in a type wider than a token count.
+4. Reject a policy whose full bound — that total plus the framing each seeded tier record carries —
+   cannot be represented as a token count.
+5. Reject a rotation threshold or saturation ratio that is `NaN`, or that lies outside the range
    greater than zero and at most one.
-5. Copy the budgets into storage the policy owns, assign, and sum them into `TotalTierBudgetTokens`.
+6. Copy the budgets into storage the policy owns, assign, and publish the accumulated total as
+   `TotalTierBudgetTokens`.
 
 **Why at least two tiers.** One tier is not a hierarchy. With a single verbatim tier there is
 nowhere for overflowing history to age into, and the arrangement degenerates to dropping the oldest
@@ -79,6 +83,16 @@ rotation or saturation reporting rather than announcing that it had been misconf
 defect, with the same reasoning, is recorded on the `MemoryOptions` near-duplicate threshold in
 AgentKit Tools.
 
+**Why an unrepresentable bound is rejected here, and only here.** The bound is computed at three
+places: this constructor, `AgentSessionOptions`' window check, and
+`ContextLayout.MaximumBoundTokens`. Summing budgets in a token-sized type raised an undocumented
+`OverflowException` at the first, and wrapped silently at the other two — a wrapped bound is
+negative, so a window comparison passes a configuration no positive window could satisfy and an
+empty layout reports itself outside its own bound. This constructor is the earliest point at which
+the whole policy-derived bound is known, so it is where the rejection belongs; the two later sites
+then rely on it and may add the same two figures in plain token arithmetic. `ContextLayout.Create`
+adds the only remaining term — the fixed overhead — and refuses that on the same principle.
+
 ### Error Handling
 
 - **Fewer than two tier budgets** — `ArgumentException` propagates
@@ -86,6 +100,7 @@ AgentKit Tools.
 - **`NaN` rotation threshold or saturation ratio** — `ArgumentOutOfRangeException` propagates, naming the control
 - **Tier budget larger than the tier before it** — `ArgumentException` propagates, naming both tiers and both
   values
+- **Budgets and framing exceeding a representable token count** — `ArgumentException` propagates, naming the total
 - **Rotation threshold at or below zero, or above one** — `ArgumentOutOfRangeException` propagates
 - **Saturation ratio at or below zero, or above one** — `ArgumentOutOfRangeException` propagates
 

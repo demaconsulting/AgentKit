@@ -47,13 +47,17 @@ function from the caller's point of view.
 `RotationOutcome` properties, immutable after construction:
 
 - **`Layout`** (`ContextLayout`) — The layout after rotation; what a fresh provider session is seeded from
-- **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Empty when the rotation reduced normally; a read-only view
-  over a copy of the rotation's own working list, which is mutable while the rotation runs
+- **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Never contains null; empty when the rotation reduced
+  normally; a read-only view over a copy of the rotation's own working list, which is mutable while the rotation runs
 - **`ConsolidationCount`** (`int`) — How many consolidations the rotation performed
 - **`IsSaturated`** (`bool`) — Derived: `Saturations.Count > 0`
 
 `ConsolidationCount` is exposed because summarizer calls are the dominant cost of this arrangement,
 and because a test asserting that only the overflowing tiers were consolidated needs to count them.
+
+A null signal is refused before the list is copied, following the rule `AgentSessionResponse`
+already applies: an outcome holding one reports `IsSaturated` true while the consumer that goes to
+read the signal cannot, which is worse than reporting nothing at all.
 
 ### Key Methods
 
@@ -95,8 +99,15 @@ two cannot fit together.
 4. If there is no previous record to age down, or no coarser tier to age it into, store the result
    anyway and report `TierOverBudget`.
 5. Otherwise age the **previous** record one tier coarser — the deliberate degradation the design
-   allows — then re-consolidate the new material at this tier alone and store that. If even that
-   exceeds the budget, report `TierOverBudget`.
+   allows — then re-consolidate the new material at this tier alone and store that. Apply the same
+   redundancy test to that re-recording, reporting `NoRedundancy` when it is at least the policy's
+   saturation ratio of the material it was given, and report `TierOverBudget` as well if even that
+   exceeds the budget.
+
+**Why both recordings a cascade performs are tested for redundancy.** A re-recording that returns
+nearly as much as it was given has saturated whether or not it happened to fit the tier. Testing
+only the merge let a cascade whose re-recording had saturated, but which still fitted, report a plain
+success — so the one signal the caller needed was the one it never saw.
 
 **Why the overflow test is made after consolidating rather than before.** A consolidation
 compresses. Summing the previous record and the new material first would cascade on material that
@@ -118,6 +129,7 @@ drift from what actually happened.
 ### Error Handling
 
 - **Null layout or summarizer** — `ArgumentNullException` propagates
+- **Null entry in an outcome's `saturations`** — `ArgumentException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
 - **Cancellation** — `OperationCanceledException` propagates, from the check after argument
   validation or from the summarizer call

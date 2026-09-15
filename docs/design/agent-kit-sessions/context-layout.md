@@ -61,7 +61,10 @@ unambiguous rather than something each caller re-derives.
 in the ordinary course of a session between rotations, because tier zero is append-only and grows
 past its budget until the next rotation batches everything back inside. That growth is exactly what
 the rotation threshold's headroom is reserved for, and a caller checking this outside a
-post-rotation assertion is asking the wrong question.
+post-rotation assertion is asking the wrong question. The bound it compares against is always
+positive: an unrepresentable one is refused where it is first computable, in `CompactionPolicy` for
+the budgets and framing and in `Create` for the fixed overhead, so this comparison is never made
+against a wrapped figure.
 
 **Instances are immutable**: every change returns a new layout, and the tier list it publishes is a
 read-only view rather than its backing array, so a caller cannot replace an element and change both
@@ -76,6 +79,11 @@ Allocates one empty coarse tier per non-verbatim budget, numbering them from one
 policy's budget for its index. Allocating up front means the hierarchy always matches the policy and
 no code path has to grow it later — a tier appearing mid-session would make the bound unverifiable
 at the moment it mattered most.
+
+It also refuses a fixed overhead that would carry `MaximumBoundTokens` past what a token count can
+represent. A policy already guarantees its own half of that bound, so the fixed overhead is the only
+remaining term that can exceed one; left unchecked the addition wraps, the bound is negative, and a
+layout holding nothing at all reports itself outside the bound it was constructed to respect.
 
 #### WithTranscript(SessionTranscript transcript)
 
@@ -132,6 +140,8 @@ overhead and not as entries.
 
 - **Null policy, transcript or tier list** — `ArgumentNullException` propagates
 - **Negative system or tool declaration tokens** — `ArgumentOutOfRangeException` propagates
+- **Fixed overhead and policy bound exceeding a representable token count** — `ArgumentException` propagates,
+  naming the total
 - **Tier index below one, or non-positive tier budget** — `ArgumentOutOfRangeException` propagates
 - **Null tier content** — `ArgumentNullException` propagates
 - **Tier list of the wrong length** — `ArgumentException` propagates, naming both counts

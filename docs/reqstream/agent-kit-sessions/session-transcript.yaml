@@ -28,18 +28,23 @@ sections:
 
           - id: AgentKitSessions-SessionTranscript-PairedEntries
             title: >-
-              A transcript entry shall require a pairing identifier for a tool call and a tool result
-              and shall reject one on any other kind of entry.
+              A transcript entry shall require a pairing identifier for a tool call and a tool result,
+              shall reject one on any other kind of entry, and shall reject an undefined entry kind.
             justification: |
               Pairing a call with its result is what lets a tier boundary be snapped so the two never
               separate, and an unidentified call could not be paired. An identifier on a plain
               message would be meaningless; refusing it rather than ignoring it means a caller that
               supplies one learns it misunderstood the model instead of silently producing an entry
-              that cannot be reasoned about.
+              that cannot be reasoned about. An undefined kind satisfies every one of those pairing
+              rules - it is neither a call nor a result, so no identifier is required and none is
+              refused - and would then be rendered through the default labeling branch as though it
+              were a consolidated record, which is how malformed input would become part of the
+              context an agent is seeded from.
             tests:
               - TranscriptEntry_Construct_ToolCallWithoutIdentifier_Throws
               - TranscriptEntry_Construct_MessageWithIdentifier_Throws
               - TranscriptEntry_Construct_NullText_Throws
+              - TranscriptEntry_Construct_UndefinedKind_Throws
 
           - id: AgentKitSessions-SessionTranscript-SplitsAtTierBudget
             title: >-
@@ -61,16 +66,24 @@ sections:
 
           - id: AgentKitSessions-SessionTranscript-SnapsToolBoundary
             title: >-
-              The split shall move the boundary later past any leading tool result, so the retained
-              history never begins with a result whose call has been consolidated away.
+              The split shall move the boundary later past any retained tool result whose call is not
+              also retained, so the retained history never holds a result whose call has been
+              consolidated away.
             justification: |
-              A boundary falling between a call and its result leaves the retained history beginning
-              with an orphaned result. Some providers reject that outright and a model presented with
-              it cannot tell what was asked. The boundary moves later rather than earlier because
-              moving later can only shrink the retained set and so can never push it back over
-              budget, whereas moving earlier to recover the call could.
+              A boundary falling between a call and its result leaves the retained history holding an
+              orphaned result. Some providers reject that outright and a model presented with it
+              cannot tell what was asked. Checking only the first retained entry is not enough: a
+              valid interleaved turn - two calls issued together, then both results - can put the
+              boundary on the second call, which is not a result and so passes that check while the
+              first call's result stays retained with its call in the overflow. Parallel tool calls
+              are ordinary agent traffic, so the whole retained window is validated instead. The
+              boundary moves later rather than earlier because moving later can only shrink the
+              retained set and so can never push it back over budget, whereas moving earlier to
+              recover the call could; where no orphan-free suffix fits the budget the whole run is
+              consolidated together, which is the only split that keeps every pair intact.
             tests:
               - SessionTranscript_SplitAtBudget_BoundaryInsideToolPair_SnapsPastTheResult
+              - SessionTranscript_SplitAtBudget_InterleavedToolPairs_RetainsNoOrphanedResult
               - RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult
 
           - id: AgentKitSessions-SessionTranscript-RendersLabeledMaterial

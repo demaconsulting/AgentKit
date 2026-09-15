@@ -44,6 +44,22 @@ public class ContextLayoutTests
     }
 
     /// <summary>
+    ///     Proves a fixed overhead that would carry the bound past what a token count can represent
+    ///     is refused, rather than wrapping. A wrapped bound is negative, and an empty layout —
+    ///     which holds nothing at all — would then report itself outside it.
+    /// </summary>
+    [Fact]
+    public void ContextLayout_Create_UnrepresentableBound_Throws()
+    {
+        // Arrange / Act / Assert: the policy's own half of the bound is guaranteed representable,
+        // so only a fixed overhead this large can take the total past it
+        var exception = Assert.Throws<ArgumentException>(() =>
+            ContextLayout.Create(SessionTestData.SmallPolicy, int.MaxValue, int.MaxValue));
+
+        Assert.Equal("systemTokens", exception.ParamName);
+    }
+
+    /// <summary>
     ///     Proves the bound covers what a provider is actually sent. Every tier record is seeded
     ///     wrapped in a label and an entry envelope, so a bound counting only raw tier content would
     ///     be exceeded by a layout in which every tier sat exactly within its budget — and for a

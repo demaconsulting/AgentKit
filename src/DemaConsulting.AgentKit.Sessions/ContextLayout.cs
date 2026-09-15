@@ -275,6 +275,12 @@ public sealed class ContextLayout
     ///     makes it something an application can reason about before starting. The framing allowance
     ///     assumes every coarse tier holds a record, which is the worst case and therefore the only
     ///     honest one for a bound.
+    ///     <para>
+    ///     Always positive. A policy refuses construction unless its budgets and framing fit a token
+    ///     count, and <see cref="Create"/> refuses a fixed overhead that would carry the total past
+    ///     one, so this addition cannot wrap and report a negative bound that
+    ///     <see cref="IsWithinBound"/> would then deny an empty layout.
+    ///     </para>
     /// </remarks>
     public int MaximumBoundTokens =>
         SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy);
@@ -317,10 +323,27 @@ public sealed class ContextLayout
     {
         ArgumentNullException.ThrowIfNull(policy);
 
+        // Safe to narrow: a policy refuses construction unless its budgets and this framing
+        // together fit a token count, so the framing alone certainly does.
+        return (int)SeedFramingTokens(policy.TierCount);
+    }
+
+    /// <summary>
+    ///     Computes the seed framing for a tier count, in a wider type than a token count.
+    /// </summary>
+    /// <remarks>
+    ///     Taken as a bare tier count, and returned wide, so that <see cref="CompactionPolicy"/> can
+    ///     use it while validating the very budgets a policy instance would be built from — before
+    ///     any policy exists to pass, and before the total is known to be representable.
+    /// </remarks>
+    /// <param name="tierCount">The number of tiers, counting the verbatim tier zero.</param>
+    /// <returns>The framing tokens every coarse tier record costs when seeded, summed.</returns>
+    internal static long SeedFramingTokens(int tierCount)
+    {
         // One record per coarse tier - every tier above the verbatim tier zero - because a bound
         // must assume every tier holds a record.
-        var total = 0;
-        for (var tierIndex = 1; tierIndex < policy.TierCount; tierIndex++)
+        long total = 0;
+        for (var tierIndex = 1; tierIndex < tierCount; tierIndex++)
         {
             total += RecordFramingTokens(tierIndex);
         }
@@ -345,11 +368,30 @@ public sealed class ContextLayout
     /// <exception cref="ArgumentOutOfRangeException">
     ///     <paramref name="systemTokens"/> or <paramref name="toolDeclarationTokens"/> is negative.
     /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     The fixed overhead and the policy's bound together cannot be represented as a token count.
+    /// </exception>
     public static ContextLayout Create(CompactionPolicy policy, int systemTokens, int toolDeclarationTokens)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentOutOfRangeException.ThrowIfNegative(systemTokens);
         ArgumentOutOfRangeException.ThrowIfNegative(toolDeclarationTokens);
+
+        // The policy already guarantees its own half of the bound is representable, so the only way
+        // the whole bound can escape a token count is a fixed overhead large enough to do it. Refuse
+        // that here rather than let MaximumBoundTokens wrap into a negative figure that IsWithinBound
+        // would then report false against for a layout holding nothing at all.
+        var bound = (long)systemTokens
+            + toolDeclarationTokens
+            + policy.TotalTierBudgetTokens
+            + SeedFramingTokens(policy.TierCount);
+        if (bound > int.MaxValue)
+        {
+            throw new ArgumentException(
+                $"The system prompt, the tool declarations and the policy's bound come to {bound} "
+                + "tokens, which no context window could hold and no token count can represent.",
+                nameof(systemTokens));
+        }
 
         // One coarse tier per budget above tier zero; tier zero is the transcript.
         var tiers = new ContextTier[policy.TierCount - 1];

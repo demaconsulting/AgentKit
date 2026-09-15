@@ -107,8 +107,9 @@ public sealed class CompactionPolicy
     ///     Must be a number greater than zero and at most one.
     /// </param>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tierBudgetTokens"/> holds fewer than two budgets, or a budget is larger
-    ///     than the one before it.
+    ///     <paramref name="tierBudgetTokens"/> holds fewer than two budgets, a budget is larger
+    ///     than the one before it, or the budgets and the framing their seeded records carry cannot
+    ///     together be represented as a token count.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     A tier budget is not positive, or <paramref name="rotationThreshold"/> or
@@ -135,6 +136,12 @@ public sealed class CompactionPolicy
         // A non-positive budget would make a tier unable to hold anything, and a budget larger
         // than the tier it ages from would mean the coarser record is allowed more room than the
         // finer one it replaces - which is the opposite of what consolidation is for.
+        //
+        // The running total is accumulated in a wider type than the budgets themselves, so a
+        // policy whose budgets sum past int.MaxValue is measured rather than wrapped. Summing in
+        // int surfaced an undocumented OverflowException for [int.MaxValue, int.MaxValue] instead
+        // of the argument error such a policy deserves.
+        long totalBudgets = 0;
         for (var index = 0; index < budgets.Count; index++)
         {
             if (budgets[index] <= 0)
@@ -152,6 +159,24 @@ public sealed class CompactionPolicy
                     + $"{budgets[index - 1]}; a coarser tier must not be larger than the tier it ages from.",
                     nameof(tierBudgetTokens));
             }
+
+            totalBudgets += budgets[index];
+        }
+
+        // Refuse a policy whose full bound - every tier budget plus the framing each seeded record
+        // carries - cannot be represented as a token count. This is the earliest point at which
+        // that bound is fully known, and rejecting it here is what lets every later site compute
+        // the same bound in plain int arithmetic: AgentSessionOptions' window check and
+        // ContextLayout.MaximumBoundTokens both add exactly these two figures and would otherwise
+        // wrap, reporting a negative bound that a window comparison then silently passes.
+        var boundTokens = totalBudgets + ContextLayout.SeedFramingTokens(budgets.Count);
+        if (boundTokens > int.MaxValue)
+        {
+            throw new ArgumentException(
+                $"The tier budgets and the {ContextLayout.SeedFramingTokens(budgets.Count)} tokens of "
+                + $"framing their seeded records carry come to {boundTokens} tokens, which no context "
+                + "window could hold and no token count can represent.",
+                nameof(tierBudgetTokens));
         }
 
         // A threshold at or below zero would rotate on every turn; above one it could never fire.
@@ -190,7 +215,7 @@ public sealed class CompactionPolicy
         TierBudgetTokens = Array.AsReadOnly<int>([.. budgets]);
         RotationThreshold = rotationThreshold;
         SaturationRatio = saturationRatio;
-        TotalTierBudgetTokens = TierBudgetTokens.Sum();
+        TotalTierBudgetTokens = (int)totalBudgets;
     }
 
     /// <summary>
@@ -255,6 +280,11 @@ public sealed class CompactionPolicy
     ///     whose effective window cannot accommodate it. The bound is a post-rotation property:
     ///     between rotations tier zero grows past its budget, which is precisely the headroom the
     ///     rotation threshold reserves.
+    ///     <para>
+    ///     This figure, added to the framing, is always representable as a token count: a policy
+    ///     whose budgets would sum past that is refused at construction. Every site that computes
+    ///     the bound may therefore do so in plain token arithmetic.
+    ///     </para>
     /// </remarks>
     public int TotalTierBudgetTokens { get; }
 }

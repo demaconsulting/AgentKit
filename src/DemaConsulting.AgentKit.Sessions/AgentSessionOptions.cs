@@ -123,6 +123,11 @@ public sealed class AgentSessionOptions
                 nameof(providerWindowTokens));
         }
 
+        // The two figures below always sum within a token count: a policy is refused at construction
+        // unless its budgets and the framing of its seeded records fit one together. This comparison
+        // can therefore be made in plain token arithmetic, where once it could wrap - a policy of
+        // [int.MaxValue - 1, 1] made the claimed bound negative and passed a check no positive
+        // window could actually have satisfied.
         if (effective < policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy))
         {
             throw new ArgumentException(
@@ -224,6 +229,13 @@ public sealed class AgentSessionOptions
     ///     small to survive truncation from meaning "rotate a conversation holding nothing"; it does
     ///     not make such a policy rotate rarely, because a host that asks to rotate at a fraction of
     ///     a token has asked to rotate on every turn and receives exactly that.
+    ///     <para>
+    ///     This is the threshold that governs a provider reporting no window of its own. A provider
+    ///     that reports one is measured against <em>that</em> window instead, by the same
+    ///     arithmetic: the guarantee the threshold exists to deliver — rotating before the
+    ///     provider's own compactor fires — is about the window the provider actually has, so a
+    ///     configured window that disagrees with a reported one does not get to decide.
+    ///     </para>
     /// </remarks>
     public int RotationThresholdTokens { get; }
 }

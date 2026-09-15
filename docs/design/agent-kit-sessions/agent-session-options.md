@@ -35,7 +35,7 @@ room for a conversation at all. Both are refused. If these options construct, th
 - **`FixedOverheadTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens`
 - **`EffectiveWindowTokens`** (`int`) — `ProviderWindowTokens - FixedOverheadTokens`; always positive
 - **`RotationThresholdTokens`** (`int`) — `(int)(EffectiveWindowTokens * Compaction.RotationThreshold)`, clamped to at
-  least one token
+  least one token; governs the provider family that reports no window of its own
 
 `DefaultProviderWindowTokens` is 128,000. A provider reached through an `IChatClient` reports no
 window size, so one has to be assumed; this is a common contemporary window offered as a starting
@@ -72,12 +72,14 @@ gets less conversation before rotating, with nothing in the configuration saying
 fraction of the effective window, so the figure compared against it must also exclude the fixed
 overhead. `CompactingAgentSession` subtracts `FixedOverheadTokens` from the usage before comparing,
 which is what makes the comparison mean the same thing whether the usage came from a provider or
-from this library's own estimate.
+from this library's own estimate. It applies the same arithmetic to a provider's own reported window
+when the provider reports one, because the two numbers must describe the same window for the
+comparison to mean anything; see _CompactingAgentSession Unit Design_.
 
 **Why the threshold is clamped rather than the policy rejected.** A rotation threshold is a fraction
 of a window the policy knows nothing about, so the same policy is sensible in one window and
 sub-token in another; there is no point at which the policy itself could be refused, and refusing
-the *combination* here would fail a configuration whose intent — rotate as early as possible — is
+the _combination_ here would fail a configuration whose intent — rotate as early as possible — is
 perfectly expressible. Truncation is what makes it dangerous: a threshold of zero is satisfied by a
 conversation of no tokens at all, so the session would be willing to rotate a context holding
 nothing, spending summarizer work and a fresh provider session on material that does not exist. The
@@ -100,11 +102,11 @@ happens before any assignment, so a rejected configuration never exists even bri
 
 ### Dependencies
 
-- **TokenEstimator** — measures the system prompt and the tool declarations; see *TokenEstimator
-  Unit Design*.
+- **TokenEstimator** — measures the system prompt and the tool declarations; see _TokenEstimator
+  Unit Design_.
 - **CompactionPolicy** — supplies the tier budgets and the rotation threshold fraction; see
-  *CompactionPolicy Unit Design*.
-- **Summarizer** — supplies the `ISummarizer` contract; see *Summarizer Unit Design*.
+  _CompactionPolicy Unit Design_.
+- **Summarizer** — supplies the `ISummarizer` contract; see _Summarizer Unit Design_.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`.
 
 ### Callers

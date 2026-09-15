@@ -75,6 +75,9 @@ public sealed class TranscriptEntry
     ///     <see cref="TranscriptEntryKind.ToolResult"/>; must be <see langword="null"/> otherwise.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="text"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="kind"/> is not a defined <see cref="TranscriptEntryKind"/> member.
+    /// </exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="kind"/> is a tool call or tool result and <paramref name="toolCallId"/>
     ///     is <see langword="null"/> or blank, or <paramref name="kind"/> is any other kind and
@@ -83,6 +86,19 @@ public sealed class TranscriptEntry
     public TranscriptEntry(TranscriptEntryKind kind, string text, string? toolCallId = null)
     {
         ArgumentNullException.ThrowIfNull(text);
+
+        // An undefined kind is a defect in the caller, not history. It would pass the pairing
+        // rules below - it is neither a call nor a result, so no identifier is required and none
+        // is refused - be accepted, and then render through ToTranscriptLine's default branch as
+        // though it were a consolidated record, making malformed input part of the context an
+        // agent is seeded from. Refused here, following ToolResult.Denied's precedent.
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(kind),
+                kind,
+                "The entry kind must be a defined TranscriptEntryKind member.");
+        }
 
         // Validate the pairing identifier before any assignment, so an entry that could not be
         // paired - and would therefore be capable of orphaning a tool call at a tier boundary -
@@ -352,18 +368,23 @@ public sealed class SessionTranscript
     ///     always a contiguous suffix — the most recent turns, held verbatim.
     ///     </para>
     ///     <para>
-    ///     <b>Tool call and result pairs are indivisible, so the boundary snaps.</b> A boundary
-    ///     that falls between a call and its result would leave the retained set beginning with a
-    ///     result whose call is gone. Some providers reject that outright, and a model presented
-    ///     with it cannot tell what was asked. The boundary therefore moves <em>later</em> — any
-    ///     leading tool result is pushed into the overflow — rather than earlier. Moving later can
-    ///     only shrink the retained set, so snapping can never push it back over budget, whereas
-    ///     moving earlier to recover the call could.
+    ///     <b>Tool call and result pairs are indivisible, so the boundary snaps.</b> A retained set
+    ///     holding a tool result whose call went into the overflow is an orphan: some providers
+    ///     reject that outright, and a model presented with it cannot tell what was asked. The
+    ///     boundary therefore moves <em>later</em> — past any result whose call is not also
+    ///     retained — rather than earlier. That is checked across the whole retained window, not
+    ///     merely at its first entry, because an interleaved turn such as <c>call c1, call c2,
+    ///     result c1, result c2</c> can put the boundary on c2's call and strand c1's result behind
+    ///     it. Moving later can only shrink the retained set, so snapping can never push it back
+    ///     over budget, whereas moving earlier to recover the call could.
     ///     </para>
     ///     <para>
     ///     <b>An entry larger than the whole budget retains nothing.</b> That is reported honestly
     ///     rather than papered over by retaining it anyway: an oversized entry that cannot fit tier
     ///     zero is consolidated like any other overflow, and the caller sees an empty retained set.
+    ///     The same is true of an interleaved run with no orphan-free suffix inside the budget —
+    ///     the whole run is consolidated together, which is the only split that keeps every pair
+    ///     intact.
     ///     </para>
     /// </remarks>
     /// <param name="budgetTokens">
@@ -395,11 +416,20 @@ public sealed class SessionTranscript
             first--;
         }
 
-        // Snap the boundary later so the retained set never begins with an orphaned tool result.
-        // Moving later only removes entries, so this cannot exceed the budget just satisfied.
-        while (first < _entries.Length && _entries[first].Kind == TranscriptEntryKind.ToolResult)
+        // Snap the boundary later so the retained set never holds a tool result whose call was
+        // consolidated away. Checking only the first retained entry is not enough: a valid
+        // interleaved turn - call c1, call c2, result c1, result c2 - can put the boundary on
+        // c2's call, which is not a result and so passes that check while c1's result stays
+        // retained with its call in the overflow. Parallel tool calls are ordinary agent traffic,
+        // so the whole retained window is validated instead.
+        //
+        // Moving later only removes entries, so this can never exceed the budget just satisfied.
+        // It repeats because moving past an orphan also drops the calls before it, which can
+        // orphan a result that was paired a moment ago.
+        int orphan;
+        while ((orphan = FirstOrphanedResult(first)) >= 0)
         {
-            first++;
+            first = orphan + 1;
         }
 
         // Nothing overflowed: hand back this very transcript rather than an equal copy.
@@ -409,6 +439,42 @@ public sealed class SessionTranscript
         }
 
         return (new SessionTranscript(_entries[first..]), _entries[..first]);
+    }
+
+    /// <summary>
+    ///     Finds the first entry in a candidate retained window that is a tool result with no
+    ///     matching call inside that same window.
+    /// </summary>
+    /// <remarks>
+    ///     The match must be a call <em>earlier</em> in the window, because a result recorded
+    ///     before the call it answers is not a pairing a provider would accept either. Scanning
+    ///     forward with the calls seen so far is what makes an interleaved run — several calls
+    ///     issued together, their results arriving afterwards in any order — resolve correctly.
+    /// </remarks>
+    /// <param name="first">The index the retained window would begin at.</param>
+    /// <returns>The index of the first orphaned result, or -1 when every retained result is paired.</returns>
+    private int FirstOrphanedResult(int first)
+    {
+        HashSet<string>? calls = null;
+        for (var index = first; index < _entries.Length; index++)
+        {
+            var entry = _entries[index];
+
+            if (entry.Kind == TranscriptEntryKind.ToolCall)
+            {
+                calls ??= new HashSet<string>(StringComparer.Ordinal);
+                calls.Add(entry.ToolCallId!);
+                continue;
+            }
+
+            if (entry.Kind == TranscriptEntryKind.ToolResult
+                && calls?.Contains(entry.ToolCallId!) != true)
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>

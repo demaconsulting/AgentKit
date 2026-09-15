@@ -69,7 +69,8 @@ budgets at their defaults. This is the convention the rest of AgentKit's option 
 `CompactionPolicy_Construct_GrowingBudgets_Throws`,
 `CompactionPolicy_Construct_ThresholdOutOfRange_Throws`,
 `CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws`,
-`CompactionPolicy_Construct_NaNControl_Throws`
+`CompactionPolicy_Construct_NaNControl_Throws`,
+`CompactionPolicy_Construct_UnrepresentableBound_Throws`
 
 Boundary and error paths. A single tier is refused because with nowhere for overflowing history to
 age into the arrangement degenerates to dropping the oldest turns outright. A non-positive budget is
@@ -77,3 +78,11 @@ refused because a tier that could hold nothing is not a tier. A coarser budget l
 it ages from is refused because it is the opposite of what consolidation is for and would never
 reduce. The threshold and ratio are probed at zero, below zero and above one, because a threshold at
 or below zero would rotate on every turn and one above one could never fire.
+
+The last scenario probes the arithmetic rather than the values. Budgets of `int.MaxValue` twice are
+refused as the argument error they are, where summing them in a token-sized type surfaced an
+undocumented `OverflowException` instead. The rejection is placed here, at the earliest point the
+whole bound — the budgets plus the framing their seeded records carry — is known, so that the two
+later sites that recompute it, the session options' window check and the layout's own bound, can do
+so in plain token arithmetic rather than wrapping into a negative figure a window comparison
+silently passes.

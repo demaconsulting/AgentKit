@@ -216,6 +216,73 @@ public class RotationEngineTests
     }
 
     /// <summary>
+    ///     Proves the redundancy test is applied to the re-recording a cascade performs, not only
+    ///     to the merge that overflowed. A re-recording that returns nearly as much as it was given
+    ///     has saturated whether or not it happened to fit the tier, and a rotation that lost that
+    ///     signal told the caller it had succeeded normally.
+    /// </summary>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_CascadeReRecordingDoesNotReduce_ReportsNoRedundancy()
+    {
+        // Arrange: a summarizer scripted call by call, so the cascade path lands on a re-recording
+        // that fits tier one's sixty-token budget but returns seventeen tokens for eighteen given
+        var calls = 0;
+        var summarizer = new FakeSummarizer(_ =>
+        {
+            calls++;
+            return calls switch
+            {
+                // The first rotation's tier-one record: sixty tokens, exactly its budget
+                1 => new string('p', 60 * TokenEstimator.CharactersPerToken),
+
+                // The second rotation's merge: sixty-five tokens, over budget so it must cascade,
+                // but well under the saturation ratio of its seventy-eight tokens of input
+                2 => new string('m', 65 * TokenEstimator.CharactersPerToken),
+
+                // The older record degrading into tier two: comfortably within that budget
+                3 => new string('d', 20 * TokenEstimator.CharactersPerToken),
+
+                // Tier one re-recorded alone: within budget, but it reduced eighteen tokens to
+                // seventeen, so there was no redundancy left to remove
+                _ => new string('a', 17 * TokenEstimator.CharactersPerToken),
+            };
+        });
+
+        var first = await RotationEngine.RotateAsync(
+            SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(6, 20)),
+            summarizer,
+            TestContext.Current.CancellationToken);
+
+        // Act: grow the history by one entry and rotate again, so tier one must cascade
+        var grown = first.Layout.WithTranscript(
+            first.Layout.Transcript.Append(SessionTestData.UserOfTokens(20, "g")));
+        var second = await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+
+        // Assert: the second rotation really did cascade - merge, degrade, re-record
+        Assert.Equal([(1, false), (2, true), (1, true)], summarizer.Shape.Skip(1).ToArray());
+
+        // Assert: the re-recording's lack of redundancy was reported rather than lost
+        var signal = Assert.Single(second.Saturations);
+        Assert.Equal(SaturationReason.NoRedundancy, signal.Reason);
+        Assert.Equal(1, signal.TierIndex);
+        Assert.True(second.IsSaturated);
+    }
+
+    /// <summary>
+    ///     Proves an outcome refuses a null saturation signal, following the same rule
+    ///     <see cref="AgentSessionResponse"/> applies. An outcome holding one would report
+    ///     <see cref="RotationOutcome.IsSaturated"/> true while the consumer that went to read the
+    ///     signal could not.
+    /// </summary>
+    [Fact]
+    public void RotationOutcome_Construct_NullSaturationEntry_Throws()
+    {
+        var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 0, 0);
+
+        Assert.Throws<ArgumentException>(() => new RotationOutcome(layout, [null!], 0));
+    }
+
+    /// <summary>
     ///     Proves the engine is deterministic: the same layout and the same summarizer behavior
     ///     produce byte-identical tiers and verbatim history. This is the property that makes every
     ///     other assertion in this file meaningful.

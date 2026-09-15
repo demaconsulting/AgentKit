@@ -61,11 +61,16 @@ it.
 **Tests**: `TranscriptEntry_Construct_ToolCallWithoutIdentifier_Throws`,
 `TranscriptEntry_Construct_MessageWithIdentifier_Throws`,
 `TranscriptEntry_Construct_NullText_Throws`,
+`TranscriptEntry_Construct_UndefinedKind_Throws`,
 `SessionTranscript_Append_NullEntry_Throws`
 
-Four error paths. A tool call without an identifier could not be paired with its result and could
+Five error paths. A tool call without an identifier could not be paired with its result and could
 therefore be orphaned at a tier boundary. An identifier on a plain message is meaningless and is
-refused rather than ignored, so a caller that supplies one learns it misunderstood the model. A null
+refused rather than ignored, so a caller that supplies one learns it misunderstood the model. An
+undefined kind is refused because it would otherwise pass every pairing rule — it is neither a call
+nor a result, so no identifier is required and none is rejected — and then render through the
+default labeling branch as though it were a consolidated record, making malformed input part of the
+context an agent is seeded from. A null
 text could not be rendered for consolidation, and a null entry would fail later, at a rotation, far
 from the code that put it there.
 
@@ -85,7 +90,8 @@ refused as a programming error rather than treated as zero.
 
 #### AgentKitSessions-SessionTranscript-SnapsToolBoundary: A Boundary Inside a Tool Pair Snaps
 
-**Test**: `SessionTranscript_SplitAtBudget_BoundaryInsideToolPair_SnapsPastTheResult`
+**Tests**: `SessionTranscript_SplitAtBudget_BoundaryInsideToolPair_SnapsPastTheResult`,
+`SessionTranscript_SplitAtBudget_InterleavedToolPairs_RetainsNoOrphanedResult`
 
 The central scenario. Builds a history whose call and result sit either side of where an unsnapped
 45-token boundary would cut, splits there, and asserts the retained history is the single newest
@@ -93,6 +99,15 @@ entry rather than the result plus that entry, and that the orphaned result was p
 overflow instead. Some providers reject an orphaned result outright, and a model presented with one
 cannot tell what was asked. The boundary moves later rather than earlier because moving later can
 only shrink the retained set and so can never push it back over budget.
+
+The second test covers the shape the first does not reach, and the one real agent traffic produces
+constantly: an interleaved turn of `call c1, call c2, result c1, result c2`. A 60-token budget holds
+three of the four entries, so the boundary lands on c2's call — not a result, so a check that looked
+only at the first retained entry passed it — while c1's result stayed retained with its call in the
+overflow. The assertion is the guarantee itself rather than a position: every retained result is
+matched against the retained calls, and none may be unmatched. It also asserts that in this
+arrangement nothing is retained at all, because no orphan-free suffix fits the budget and
+consolidating the whole run together is the only split that keeps every pair intact.
 
 #### AgentKitSessions-SessionTranscript-RendersLabeledMaterial: Material Says Who Said What
 

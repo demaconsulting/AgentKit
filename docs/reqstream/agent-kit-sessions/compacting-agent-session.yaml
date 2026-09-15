@@ -33,14 +33,22 @@ sections:
 
           - id: AgentKitSessions-CompactingAgentSession-RotatesAtThreshold
             title: >-
-              The session shall rotate once the conversation tokens reach the configured threshold,
-              consolidating the layout, creating a replacement provider session seeded from the
-              result, adopting it together with the layout and the counters in one step, and only
-              then disposing the session it replaced.
+              The session shall rotate once the conversation tokens reach the threshold derived from
+              the window its usage figure was measured against, consolidating the layout, creating a
+              replacement provider session seeded from the result, adopting it together with the
+              layout and the counters in one step, and only then disposing the session it replaced.
             justification: |
               Comparing conversation tokens - usage with the fixed overhead removed - rather than raw
               usage is what makes the comparison mean the same thing whether the figure came from the
-              provider or from the library's own estimate. The ordering is deliberate: consolidate,
+              provider or from the library's own estimate. The window the threshold comes from is
+              chosen the same way and for the same reason: the guarantee rotation exists to deliver
+              is that the provider's own compactor never fires, and that is a claim about the window
+              the provider actually has. A host that configured a larger window than the provider
+              reports would otherwise be allowed far past the provider's own threshold, and one that
+              configured a smaller window would rotate early, spending summarizer tokens and prompt
+              cache for nothing. The configured window governs only the provider family that reports
+              no window of its own, which is exactly the family the estimate was measured against.
+              The ordering is deliberate: consolidate,
               create, adopt, then dispose. A summarizer failure therefore leaves the session exactly
               as it was, still able to answer, rather than leaving it with no provider session at
               all. Adopting the replacement before the disposal, in a step with nothing to suspend
@@ -55,6 +63,7 @@ sections:
               summarizer before receiving the answer to a question the session could already answer.
             tests:
               - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession
+              - CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne
               - CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage

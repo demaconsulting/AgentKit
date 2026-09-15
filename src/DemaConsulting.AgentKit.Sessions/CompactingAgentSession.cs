@@ -218,9 +218,10 @@ public sealed class CompactingAgentSession : IAgentSession
 
         // Compare conversation tokens - usage with the fixed overhead removed - against the
         // threshold, so the comparison means the same thing whether the figure came from the
-        // provider or from our own estimate.
+        // provider or from our own estimate. The threshold is derived from the same window the
+        // usage figure was measured against, for the same reason.
         var conversationTokens = Math.Max(0, Usage.UsedTokens - _options.FixedOverheadTokens);
-        if (conversationTokens < _options.RotationThresholdTokens)
+        if (conversationTokens < RotationThreshold(Usage, _options))
         {
             return new AgentSessionResponse(turn.ResponseText, Usage, rotationOccurred: false);
         }
@@ -358,5 +359,52 @@ public sealed class CompactingAgentSession : IAgentSession
         }
 
         return ContextUsage.FromEstimate(layout.TotalEstimatedTokens, options.ProviderWindowTokens);
+    }
+
+    /// <summary>
+    ///     Derives the conversation size at which this turn should rotate, from the same window the
+    ///     usage figure was measured against.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>A provider that reports its own window overrides the configured one.</b> The whole
+    ///     point of rotating at a fraction of the window is that the provider's own compactor never
+    ///     fires, and that guarantee is about the window the provider actually has. A host that
+    ///     configures 128,000 tokens against a provider reporting 32,000 would otherwise be allowed
+    ///     four times past the provider's own threshold — precisely the failure this package exists
+    ///     to prevent — and the reverse mismatch would rotate long before it needed to, spending
+    ///     summarizer tokens and prompt cache for nothing.
+    ///     </para>
+    ///     <para>
+    ///     When the figure is the library's own estimate it was taken against the configured window,
+    ///     so the threshold the options already computed is the matching one and is used unchanged.
+    ///     </para>
+    ///     <para>
+    ///     The fixed overhead is subtracted first and the result floored at one token, exactly as
+    ///     <see cref="AgentSessionOptions.RotationThresholdTokens"/> does, so the two paths differ
+    ///     only in which window they measure. A reported window too small to hold the fixed overhead
+    ///     leaves no conversation budget at all, and the floor is what turns that into "rotate at
+    ///     the first opportunity" rather than "rotate a conversation holding nothing".
+    ///     </para>
+    /// </remarks>
+    /// <param name="usage">The usage figure this turn produced, and where it came from.</param>
+    /// <param name="options">What the application configured.</param>
+    /// <returns>The conversation tokens at which the session rotates.</returns>
+    private static int RotationThreshold(ContextUsage usage, AgentSessionOptions options)
+    {
+        // An estimate was measured against the configured window, so the configured threshold is
+        // already the matching one.
+        if (usage.Origin != ContextUsageOrigin.Provider)
+        {
+            return options.RotationThresholdTokens;
+        }
+
+        var effective = usage.WindowTokens - options.FixedOverheadTokens;
+        if (effective <= 0)
+        {
+            return 1;
+        }
+
+        return Math.Max(1, (int)(effective * options.Compaction.RotationThreshold));
     }
 }

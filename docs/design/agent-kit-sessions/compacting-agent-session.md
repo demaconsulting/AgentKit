@@ -67,7 +67,8 @@ the factory returns null; `OperationCanceledException` on cancellation.
 4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
    layout against the configured window.
 5. Compute conversation tokens as usage less the options' fixed overhead, and compare against the
-   options' rotation threshold.
+   rotation threshold derived from the window that usage figure was measured against: the provider's
+   reported window when the provider reported one, the configured window otherwise.
 6. Below the threshold, return the answer with `RotationOccurred` false.
 7. At or above it, rotate, and return the answer with `RotationOccurred` true and any saturation the
    rotation reported.
@@ -76,6 +77,18 @@ the factory returns null; `OperationCanceledException` on cancellation.
 window, so the comparison must exclude the fixed overhead. Subtracting it is what makes the
 comparison mean the same thing whether the figure came from the provider or from the library's own
 estimate.
+
+**Why the threshold follows the window the usage came from.** The two numbers must describe the same
+window or the comparison means nothing. The guarantee rotation exists to deliver — rotating early
+enough that the provider's own compactor never fires — is a claim about the window the provider
+actually has, so a provider that reports one overrides the configured figure. A host configuring
+128,000 tokens against a provider reporting 32,000 would otherwise be allowed four times past the
+provider's own firing point, which is the failure this package exists to prevent; the reverse
+mismatch would rotate long before it needed to, spending summarizer tokens and prompt cache for
+nothing. Both paths apply the same arithmetic — subtract the fixed overhead, apply the policy's
+rotation fraction, floor at one token — so they differ only in which window they measure. The
+estimate path keeps the configured threshold because the estimate was measured against the
+configured window.
 
 **Why nothing is recorded until the provider accepts the turn.** A provider is entitled to honor
 cancellation or fail before taking the turn — the in-memory provider does exactly that for a token

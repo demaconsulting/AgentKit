@@ -105,14 +105,28 @@ tool result. This is the end-to-end form of the boundary snap: the unit-level sn
 #### AgentKitSessions-RotationEngine-ReportsSaturation: A Failure to Reduce Is Reported
 
 **Tests**: `RotationEngine_RotateAsync_ConsolidationDoesNotReduce_ReportsNoRedundancy`,
-`RotationEngine_RotateAsync_CoarsestTierCannotFit_ReportsTierOverBudget`
+`RotationEngine_RotateAsync_CascadeReRecordingDoesNotReduce_ReportsNoRedundancy`,
+`RotationEngine_RotateAsync_CoarsestTierCannotFit_ReportsTierOverBudget`,
+`RotationOutcome_Construct_NullSaturationEntry_Throws`
 
 The first supplies a summarizer that returns its material unchanged and asserts a `NoRedundancy`
 signal naming tier one, with the reported output at least the policy's saturation ratio of the
-reported input — so the figures in the signal are asserted, not just its presence. The second uses a
+reported input — so the figures in the signal are asserted, not just its presence.
+
+The second covers the cascade path, which the first does not reach. Its summarizer is scripted call
+by call, so the second rotation is driven into a genuine cascade — a merge that overflows tier one's
+60-token budget, the older record degrading into tier two, then tier one re-recorded holding the new
+material alone — and the re-recording returns 17 tokens for the 18 it was given: within budget, but
+with nothing left to remove. The test asserts the request shape first, so the scenario proves it
+cascaded rather than assuming it, and then asserts exactly one signal, a `NoRedundancy` at tier one.
+Checking only the merge left that rotation reporting an unqualified success.
+
+The third uses a
 two-tier policy with a small coarse tier and asserts a `TierOverBudget` signal, which is the case
 where there is nothing coarser left to degrade into. Without detection both failures are invisible:
-every rotation appears to succeed while buying no room.
+every rotation appears to succeed while buying no room. The fourth refuses a null signal in an
+outcome, following the rule the session response already applies: an outcome holding one reports
+itself saturated while the consumer that goes to read the signal cannot.
 
 #### AgentKitSessions-RotationEngine-Deterministic: The Same Inputs Produce the Same Output
 

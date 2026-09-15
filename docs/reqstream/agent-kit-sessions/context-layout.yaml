@@ -48,10 +48,15 @@ sections:
               configuration alone and not on what the session has done, which is what makes it
               something an application can reason about before starting. It is a post-rotation
               property: between rotations tier zero is append-only and grows past its budget, which
-              is exactly what the rotation threshold's headroom is reserved for.
+              is exactly what the rotation threshold's headroom is reserved for. A fixed overhead
+              that would carry the bound past what a token count can represent is refused at
+              creation, because a wrapped bound is negative and a layout holding nothing at all
+              would then report itself outside it; the policy already guarantees its own half of
+              the bound, so the fixed overhead is the only remaining way to exceed one.
             tests:
               - ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget
               - ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord
+              - ContextLayout_Create_UnrepresentableBound_Throws
               - ContextLayout_ConversationTokens_ExcludeTheFixedOverhead
               - ContextTier_IsWithinBudget_ReflectsTheRecordSize
 
