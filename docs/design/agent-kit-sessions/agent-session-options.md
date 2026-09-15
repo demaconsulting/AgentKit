@@ -26,7 +26,10 @@ configuration that satisfies the first but not the second rotates, lands at or a
 and rotates again on every following turn — silently, because each individual consolidation reduces
 normally and raises no saturation signal. A configuration whose overhead consumed the window would
 have no room for a conversation at all. All are refused. If these options construct, the arrangement
-fits **and** settles.
+fits **and** settles — in this library's estimated tokens, against the window the host configured.
+Every term in the test is a `TokenEstimator` figure, so the guarantee is only as good as a
+four-characters-per-token rule of thumb; what makes it useful is the thirty percent of window the
+default rotation fraction leaves unspent.
 
 `ConvergesAt` and `MinimumEffectiveWindowTokens` express the invariant, and `RotationThresholdFor`
 performs the threshold arithmetic. All three are shared with `CompactingAgentSession`, which applies
@@ -44,7 +47,8 @@ comparison then thrashes on.
 - **`Compaction`** (`CompactionPolicy`) — Never null; `CompactionPolicy.Default` when not configured
 - **`SystemTokens`** (`int`) — Estimated tokens of `Instructions`; not negative
 - **`ToolDeclarationTokens`** (`int`) — Estimated declaration overhead of `Tools`; not negative
-- **`FixedOverheadTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens`
+- **`FixedOverheadTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens`; an estimate, applied only to
+  the configured window and never to a figure a provider reported
 - **`EffectiveWindowTokens`** (`int`) — `ProviderWindowTokens - FixedOverheadTokens`; always positive
 - **`RotationThresholdTokens`** (`int`) — `(int)(EffectiveWindowTokens * Compaction.RotationThreshold)`, clamped to at
   least one token; governs the provider family that reports no window of its own
@@ -82,11 +86,13 @@ gets less conversation before rotating, with nothing in the configuration saying
 
 **Why the threshold is compared against conversation tokens.** `RotationThresholdTokens` is a
 fraction of the effective window, so the figure compared against it must also exclude the fixed
-overhead. `CompactingAgentSession` subtracts `FixedOverheadTokens` from the usage before comparing,
-which is what makes the comparison mean the same thing whether the usage came from a provider or
-from this library's own estimate. It applies the same arithmetic to a provider's own reported window
-when the provider reports one, because the two numbers must describe the same window for the
-comparison to mean anything; see *CompactingAgentSession Unit Design*.
+overhead. `CompactingAgentSession` compares `ContextUsage.ConversationTokens`, which carries that
+exclusion already made by whoever produced the figure. `FixedOverheadTokens` is this library's
+character-ratio estimate and is applied only to the configured window, which is the window that
+governs the provider family reporting nothing — so both sides of that comparison are estimates. A
+provider that reports its own figures reports its own overhead with them, and the session removes
+*that* from *its* window instead; subtracting the estimate from a provider's measurement is exactly
+the mismatch this arrangement exists to avoid. See *CompactingAgentSession Unit Design*.
 
 **Why the threshold is clamped rather than the policy rejected.** A rotation threshold is a fraction
 of a window the policy knows nothing about, so the same policy is sensible in one window and

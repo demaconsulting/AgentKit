@@ -133,17 +133,20 @@ public sealed class ContextTier
 ///     between turns.
 ///     </para>
 ///     <para>
-///     <b>Bounded by construction.</b> The most this layout can ever hold is the system prompt,
-///     plus the tool declarations, plus the sum of the tier budgets, plus the framing
-///     <see cref="BuildSeed"/> wraps each tier record in — published as
-///     <see cref="MaximumBoundTokens"/>. <see cref="IsWithinBound"/> asserts it. The framing is
-///     part of the bound because it is part of what the provider receives: a bound that counted
-///     only raw tier content would be an under-count, and for a provider that reports no usage
-///     that under-count is what would drive the rotation decision. The bound is a
-///     <em>post-rotation</em> property and is documented as one: between rotations the context is
-///     strictly append-only, so tier zero grows past its budget until the next rotation batches
-///     everything back inside the bound. That growth is exactly what the rotation threshold's
-///     headroom is reserved for.
+///     <b>Bounded by construction, in estimated tokens.</b> The most this layout can ever hold is
+///     the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus the
+///     framing <see cref="BuildSeed"/> wraps each tier record in — published as
+///     <see cref="MaximumBoundTokens"/>. <see cref="IsWithinBound"/> asserts it. Every term is
+///     measured by <see cref="TokenEstimator"/>'s character ratio, so the bound is a bound in this
+///     library's own currency and inherits that ratio's accuracy: it is a rule of thumb held to
+///     within the headroom the rotation fraction reserves, not a guarantee about the tokens a
+///     provider will charge. The framing is part of the bound because it is part of what the
+///     provider receives: a bound that counted only raw tier content would be an under-count, and
+///     for a provider that reports no usage that under-count is what would drive the rotation
+///     decision. The bound is a <em>post-rotation</em> property and is documented as one: between
+///     rotations the context is strictly append-only, so tier zero grows past its budget until the
+///     next rotation batches everything back inside the bound. That growth is exactly what the
+///     rotation threshold's headroom is reserved for.
 ///     </para>
 ///     <para>
 ///     Instances are immutable: every mutator returns a new layout. That is what makes the rotation

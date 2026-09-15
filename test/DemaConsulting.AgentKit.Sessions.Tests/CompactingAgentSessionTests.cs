@@ -200,6 +200,83 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves the reporting path performs no subtraction of this library's estimate. A provider
+    ///     that reports its own conversation count is measured entirely in its own tokens, so a
+    ///     deliberately wrong <see cref="AgentSessionOptions.FixedOverheadTokens"/> — here 2,589
+    ///     tokens, the figure the compaction spike estimated for eleven tool declarations — cannot
+    ///     move the point at which the session rotates.
+    /// </summary>
+    /// <remarks>
+    ///     This is the regression test for mixing currencies. The defect subtracted the estimated
+    ///     fixed overhead from a provider-measured usage and from a provider-reported window, so the
+    ///     rotation point moved with an estimate of material the provider had already counted for
+    ///     itself. Measured against the arithmetic as it stood, the same provider rotated on turn
+    ///     seven with no instructions configured and on turn eight with instructions estimated at
+    ///     2,589 tokens — the provider having reported identical figures in both runs.
+    ///     <para>
+    ///     No existing test could have caught it. Every rotation test either configures no
+    ///     instructions and no tools, making the estimated overhead zero, or runs against
+    ///     <see cref="InMemoryProviderSession"/>, which measures its own reported overhead with the
+    ///     very same <see cref="TokenEstimator"/> — so the two currencies are identical by
+    ///     construction and the subtraction cancels exactly. The fake here is deliberately not the
+    ///     in-memory session for that reason.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReportsConversation_RotatesRegardlessOfTheEstimate()
+    {
+        // Act: the same reporting provider, run once with no estimated overhead at all and once
+        // with an estimate of thousands of tokens
+        var withoutOverhead = await RotationTurnAsync(instructionTokens: 0);
+        var withWrongOverhead = await RotationTurnAsync(instructionTokens: 2589);
+
+        // Assert: the provider reported a 10,000-token window carrying 500 tokens of its own
+        // overhead, so the threshold is 70 percent of 9,500 - that is 6,650 conversation tokens,
+        // crossed by the seventh turn of 1,000
+        Assert.Equal(7, withoutOverhead);
+
+        // Assert: and the estimate, right or wrong, did not enter into it
+        Assert.Equal(withoutOverhead, withWrongOverhead);
+    }
+
+    /// <summary>
+    ///     Runs a session against a provider that reports its own conversation split and returns the
+    ///     turn on which it first rotated.
+    /// </summary>
+    /// <remarks>
+    ///     The instructions are sized to an exact estimated token count, which is the only input
+    ///     that varies between runs: the provider reports the same figures either way, so a rotation
+    ///     turn that moves with this parameter is a rotation decision contaminated by an estimate.
+    /// </remarks>
+    /// <param name="instructionTokens">The estimated tokens the configured instructions occupy.</param>
+    /// <returns>The one-based turn on which the session rotated.</returns>
+    private static async Task<int> RotationTurnAsync(int instructionTokens)
+    {
+        var factory = new SplitReportingProviderSessionFactory(
+            windowTokens: 10_000, overheadTokens: 500, conversationTokensPerTurn: 1000);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(),
+            instructions: new string('i', instructionTokens * TokenEstimator.CharactersPerToken),
+            compaction: SessionTestData.SmallPolicy);
+        Assert.Equal(instructionTokens, options.FixedOverheadTokens);
+
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+        var message = new string('m', 50 * TokenEstimator.CharactersPerToken);
+
+        for (var turn = 1; turn <= 20; turn++)
+        {
+            var response = await session.SendAsync(message, TestContext.Current.CancellationToken);
+            if (response.RotationOccurred)
+            {
+                return turn;
+            }
+        }
+
+        Assert.Fail("The session never rotated, so there is no rotation point to compare.");
+        return 0;
+    }
+
+    /// <summary>
     ///     Proves a blank message is refused: a blank turn spends context to say nothing, and is a
     ///     defect in the calling application rather than something to forward to a provider.
     /// </summary>
@@ -755,6 +832,90 @@ internal sealed class LateReportingProviderSessionFactory(int reportedWindowToke
         cancellationToken.ThrowIfCancellationRequested();
 
         var session = new LateReportingProviderSession(reportedWindowTokens);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}
+
+/// <summary>
+///     A provider session that reports its own conversation count alongside its totals, as a
+///     provider distinguishing the conversation from its framing does.
+/// </summary>
+/// <remarks>
+///     Models the adapter this package's reporting path is built for. The shipped in-memory session
+///     cannot stand in for it: that session measures its own overhead with the same
+///     <see cref="TokenEstimator"/> the engine would have used, so the two currencies coincide and a
+///     test written against it cannot tell a measurement from an estimate. The figures here are
+///     scripted, owe nothing to any estimator, and are identical whatever the host configured.
+/// </remarks>
+/// <param name="windowTokens">The window the session reports.</param>
+/// <param name="overheadTokens">The tokens the session reports outside the conversation.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+internal sealed class SplitReportingProviderSession(
+    int windowTokens,
+    int overheadTokens,
+    int conversationTokensPerTurn) : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The conversation tokens reported so far, grown by each answered turn.
+    /// </summary>
+    private int _conversationTokens;
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    public ContextUsage? CurrentUsage => ContextUsage.FromProvider(
+        overheadTokens + _conversationTokens, windowTokens, _conversationTokens);
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _conversationTokens += conversationTokensPerTurn;
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="SplitReportingProviderSession"/> instances and remembers every one it
+///     made.
+/// </summary>
+/// <param name="windowTokens">The window each created session reports.</param>
+/// <param name="overheadTokens">The tokens each created session reports outside the conversation.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+internal sealed class SplitReportingProviderSessionFactory(
+    int windowTokens,
+    int overheadTokens,
+    int conversationTokensPerTurn) : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<SplitReportingProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var session = new SplitReportingProviderSession(
+            windowTokens, overheadTokens, conversationTokensPerTurn);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

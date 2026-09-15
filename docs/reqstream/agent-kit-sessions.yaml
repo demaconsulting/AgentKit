@@ -86,7 +86,8 @@ sections:
 
       - id: AgentKitSessions-Compaction-BoundedByConstruction
         title: >-
-          The library shall bound the context it sends to the system prompt, plus the tool
+          The library shall bound the context it sends, in estimated tokens, to the system prompt,
+          plus the tool
           declarations, plus the sum of the tier budgets, plus the framing each tier record carries
           when it is seeded, and shall refuse a configured or provider-reported window in which a
           rotated context of that size would not land below the rotation threshold.
@@ -98,6 +99,13 @@ sections:
           and about whether its window is large enough. The seed framing is part of that total
           because it is part of what the provider actually receives; omitting it from the statement
           of the bound understates it by 81 of 311 tokens for the policy the tests use.
+
+          The bound is in this library's estimated tokens, because the tier budgets a host
+          configures are expressed and enforced in those. It is a rule of thumb held within the
+          headroom the rotation fraction reserves, not a claim about a provider's tokenizer, and the
+          one place it meets a provider-reported window is stated as approximate rather than exact.
+          What the library does not do is subtract an estimate from a measurement: the conversation
+          figure every threshold comparison uses is supplied by whoever supplied the totals.
 
           Fitting the window and settling in it are different conditions, and the requirement is the
           second. A rotated context that merely fits still sits above the rotation threshold whenever
@@ -188,7 +196,7 @@ sections:
         title: >-
           The library shall take a provider's own account of its context window when the provider
           offers one, and shall otherwise estimate usage against a configured window size, recording
-          which of the two a figure came from.
+          which of the two a figure came from and never mixing the two in one comparison.
         tags: [system]
         justification: |
           Providers disagree about what they will reveal: a GitHub Copilot session reports current
@@ -196,9 +204,14 @@ sections:
           the window must be configured. The compaction engine cannot have two behaviors, so both are
           reduced to one figure. A provider's own numbers count framing this library never sees and
           are preferred whenever offered; recording the origin is what lets an application tell a
-          measurement from a derivation instead of treating them as interchangeable.
+          measurement from a derivation instead of treating them as interchangeable. Preferring them
+          is only half of it: a comparison that subtracts this library's character-ratio estimate
+          from a provider's measurement produces a figure in neither currency, so the figure carries
+          the conversation split made by whoever produced the totals, and the estimated fixed
+          overhead is applied only to the configured window.
         children:
           - AgentKitSessions-ContextUsage-UsageShape
+          - AgentKitSessions-ContextUsage-DefaultsToAllConversation
           - AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
           - AgentKitSessions-ContextUsage-ReportsOverFullHonestly
           - AgentKitSessions-ContextUsage-RejectsMeaninglessFigures

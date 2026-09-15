@@ -8,12 +8,16 @@ namespace DemaConsulting.AgentKit.Sessions;
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>The fixed overhead is measured here, once.</b> The system prompt and the tool
-///     declarations are present on every turn and are never consolidated, so they are subtracted
-///     from the provider's window before the rotation percentage is applied. Applying a percentage
-///     to the raw window instead would make the rotation point drift with how many tools an
-///     application attached — attach more tools and the agent would get less conversation before
-///     rotating, without anything in the configuration saying so.
+///     <b>The fixed overhead is measured here, once, and it is an estimate.</b> The system prompt
+///     and the tool declarations are present on every turn and are never consolidated, so they are
+///     subtracted from the provider's window before the rotation percentage is applied. Applying a
+///     percentage to the raw window instead would make the rotation point drift with how many tools
+///     an application attached — attach more tools and the agent would get less conversation before
+///     rotating, without anything in the configuration saying so. The measurement is
+///     <see cref="TokenEstimator"/>'s character ratio, which is a rule of thumb: it is applied only
+///     to the window this class was configured with, never to a window or a usage figure a provider
+///     reported. A provider that reports its own figures reports its own overhead with them, and
+///     <see cref="CompactingAgentSession"/> uses that instead.
 ///     </para>
 ///     <para>
 ///     <b>The convergence invariant is asserted at construction.</b> The invariant is stated once,
@@ -30,7 +34,11 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     next turn — forever, and silently, because each individual consolidation reduces normally
 ///     and so raises no saturation signal. A configuration whose effective window cannot satisfy the
 ///     invariant is therefore refused outright. That check is the "bounded by construction"
-///     property made real: if these options construct, the arrangement fits <em>and</em> settles.
+///     property made real, in estimated tokens against the configured window: if these options
+///     construct, the arrangement fits <em>and</em> settles as this library measures it. Every term
+///     in the check — the tier budgets, their framing, the fixed overhead — is a
+///     <see cref="TokenEstimator"/> figure, so the guarantee is as good as that estimate, which is
+///     why the rotation fraction leaves roughly thirty percent of the window unspent.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
@@ -321,6 +329,13 @@ public sealed class AgentSessionOptions
     /// <summary>
     ///     Gets the fixed overhead present on every turn: the system prompt plus the tool declarations.
     /// </summary>
+    /// <remarks>
+    ///     An estimate, and used only where an estimate is the only figure available: against the
+    ///     configured window, to derive <see cref="EffectiveWindowTokens"/> and
+    ///     <see cref="RotationThresholdTokens"/>, and to account for the layout. It is never
+    ///     subtracted from a figure a provider reported — that provider reports its own overhead
+    ///     alongside its own totals, and mixing the two would produce a number in neither currency.
+    /// </remarks>
     public int FixedOverheadTokens => SystemTokens + ToolDeclarationTokens;
 
     /// <summary>
@@ -337,9 +352,10 @@ public sealed class AgentSessionOptions
     /// </summary>
     /// <remarks>
     ///     The effective window multiplied by the policy's rotation threshold, truncated, and never
-    ///     below one token. Compared against conversation tokens — that is, usage with the fixed
-    ///     overhead subtracted — so the comparison means the same thing whether the figure came from
-    ///     a provider or from an estimate. The floor of one token is what keeps a threshold too
+    ///     below one token. Compared against <see cref="ContextUsage.ConversationTokens"/>, which
+    ///     for an estimated figure is what this library's own layout holds outside the fixed
+    ///     overhead — so both sides of that comparison are estimates, and neither is corrupted by
+    ///     the other's currency. The floor of one token is what keeps a threshold too
     ///     small to survive truncation from meaning "rotate a conversation holding nothing"; it does
     ///     not make such a policy rotate rarely, because a host that asks to rotate at a fraction of
     ///     a token has asked to rotate on every turn and receives exactly that.
@@ -354,9 +370,10 @@ public sealed class AgentSessionOptions
     ///     <para>
     ///     This is the threshold that governs a provider reporting no window of its own. A provider
     ///     that reports one is measured against <em>that</em> window instead, by the same
-    ///     arithmetic: the guarantee the threshold exists to deliver — rotating before the
-    ///     provider's own compactor fires — is about the window the provider actually has, so a
-    ///     configured window that disagrees with a reported one does not get to decide.
+    ///     arithmetic and with that provider's own reported overhead removed from it: the guarantee
+    ///     the threshold exists to deliver — rotating before the provider's own compactor fires — is
+    ///     about the window the provider actually has, so a configured window that disagrees with a
+    ///     reported one does not get to decide, and neither does this estimated overhead.
     ///     </para>
     /// </remarks>
     public int RotationThresholdTokens { get; }

@@ -38,12 +38,23 @@ sections:
               replacement provider session seeded from the result, adopting it together with the
               layout and the counters in one step, and only then disposing the session it replaced.
             justification: |
-              Comparing conversation tokens - usage with the fixed overhead removed - rather than raw
-              usage is what makes the comparison mean the same thing whether the figure came from the
-              provider or from the library's own estimate. The window the threshold comes from is
+              Comparing conversation tokens rather than raw usage is what makes the comparison mean
+              the same thing whether the figure came from the provider or from the library's own
+              estimate. The conversation figure is carried on the usage rather than computed here by
+              subtracting the options' fixed overhead: that overhead is this library's
+              character-ratio estimate, and subtracting an estimate from a provider's measurement
+              produces a figure in neither currency, with the error inherited by every threshold
+              comparison downstream. Tool declarations are the material the ratio serves worst -
+              nested JSON schemas rather than prose - so the error is not small. A provider that
+              reports its own conversation count supplies it directly; one that reports only totals
+              is credited no overhead allowance at all, which rotates earlier rather than later and
+              so cannot breach the guarantee; the estimated path derives it from the layout, which
+              is estimated throughout. The window the threshold comes from is
               chosen the same way and for the same reason: the guarantee rotation exists to deliver
               is that the provider's own compactor never fires, and that is a claim about the window
-              the provider actually has. A host that configured a larger window than the provider
+              the provider actually has, with that provider's own reported overhead - not an
+              estimate of it - removed before the fraction is applied. A host that configured a
+              larger window than the provider
               reports would otherwise be allowed far past the provider's own threshold, and one that
               configured a smaller window would rotate early, spending summarizer tokens and prompt
               cache for nothing. The configured window governs only the provider family that reports
@@ -64,6 +75,7 @@ sections:
             tests:
               - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession
               - CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne
+              - CompactingAgentSession_SendAsync_ProviderReportsConversation_RotatesRegardlessOfTheEstimate
               - CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent
 
           - id: AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow

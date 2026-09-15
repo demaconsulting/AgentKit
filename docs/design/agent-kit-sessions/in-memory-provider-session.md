@@ -36,8 +36,8 @@ billed for.
   disposal
 - **`TurnCount`** (`int`) — How many turns this session has answered
 - **`IsDisposed`** (`bool`) — Whether the session has been disposed
-- **`CurrentUsage`** (`ContextUsage?`) — The fixed overhead plus every history entry, marked `Provider`; null when
-  configured not to report
+- **`CurrentUsage`** (`ContextUsage?`) — The fixed overhead plus every history entry, with the history total also
+  reported as the conversation, marked `Provider`; null when configured not to report
 
 Private state: the responder producing a turn for a message, and the `reportsUsage` switch.
 
@@ -60,9 +60,16 @@ the engine performs against a real provider.
 
 #### CurrentUsage
 
-Returns null when configured not to report. Otherwise sums the fixed overhead and every history
-entry's estimate and marks the result `ContextUsageOrigin.Provider` — because from the engine's
-point of view that is exactly what it is.
+Returns null when configured not to report. Otherwise sums every history entry's estimate as the
+conversation, adds the fixed overhead for the total, and marks the result
+`ContextUsageOrigin.Provider` — because from the engine's point of view that is exactly what it is.
+Reporting the conversation separately rather than leaving it to be inferred is the shape a real
+reporting adapter uses, so the engine's reported path is exercised as it will actually be driven.
+
+Note what this fake cannot demonstrate: its overhead is measured with the very `TokenEstimator` the
+engine would otherwise have used, so its reported currency and this library's estimated currency
+coincide exactly. A test that needs to tell a measurement from an estimate must script the reported
+figures instead; see *CompactingAgentSession Unit Verification Design*.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
@@ -107,13 +114,13 @@ apart.
 ### Dependencies
 
 - **ProviderSession** — implements `IProviderSession` and `IProviderSessionFactory`, and consumes
-  `ProviderSessionSeed` and `ProviderTurn`; see _ProviderSession Unit Design_.
+  `ProviderSessionSeed` and `ProviderTurn`; see *ProviderSession Unit Design*.
 - **ContextUsage** — implements `IContextUsageReporter` and produces `ContextUsage`; see
-  _ContextUsage Unit Design_.
-- **TokenEstimator** — measures the simulated fixed overhead; see _TokenEstimator Unit Design_.
+  *ContextUsage Unit Design*.
+- **TokenEstimator** — measures the simulated fixed overhead; see *TokenEstimator Unit Design*.
 - **AgentSessionOptions** — supplies `DefaultProviderWindowTokens` as the factory's default window;
-  see _AgentSessionOptions Unit Design_.
-- **SessionTranscript** — supplies `TranscriptEntry`; see _SessionTranscript Unit Design_.
+  see *AgentSessionOptions Unit Design*.
+- **SessionTranscript** — supplies `TranscriptEntry`; see *SessionTranscript Unit Design*.
 
 ### Callers
 

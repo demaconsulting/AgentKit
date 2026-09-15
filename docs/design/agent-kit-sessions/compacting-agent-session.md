@@ -71,17 +71,27 @@ bound; `OperationCanceledException` on cancellation.
    layout against the configured window.
 5. Refuse a reported window smaller than the layout's construction bound, releasing the live
    provider first.
-6. Compute conversation tokens as usage less the options' fixed overhead, and compare against the
-   rotation threshold derived from the window that usage figure was measured against: the provider's
-   reported window when the provider reported one, the configured window otherwise.
+6. Compare the usage figure's own conversation tokens against the rotation threshold derived from the
+   window that usage figure was measured against: the provider's reported window, less the overhead
+   that provider itself reported, when the provider reported one; the configured window, less the
+   estimated fixed overhead, otherwise.
 7. Below the threshold, return the answer with `RotationOccurred` false.
 8. At or above it, rotate, and return the answer with `RotationOccurred` true and any saturation the
    rotation reported.
 
-**Why conversation tokens rather than raw usage.** The threshold is a fraction of the effective
-window, so the comparison must exclude the fixed overhead. Subtracting it is what makes the
-comparison mean the same thing whether the figure came from the provider or from the library's own
-estimate.
+**Why conversation tokens rather than raw usage, and why they are not computed here.** The threshold
+is a fraction of the effective window, so the comparison must exclude the fixed overhead. The
+exclusion is performed by whoever produced the usage figure, not by this class: `ContextUsage`
+carries the conversation count, and this class reads it. Computing it here — by subtracting
+`AgentSessionOptions.FixedOverheadTokens` from the usage, which is what this class used to do — mixed
+two currencies whenever the provider reported. The usage and the window were then real tokens from
+the provider's own tokenizer and the subtrahend was this library's four-characters-per-token
+estimate of the system prompt and the tool declarations, so the difference was a figure in neither,
+and every threshold comparison downstream inherited the error. Tool declarations are nested JSON
+schemas, which is the material that ratio serves worst: the compaction spike estimated eleven tools
+at 2,589 tokens, and the real count for such a set can differ substantially. Reading a carried
+conversation count keeps each path within one currency — reported throughout, or estimated
+throughout.
 
 **Why the threshold follows the window the usage came from.** The two numbers must describe the same
 window or the comparison means nothing. The guarantee rotation exists to deliver — rotating early
@@ -90,10 +100,13 @@ actually has, so a provider that reports one overrides the configured figure. A 
 128,000 tokens against a provider reporting 32,000 would otherwise be allowed four times past the
 provider's own firing point, which is the failure this package exists to prevent; the reverse
 mismatch would rotate long before it needed to, spending summarizer tokens and prompt cache for
-nothing. Both paths apply the same arithmetic — subtract the fixed overhead, apply the policy's
-rotation fraction, floor at one token — so they differ only in which window they measure. The
-estimate path keeps the configured threshold because the estimate was measured against the
-configured window.
+nothing. Both paths apply the same arithmetic — remove the overhead, apply the policy's rotation
+fraction, floor at one token — so they differ only in which window they measure and whose overhead
+they remove from it. The reported path removes `ContextUsage.OverheadTokens`, which is the reported
+total less the reported conversation and so is in the provider's own tokens; the estimate path keeps
+the configured threshold, in which the estimated overhead was removed from the configured window the
+estimate was measured against. A provider that reports totals but no split is credited no overhead
+at all, which rotates earlier rather than later and so errs on the side the guarantee needs.
 
 **Why nothing is recorded until the provider accepts the turn.** A provider is entitled to honor
 cancellation or fail before taking the turn — the in-memory provider does exactly that for a token
@@ -130,6 +143,14 @@ false so an explicit `DisposeAsync` still retries it. The release is uncondition
 reachable only from `CreateAsync`, holding a freshly created session, and from `SendAsync`, which
 has already refused a disposed session, so a guard on the release flag asserted something already
 known.
+
+The window this check measures is the reported window less the overhead the provider itself
+reported, so that subtraction is in one currency. The bound it is compared against — the tier budgets
+and their seed framing — is not: those are configured and enforced in estimated tokens, because that
+is the only currency a host can express them in before a provider has said anything. The check is
+therefore an approximate comparison and is not claimed to be more, which is part of what the
+rotation fraction's thirty percent of unspent window is for. What it no longer does is corrupt the
+reported window itself before making the comparison.
 
 **Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
 `InvalidOperationException` when the live provider reports a window the session could not converge

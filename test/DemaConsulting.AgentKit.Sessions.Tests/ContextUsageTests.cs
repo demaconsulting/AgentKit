@@ -98,9 +98,72 @@ public class ContextUsageTests
     public void ContextUsage_Construct_UndefinedOrigin_Throws()
     {
         var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new ContextUsage(100, 8000, (ContextUsageOrigin)99));
+            new ContextUsage(100, 8000, 100, (ContextUsageOrigin)99));
 
         Assert.Equal("origin", error.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves a provider's own split survives into the figure, and that the overhead is derived
+    ///     from it rather than supplied from elsewhere. This is the seam a reporting adapter uses:
+    ///     the conversation count it passes is the one every rotation decision is made against, so
+    ///     no estimate of this library's is ever subtracted from a number the provider measured.
+    /// </summary>
+    [Fact]
+    public void ContextUsage_FromProvider_WithConversationSplit_CarriesItAndDerivesTheOverhead()
+    {
+        // Arrange / Act: the shape a Copilot session reports - a current total, a conversation
+        // count, and the limit
+        var usage = ContextUsage.FromProvider(184_561, 200_000, 181_834);
+
+        // Assert: the split is carried, and the overhead is what the two counts leave between them
+        Assert.Equal(181_834, usage.ConversationTokens);
+        Assert.Equal(2727, usage.OverheadTokens);
+        Assert.Equal(ContextUsageOrigin.Provider, usage.Origin);
+    }
+
+    /// <summary>
+    ///     Proves a figure whose producer reports no split treats the whole of its usage as
+    ///     conversation. That credits the session with no overhead allowance, which rotates earlier
+    ///     than a correct split would — the safe direction, because the guarantee this package
+    ///     exists to deliver is that the provider's own compactor never fires.
+    /// </summary>
+    [Fact]
+    public void ContextUsage_WithoutConversationSplit_TreatsTheWholeUsageAsConversation()
+    {
+        // Arrange / Act: both origins, neither offering a split
+        var reported = ContextUsage.FromProvider(3000, 8000);
+        var estimated = ContextUsage.FromEstimate(1200, 8000);
+
+        // Assert: nothing is attributed to overhead, so nothing is credited that was not reported
+        Assert.Equal(3000, reported.ConversationTokens);
+        Assert.Equal(0, reported.OverheadTokens);
+        Assert.Equal(1200, estimated.ConversationTokens);
+        Assert.Equal(0, estimated.OverheadTokens);
+    }
+
+    /// <summary>
+    ///     Proves a conversation larger than the whole usage is refused. No accounting produces it,
+    ///     and it would make the derived overhead negative — which would <em>enlarge</em> the window
+    ///     the rotation threshold is taken from and let the session run past the provider's own
+    ///     compactor, the one failure this package exists to prevent.
+    /// </summary>
+    [Fact]
+    public void ContextUsage_Construct_ConversationExceedingUsage_Throws()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ContextUsage.FromProvider(1000, 8000, 1001));
+
+        Assert.Equal("conversationTokens", error.ParamName);
+    }
+
+    /// <summary>
+    ///     Proves a negative conversation count is refused, for the same reason a negative usage is.
+    /// </summary>
+    [Fact]
+    public void ContextUsage_Construct_NegativeConversation_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ContextUsage.FromEstimate(1000, 8000, -1));
     }
 
     /// <summary>

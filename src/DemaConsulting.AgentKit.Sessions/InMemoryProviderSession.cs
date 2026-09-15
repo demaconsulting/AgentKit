@@ -140,9 +140,11 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     /// <inheritdoc/>
     /// <remarks>
     ///     Computed from this session's own history and its fixed overhead, and marked as
-    ///     provider-reported because that is what it stands in for. Returns <see langword="null"/>
-    ///     when the session was configured not to report, which is how a provider that reveals
-    ///     nothing is simulated.
+    ///     provider-reported because that is what it stands in for. The conversation is reported
+    ///     separately, as a provider that distinguishes the two does, so the engine's
+    ///     provider-reported path is exercised in the shape a real reporting adapter will use.
+    ///     Returns <see langword="null"/> when the session was configured not to report, which is
+    ///     how a provider that reveals nothing is simulated.
     /// </remarks>
     public ContextUsage? CurrentUsage
     {
@@ -153,13 +155,14 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
                 return null;
             }
 
-            var used = FixedOverheadTokens;
+            var conversation = 0;
             foreach (var entry in _history)
             {
-                used += entry.EstimatedTokens;
+                conversation += entry.EstimatedTokens;
             }
 
-            return ContextUsage.FromProvider(used, WindowTokens);
+            return ContextUsage.FromProvider(
+                FixedOverheadTokens + conversation, WindowTokens, conversation);
         }
     }
 

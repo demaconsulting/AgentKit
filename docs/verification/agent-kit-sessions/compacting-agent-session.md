@@ -42,8 +42,11 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. **No provider, no model and no network access is used**
 - **Mocking**: The shipped in-memory provider factory and a hand-written fake summarizer; no mocking
-  framework. Two scenarios add hand-written providers: one whose disposal fails, and one that
-  reports its window only after answering a turn
+  framework. Three scenarios add hand-written providers: one whose disposal fails, one that
+  reports its window only after answering a turn, and one that reports scripted figures including
+  its own conversation split — the last because the shipped in-memory session measures its reported
+  overhead with the same estimator the engine uses, so a test written against it cannot distinguish
+  a measurement from an estimate
 - **Isolation**: Each test constructs its own factory, summarizer, options and session; no state is
   shared
 
@@ -88,6 +91,7 @@ transcript passes every other scenario here and fails this one.
 
 **Tests**: `CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession`,
 `CompactingAgentSession_SendAsync_ProviderReportsASmallerWindow_RotatesAgainstTheReportedOne`,
+`CompactingAgentSession_SendAsync_ProviderReportsConversation_RotatesRegardlessOfTheEstimate`,
 `CompactingAgentSession_SendAsync_ReplacedProviderFailsToDispose_StaysCoherent`
 
 The central scenario, and the one that pins the mechanism. Drives two turns across a deliberately
@@ -98,15 +102,35 @@ verbatim material; and the replacement carries the same tools, because rotation 
 rather than capability.
 
 The second test pins **which window the threshold is taken from**. It configures a 4,000-token
-window against a provider reporting 400 — a mismatch a host gets wrong easily and a provider can
-introduce by itself — and asserts the session rotates on the second turn, at 296 conversation tokens
-against the reported window's threshold of 280, while the configured window's threshold of 2,800 is
-still four turns away. It asserts both thresholds explicitly, so the scenario states the
+window against a provider reporting 600 — a mismatch a host gets wrong easily and a provider can
+introduce by itself — and asserts the session rotates on the third turn, at 444 conversation tokens
+against the reported window's threshold of 420, while the configured window's threshold of 2,800 is
+still many turns away. It asserts both thresholds explicitly, so the scenario states the
 disagreement rather than relying on one of the two numbers being invisible. Taking the threshold
 from the configured window let a provider reporting a smaller one run far past its own compactor's
 firing point, which is the single failure this package exists to prevent.
 
-The third test drives the same arithmetic against a hand-written provider whose `DisposeAsync`
+The third test pins **that no estimate enters a reported comparison**, and it is the regression test
+for mixing currencies. A hand-written provider reports a 10,000-token window carrying 500 tokens of
+its own overhead and adds 1,000 conversation tokens per turn, so the threshold is 70 percent of
+9,500 and the seventh turn crosses it. The same provider is driven twice: once against options
+configuring no instructions, and once against options whose instructions estimate to 2,589 tokens —
+the figure the compaction spike recorded for eleven tool declarations, and a figure the provider's
+own reported numbers already account for. The test asserts the rotation falls on turn seven both
+times.
+
+Run against the arithmetic as it previously stood, this fails: the estimated fixed overhead was
+subtracted from the provider's measured usage and from the provider's reported window, so the same
+provider rotated on turn seven in the first run and turn eight in the second. **No existing test
+could have caught that.** Every other rotation scenario either configures no instructions and no
+tools, making the estimated overhead zero and the subtraction a no-op, or runs against
+`InMemoryProviderSession`, whose reported overhead is measured with the same `TokenEstimator` the
+engine would have used — so the two currencies are identical by construction and the subtraction
+cancels exactly. Those tests pass because the estimator is deterministic, not because the property
+they appear to assert holds. This scenario therefore scripts the reported figures, owing nothing to
+any estimator.
+
+The fourth test drives the same arithmetic against a hand-written provider whose `DisposeAsync`
 throws — a shape the shipped in-memory session cannot express, because its disposal cannot fail — and
 asserts the rotation is still reported as the success it was, that the disposal was attempted, and
 that the session describes its replacement rather than the session it replaced: the layout was

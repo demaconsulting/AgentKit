@@ -10,21 +10,43 @@ sections:
         requirements:
           - id: AgentKitSessions-ContextUsage-UsageShape
             title: >-
-              A context usage figure shall carry the tokens occupied, the window size, whether the
-              figure was reported by the provider or estimated, and the derived free tokens and
-              occupied fraction.
+              A context usage figure shall carry the tokens occupied, the window size, the tokens the
+              conversation occupies, whether the figure was reported by the provider or estimated,
+              and the derived overhead, free tokens and occupied fraction.
             justification: |
               This is the single shape both provider families are reduced to, so the compaction
               engine has one arithmetic rather than two. The origin is not decoration: a
               provider-reported figure counts framing this library never sees, whereas an estimate is
               only as good as its character ratio. Surfacing the difference lets an application log
               it and lets a test assert that a provider's own numbers were preferred when offered.
-              The derived figures are computed rather than stored so they cannot disagree with the
-              counts they come from.
+              The conversation is carried rather than left to a consumer to derive because every
+              rotation decision is made against it, and the only honest way to obtain it is from
+              whoever produced the totals: a provider that reports a conversation count counted it
+              with the tokenizer it counted everything else with, so the overhead derived from the
+              two is in that same currency. Carrying it is what removes the subtraction of this
+              library's character-ratio estimate from a provider's measurement. The derived figures
+              are computed rather than stored so they cannot disagree with the counts they come from.
             tests:
               - ContextUsage_FromProvider_MarksTheOriginAsProvider
               - ContextUsage_FromEstimate_MarksTheOriginAsEstimated
               - ContextUsage_Derived_ReportsFreeTokensAndFraction
+              - ContextUsage_FromProvider_WithConversationSplit_CarriesItAndDerivesTheOverhead
+
+          - id: AgentKitSessions-ContextUsage-DefaultsToAllConversation
+            title: >-
+              A context usage figure whose producer reports no conversation split shall treat the
+              whole of its occupied tokens as conversation.
+            justification: |
+              An adapter that receives only totals genuinely does not know the split, and estimating
+              it here would mix this library's character ratio into a provider's measurement - the
+              defect this shape exists to remove. Attributing everything to the conversation is not
+              an invented figure: it credits the session with no overhead allowance, so the window
+              the rotation threshold is a fraction of is the whole reported window and the session
+              rotates strictly earlier than a correct split would. Erring early is the safe
+              direction, because the guarantee this package delivers is that the provider's own
+              compactor never fires.
+            tests:
+              - ContextUsage_WithoutConversationSplit_TreatsTheWholeUsageAsConversation
 
           - id: AgentKitSessions-ContextUsage-ReportsOverFullHonestly
             title: >-
@@ -41,11 +63,16 @@ sections:
           - id: AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
             title: >-
               A context usage figure shall reject a negative occupied count, a non-positive window
-              size, and an undefined origin.
+              size, a conversation count that is negative or exceeds the occupied count, and an
+              undefined origin.
             justification: |
               A negative occupied count could only come from a defect and would make every threshold
               comparison meaningless. A window of zero would leave nothing for the occupied fraction
-              to be a fraction of. An undefined origin is refused because everything that reads the
+              to be a fraction of. A conversation larger than everything occupied is not a condition
+              any accounting can produce - unlike usage beyond the window, which a provider genuinely
+              reports - and it would make the derived overhead negative, enlarging the window the
+              rotation threshold is taken from and letting the session run past the provider's own
+              compactor. An undefined origin is refused because everything that reads the
               origin asks only whether it is Provider: a cast integer would be accepted and then
               silently read as an estimate, taking the configured-window rotation threshold and
               skipping the reported-window bound check entirely. A value that names nothing must not
@@ -54,6 +81,8 @@ sections:
             tests:
               - ContextUsage_Construct_NegativeUsage_Throws
               - ContextUsage_Construct_ZeroWindow_Throws
+              - ContextUsage_Construct_ConversationExceedingUsage_Throws
+              - ContextUsage_Construct_NegativeConversation_Throws
               - ContextUsage_Construct_UndefinedOrigin_Throws
 
           - id: AgentKitSessions-ContextUsage-OptionalReportingContract

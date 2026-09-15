@@ -241,12 +241,12 @@ public sealed class CompactingAgentSession : IAgentSession
         // merely at creation.
         await EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
 
-        // Compare conversation tokens - usage with the fixed overhead removed - against the
-        // threshold, so the comparison means the same thing whether the figure came from the
-        // provider or from our own estimate. The threshold is derived from the same window the
-        // usage figure was measured against, for the same reason.
-        var conversationTokens = Math.Max(0, Usage.UsedTokens - _options.FixedOverheadTokens);
-        if (conversationTokens < RotationThreshold(Usage, _options))
+        // Compare the conversation against the threshold. Both figures come from the same usage
+        // reading, so both are in the same currency: a provider that reported its own conversation
+        // count is measured entirely in that provider's tokens, and an estimate is measured
+        // entirely in ours. Nothing is subtracted here, because there is no figure left to subtract
+        // - the usage already carries the split.
+        if (Usage.ConversationTokens < RotationThreshold(Usage, _options))
         {
             return new AgentSessionResponse(turn.ResponseText, Usage, rotationOccurred: false);
         }
@@ -436,8 +436,16 @@ public sealed class CompactingAgentSession : IAgentSession
     {
         // Only a reported window is checked. An estimate carries the configured window, which
         // AgentSessionOptions already refused if the session could not converge in it.
+        //
+        // The overhead removed is the provider's own - the reported total less the reported
+        // conversation - not this library's estimate of it, so the effective window is in the same
+        // currency as the window it came from. The tier budgets it is then compared against are
+        // still this library's estimated tokens, because that is the currency a host configures
+        // them in and the currency the layout enforces them in; this check therefore remains a
+        // comparison between an estimated bound and a reported window, and is honest about being
+        // approximate. What it no longer does is corrupt the reported window itself.
         var minimumEffective = AgentSessionOptions.MinimumEffectiveWindowTokens(_options.Compaction);
-        var effective = Usage.WindowTokens - _options.FixedOverheadTokens;
+        var effective = Usage.WindowTokens - Usage.OverheadTokens;
         if (Usage.Origin != ContextUsageOrigin.Provider
             || AgentSessionOptions.ConvergesAt(effective, _options.Compaction))
         {
@@ -464,8 +472,8 @@ public sealed class CompactingAgentSession : IAgentSession
 
         throw new InvalidOperationException(
             $"The provider reports a context window of {Usage.WindowTokens} tokens, leaving "
-            + $"{effective} tokens once this session's fixed overhead of "
-            + $"{_options.FixedOverheadTokens} tokens is paid for. A rotated context occupies up to "
+            + $"{effective} tokens once the {Usage.OverheadTokens} tokens of overhead it reports "
+            + "outside the conversation are paid for. A rotated context occupies up to "
             + $"{_options.Compaction.TotalTierBudgetTokens} tokens of tier budgets and "
             + $"{ContextLayout.SeedFramingTokens(_options.Compaction)} tokens of framing for their "
             + "seeded records, and must land below the rotation threshold, which requires at least "
@@ -480,6 +488,11 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     Static because it depends on nothing but its arguments, which makes the preference rule —
     ///     provider figures over our own — a single visible decision rather than something scattered
     ///     across the call sites that need a usage figure.
+    ///     <para>
+    ///     The estimated figure carries the layout's own conversation total alongside its total, so
+    ///     the split it publishes is estimated on both sides, exactly as the provider's is reported
+    ///     on both sides. Nothing downstream ever has to mix the two.
+    ///     </para>
     /// </remarks>
     /// <param name="provider">The live provider session.</param>
     /// <param name="options">The configured window, used when estimating.</param>
@@ -497,7 +510,8 @@ public sealed class CompactingAgentSession : IAgentSession
             return reported;
         }
 
-        return ContextUsage.FromEstimate(layout.TotalEstimatedTokens, options.ProviderWindowTokens);
+        return ContextUsage.FromEstimate(
+            layout.TotalEstimatedTokens, options.ProviderWindowTokens, layout.ConversationTokens);
     }
 
     /// <summary>
@@ -513,6 +527,18 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     four times past the provider's own threshold — precisely the failure this package exists
     ///     to prevent — and the reverse mismatch would rotate long before it needed to, spending
     ///     summarizer tokens and prompt cache for nothing.
+    ///     </para>
+    ///     <para>
+    ///     <b>The overhead removed from a reported window is the provider's own.</b> It comes from
+    ///     <see cref="ContextUsage.OverheadTokens"/>, which is the reported total less the reported
+    ///     conversation — both counted by the provider's tokenizer — so the window, the overhead and
+    ///     the conversation the threshold is compared against are all in one currency.
+    ///     <see cref="AgentSessionOptions.FixedOverheadTokens"/> is this library's character-ratio
+    ///     estimate and is deliberately not used here: subtracting an estimate from a measurement
+    ///     would put the threshold in no currency at all, and tool declarations — nested JSON
+    ///     schemas — are exactly the material that ratio serves worst. A provider that reports no
+    ///     split is credited no overhead at all, which rotates earlier rather than later and so
+    ///     errs on the side the guarantee needs.
     ///     </para>
     ///     <para>
     ///     When the figure is the library's own estimate it was taken against the configured window,
@@ -546,6 +572,6 @@ public sealed class CompactingAgentSession : IAgentSession
         // guards only against a rotation fraction small enough to truncate away, exactly as the
         // configured threshold does.
         return AgentSessionOptions.RotationThresholdFor(
-            usage.WindowTokens - options.FixedOverheadTokens, options.Compaction);
+            usage.WindowTokens - usage.OverheadTokens, options.Compaction);
     }
 }

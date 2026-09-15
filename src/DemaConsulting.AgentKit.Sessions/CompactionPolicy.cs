@@ -60,17 +60,22 @@ public sealed class CompactionPolicy
     ///     Rotation is not free — it invalidates the provider's prompt cache and spends summarizer
     ///     tokens — so it should be infrequent, and it must never be late. Firing at 70 percent
     ///     leaves 30 percent of the effective window as headroom, which covers both the error in a
-    ///     character-ratio token estimate and the turn in flight when the threshold is crossed.
+    ///     character-ratio token estimate and the turn in flight when the threshold is crossed. That
+    ///     headroom is the reason the arrangement can be described as bounded at all: the tier
+    ///     budgets below are enforced in estimated tokens, so the bound they give is a rule of thumb
+    ///     and the headroom is what absorbs the ratio being wrong.
     ///     <para>
     ///     <b>What keeps rotation from re-triggering immediately is the convergence invariant, not
     ///     this fraction on its own.</b> <see cref="AgentSessionOptions"/> refuses any configuration
     ///     in which a rotated context — the tier budgets plus the framing their seeded records carry
     ///     — would not land below the rotation threshold, which guarantees a rotation is followed by
-    ///     at least one turn that does not rotate. How far below it lands, and so how generous the
-    ///     hysteresis is, is a property of how a host sized its window against its tier budgets
-    ///     rather than of this mechanism: with the tiers sized in the low thousands against a window
-    ///     several times larger, a rotation lands the session near 40 percent; sized close to the
-    ///     invariant's minimum, it lands just under the threshold and buys a single turn.
+    ///     at least one turn that does not rotate <em>as this library measures the context</em>. How
+    ///     far below it lands, and so how generous the hysteresis is, is a property of how a host
+    ///     sized its window against its tier budgets rather than of this mechanism: with the tiers
+    ///     sized in the low thousands against a window several times larger, a rotation lands the
+    ///     session near 40 percent; sized close to the invariant's minimum, it lands just under the
+    ///     threshold and buys a single turn — and at that margin the estimate's own error is the
+    ///     difference between one turn of hysteresis and none.
     ///     </para>
     /// </remarks>
     public const double DefaultRotationThreshold = 0.70;

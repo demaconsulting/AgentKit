@@ -29,11 +29,15 @@ and a shared `Default` instance. An author who has configured tool limits needs 
 Published constants and defaults:
 
 - **`DefaultRotationThreshold`** (0.70) — Leaves 30 percent of the effective window as headroom, covering both the
-  error in a character-ratio estimate and the turn in flight when the threshold is crossed. What guarantees rotation
+  error in a character-ratio estimate and the turn in flight when the threshold is crossed. That headroom is what
+  lets the arrangement be called bounded at all: the tier budgets are enforced in estimated tokens, so the bound
+  they give is a rule of thumb rather than a measurement. What guarantees rotation
   does not immediately re-trigger is the convergence invariant `AgentSessionOptions` asserts — a rotated context
-  lands below the threshold — not this fraction on its own. How far below, and so how generous the hysteresis is,
-  depends on how the host sized its window against its tier budgets: sized several times the bound, a rotation lands
-  near 40 percent; sized near the invariant's minimum, it lands just under the threshold and buys one turn
+  lands below the threshold as this library measures it — not this fraction on its own. How far below, and so how
+  generous the hysteresis is, depends on how the host sized its window against its tier budgets: sized several
+  times the bound, a rotation lands near 40 percent; sized near the invariant's minimum, it lands just under the
+  threshold and buys one turn — and at that margin the estimate's own error is the difference between one turn of
+  hysteresis and none
 - **`DefaultSaturationRatio`** (0.90) — A genuine consolidation reduces its input substantially, so a result this
   close to its input is not a near miss but a signal that the material is as compressed as it will get
 - **`DefaultTierBudgetTokens`** (2000, 1200, 900, 700) — The shape matters more than the exact numbers: tier zero

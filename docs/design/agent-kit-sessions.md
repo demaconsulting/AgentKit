@@ -40,7 +40,8 @@ boundaries of responsibility rather than subsystems:
 A session runs as follows. `CompactingAgentSession` records each outgoing message and everything a
 turn produced in its own `SessionTranscript`, held inside a `ContextLayout`. After each turn it asks
 the live provider session for its own account of the window, falling back to `TokenEstimator` when
-the provider offers none. When the conversation — usage with the fixed overhead removed — reaches
+the provider offers none. When the conversation — the part of the usage outside the system prompt and
+the tool declarations, carried on the usage figure by whoever produced it — reaches
 the rotation threshold, it calls `RotationEngine`, which consolidates older history through the
 injected `ISummarizer` into the coarse tiers of the layout. The session then creates a replacement
 provider session from `ContextLayout.BuildSeed`, and only then disposes the one it replaced.
@@ -48,8 +49,11 @@ provider session from `ContextLayout.BuildSeed`, and only then disposes the one 
 **The threshold is derived from whichever window the usage figure was measured against.** A provider
 that reports its own window governs; the threshold `AgentSessionOptions` computed from the
 configured window governs only the family of providers that report nothing. Both apply identical
-arithmetic — subtract the fixed overhead, apply the policy's rotation fraction, floor at one token —
-so they differ only in which window they measure. Rotating at a fraction of the window exists to
+arithmetic — remove the overhead, apply the policy's rotation fraction, floor at one token —
+so they differ only in which window they measure and whose overhead they remove. A reported window
+has the provider's own reported overhead removed; a configured window has this library's estimate of
+it removed. The two are never crossed, because subtracting an estimate from a measurement gives a
+figure in neither currency. Rotating at a fraction of the window exists to
 keep the provider's own compactor from ever firing, and that guarantee is about the window the
 provider actually has, so a configured window that disagrees with a reported one does not decide.
 
@@ -110,10 +114,16 @@ reaches 70 percent of what is left.
 
 Applying the percentage to the raw window instead would make the rotation point drift with how many
 tools an application attached: attach more tools and the agent silently gets less conversation
-before rotating. Tool declarations are not a small correction — the compaction spike measured a
+before rotating. Tool declarations are not a small correction — the compaction spike *estimated* a
 declaration block of 2,589 tokens for a set of 11 tools (n = 11 tools, one measurement, recorded in
-that spike) — so subtracting them before the percentage is applied is what makes the threshold mean
+that spike) — so removing them before the percentage is applied is what makes the threshold mean
 what it says.
+
+That figure is also the reason the removal must be done in the right currency. 2,589 is a
+character-ratio estimate of JSON schemas, which is the material the ratio serves worst, so a
+provider's real count for the same declarations may differ substantially. When the provider reports
+its own overhead, that is what is removed from its own window; the estimate is removed only from the
+window a host configured, for the provider family that reports nothing.
 
 Seventy percent leaves 30 percent of headroom, which covers both the error in a character-ratio
 token estimate and the turn in flight when the threshold is crossed.
@@ -202,19 +212,30 @@ adapter does everything else. That boundary is what makes the compaction behavio
 providers rather than merely intended to be, and it is what allows the whole engine to be verified
 against `InMemoryProviderSession` with no network access, no credentials and no model.
 
-The second control is that the context is **bounded by construction** rather than by convention. The
-total is the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus the
-framing each tier record carries when it is seeded into a replacement session. The framing is
-counted because it is part of what the provider receives: a bound counting raw tier content alone
-would be exceeded by a seed in which every tier sat exactly within its budget, and for a provider
-that reports no usage that under-count is what would drive rotation.
+The second control is that the context is **bounded by construction, in estimated tokens**, rather
+than by convention. The total is the system prompt, plus the tool declarations, plus the sum of the
+tier budgets, plus the framing each tier record carries when it is seeded into a replacement
+session. The framing is counted because it is part of what the provider receives: a bound counting
+raw tier content alone would be exceeded by a seed in which every tier sat exactly within its budget,
+and for a provider that reports no usage that under-count is what would drive rotation. Every term is
+measured by `TokenEstimator`'s four-characters-per-token ratio, so the bound is a rule of thumb held
+within the headroom the rotation fraction reserves, not a claim about what a provider's tokenizer
+will charge.
 
 `AgentSessionOptions` refuses at construction any configuration in which a rotated context of that
 size would not land **below the rotation threshold**, and `CompactingAgentSession` applies the same
 refusal to a provider-reported window. Asserting only that the window *holds* the bound is the
 necessary condition, not the sufficient one: a window between the bound and the bound divided by the
 rotation fraction holds a rotated context and still rotates on every turn. A session that constructs
-is one whose arrangement fits **and** settles.
+is one whose arrangement fits **and** settles, as this library measures the context.
+
+The currency discipline is what keeps that honest. A figure a provider reported and a figure this
+library estimated are never mixed in one subtraction. `ContextUsage` carries the conversation count
+alongside the totals, so whoever produced the figures also produced the split, and every rotation
+comparison is made wholly in reported tokens or wholly in estimated ones. `FixedOverheadTokens` is an
+estimate and is applied only to the configured window. The one place the two currencies necessarily
+meet — comparing an estimated tier bound against a reported window — is documented as approximate
+rather than presented as exact.
 
 The third is **saturation detection**. An agent whose context holds no redundancy left will keep
 crossing the rotation threshold, spending summarizer tokens and buying nothing, while every rotation
@@ -255,11 +276,16 @@ application message
   read-only view of that copy, never the array or list itself. An `IReadOnlyList` over a bare array
   can be cast back to the array and written through, which for these types would let a cached token
   total, a saturation verdict or a validated seed disagree with its own contents.
-- **Bounded by construction, asserted.** See *Risk Control Measures* above. The bound is a
+- **Bounded by construction, asserted.** See *Risk Control Measures* above. The bound is in estimated
+  tokens, and it is a
   post-rotation property: between rotations tier zero is append-only and grows past its budget,
   which is precisely what the rotation threshold's headroom is reserved for. The assertion is the
   convergence invariant — a rotated context lands below the rotation threshold — not merely that it
   fits the window.
+- **One currency per comparison.** A provider-reported figure and an estimated one are never combined
+  in a single subtraction. `ContextUsage` carries the conversation count so the split is made by
+  whoever made the totals, and `AgentSessionOptions.FixedOverheadTokens` is applied only to the
+  configured window.
 - **A rotation that consolidates nothing is not a rotation.** When the transcript already fits tier
   zero the engine returns the layout unchanged and reports no consolidations, and
   `CompactingAgentSession` treats that as a turn that did not rotate. Replacing a provider session

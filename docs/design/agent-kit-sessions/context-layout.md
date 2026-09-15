@@ -44,6 +44,15 @@ holds verbatim history and is a `SessionTranscript`.
   `SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy)`
 - **`IsWithinBound`** (`bool`) — Derived: `TotalEstimatedTokens <= MaximumBoundTokens`
 
+**The bound is in estimated tokens.** Every term of `MaximumBoundTokens` — the system prompt, the
+tool declarations, the tier budgets and their framing — is measured by `TokenEstimator`'s
+four-characters-per-token ratio, and so is `TotalEstimatedTokens`. "Bounded by construction"
+therefore means bounded as this library counts, not as a provider's tokenizer counts. It is a rule of
+thumb held within the headroom the rotation fraction reserves, and nothing in the package subtracts
+it from, or compares it against, a provider-measured figure as though the two were the same unit.
+The only place an estimated bound and a reported window meet is the convergence check in
+`CompactingAgentSession`, which says so; see *CompactingAgentSession Unit Design*.
+
 **The bound counts the seed framing, not raw tier content.** `BuildSeed` does not hand a provider a
 tier's content: it wraps each non-empty tier in a transcript entry carrying a label that names the
 detail level, and every entry is charged the estimator's per-entry allowance on top. Both are tokens
@@ -163,10 +172,10 @@ history a fresh session is created from between building it and using it.
 ### Dependencies
 
 - **CompactionPolicy** — supplies the tier count, the per-tier budgets and the total bound; see
-  _CompactionPolicy Unit Design_.
-- **SessionTranscript** — supplies the verbatim tier zero and its entries; see _SessionTranscript
-  Unit Design_.
-- **TokenEstimator** — measures a tier's record; see _TokenEstimator Unit Design_.
+  *CompactionPolicy Unit Design*.
+- **SessionTranscript** — supplies the verbatim tier zero and its entries; see *SessionTranscript
+  Unit Design*.
+- **TokenEstimator** — measures a tier's record; see *TokenEstimator Unit Design*.
 
 ### Callers
 
