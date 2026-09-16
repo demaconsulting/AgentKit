@@ -202,4 +202,41 @@ public class AgentSessionOptionsTests
         Assert.Throws<ArgumentException>(() =>
             new AgentSessionOptions(new FakeSummarizer(), tools: [null!]));
     }
+
+    /// <summary>
+    ///     Proves a policy whose rotated context would occupy exactly the largest representable
+    ///     token count reports the window it would need rather than a defect inside the helper that
+    ///     computes it.
+    /// </summary>
+    /// <remarks>
+    ///     <b><c>CompactionPolicy</c> permits this bound.</b> It refuses budgets and framing summing
+    ///     <em>past</em> a token count and accepts a sum of exactly <c>int.MaxValue</c>, so the
+    ///     minimum-window helper must answer for one. It did not: the lower bound it handed
+    ///     <c>Math.Clamp</c> was the bound plus one, above the clamp's upper bound, and
+    ///     <c>Math.Clamp</c> throws an argument error rather than saturating — so a valid policy
+    ///     reported an internal clamp failure instead of the non-convergent window the caller had
+    ///     actually asked about. The requirement saturates at <c>int.MaxValue</c>, which is the
+    ///     honest answer: no representable window converges with such a policy.
+    /// </remarks>
+    [Fact]
+    public void AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed()
+    {
+        // Arrange: two budgets whose sum plus the framing of their seeded records is exactly
+        // int.MaxValue - the largest bound a policy is allowed to carry
+        var framing = (int)ContextLayout.SeedFramingTokens(2);
+        var policy = new CompactionPolicy([int.MaxValue - framing - 1, 1]);
+        Assert.Equal(
+            int.MaxValue,
+            (long)policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy));
+
+        // Act / Assert: the minimum window saturates rather than throwing out of the clamp
+        Assert.Equal(int.MaxValue, AgentSessionOptions.MinimumEffectiveWindowTokens(policy));
+
+        // Act / Assert: and the configuration is refused for the reason the host can act on
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new AgentSessionOptions(new FakeSummarizer(), compaction: policy));
+
+        Assert.Equal("compaction", exception.ParamName);
+        Assert.Contains("cannot converge with this policy", exception.Message, StringComparison.Ordinal);
+    }
 }

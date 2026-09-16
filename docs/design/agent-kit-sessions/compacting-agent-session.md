@@ -169,12 +169,21 @@ window the session could not converge in; `OperationCanceledException` on cancel
 Ages the context by one rotation and replaces the live provider session with one seeded from the
 result.
 
-**Algorithm:** consolidate through `RotationEngine`; if it consolidated nothing, abandon the rotation
+**Algorithm:** consolidate through `RotationEngine`, telling it which currency the crossing was
+measured in — the `Origin` of this turn's usage figure; if it consolidated nothing, abandon the rotation
 and report that none occurred; otherwise build a seed from the new layout; create the replacement;
 adopt it — swapping the provider reference and updating the layout, the rotation count, the
 consolidation total and the usage in one step containing no `await`; dispose the one it replaced;
 validate the replacement's reported window; return that a rotation occurred, with the saturation
 reports.
+
+**Why the trigger's currency is handed to the engine.** The threshold comparison above is made in
+whichever currency this turn's usage carries, while the engine's split is measured in estimated
+tokens throughout. When a provider reported the crossing the two disagree by construction, and an
+engine left to assume otherwise consolidated nothing, seeded no replacement, and reported the turn
+as ordinary — leaving the provider to run into its own compactor with both halves behaving exactly
+as documented in their own currency. Passing `ContextUsage.Origin` makes a provider-reported
+crossing force a real consolidation; see *RotationEngine Unit Design*.
 
 **Why the replacement is validated before the rotation is reported as successful.** Nothing obliges
 a factory to return a session like the one it replaced — a routed deployment, a changed model or a
@@ -189,7 +198,8 @@ does not also leak the session it replaced. That release can itself fail, like a
 why the message it throws claims only that release was attempted.
 
 **Why a rotation that consolidated nothing is abandoned.** The engine returns the layout unchanged
-when the transcript already fits tier zero, and for a pure function over a layout that genuinely
+when the transcript already fits tier zero and the crossing was this library's own estimate, and for
+a pure function over a layout that genuinely
 costs nothing. It is not free here: carrying it out creates a replacement provider session, disposes
 the live one, increments the rotation count, and tells the caller a rotation happened — all to
 arrive at exactly the context the session already had. Repeated every turn that is a provider
@@ -202,7 +212,8 @@ The convergence invariant makes this case unreachable for a layout sitting withi
 the threshold it guarantees exceeds the coarse tiers and their framing by more than tier zero's
 budget, so anything able to cross the threshold must overflow tier zero. It remains reachable for a
 layout whose tier is over budget — precisely the saturated case the library exists to report — so
-the guard is kept rather than argued away.
+the guard is kept rather than argued away. A provider-reported crossing reaches it only when there
+is no verbatim history at all to consolidate, because the engine forces a consolidation otherwise.
 
 **The order is deliberate: consolidate first, create the replacement second, adopt it third, dispose
 the old session last.** A summarizer failure therefore leaves the session exactly as it was, still

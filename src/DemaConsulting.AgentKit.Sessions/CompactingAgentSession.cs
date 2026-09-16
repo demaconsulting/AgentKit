@@ -327,6 +327,18 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     saturated case, so the guard is kept rather than argued away.
     ///     </para>
     ///     <para>
+    ///     <b>The currency that crossed the threshold is passed to the engine, because only this
+    ///     turn knows it.</b> The threshold comparison above is made in whichever currency the usage
+    ///     figure carries, while the engine's split is measured in estimated tokens throughout. When
+    ///     a provider reported the crossing the two disagree by construction, and the engine is told
+    ///     so through <see cref="ContextUsage.Origin"/>: a split that finds tier zero has room then
+    ///     consolidates the whole verbatim history rather than abandoning a rotation the provider's
+    ///     own count asked for. Without that, a provider counting more than this library estimates
+    ///     crossed the threshold, consolidated nothing, seeded no replacement, and ran on into its
+    ///     own compactor — the one outcome this package exists to prevent — with the trigger and the
+    ///     split each behaving exactly as documented in its own currency.
+    ///     </para>
+    ///     <para>
     ///     <b>The replacement is validated before the rotation is reported as successful.</b> A
     ///     factory may return a session reporting a different context window from the one it
     ///     replaced, and a replacement this session could not converge in is unusable — so it is
@@ -345,7 +357,7 @@ public sealed class CompactingAgentSession : IAgentSession
         CancellationToken cancellationToken)
     {
         var outcome = await RotationEngine
-            .RotateAsync(Layout, _options.Summarizer, cancellationToken)
+            .RotateAsync(Layout, _options.Summarizer, Usage.Origin, cancellationToken)
             .ConfigureAwait(false);
 
         // Nothing aged out, so there is no new context to seed a replacement from. Report the turn

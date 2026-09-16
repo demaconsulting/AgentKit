@@ -20,6 +20,12 @@ creating the replacement and disposing the one it supersedes belong to `Compacti
 every overflowing tier consolidates at once, cascading into coarser tiers where it must. Batching
 costs nothing extra, because a rotation invalidates the cache anyway.
 
+**The trigger's currency is an input, not an assumption.** Whether the context is too large is a
+question only the provider can answer when it counts its own tokens; what to consolidate can only be
+decided from this library's estimate, because no provider can be asked to measure a candidate split.
+The caller therefore states which currency crossed the threshold, and an estimated split is not
+allowed to abandon a rotation a provider-reported crossing asked for. See `RotateAsync` below.
+
 **Deterministic and pure apart from the summarizer.** Every decision this class makes — where the
 tier boundary falls, whether it snaps, which tiers overflow, whether a result saturated — is
 arithmetic over the layout it was handed. Supply a deterministic fake summarizer and the whole engine
@@ -68,27 +74,58 @@ read the signal cannot, which is worse than reporting nothing at all.
 
 ### Key Methods
 
-#### RotateAsync(ContextLayout layout, ISummarizer summarizer, CancellationToken cancellationToken)
+#### RotateAsync(ContextLayout layout, ISummarizer summarizer, ContextUsageOrigin triggerOrigin, CancellationToken cancellationToken)
 
 **Algorithm:**
 
-1. Validate the arguments, then honor cancellation. The check sits here, before any work is decided
-   on, because step 2 can return without ever reaching a consolidation: a token checked only around
+1. Validate the arguments — including that `triggerOrigin` names a defined `ContextUsageOrigin` —
+   then honor cancellation. The check sits here, before any work is decided
+   on, because step 3 can return without ever reaching a consolidation: a token checked only around
    the summarizer calls would let an already-canceled rotation return a successful result whenever
    the transcript happened to fit. Argument validation still comes first, because a malformed call
    is a defect in the caller and is worth reporting as such even on a canceled token.
 2. Split the verbatim history at tier zero's budget, newest first, snapping the boundary so a tool
    call is never separated from its result. The retained suffix stays verbatim.
-3. If nothing overflowed, return the layout unchanged with no summarizer call, no saturation, and a
+3. If nothing overflowed and `triggerOrigin` is `Estimated`, return the layout unchanged with no
+   summarizer call, no saturation, and a
    consolidation count of zero. That is the correct outcome for a session whose recent history
    already fits, and it costs this engine nothing. It is **not** free to a caller that would act on
    it by replacing a provider session, so the zero consolidation count is the signal to do no such
    thing; `CompactingAgentSession` treats it as a turn that did not rotate rather than as a re-seed
    to be carried out.
-4. Otherwise render the overflow as labeled material and fold it into tier one through the private
+4. If nothing overflowed and `triggerOrigin` is `Provider`, split again at a budget of zero, so the
+   whole verbatim history becomes the overflow. A transcript holding nothing at all still
+   consolidates nothing, which is what terminates this path.
+5. Otherwise render the overflow as labeled material and fold it into tier one through the private
    aging recursion below.
-5. Return a layout built from the retained transcript and the aged tiers, together with the
+6. Return a layout built from the retained transcript and the aged tiers, together with the
    saturation reports and the consolidation count.
+
+**Why the trigger's currency is a parameter.** The threshold comparison that decides to rotate is
+made in whichever currency the usage figure carries — a provider's own count when it reports one,
+this library's estimate otherwise — while the split in step 2 is measured in
+`TranscriptEntry.EstimatedTokens` throughout. Those are the same currency only in the estimated
+case. Where they differ, the trigger fired and the split did nothing: a provider reporting 500
+conversation tokens in a 600-token window crosses a threshold of 420 for a turn whose local estimate
+is a few dozen tokens against a tier-zero budget of 100, so the engine returned the layout
+unchanged, created no replacement, and left the provider to run into its own compactor — the one
+outcome this package exists to prevent, reached with the trigger and the split each behaving exactly
+as documented in its own currency. The two roles are genuinely different and neither can be given
+up: the provider knows *whether* the context is too large, because it counts its own tokens, and the
+estimate is all there is for deciding *what* to consolidate, because no provider can be asked to
+measure a candidate split. Stating the trigger's currency at the call is what keeps the second from
+answering for the first.
+
+**Why a forced consolidation takes the whole history rather than a portion.** Nothing here can size
+a portion in the currency that raised the alarm, and a portion chosen in the other currency may not
+be a reduction at all: a turn appends at least a message and an answer, so a rotation shaving an
+entry or two aged out less than the next turn adds and the provider's compactor fires anyway a few
+turns later. Consolidating everything verbatim reduces the conversation to the tier records alone,
+which is the largest reduction this engine can make and the only one certain to be a reduction. It
+is reached through the same `SplitAtBudget` call with a budget of zero, so every call travels with
+its result by construction; it replaces the split once, before any consolidation, so it cannot
+recurse or repeat; and an empty transcript consolidates nothing, so it is reported as the
+non-rotation it is rather than looping.
 
 **Postconditions:** the returned layout's tier list matches the policy; every consolidation the
 engine performed is counted; every failure to reduce is reported.
@@ -171,6 +208,7 @@ counted as one that happened.
 ### Error Handling
 
 - **Null layout or summarizer** — `ArgumentNullException` propagates
+- **Undefined `triggerOrigin`** — `ArgumentOutOfRangeException` propagates
 - **Null entry in an outcome's `saturations`** — `ArgumentException` propagates
 - **Invalid saturation figures or an undefined saturation reason** — `ArgumentOutOfRangeException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
@@ -189,6 +227,8 @@ refused immediately.
 ### Dependencies
 
 - **ContextLayout** — the state rotated, and the tier objects aged; see *ContextLayout Unit Design*.
+- **ContextUsage** — supplies `ContextUsageOrigin`, the currency a caller states its trigger in; see
+  *ContextUsage Unit Design*.
 - **SessionTranscript** — supplies the boundary split and the material rendering; see
   *SessionTranscript Unit Design*.
 - **CompactionPolicy** — supplies the tier budgets, the tier count and the saturation ratio; see
@@ -199,6 +239,7 @@ refused immediately.
 
 ### Callers
 
-`CompactingAgentSession` calls `RotateAsync` once per rotation, seeds a replacement provider session
+`CompactingAgentSession` calls `RotateAsync` once per rotation, passing the origin of the usage
+figure whose crossing triggered it, seeds a replacement provider session
 from the returned layout, and surfaces the returned saturation reports on the turn's
 `AgentSessionResponse`.

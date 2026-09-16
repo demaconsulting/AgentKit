@@ -277,6 +277,72 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves a crossing the provider reported produces a real consolidation and a replacement
+    ///     session even where this library's own estimate sees tier zero barely touched.
+    /// </summary>
+    /// <remarks>
+    ///     <b>This is the regression test for the second half of the currency defect.</b> The
+    ///     trigger was already measured in the provider's tokens, and the split
+    ///     <see cref="RotationEngine"/> performs is measured in
+    ///     <see cref="TranscriptEntry.EstimatedTokens"/> — this library's character ratio. Where the
+    ///     two disagree the trigger fired and the split did nothing: a provider reporting 500
+    ///     conversation tokens in a 600-token window crosses a threshold of 420 for a turn whose
+    ///     local estimate is a few dozen tokens against a tier-zero budget of 100, so the engine
+    ///     found no overflow, returned the layout unchanged, created no replacement, and reported
+    ///     the turn as an ordinary one — leaving the provider to run on into its own compactor,
+    ///     which is the one outcome this package exists to prevent. The provider knows
+    ///     <em>whether</em> the context is too large; the estimator only decides <em>what</em> to
+    ///     consolidate, and is not entitled to veto the decision it was never asked to make.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway()
+    {
+        // Arrange: a provider counting 500 conversation tokens per turn in a 600-token window, so
+        // the first turn crosses the 420-token threshold, against a 20-token message whose whole
+        // turn this library estimates at well under tier zero's 100-token budget
+        var factory = new SplitReportingProviderSessionFactory(
+            windowTokens: SessionTestData.ConvergentWindowTokens,
+            overheadTokens: 0,
+            conversationTokensPerTurn: 500);
+        var summarizer = new FakeSummarizer();
+        var options = new AgentSessionOptions(
+            summarizer,
+            providerWindowTokens: SessionTestData.ConvergentWindowTokens,
+            compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+        var message = new string('m', 20 * TokenEstimator.CharactersPerToken);
+
+        // Act: one turn, which the provider reports as a crossing and the estimate does not
+        var response = await session.SendAsync(message, TestContext.Current.CancellationToken);
+
+        // Assert: the crossing was the provider's own, in the provider's own tokens
+        Assert.Equal(ContextUsageOrigin.Provider, response.Usage.Origin);
+
+        // Assert: the reported crossing produced a real consolidation, not a reported non-rotation
+        Assert.True(response.RotationOccurred);
+        Assert.Equal(1, session.RotationCount);
+        Assert.True(session.ConsolidationCount > 0);
+
+        // Assert: the material consolidated was the whole verbatim history and it fitted tier zero
+        // comfortably - which is the disagreement this scenario exists for. An estimated split
+        // looking at this transcript finds nothing to age out, and a rotation abandoned on that
+        // basis would have left the provider's own count exactly where it was.
+        var request = Assert.Single(summarizer.Requests);
+        Assert.True(
+            TokenEstimator.EstimateTokens(request.Material) < options.Compaction.TierBudgetTokens[0],
+            "The consolidated material overflowed tier zero, so the split would have found work to "
+            + "do whatever currency the trigger was measured in.");
+        Assert.Empty(session.Layout.Transcript.Entries);
+
+        // Assert: and a replacement provider session seeded from the consolidated record, with the
+        // session it superseded released
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.False(factory.Sessions[1].IsDisposed);
+        Assert.False(session.Layout.CoarseTiers[0].IsEmpty);
+    }
+
+    /// <summary>
     ///     Proves a blank message is refused: a blank turn spends context to say nothing, and is a
     ///     defect in the calling application rather than something to forward to a provider.
     /// </summary>
@@ -604,8 +670,10 @@ public class CompactingAgentSessionTests
         var summarizer = new FakeSummarizer();
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
 
-        // Act
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        // Act: rotate on a crossing this library measured itself, which is the only trigger whose
+        // currency agrees with the split below
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: nothing was consolidated and nothing changed, so there is no new context to seed a
         // replacement provider session from

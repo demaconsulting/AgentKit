@@ -64,11 +64,16 @@ sections:
               refused where the application wrote them rather than discovered from a session that
               never settles. The figures compared are this library's estimates, so the refusal is as
               approximate as they are; it excludes the arrangements that cannot work rather than
-              proving that the rest will.
+              proving that the rest will. The refusal states the window the configuration would have
+              needed, and that figure must be computable for every policy a policy constructor
+              accepts - including one whose rotated context would occupy exactly the largest
+              representable token count, where the requirement saturates rather than being reported
+              as a defect in the arithmetic that computes it.
             tests:
               - AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws
               - AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws
               - AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused
+              - AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed
 
           - id: AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
             title: >-

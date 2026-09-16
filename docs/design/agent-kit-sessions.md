@@ -230,12 +230,17 @@ rotation fraction holds a rotated context and still rotates on every turn. A ses
 is one whose arrangement fits **and** settles, as this library measures the context.
 
 The currency discipline is what keeps that honest. A figure a provider reported and a figure this
-library estimated are never mixed in one subtraction. `ContextUsage` carries the conversation count
+library estimated are never mixed in one subtraction, and a decision made in one currency is never
+allowed to be overruled by a computation in the other. `ContextUsage` carries the conversation count
 alongside the totals, so whoever produced the figures also produced the split, and every rotation
 comparison is made wholly in reported tokens or wholly in estimated ones. `FixedOverheadTokens` is an
-estimate and is applied only to the configured window. The one place the two currencies necessarily
-meet — comparing an estimated tier bound against a reported window — is documented as approximate
-rather than presented as exact.
+estimate and is applied only to the configured window. Where the two roles genuinely differ the
+currency is passed along rather than assumed: a provider knows *whether* the context is too large,
+the estimator is all there is for deciding *what* to consolidate, so `RotateAsync` is told which
+currency crossed the threshold and a provider-reported crossing forces a real consolidation even
+where the estimated split sees room left in tier zero. The one place the two currencies necessarily
+meet — comparing an estimated tier bound against a reported window, when a reported window is
+refused — is documented as approximate rather than presented as exact.
 
 The third is **saturation detection**. An agent whose context holds no redundancy left will keep
 crossing the rotation threshold, spending summarizer tokens and buying nothing, while every rotation
@@ -253,8 +258,10 @@ application message
   -> usage read from IContextUsageReporter, or estimated by TokenEstimator
   -> if conversation tokens < threshold: return the answer
   -> otherwise:
-       RotationEngine.RotateAsync
-         -> SessionTranscript.SplitAtBudget (snapping tool pairs)
+       RotationEngine.RotateAsync(layout, summarizer, usage origin)
+         -> SessionTranscript.SplitAtBudget (snapping tool pairs); a provider-reported crossing
+            that the estimated split sees no overflow for splits at zero instead, consolidating
+            the whole verbatim history
          -> ISummarizer.ConsolidateAsync per overflowing tier, cascading
          -> new ContextLayout + saturation reports
        IProviderSessionFactory.CreateAsync(ContextLayout.BuildSeed())
@@ -283,9 +290,13 @@ application message
   convergence invariant — a rotated context lands below the rotation threshold — not merely that it
   fits the window.
 - **One currency per comparison.** A provider-reported figure and an estimated one are never combined
-  in a single subtraction. `ContextUsage` carries the conversation count so the split is made by
+  in a single subtraction, and no decision made in one currency is silently overruled by a
+  computation in the other. `ContextUsage` carries the conversation count so the split is made by
   whoever made the totals, and `AgentSessionOptions.FixedOverheadTokens` is applied only to the
-  configured window.
+  configured window. Where a decision in one currency must feed a computation in the other, the
+  currency travels with it: `RotationEngine.RotateAsync` takes the `ContextUsageOrigin` of the
+  crossing that triggered it, and a provider-reported crossing consolidates the whole verbatim
+  history rather than letting an estimated split conclude there was nothing to do.
 - **A rotation that consolidates nothing is not a rotation.** When the transcript already fits tier
   zero the engine returns the layout unchanged and reports no consolidations, and
   `CompactingAgentSession` treats that as a turn that did not rotate. Replacing a provider session

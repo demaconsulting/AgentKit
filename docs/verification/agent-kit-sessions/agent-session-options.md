@@ -70,7 +70,8 @@ did not choose.
 
 **Tests**: `AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws`,
 `AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws`,
-`AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused`
+`AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused`,
+`AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed`
 
 Boundary scenarios. A 4,000-token window cannot hold the default policy's 4,800 tokens of tier
 budgets and is refused, with the message asserted so the diagnosis reaches the author; a prompt
@@ -82,6 +83,16 @@ the first and fails the second, so the session would rotate on nearly every turn
 getting under its own threshold, raising no saturation signal while doing it. The figures compared
 are this library's estimates, so the refusal excludes the arrangements that cannot work rather than
 proving the rest will.
+
+The fourth scenario is the extreme a policy is allowed to carry. `CompactionPolicy` refuses budgets
+and framing summing *past* a token count and accepts a sum of exactly the largest representable one,
+so the refusal here has to be able to quote the window such a policy would need. It could not: the
+minimum-window helper floored its search at that bound plus one, which is not a representable token
+count, and the clamp it handed that floor to threw an argument error of its own — so a valid policy
+reported a defect inside the helper instead of the non-convergent window the author had actually
+configured. The scenario builds two budgets summing with their framing to exactly the maximum,
+asserts the minimum window saturates at that maximum rather than throwing, and asserts the
+constructor refuses the configuration naming the `compaction` parameter and the convergence reason.
 
 #### AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration: Invalid Arguments Are Refused
 

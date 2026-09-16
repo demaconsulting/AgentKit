@@ -252,8 +252,10 @@ public sealed class AgentSessionOptions
     ///     </para>
     ///     <para>
     ///     Saturates at <see cref="int.MaxValue"/> for a rotation fraction small enough that no
-    ///     representable window converges. That is a policy no window can rescue, and reporting the
-    ///     largest representable requirement states exactly that.
+    ///     representable window converges, and for a policy whose bound is itself
+    ///     <see cref="int.MaxValue"/> — the largest a token count can represent, which
+    ///     <see cref="CompactionPolicy"/> accepts. Both are policies no window can rescue, and
+    ///     reporting the largest representable requirement states exactly that.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The policy whose budgets, framing and rotation fraction are measured.</param>
@@ -263,6 +265,18 @@ public sealed class AgentSessionOptions
         // The most a rotated conversation can occupy. The fixed overhead is excluded because the
         // threshold is compared against conversation tokens, which exclude it too.
         var conversationBound = policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy);
+
+        // A policy is permitted a bound of exactly int.MaxValue - the largest bound a token count
+        // can represent, which CompactionPolicy accepts and only refuses beyond. No representable
+        // window converges with one, so the requirement saturates at int.MaxValue, and answering
+        // that directly is also what keeps the clamp below well-formed: its lower bound would be
+        // int.MaxValue + 1, above its upper bound, and Math.Clamp throws an argument error on that
+        // rather than saturating. A valid policy then reported a defect in this helper instead of
+        // the non-convergent window the caller had actually asked about.
+        if (conversationBound == int.MaxValue)
+        {
+            return int.MaxValue;
+        }
 
         // The analytic answer, floored at the one window size that is certainly required: the
         // threshold can never exceed the effective window, so the window must at minimum exceed the

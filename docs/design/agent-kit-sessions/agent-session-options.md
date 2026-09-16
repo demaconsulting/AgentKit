@@ -37,6 +37,16 @@ the identical test to a provider-reported window — the guard that refuses a wi
 comparison that decides when to rotate must be the same arithmetic, or the guard admits a window the
 comparison then thrashes on.
 
+`MinimumEffectiveWindowTokens` reports what a host would need rather than deciding anything, so it
+saturates at the largest representable token count in the two cases no window can rescue: a rotation
+fraction too small for any window to satisfy, and a policy whose rotated context would occupy exactly
+`int.MaxValue`, which `CompactionPolicy` permits because it refuses only sums *past* a token count.
+The second is handled before the saturating arithmetic rather than inside it: the analytic answer is
+floored at the bound plus one, which for such a policy is not a representable token count at all, and
+a clamp given that floor reports a defect in this helper instead of the non-convergent window the
+caller asked about. `ConvergesAt` is the predicate used for deciding, precisely because a window
+equal to a saturated minimum would pass a comparison while failing the invariant it stands for.
+
 ### Data Model
 
 - **`Summarizer`** (`ISummarizer`) — Never null

@@ -209,11 +209,16 @@ sections:
           is only half of it: a comparison that subtracts this library's character-ratio estimate
           from a provider's measurement produces a figure in neither currency, so the figure carries
           the conversation split made by whoever produced the totals, and the estimated fixed
-          overhead is applied only to the configured window.
+          overhead is applied only to the configured window. Nor is a decision made in one currency
+          allowed to be overruled by a computation in the other: a crossing a provider reported
+          forces a real consolidation even where this library's estimate of the same conversation
+          sees room left, because the provider is the only party that can say whether its own window
+          is filling and the estimate is only the means of choosing what to consolidate.
         children:
           - AgentKitSessions-ContextUsage-UsageShape
           - AgentKitSessions-ContextUsage-DefaultsToAllConversation
           - AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
+          - AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency
           - AgentKitSessions-ContextUsage-ReportsOverFullHonestly
           - AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
           - AgentKitSessions-ContextUsage-OptionalReportingContract

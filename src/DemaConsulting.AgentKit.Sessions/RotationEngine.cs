@@ -199,6 +199,14 @@ public sealed class RotationOutcome
 ///     the cache anyway.
 ///     </para>
 ///     <para>
+///     <b>The trigger's currency is an input, not an assumption.</b> Whether the context is too
+///     large is a question only the provider can answer when it counts its own tokens; what to
+///     consolidate can only be decided from this library's estimate, because no provider can be
+///     asked to measure a candidate split. The two are different currencies, so the caller states
+///     which one crossed the threshold and the engine refuses to let an estimated split abandon a
+///     rotation a provider-reported crossing asked for. See <see cref="RotateAsync"/>.
+///     </para>
+///     <para>
 ///     <b>Deterministic and pure apart from the summarizer.</b> Every decision this class makes —
 ///     where the tier boundary falls, whether it snaps, which tiers overflow, whether a result
 ///     saturated — is arithmetic over the layout it was handed. Supply a deterministic fake
@@ -223,12 +231,19 @@ public static class RotationEngine
     ///     so a tool call is never separated from its result. The retained suffix stays verbatim.
     ///     </para>
     ///     <para>
-    ///     2. If nothing overflowed, no aging is required: the layout is returned unchanged, no
-    ///     summarizer call is made, and the reported consolidation count is zero. That is the
-    ///     correct outcome for a session whose recent history already fits, and it costs this
-    ///     engine nothing. It is <em>not</em> free to a caller that would act on it by replacing a
-    ///     provider session, so the zero consolidation count is the signal to do no such thing;
-    ///     <see cref="CompactingAgentSession"/> treats it as a turn that did not rotate.
+    ///     2. If nothing overflowed and the trigger was measured in this library's own tokens, no
+    ///     aging is required: the layout is returned unchanged, no summarizer call is made, and the
+    ///     reported consolidation count is zero. That is the correct outcome for a session whose
+    ///     recent history already fits, and it costs this engine nothing. It is <em>not</em> free to
+    ///     a caller that would act on it by replacing a provider session, so the zero consolidation
+    ///     count is the signal to do no such thing; <see cref="CompactingAgentSession"/> treats it
+    ///     as a turn that did not rotate.
+    ///     </para>
+    ///     <para>
+    ///     2a. If nothing overflowed and the trigger was <see cref="ContextUsageOrigin.Provider"/>,
+    ///     the whole verbatim history is consolidated instead — see
+    ///     <paramref name="triggerOrigin"/>. The estimator's opinion that tier zero still has room
+    ///     is not evidence about the provider's own count and must not veto the provider's.
     ///     </para>
     ///     <para>
     ///     3. Otherwise fold the overflow into tier one, cascading: a consolidation whose result
@@ -253,6 +268,25 @@ public static class RotationEngine
     ///     The out-of-session summarizer performing each consolidation. Must not be
     ///     <see langword="null"/>, and must not return <see langword="null"/>.
     /// </param>
+    /// <param name="triggerOrigin">
+    ///     <para>
+    ///     The currency the decision to rotate was made in. Must be a defined
+    ///     <see cref="ContextUsageOrigin"/> member.
+    ///     </para>
+    ///     <para>
+    ///     <b>Stated by the caller rather than assumed, because the two currencies decide different
+    ///     things.</b> A provider knows <em>whether</em> the context is too large — it counts its
+    ///     own tokens — while this engine's estimate is all there is for deciding <em>what</em> to
+    ///     consolidate, because no provider can be asked to measure a candidate split.
+    ///     <see cref="ContextUsageOrigin.Estimated"/> says the crossing and the split were measured
+    ///     the same way, so the split may also decide there was nothing to do.
+    ///     <see cref="ContextUsageOrigin.Provider"/> says they were not: a split measured in
+    ///     estimated tokens that finds tier zero has room contradicts nothing the provider reported,
+    ///     and a rotation abandoned on that basis leaves the session running into the provider's own
+    ///     compactor, which is the one outcome this package exists to prevent. A provider-reported
+    ///     crossing therefore forces a real consolidation.
+    ///     </para>
+    /// </param>
     /// <param name="cancellationToken">
     ///     Cancels the rotation. Checked once after argument validation, so an already-canceled
     ///     rotation is refused even when the transcript fits and there is no work to do, and again
@@ -265,6 +299,9 @@ public static class RotationEngine
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="layout"/> or <paramref name="summarizer"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="triggerOrigin"/> is not a defined <see cref="ContextUsageOrigin"/> member.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="summarizer"/> returned <see langword="null"/> from a consolidation.
     /// </exception>
@@ -272,10 +309,24 @@ public static class RotationEngine
     public static async Task<RotationOutcome> RotateAsync(
         ContextLayout layout,
         ISummarizer summarizer,
+        ContextUsageOrigin triggerOrigin,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(summarizer);
+
+        // An undefined origin names no currency, and this rotation's decision about whether an
+        // estimated split may abandon it depends entirely on which currency the trigger was in.
+        // Refused rather than defaulted, for the same reason the other enum-taking members of this
+        // package refuse one: a cast integer is a defect in the caller, and guessing at it here
+        // would guess at the very thing the parameter exists to state.
+        if (!Enum.IsDefined(triggerOrigin))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(triggerOrigin),
+                triggerOrigin,
+                "The rotation trigger origin must be a defined ContextUsageOrigin member.");
+        }
 
         // Honor cancellation before any work is decided on, not merely between consolidations. The
         // no-work path below returns without ever reaching a consolidation, so a check placed only
@@ -291,7 +342,34 @@ public static class RotationEngine
         // survives without the call that produced it.
         var (retained, overflow) = layout.Transcript.SplitAtBudget(policy.TierBudgetTokens[0]);
 
-        // Step 2: nothing aged out, so no aging is required and no summarizer call is made. The zero
+        // Step 2a: the provider said the context is too large, and this split - measured in
+        // estimated tokens - says tier zero still has room. Those are two different currencies and
+        // the estimated one is not evidence about the reported one, so it does not get to veto it.
+        // A rotation abandoned here would leave the layout unchanged, create no replacement, and
+        // let the provider run on into its own compactor.
+        //
+        // Everything verbatim is consolidated, rather than some smaller portion, because nothing
+        // here can size a portion in the currency that raised the alarm. Shaving the oldest entry
+        // or two would be the gentler answer and is not an answer at all: a turn appends at least a
+        // message and an answer, so a rotation removing fewer entries than the next turn adds never
+        // reduces anything the provider is counting, and the provider's compactor fires anyway
+        // several turns later. Consolidating the whole history reduces the conversation to the tier
+        // records alone, which is the largest reduction this engine can make and the one that is
+        // certain to be a reduction.
+        //
+        // The split is asked for rather than assumed: a budget of zero retains nothing, so every
+        // call and every result travels together into the same consolidation and no pair can be
+        // separated. This cannot recurse or repeat - it replaces the split once, before any
+        // consolidation - and it terminates at an empty transcript, which consolidates nothing and
+        // is reported as the non-rotation it is.
+        if (overflow.Count == 0
+            && triggerOrigin == ContextUsageOrigin.Provider
+            && layout.Transcript.Entries.Count > 0)
+        {
+            (retained, overflow) = layout.Transcript.SplitAtBudget(0);
+        }
+
+        // Step 2b: nothing aged out, so no aging is required and no summarizer call is made. The zero
         // consolidation count is what tells a caller this produced no new context to seed from.
         if (overflow.Count == 0)
         {

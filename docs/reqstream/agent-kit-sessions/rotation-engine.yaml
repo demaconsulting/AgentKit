@@ -28,17 +28,57 @@ sections:
           - id: AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers
             title: >-
               The engine shall consolidate only where a tier has overflowed, making no summarizer
-              call and changing no tier when the verbatim history already fits.
+              call and changing no tier when the verbatim history already fits and the crossing that
+              triggered the rotation was measured in the same currency as the split.
             justification: |
               Summarizer calls are the dominant cost of this arrangement, and consolidating only the
               tiers that actually overflowed is where the tiered scheme's measured cost advantage
               over a flat rolling summary comes from - 381,440 against 461,173 summarizer tokens over
               50 rotations (n = 50 rotations, one run per arrangement, recorded in the compaction
               spike that preceded this package). A rotation whose recent history already fits is a
-              pure re-seed and should cost nothing.
+              pure re-seed and should cost nothing. The qualification matters: the split is measured
+              in estimated tokens, so it answers for a crossing measured the same way and for no
+              other - see AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency.
             tests:
               - RotationEngine_RotateAsync_NothingOverflows_ConsolidatesNothing
               - RotationEngine_RotateAsync_Overflow_FoldsIntoTierOneOnly
+
+          - id: AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency
+            title: >-
+              The engine shall be told the currency of the crossing that triggered the rotation,
+              refusing an undefined one, and shall consolidate the whole verbatim history where the
+              crossing was provider-reported and the split finds no overflow, consolidating nothing
+              only where there is no verbatim history at all.
+            justification: |
+              The threshold comparison that triggers a rotation is made in whichever currency the
+              usage figure carries, while the split is measured in this library's estimated tokens
+              throughout. Where the two disagree the trigger fired and the split did nothing: a
+              provider reporting 500 conversation tokens in a 600-token window crosses a threshold of
+              420 for a turn whose local estimate is a few dozen tokens against a tier-zero budget of
+              100, so the layout came back unchanged, no replacement was created, and the provider
+              ran on into its own compactor - the one outcome this package exists to prevent, reached
+              with the trigger and the split each behaving exactly as documented in its own currency.
+              The two roles are genuinely different and neither can be given up: a provider knows
+              whether the context is too large because it counts its own tokens, and the estimate is
+              all there is for deciding what to consolidate, because no provider can be asked to
+              measure a candidate split. Stating the trigger's currency at the call is what stops the
+              second answering for the first, and an undefined currency is refused for the same
+              reason the other enum-taking members of this package refuse one - a cast integer names
+              nothing to decide from.
+              A forced consolidation takes the whole verbatim history rather than a portion, because
+              nothing here can size a portion in the currency that raised the alarm and a portion
+              chosen in the other may not reduce anything the provider is counting: a turn appends at
+              least a message and an answer, so a rotation shaving an entry or two ages out less than
+              the next turn adds. Consolidating everything reduces the conversation to the tier
+              records alone, is reached through the same split at a budget of zero so no tool call is
+              separated from its result, and terminates - an empty transcript consolidates nothing
+              and is reported as the non-rotation it is.
+            tests:
+              - RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow
+              - RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing
+              - RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult
+              - RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws
+              - CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway
 
           - id: AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
             title: >-

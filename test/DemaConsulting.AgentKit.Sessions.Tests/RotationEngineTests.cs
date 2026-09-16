@@ -14,9 +14,16 @@ namespace DemaConsulting.AgentKit.Sessions.Tests;
 public class RotationEngineTests
 {
     /// <summary>
-    ///     Proves a rotation whose recent history already fits is a pure re-seed: nothing ages, no
-    ///     summarizer call is made, and the layout is handed back as it was.
+    ///     Proves a rotation whose recent history already fits is a pure re-seed when the crossing
+    ///     was measured in this library's own tokens: nothing ages, no summarizer call is made, and
+    ///     the layout is handed back as it was.
     /// </summary>
+    /// <remarks>
+    ///     The trigger's currency is what entitles the engine to this answer. The split is measured
+    ///     in estimated tokens, so an estimated crossing and this split agree about the same
+    ///     transcript; a provider-reported crossing does not, and is handled by
+    ///     <see cref="RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow"/>.
+    /// </remarks>
     [Fact]
     public async Task RotationEngine_RotateAsync_NothingOverflows_ConsolidatesNothing()
     {
@@ -24,14 +31,131 @@ public class RotationEngineTests
         var summarizer = new FakeSummarizer();
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
 
-        // Act: rotate
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        // Act: rotate on a crossing this library measured itself
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the same layout, and the summarizer was never asked anything
         Assert.Same(layout, outcome.Layout);
         Assert.Equal(0, outcome.ConsolidationCount);
         Assert.Equal(0, summarizer.CallCount);
         Assert.False(outcome.IsSaturated);
+    }
+
+    /// <summary>
+    ///     Proves a provider-reported crossing forces a real consolidation even where the estimated
+    ///     split finds tier zero has room, so the estimate cannot veto a decision only the provider
+    ///     was in a position to make.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The two roles are genuinely different.</b> A provider knows <em>whether</em> the
+    ///     context is too large, because it counts its own tokens; the estimate is all there is for
+    ///     deciding <em>what</em> to consolidate, because no provider can be asked to measure a
+    ///     candidate split. Reading the estimated split as an answer to the first question is what
+    ///     let a reported crossing consolidate nothing, seed no replacement, and leave the provider
+    ///     running into its own compactor.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow()
+    {
+        // Arrange: sixty tokens of history against a hundred-token verbatim tier, which is exactly
+        // the layout the estimated trigger above is entitled to leave alone
+        var summarizer = new FakeSummarizer();
+        var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
+
+        // Act: rotate on a crossing the provider reported in its own tokens
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Provider, TestContext.Current.CancellationToken);
+
+        // Assert: a real consolidation happened, so a caller has new context to seed a replacement
+        // provider session from
+        Assert.Equal(1, outcome.ConsolidationCount);
+        Assert.NotSame(layout, outcome.Layout);
+        Assert.False(outcome.Layout.CoarseTiers[0].IsEmpty);
+
+        // Assert: the whole verbatim history went into it. Consolidating a smaller portion would
+        // not be a reduction at all - a turn appends at least a message and an answer, so shaving
+        // an entry or two per rotation never overtakes what the provider is counting.
+        var request = Assert.Single(summarizer.Requests);
+        foreach (var entry in layout.Transcript.Entries)
+        {
+            Assert.Contains(entry.Text, request.Material, StringComparison.Ordinal);
+        }
+
+        Assert.Empty(outcome.Layout.Transcript.Entries);
+    }
+
+    /// <summary>
+    ///     Proves a provider-reported crossing with nothing recorded at all still consolidates
+    ///     nothing, so the forced path terminates instead of manufacturing an empty consolidation.
+    /// </summary>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing()
+    {
+        // Arrange: a layout holding no verbatim history whatsoever
+        var summarizer = new FakeSummarizer();
+        var layout = ContextLayout.Create(SessionTestData.SmallPolicy, 0, 0);
+
+        // Act
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Provider, TestContext.Current.CancellationToken);
+
+        // Assert: no summarizer call, and the zero count that tells a caller not to replace a
+        // provider session for nothing
+        Assert.Same(layout, outcome.Layout);
+        Assert.Equal(0, outcome.ConsolidationCount);
+        Assert.Equal(0, summarizer.CallCount);
+    }
+
+    /// <summary>
+    ///     Proves a forced consolidation keeps every tool call with its result, because the whole
+    ///     history travels into one consolidation rather than being cut at an estimated boundary.
+    /// </summary>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult()
+    {
+        // Arrange: three interleaved runs of parallel calls, 39 tokens in all, well within tier
+        // zero's hundred-token budget so the estimated split would retain every one of them
+        var summarizer = new FakeSummarizer();
+        var transcript = SessionTranscript.Empty;
+        for (var run = 0; run < 3; run++)
+        {
+            transcript = transcript
+                .Append(SessionTestData.ToolCallOfTokens(5, $"a{run}"))
+                .Append(SessionTestData.ToolCallOfTokens(5, $"b{run}"))
+                .Append(SessionTestData.ToolResultOfTokens(5, $"a{run}"))
+                .Append(SessionTestData.ToolResultOfTokens(5, $"b{run}"));
+        }
+
+        // Act: rotate on a provider-reported crossing
+        var outcome = await RotationEngine.RotateAsync(
+            SessionTestData.LayoutOf(SessionTestData.SmallPolicy, transcript),
+            summarizer,
+            ContextUsageOrigin.Provider,
+            TestContext.Current.CancellationToken);
+
+        // Assert: nothing verbatim survived, so no result can have been left without its call
+        Assert.Empty(outcome.Layout.Transcript.Entries);
+        Assert.DoesNotContain(
+            outcome.Layout.BuildSeed(),
+            entry => entry.Kind == TranscriptEntryKind.ToolResult);
+    }
+
+    /// <summary>
+    ///     Proves an undefined trigger origin is refused. The origin states which currency crossed
+    ///     the threshold, and that is exactly what decides whether an estimated split may abandon
+    ///     the rotation, so a cast integer cannot be guessed at here.
+    /// </summary>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws()
+    {
+        var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => RotationEngine.RotateAsync(
+            layout,
+            new FakeSummarizer(),
+            (ContextUsageOrigin)42,
+            TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -47,7 +171,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20));
 
         // Act: rotate
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: one consolidation, into tier one, as a first recording
         Assert.Equal(1, outcome.ConsolidationCount);
@@ -75,7 +200,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(40, 20));
 
         // Act: rotate
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: back inside the bound the configuration promised
         Assert.False(layout.IsWithinBound);
@@ -96,13 +222,15 @@ public class RotationEngineTests
         var first = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20)),
             summarizer,
+            ContextUsageOrigin.Estimated,
             TestContext.Current.CancellationToken);
         var tierOneRecord = first.Layout.CoarseTiers[0].Content;
 
         // Act: add more history and rotate again
         var grown = first.Layout.WithTranscript(first.Layout.Transcript.Append(
             SessionTestData.TranscriptOf(10, 20).Entries));
-        await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+        await RotationEngine.RotateAsync(
+            grown, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the second consolidation received the first one's record as an input
         var second = summarizer.Requests[1];
@@ -127,12 +255,14 @@ public class RotationEngineTests
         var first = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20)),
             summarizer,
+            ContextUsageOrigin.Estimated,
             TestContext.Current.CancellationToken);
 
         // Act: grow the history and rotate again, so tier one must hold old and new together
         var grown = first.Layout.WithTranscript(first.Layout.Transcript.Append(
             SessionTestData.TranscriptOf(10, 20).Entries));
-        var second = await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+        var second = await RotationEngine.RotateAsync(
+            grown, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: merge at tier one, degrade the older record into tier two, re-record tier one
         Assert.Equal(3, second.ConsolidationCount);
@@ -185,6 +315,7 @@ public class RotationEngineTests
         var outcome = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.SmallPolicy, transcript),
             summarizer,
+            ContextUsageOrigin.Estimated,
             TestContext.Current.CancellationToken);
 
         // Assert: something survived verbatim, and every retained result has its own call retained
@@ -231,7 +362,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20));
 
         // Act: rotate
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the failure to reduce is surfaced, with the figures that show it
         Assert.True(outcome.IsSaturated);
@@ -254,7 +386,8 @@ public class RotationEngineTests
             SessionTestData.TranscriptOf(10, 20));
 
         // Act: rotate
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the over-budget condition is reported for the tier that could not hold it
         Assert.Contains(outcome.Saturations, s => s.Reason == SaturationReason.TierOverBudget);
@@ -296,12 +429,14 @@ public class RotationEngineTests
         var first = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(6, 20)),
             summarizer,
+            ContextUsageOrigin.Estimated,
             TestContext.Current.CancellationToken);
 
         // Act: grow the history by one entry and rotate again, so tier one must cascade
         var grown = first.Layout.WithTranscript(
             first.Layout.Transcript.Append(SessionTestData.UserOfTokens(20, "g")));
-        var second = await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+        var second = await RotationEngine.RotateAsync(
+            grown, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the second rotation really did cascade - merge, degrade, re-record
         Assert.Equal([(1, false), (2, true), (1, true)], summarizer.Shape.Skip(1).ToArray());
@@ -339,8 +474,10 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20));
 
         // Act: rotate the same layout twice
-        var first = await RotationEngine.RotateAsync(layout, new FakeSummarizer(), TestContext.Current.CancellationToken);
-        var second = await RotationEngine.RotateAsync(layout, new FakeSummarizer(), TestContext.Current.CancellationToken);
+        var first = await RotationEngine.RotateAsync(
+            layout, new FakeSummarizer(), ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
+        var second = await RotationEngine.RotateAsync(
+            layout, new FakeSummarizer(), ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: identical tiers, identical surviving history, identical cost
         Assert.Equal(
@@ -359,7 +496,11 @@ public class RotationEngineTests
     public async Task RotationEngine_RotateAsync_NullLayout_Throws()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            RotationEngine.RotateAsync(null!, new FakeSummarizer(), TestContext.Current.CancellationToken));
+            RotationEngine.RotateAsync(
+                null!,
+                new FakeSummarizer(),
+                ContextUsageOrigin.Estimated,
+                TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -371,7 +512,8 @@ public class RotationEngineTests
     {
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(3, 20));
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => RotationEngine.RotateAsync(layout, null!, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => RotationEngine.RotateAsync(
+            layout, null!, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -385,7 +527,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken));
+            RotationEngine.RotateAsync(
+                layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -401,7 +544,7 @@ public class RotationEngineTests
         await source.CancelAsync();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            RotationEngine.RotateAsync(layout, summarizer, source.Token));
+            RotationEngine.RotateAsync(layout, summarizer, ContextUsageOrigin.Estimated, source.Token));
     }
 
     /// <summary>
@@ -422,7 +565,7 @@ public class RotationEngineTests
 
         // Act / Assert: refused rather than reported as a successful rotation
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            RotationEngine.RotateAsync(layout, summarizer, source.Token));
+            RotationEngine.RotateAsync(layout, summarizer, ContextUsageOrigin.Estimated, source.Token));
     }
 
     /// <summary>
@@ -458,6 +601,7 @@ public class RotationEngineTests
         var first = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20)),
             summarizer,
+            ContextUsageOrigin.Estimated,
             TestContext.Current.CancellationToken);
 
         // Assert: the whitespace record is empty, so it costs no framing and is not seeded at all
@@ -469,7 +613,8 @@ public class RotationEngineTests
         // Act: a second rotation, which is where the disagreement used to surface
         var grown = first.Layout.WithTranscript(
             first.Layout.Transcript.Append(SessionTestData.TranscriptOf(10, 20).Entries));
-        var second = await RotationEngine.RotateAsync(grown, summarizer, TestContext.Current.CancellationToken);
+        var second = await RotationEngine.RotateAsync(
+            grown, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: it completed rather than throwing, and the whitespace was never offered as
         // material to consolidate
@@ -510,7 +655,8 @@ public class RotationEngineTests
             SessionTestData.TranscriptOf(10, 20));
 
         // Act
-        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
 
         // Assert: the record stored is empty rather than whitespace, so nothing downstream has to
         // decide what whitespace means
@@ -572,7 +718,7 @@ public class RotationEngineTests
 
         // Act / Assert: the rotation is abandoned rather than carried through
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            RotationEngine.RotateAsync(seeded, summarizer, source.Token));
+            RotationEngine.RotateAsync(seeded, summarizer, ContextUsageOrigin.Estimated, source.Token));
 
         // Assert: it stopped at the cancellation instead of finishing the cascade. Exactly one
         // consolidation ran - the one that did the canceling - and the engine refused the next,

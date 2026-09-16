@@ -46,7 +46,8 @@ project.
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any rotation that consolidates a tier that did not overflow, that fails to
+explicitly asserted. Any rotation that consolidates a tier that did not overflow, that abandons a
+provider-reported crossing because its own estimate saw no overflow, that fails to
 carry the previous record forward, that degrades the newer material instead of the older record,
 that seeds an orphaned tool result, that leaves the context outside its bound, that stores or sizes
 a blank summarizer answer as content, or that fails to
@@ -59,12 +60,53 @@ report a consolidation which could not reduce constitutes a failure.
 **Tests**: `RotationEngine_RotateAsync_NothingOverflows_ConsolidatesNothing`,
 `RotationEngine_RotateAsync_Overflow_FoldsIntoTierOneOnly`
 
-The first asserts that a layout whose history already fits is handed back as the *same instance*,
+The first asserts that a layout whose history already fits, rotated on a crossing this library
+measured itself, is handed back as the *same instance*,
 with zero consolidations and the summarizer never called — a rotation that is a pure re-seed. The
 second asserts that when history does overflow, exactly one consolidation happens, into tier one, as
 a first recording, and that tiers two and three are left untouched. Consolidating only the tiers
 that overflowed is where the tiered scheme's measured cost advantage over a flat rolling summary
 comes from.
+
+#### AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency: A Reported Crossing Is Not Vetoed by an Estimate
+
+**Tests**: `RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow`,
+`RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing`,
+`RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult`,
+`RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws`,
+`CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway`
+
+The first rotates the very layout the scenario above is entitled to leave alone — 60 tokens of
+history against a tier-zero budget of 100 — and states that the crossing was the provider's own. It
+asserts a real consolidation happened, that the layout returned is not the one handed in, that tier
+one holds a record, that every entry of the verbatim history appears in the material the summarizer
+was given, and that nothing survived verbatim. Asserting the *material* rather than only the count is
+what pins the forced split to the whole history: a forced split that aged out an entry or two would
+satisfy a count assertion while removing less than the next turn adds, which is not a reduction of
+anything the provider is counting.
+
+The second is the termination case. A layout holding no verbatim history at all consolidates
+nothing even on a provider-reported crossing, is handed back as the same instance, and calls no
+summarizer — so the forced path cannot manufacture an empty consolidation or a provider session per
+turn out of a session with nothing recorded.
+
+The third confirms the forced split keeps every tool call with its result, which it does by taking
+everything into one consolidation: three interleaved runs of parallel calls, 39 tokens in all and so
+comfortably inside tier zero's budget, leave no verbatim entry behind and no tool result in the seed.
+
+The fourth refuses an undefined origin. The origin decides whether an estimated split may abandon the
+rotation, so a cast integer is a defect in the caller and is refused as the other enum-taking members
+of this package refuse one.
+
+The fifth is the end-to-end form, and it is the regression test for the defect itself; see
+*CompactingAgentSession Unit Verification Design*.
+
+**Why none of the scenarios above could have caught it.** Every other rotation scenario in this file
+builds a layout that overflows tier zero in estimated tokens, which is the case where the two
+currencies agree about what to do. The disagreement is only reachable from a provider whose reported
+figures owe nothing to this library's estimate, which is why the end-to-end scenario uses the
+scripted split-reporting fake rather than the shipped in-memory session — that session measures its
+own reported figures with the same `TokenEstimator`, so the two currencies coincide by construction.
 
 #### AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers: The Ratchet Carries the Previous Record Forward
 

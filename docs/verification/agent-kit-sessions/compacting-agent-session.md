@@ -149,6 +149,30 @@ failure, which is the deliberate asymmetry: a caller that asked for a session to
 entitled to learn that it was not, while a caller taking a turn is not served by being told a
 successful rotation failed.
 
+#### AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency: A Reported Crossing Reaches the Provider
+
+**Test**: `CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway`
+
+This is the regression test for the second half of the currency defect, and it is the end-to-end
+form of the engine scenarios in *RotationEngine Unit Verification Design*. The trigger was already
+measured in the provider's tokens; the split the engine performs is measured in this library's
+estimated tokens. Where the two disagree the trigger fired and the split did nothing.
+
+The scenario is the disagreement stated exactly: a scripted provider reports 500 conversation tokens
+in a 600-token window, crossing a threshold of 420 on the very first turn, for a 20-token message
+whose whole turn estimates to well under tier zero's 100-token budget. It asserts the usage came
+from the provider, that a rotation occurred with one consolidation, that the material handed to the
+summarizer estimates below tier zero's budget — which is what proves the estimated split saw no
+overflow and the scenario is exercising the disagreement rather than an ordinary one — that nothing
+survived verbatim, and that a replacement provider session exists with the superseded one released.
+
+Run against the engine as it previously stood, the rotation is abandoned: `RotationOccurred` is
+false, no summarizer call is made and one provider session exists, which is a session left running
+into the provider's own compactor. No other scenario could have caught it, for the same reason the
+currency scenario above could not: every rotation test either overflows tier zero in estimated
+tokens, where the two currencies agree, or runs against `InMemoryProviderSession`, whose reported
+figures are computed with the very estimator the split uses.
+
 #### AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow: A Window Too Small to Settle In
 
 **Tests**: `CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows`,
