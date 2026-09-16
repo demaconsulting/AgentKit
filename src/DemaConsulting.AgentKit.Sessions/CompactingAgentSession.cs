@@ -347,6 +347,14 @@ public sealed class CompactingAgentSession : IAgentSession
 
         Usage = ReadUsage(_live.Session, _options, Layout);
 
+        // A provider that could not say anything when this provider session was created gets its
+        // fold measured here instead, at the first turn it does speak on. IContextUsageReporter
+        // permits exactly that silence, so a session whose provider takes it must not be credited
+        // an overhead allowance of zero for the rest of that provider session's life - which is
+        // what the convergence check below would then compare a reported window against. Does
+        // nothing for a provider session already measured, including one measured at exactly zero.
+        _live.CreditFirstReport(Usage, Layout.ConversationTokens);
+
         // A reported window this session could not converge in makes rotation incapable of settling,
         // so it is refused here rather than allowed to thrash. A provider may only begin reporting -
         // or report a smaller window - after a turn, so the check belongs on every turn and not
@@ -617,8 +625,11 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     the adapter nothing, is exact rather than estimated, and is in the provider's own tokens.
     ///     The one thing such an adapter must do is report from the moment the session exists rather
     ///     than only after the first turn, because the empty conversation is the only moment the
-    ///     fold is separable; an adapter that begins reporting later is credited only what it breaks
-    ///     out, as it was before.
+    ///     fold is exactly separable; an adapter that begins reporting later has it measured at the
+    ///     first turn it speaks on instead, against this library's estimate of the conversation by
+    ///     then. That is approximate in the safe direction — see
+    ///     <see cref="LiveProviderSession.CreditFirstReport"/> — rather than credited as zero, which
+    ///     is what it used to be.
     ///     </para>
     ///     <para>
     ///     <b>Failing rather than adapting, deliberately.</b> Requiring merely that the window
@@ -648,7 +659,10 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     session replaced by one reporting a split had a fold credited that the replacement does
     ///     not charge, and a convergent replacement was refused; a split-reporting session replaced
     ///     by a totals-only one had no fold credited at all, and a replacement whose hidden overhead
-    ///     keeps it above its own threshold was accepted, to rotate on every turn thereafter.
+    ///     keeps it above its own threshold was accepted, to rotate on every turn thereafter. A
+    ///     provider session that reports nothing at the moment it is adopted has the measurement
+    ///     deferred to the first turn it reports on rather than settled at zero; see
+    ///     <see cref="LiveProviderSession.CreditFirstReport"/>.
     ///     </para>
     ///     <para>
     ///     The live provider is released before the exception is thrown, because the session is
@@ -914,10 +928,15 @@ public sealed class CompactingAgentSession : IAgentSession
         /// </remarks>
         /// <param name="session">The provider session this value describes.</param>
         /// <param name="unreportedOverheadTokens">The overhead it charges without reporting.</param>
-        private LiveProviderSession(IProviderSession session, int unreportedOverheadTokens)
+        /// <param name="foldMeasured">Whether that overhead came from a provider's own figure.</param>
+        private LiveProviderSession(
+            IProviderSession session,
+            int unreportedOverheadTokens,
+            bool foldMeasured)
         {
             Session = session;
             UnreportedOverheadTokens = unreportedOverheadTokens;
+            FoldMeasured = foldMeasured;
         }
 
         /// <summary>
@@ -936,8 +955,27 @@ public sealed class CompactingAgentSession : IAgentSession
         ///     <see cref="ContextUsage.FromProvider(int, int, int?)"/> is public and documented to
         ///     accept totals alone, and the session that receives them has to know what it is not
         ///     being told.
+        ///     <para>
+        ///     Measured once per provider session, at the first instant that provider session
+        ///     produces a figure of its own — creation where it reports from creation, and the
+        ///     first turn it speaks on where it does not. See <see cref="Adopt"/> and
+        ///     <see cref="CreditFirstReport"/>.
+        ///     </para>
         /// </remarks>
-        public int UnreportedOverheadTokens { get; }
+        public int UnreportedOverheadTokens { get; private set; }
+
+        /// <summary>
+        ///     Gets a value indicating whether the fold has been measured from a provider's own
+        ///     figure.
+        /// </summary>
+        /// <remarks>
+        ///     False for a provider session that reported nothing when it was adopted, which is the
+        ///     one state in which <see cref="UnreportedOverheadTokens"/> is a placeholder rather
+        ///     than a measurement. It is a distinct flag rather than a zero test because a genuine
+        ///     fold of zero — every split-reporting adapter — must not be re-measured on every turn
+        ///     against a conversation that has grown since.
+        /// </remarks>
+        public bool FoldMeasured { get; private set; }
 
         /// <summary>
         ///     Gets a value indicating whether this provider session has actually been released.
@@ -984,6 +1022,17 @@ public sealed class CompactingAgentSession : IAgentSession
         ///     in-memory session, which counts the seeded entries with this very estimator, is
         ///     credited exactly nothing.
         ///     </para>
+        ///     <para>
+        ///     <b>A provider that says nothing here is not measured here.</b>
+        ///     <see cref="IContextUsageReporter"/> permits <see cref="IContextUsageReporter.CurrentUsage"/>
+        ///     to be <see langword="null"/> at creation, in which case the usage read at this
+        ///     instant is this library's own estimate and carries no fold to find. The measurement
+        ///     is deferred rather than settled at zero, and <see cref="CreditFirstReport"/> takes it
+        ///     at the first turn the provider does speak on. Settling it at zero here was the
+        ///     defect: a totals-only provider that begins reporting after its first turn folds real
+        ///     overhead into every figure it publishes while being credited none of it, so a window
+        ///     it cannot converge in is accepted and every replacement rotates again.
+        ///     </para>
         /// </remarks>
         /// <param name="session">The provider session just created.</param>
         /// <param name="usageAtCreation">What it reported, or this library's estimate, at that instant.</param>
@@ -998,13 +1047,69 @@ public sealed class CompactingAgentSession : IAgentSession
             long seededConversationTokens)
         {
             // Only a provider's own figure can carry a fold. An estimate publishes the split this
-            // library made itself, so there is nothing it failed to break out.
-            var reported = usageAtCreation.Origin == ContextUsageOrigin.Provider
-                ? usageAtCreation.ConversationTokens
-                : 0;
+            // library made itself, so there is nothing it failed to break out - and it is also what
+            // a reporter that cannot yet say anything falls back to, which is why the measurement
+            // is recorded as not taken rather than taken and found to be zero.
+            if (usageAtCreation.Origin != ContextUsageOrigin.Provider)
+            {
+                return new LiveProviderSession(session, 0, foldMeasured: false);
+            }
 
             return new LiveProviderSession(
-                session, (int)Math.Max(0L, reported - seededConversationTokens));
+                session,
+                Fold(usageAtCreation.ConversationTokens, seededConversationTokens),
+                foldMeasured: true);
+        }
+
+        /// <summary>
+        ///     Measures the fold from the first figure a provider session reports, for a provider
+        ///     session that reported nothing when it was adopted.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     <b>Refreshing the fold, rather than refusing the transition, is the deliberate
+        ///     choice.</b> <see cref="IContextUsageReporter"/> states plainly that an
+        ///     implementation which sometimes knows returns <see langword="null"/> until it does,
+        ///     so a provider that begins reporting after its first turn is doing exactly what the
+        ///     contract invites. Refusing the transition would abandon a session over conformant
+        ///     adapter behavior, and would abandon it on the first turn — after a real message had
+        ///     been spent — which is the worst moment to discover a configuration this library
+        ///     could simply have measured. So the transition is accepted and the measurement is
+        ///     taken at the first instant it is available, which is what the fold was always
+        ///     defined as.
+        ///     </para>
+        ///     <para>
+        ///     <b>Once, and only for a fold that was never measured.</b> A provider session that
+        ///     reported at creation has a fold measured against the content it was actually handed;
+        ///     re-measuring it on every turn would subtract this library's estimate of a growing
+        ///     conversation from the provider's count of it and credit the accumulating difference
+        ///     between two tokenizers as though it were fixed overhead. The flag distinguishes an
+        ///     unmeasured fold from a measured zero, which no reading of the figure itself could.
+        ///     </para>
+        ///     <para>
+        ///     <b>The subtrahend is this library's estimate of the conversation at the same
+        ///     instant</b>, which at creation is the seeded history and here is that history plus
+        ///     the turns taken since. It is the same measurement
+        ///     <see cref="Adopt"/> makes, taken later: less exact, because a turn's worth of
+        ///     estimation error is inside it rather than an empty conversation, and in the same
+        ///     direction — the allowance only ever raises the bound the rotation threshold must
+        ///     exceed, so an over-credit refuses a marginal window rather than accepting one that
+        ///     thrashes.
+        ///     </para>
+        /// </remarks>
+        /// <param name="usage">The usage figure this turn produced, and where it came from.</param>
+        /// <param name="conversationTokens">
+        ///     This library's estimate of the conversation this provider session now holds.
+        /// </param>
+        public void CreditFirstReport(ContextUsage usage, long conversationTokens)
+        {
+            if (FoldMeasured || usage.Origin != ContextUsageOrigin.Provider)
+            {
+                return;
+            }
+
+            UnreportedOverheadTokens = Fold(usage.ConversationTokens, conversationTokens);
+            FoldMeasured = true;
         }
 
         /// <summary>
@@ -1052,6 +1157,23 @@ public sealed class CompactingAgentSession : IAgentSession
 
             return Released;
         }
+
+        /// <summary>
+        ///     Computes the fold: what a provider-reported conversation figure carries over and
+        ///     above this library's own count of the same material.
+        /// </summary>
+        /// <remarks>
+        ///     Floored at zero, because a provider counting less than this library estimates has
+        ///     folded nothing in — it has simply counted differently, and crediting a negative
+        ///     allowance would lower the bound the rotation threshold must exceed and admit a
+        ///     window that thrashes. Widened before the subtraction, so a reported figure at the
+        ///     top of a token count and an estimate of zero cannot wrap.
+        /// </remarks>
+        /// <param name="reportedConversationTokens">What the provider calls conversation.</param>
+        /// <param name="conversationTokens">This library's estimate of the same conversation.</param>
+        /// <returns>The overhead the provider charges without breaking it out.</returns>
+        private static int Fold(int reportedConversationTokens, long conversationTokens) =>
+            (int)Math.Max(0L, reportedConversationTokens - conversationTokens);
     }
 }
 

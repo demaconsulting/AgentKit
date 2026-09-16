@@ -108,7 +108,9 @@ check entirely. A value that names nothing would have selected a materially diff
 #### AgentKitSessions-ContextUsage-OptionalReportingContract: A Reporter May Say It Does Not Know
 
 **Tests**: `ContextUsage_Reporter_MayReportNothing`,
-`InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull`
+`InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull`,
+`CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen`,
+`CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles`
 
 Asserts that an implementation can report nothing rather than fabricating a figure, both through a
 minimal hand-written reporter and through the shipped in-memory session configured not to report.
@@ -116,12 +118,19 @@ This is the case the separate optional interface exists for: an adapter for a pr
 nothing must be able to say so, because an invented number is indistinguishable from a real one at
 the point it is consumed.
 
-**What is deliberately not verified here, because nothing can verify it.** An implementation that
-reports nothing until after its first turn is adopted with a fold of zero and keeps that fold for the
-life of that provider session. What `CompactingAgentSession` checks afterwards is that its accounting
-and the provider's agree, not that the fold it measured was the right one, and no reading can
-distinguish a genuine zero from an unmeasured one. So a provider that charges real unreported
-overhead and reports late is treated as charging none, and no test — here or anywhere in this
-suite — can detect it. The obligation to report from creation, or to report the split, is stated in
-the contract an adapter author reads for exactly that reason, and it is the only place the condition
-can be prevented.
+**What reporting late costs is now verified rather than conceded.** The third scenario is the
+freedom this contract grants, exercised end to end: a provider silent until it has answered a turn
+and then reporting totals alone, over 100 tokens of overhead it never breaks out, in a 500-token
+window. Creation cannot refuse it — the provider says nothing there, so the session falls back to an
+estimate against the configured window — and the first turn is where the provider first speaks and
+so where the fold is measured. The test asserts the refusal names a fold other than zero and quotes
+a requirement above the 446 tokens the same policy needs with no fold at all, that the provider
+session was released, and that the session refuses further turns. Against the previous behavior the
+turn returned an ordinary answer and the session rotated on every turn thereafter, raising no
+saturation signal, and this scenario is what now fails in that state.
+
+The fourth is the counterweight, and it is what stops the third being satisfied by a guard that
+simply refused every late reporter. The same shape in a 1,200-token window is accepted, rotates, and
+settles — rotating at least once and fewer than four times across four turns — and a further turn
+reads the provider's own figures. Abandoning a conformant adapter after a real message has been
+spent was the alternative resolution, and it was rejected for exactly this reason.

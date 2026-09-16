@@ -89,8 +89,14 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
         // The fixed overhead a real provider would charge for instructions and declarations is
         // charged here too, so a test exercising the rotation threshold sees the same arithmetic
         // the engine performs against a real provider.
-        FixedOverheadTokens = TokenEstimator.EstimateTokens(seed.Instructions)
+        //
+        // Summed wide and saturated rather than wrapped: an instruction estimate fits a token count
+        // and a declaration estimate fits one, but the two need not fit one together, and a
+        // negative overhead would report a usage figure smaller than the conversation it contains -
+        // which ContextUsage refuses outright, out of a property a test only reads.
+        var fixedOverhead = (long)TokenEstimator.EstimateTokens(seed.Instructions)
             + TokenEstimator.EstimateToolDeclarationTokens(seed.Tools);
+        FixedOverheadTokens = (int)Math.Min(fixedOverhead, int.MaxValue);
     }
 
     /// <summary>
@@ -155,14 +161,23 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
                 return null;
             }
 
-            var conversation = 0;
+            // Accumulated wide and saturated where it is narrowed, for the reason the transcript's
+            // own total is: entries carrying the longest strings that can exist sum past a token
+            // count, and a wrapped negative conversation would be refused by ContextUsage from
+            // inside a property. Saturating keeps the two figures ordered - the total is never
+            // below the conversation it contains - which is the one relation ContextUsage requires.
+            var conversation = 0L;
             foreach (var entry in _history)
             {
                 conversation += entry.EstimatedTokens;
             }
 
+            var used = FixedOverheadTokens + conversation;
+
             return ContextUsage.FromProvider(
-                FixedOverheadTokens + conversation, WindowTokens, conversation);
+                (int)Math.Min(used, int.MaxValue),
+                WindowTokens,
+                (int)Math.Min(conversation, int.MaxValue));
         }
     }
 

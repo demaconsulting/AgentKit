@@ -67,19 +67,23 @@ implementation must not contact the provider to answer: it reports what the last
 revealed, so reading it is free and cannot fail. An implementation whose provider distinguishes the
 conversation from its framing passes that split rather than leaving it to be inferred.
 
-**The obligation an implementation carries, and the limit nothing can enforce.** The fold an unsplit
-figure hides is measured once, when a provider session is created, and credited for that provider
-session's whole life. An implementation that returns `null` at that instant is credited a fold of
-zero and keeps it until the next rotation creates a new provider session — where it is measured
-again, against a conversation that is no longer empty and is therefore no more separable than it was
-the first time. What `CompactingAgentSession` then verifies is that *its accounting and the
-provider's agree*, not that the fold it measured was the right one, and no later reading can
-distinguish a genuine zero from an unmeasured one. The consequence is concrete: a provider that
-charges real overhead it never breaks out, and that begins reporting only after its first turn, is
-treated as charging none, so a window it cannot actually converge in may be accepted and the session
-may rotate on every turn without raising a saturation signal. This library cannot detect that. The
-implementation is the only party that can prevent it, and does so by reporting from creation or by
-reporting the split — which is why that is stated as an obligation rather than a preference.
+**Reporting late costs accuracy, not the measurement itself.** The fold an unsplit figure hides is
+measured once per provider session, at the first instant that provider session produces a figure of
+its own. For an implementation reporting from creation that instant is creation, where the
+conversation is exactly the history the session was seeded with and the subtraction is exact. For an
+implementation that returns `null` at creation — which this contract explicitly invites — it is the
+first turn the implementation does report on, and the subtrahend is this library's own estimate of
+the conversation by then, so a turn's worth of estimating error sits inside the result. That error
+is credited as fold, and the fold only ever *raises* the bound a rotation threshold must exceed, so
+an over-credit refuses a marginal window rather than accepting one that cannot settle.
+
+What reporting late no longer does is leave the fold unmeasured. An implementation silent at
+creation used to be credited a fold of zero and to keep it until the next rotation created a new
+provider session, so a provider charging real overhead it never breaks out was treated as charging
+none: a window it cannot actually converge in was accepted and the session rotated on every turn
+without raising a saturation signal. Reporting from creation, or reporting the split, remains what
+an implementation *should* do, because it is the difference between an exact measurement and an
+approximate one — but neither is required for the fold to be measured at all.
 
 **Usage is permitted to exceed the window.** A provider may report that, and clamping it would hide
 exactly the condition an application most needs to see. `FreeTokens` floors at zero because a
@@ -118,9 +122,11 @@ earlier than a correct split would and so cannot let the session run past the pr
 That is a claim about the rotation trigger alone. The convergence check a session makes before
 accepting a window cannot inherit it — crediting no overhead makes a window look *larger* than it is
 — so `CompactingAgentSession` measures what an unsplit figure folds in, per provider session and at
-the moment each one is created, and credits that instead. An adapter reporting
-totals alone should therefore report them from the moment a session exists rather than only after
-its first turn, so the measurement can be taken; see *CompactingAgentSession Unit Design*.
+the first instant that provider session reports anything, and credits that instead. An adapter
+reporting totals alone should therefore prefer to report them from the moment a session exists
+rather than only after its first turn, because that is the one moment the measurement is exact; one
+that begins reporting later has it taken approximately, and in the safe direction. See
+*CompactingAgentSession Unit Design*.
 
 #### FromEstimate(int usedTokens, int windowTokens, int? conversationTokens = null)
 

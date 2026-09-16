@@ -21,6 +21,21 @@ sections:
               generous headroom for a cheap estimate to be wrong in. Rounding up matters because a
               budget that treated short content as free would let an unbounded number of short
               entries accumulate inside it.
+
+              The rounding addition is int arithmetic and stays there, because the length it is
+              applied to is bounded well below what could wrap one. A string is a single object and
+              the runtime caps one object at two gigabytes - the very-large-object setting raises
+              that for arrays and not for strings - so at two bytes per character the longest string
+              that can exist holds a little under 2^30 characters; measured on this repository's own
+              targets, the largest allocatable length is 1,073,741,791 and one character more throws
+              an out-of-memory failure. The length plus the rounding term therefore reaches at most
+              1,073,741,794, short of half the largest representable count, and a single estimate
+              reaches at most 268,435,448 tokens. That cap is recorded here and in the estimator
+              itself because it is the invariant every other estimate in this package inherits: two
+              or three estimates may be added in plain token arithmetic without wrapping, which is
+              what makes the entry framing allowance and the saturation input sound. It has been
+              raised as an overflow twice and refuted twice, so the reason is written down rather
+              than re-derived in each review.
             tests:
               - TokenEstimator_EstimateTokens_AbsentText_ReturnsZero
               - TokenEstimator_EstimateTokens_WholeMultiple_AppliesCharacterRatio
@@ -51,9 +66,15 @@ sections:
               provider is given are the name a model selects by, the description it selects on, and
               the schema it fills in. A null tool cannot be estimated, and skipping it would
               understate the overhead and delay rotation; it is refused instead. Each declaration
-              fits a token count on its own, because a string cannot be longer than the largest
-              representable length and the ratio only divides, but their sum need not: the total is
-              therefore accumulated in a wider type and rejected before it is narrowed. An int
+              fits a token count on its own, because a string cannot be longer than the runtime's
+              object cap allows and the ratio only divides, but their sum need not: the total is
+              therefore accumulated in a wider type and rejected before it is narrowed. Each addend
+              is widened before any of them are added rather than after, so the wide accumulator
+              does not depend on a second invariant - that one declaration's three estimates cannot
+              themselves wrap - to be sound. They cannot, because the string cap holds every
+              estimate below 2^28 and three of them below 2^30; the widening is there so that an
+              accumulator existing to catch an overflow is not reached through arithmetic that could
+              have one. An int
               accumulator would wrap the sum to a small or negative figure, and every site downstream
               would treat that as a real measurement of the overhead - the effective window, the
               rotation threshold and the published fixed overhead all describing a window nobody

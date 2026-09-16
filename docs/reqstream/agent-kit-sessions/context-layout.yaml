@@ -52,13 +52,22 @@ sections:
               that would carry the bound past what a token count can represent is refused at
               creation, because a wrapped bound is negative and a layout holding nothing at all
               would then report itself outside it; the policy already guarantees its own half of
-              the bound, so the fixed overhead is the only remaining way to exceed one.
+              the bound, so the fixed overhead is the only remaining way to exceed one. The two
+              figures that grow with the session - the conversation and the total that includes the
+              fixed overhead - are accumulated in a wider type than a token count and saturate at
+              the largest one rather than wrapping. Their terms each fit a token count on their own
+              and need not fit one together, and a wrapped negative total compares below every
+              rotation threshold and inside every bound, so the largest context this library can
+              account for would be the one it never rotated and never reported as over its bound.
+              Saturating says "at least everything a token count can hold", which crosses every
+              threshold and fails every bound - the direction a figure of that size must err in.
             tests:
               - ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget
               - ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord
               - ContextLayout_Create_UnrepresentableBound_Throws
               - ContextLayout_ConversationTokens_ExcludeTheFixedOverhead
               - ContextTier_IsWithinBudget_ReflectsTheRecordSize
+              - ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget
 
           - id: AgentKitSessions-ContextLayout-Immutable
             title: >-

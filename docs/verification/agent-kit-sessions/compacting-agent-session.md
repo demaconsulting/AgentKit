@@ -190,6 +190,8 @@ figures are computed with the very estimator the split uses.
 `CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows`,
 `CompactingAgentSession_SendAsync_TotalsOnlyReplacedBySplitReporting_TakesTheReplacementsFold`,
 `CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement`,
+`CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen`,
+`CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles`,
 `CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease`
 
 The scenario the reported-window override made reachable. The tests configure a 4,000-token window
@@ -261,7 +263,24 @@ fold of zero the replacement was accepted, and the session rotated on every turn
 raising no saturation signal. Both assert only what the fold decides; both provider sessions and the
 rotation machinery are otherwise identical.
 
-The ninth is about **what the failure says, and what it hands back**. Its provider reports an
+The ninth and tenth are the third direction the same defect ran in: **a fold that was never measured
+at all**. Their provider reports nothing until it has answered a turn, which `IContextUsageReporter`
+explicitly permits, and then reports totals alone over 100 tokens it never breaks out. Measured only
+at adoption, that provider was credited a fold of zero for the whole life of the provider session,
+because the one instant the measurement was taken is the one instant it says nothing. The ninth puts
+it in a 500-token window: creation cannot refuse it, the estimated figure it falls back to carries
+the configured window, and the first turn is where the provider first speaks and so where the fold
+is measured. The test asserts the refusal names a fold other than zero, that the requirement quoted
+is above the 446 tokens the same policy needs with no fold, that the provider session was released,
+and that the session refuses further turns. Run against the previous behavior the turn returns an
+ordinary answer, nothing is refused, and the session rotates on every turn thereafter without
+raising a saturation signal — so this scenario fails there and passes here. The tenth is its
+complement, for the same reason the fourth is the third's: the identical shape in a 1,200-token
+window is accepted, rotates at least once across four turns and fewer than four times, and reads the
+provider's own figures on a further turn. Refusing the reporting transition outright was the
+alternative resolution, and it is this scenario that rules it out.
+
+The eleventh is about **what the failure says, and what it hands back**. Its provider reports an
 unusable window and then fails the release the refusal attempts, which is the one case where the
 claim and the outcome came apart: the catch deliberately leaves the release flag false so a later
 call can retry, and the message nonetheless said the session had been released. Worse, on the

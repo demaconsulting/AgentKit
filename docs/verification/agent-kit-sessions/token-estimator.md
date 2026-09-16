@@ -46,6 +46,16 @@ exactly, because that is what lets a test state a transcript's size rather than 
 single character must still cost a token, because a budget that treated short content as free would
 let an unbounded number of short entries accumulate inside it.
 
+**The rounding addition's overflow is not a scenario, because it is not reachable.** A review raised
+`(text.Length + 3) / 4` as wrapping for a string whose length approaches the largest representable
+count. It cannot: a string is one object, the runtime caps one object at two gigabytes, and the
+very-large-object setting raises that for arrays and not for strings. Measured directly on this
+repository's targets, `new string('a', 1_073_741_791)` allocates and `new string('a', 1_073_741_792)`
+throws `OutOfMemoryException`, so the addition reaches at most 1,073,741,794 — short of half the
+largest representable count — and a single estimate reaches at most 268,435,448 tokens. The finding
+is refuted by that measurement rather than implemented, and the cap is recorded in the estimator's
+own documentation so the next review reaches the same conclusion without re-deriving it.
+
 #### AgentKitSessions-TokenEstimator-ChargesEntryFraming: An Entry Is Charged for Its Framing
 
 **Tests**: `TokenEstimator_EstimateEntryTokens_AddsFramingAllowance`,

@@ -126,7 +126,12 @@ sections:
               the whole of what it calls conversation. The figure is added to the bound the threshold
               must exceed - the side of the comparison the reported conversation figure is on -
               rather than removed from the window, which would discount it by the rotation fraction
-              while the comparison pays for all of it.
+              while the comparison pays for all of it. Where the provider reports nothing at that
+              instant - which the reporting contract explicitly permits - the measurement is deferred
+              to the first turn it does report on and taken against this library's estimate of the
+              conversation by then, rather than settled at zero; an unmeasured fold is recorded as
+              unmeasured, because no reading of the figure distinguishes it from the genuine zero
+              every split-reporting adapter has.
 
               Measuring it once and reusing it was wrong in both directions, which is why it belongs
               to the provider session rather than to the session holding it. A totals-only first
@@ -134,7 +139,11 @@ sections:
               not charge, so a convergent replacement was refused and the session abandoned. A
               split-reporting first session replaced by a totals-only one had no fold credited at
               all, so a replacement whose hidden overhead keeps every rotated context above its own
-              threshold was accepted and rotated on every turn thereafter. The measurement therefore
+              threshold was accepted and rotated on every turn thereafter. Measuring it only at
+              creation was wrong in a third direction: a provider silent at creation and reporting
+              totals from its first turn onward was credited nothing for overhead it charges on every
+              turn, reaching the same accepted-but-thrashing state through the door the reporting
+              contract holds open. The measurement therefore
               travels with the provider session it describes, and adopting a replacement replaces it
               along with the provider reference and the release flag, in one step. The subtraction is
               between a provider's count and this library's estimate of the same entries, so it is as
@@ -148,10 +157,11 @@ sections:
               force such an adapter to fabricate one - indistinguishable from a measurement at the
               point it is consumed, which is the defect the usage shape exists to remove - or push an
               otherwise sound adapter onto the estimating path, where this library's character ratio
-              would decide when a real provider rotates. The one obligation it does carry is to
+              would decide when a real provider rotates. It should prefer to
               report from the moment a session exists rather than only after a turn, because a
-              session's creation is the only moment its fold is separable; an adapter that begins
-              reporting later is credited only what it breaks out.
+              session's creation is the only moment its fold is exactly separable; an adapter that
+              begins reporting later has it measured at its first report instead, approximately and
+              in the safe direction.
 
               Failing is preferred to adapting. Shrinking the tier budgets to fit would silently
               discard the compaction policy the host configured and would have to re-consolidate
@@ -193,6 +203,8 @@ sections:
               - CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows
               - CompactingAgentSession_SendAsync_TotalsOnlyReplacedBySplitReporting_TakesTheReplacementsFold
               - CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement
+              - CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen
+              - CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles
               - CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage

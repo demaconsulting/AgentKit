@@ -46,6 +46,18 @@ Returns zero for null or empty text — the honest answer for absent content —
 **Rounding up is load-bearing.** A budget comparison that treated short content as free would let an
 unbounded number of short entries accumulate inside it.
 
+**The rounding addition is `int` arithmetic and stays there, because the length is capped well below
+what could wrap one.** A string is a single object and the runtime caps one object at two gigabytes
+— the very-large-object setting raises that for arrays, not for strings — so at two bytes per
+character the longest string that can exist holds a little under 2^30 characters. Measured on this
+repository's own targets, the largest allocatable length is 1,073,741,791 and one character more
+throws an out-of-memory failure. `text.Length + 3` therefore reaches at most 1,073,741,794, short of
+half the largest representable count, and a single estimate reaches at most 268,435,448 tokens. That
+cap is the invariant every other estimate in this package inherits: two or three estimates may be
+added in plain token arithmetic without wrapping, which is what makes the entry framing allowance
+and the rotation engine's saturation input sound. It is recorded here and in the code because it has
+been raised as an overflow twice and refuted twice.
+
 #### EstimateEntryTokens(TranscriptEntry entry)
 
 Returns `EstimateTokens(entry.Text) + PerEntryOverheadTokens`. The framing allowance is included
@@ -66,13 +78,22 @@ and delay rotation past the point it was meant to fire, which is a quiet miscalc
 a visible failure — and for a declaration block whose estimate exceeds a token count.
 
 **Why the total is accumulated wide.** Each declaration fits a token count on its own, because a
-string cannot be longer than the largest representable length and the ratio only divides. The sum
+string cannot be longer than the runtime's object cap allows and the ratio only divides. The sum
 need not, and an `int` accumulator would wrap it to a small or negative figure that every site
 downstream would consume as a real measurement of the fixed overhead: the effective window, the
 rotation threshold and the published overhead would all then describe a window nobody configured.
 The declarations are where that figure first becomes computable, so it is accumulated in a wider type
 and rejected here rather than re-checked at each later site. It is not reachable by any test this
 build will run; see *TokenEstimator Unit Verification Design*.
+
+**Each addend is widened before any of them are added.** Written as `total += a + b + c + d` the
+four declaration terms are summed in `int` arithmetic and only the result is widened, which makes
+the wide accumulator depend on a second invariant to be sound: that one declaration's three
+estimates cannot themselves wrap. They cannot — the string cap holds each estimate below 2^28 and
+three of them below 2^30 — so that form was not defective, and a review raising it as one is
+answered by the cap rather than by a change. The widening is nonetheless applied, because an
+accumulator that exists to catch an overflow should not be reached through arithmetic that could
+have one, and it costs nothing.
 
 **Order of magnitude.** The compaction spike that preceded this package measured a declaration block
 of 2,589 tokens for a set of 11 tools (n = 11 tools, one measurement, recorded in that spike). It is

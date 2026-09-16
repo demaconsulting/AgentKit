@@ -77,10 +77,27 @@ public static class TokenEstimator
     ///     Estimates the tokens a run of text occupies in a context window.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Rounds up, so a non-empty string never estimates as zero tokens: a budget comparison
     ///     that treated short content as free would let an unbounded number of short entries
     ///     accumulate. Null and empty text estimate as zero, which is the honest answer for
     ///     absent content.
+    ///     </para>
+    ///     <para>
+    ///     <b>The rounding addition cannot overflow, and this is the invariant that says so.</b>
+    ///     A <see cref="string"/> is a single object, and the runtime caps one object at two
+    ///     gigabytes — <c>gcAllowVeryLargeObjects</c> raises that for arrays and not for strings —
+    ///     so at two bytes per character the longest string that can exist holds a little under
+    ///     2^30 characters. Measured on this repository's own targets, the largest
+    ///     <c>new string('a', n)</c> that allocates is n = 1,073,741,791 and n = 1,073,741,792
+    ///     throws <see cref="OutOfMemoryException"/>. <c>Length + 3</c> therefore reaches at most
+    ///     1,073,741,794, which is short of half of <see cref="int.MaxValue"/>, and the quotient
+    ///     reaches at most 268,435,448 tokens. This is recorded here because it is the bound every
+    ///     other estimate in this package inherits: a single estimate can never be negative, and
+    ///     two or three of them can be added in plain token arithmetic without wrapping. It has
+    ///     been raised as an overflow twice; the arithmetic is correct and the reason is written
+    ///     down rather than restated in a review each time.
+    ///     </para>
     /// </remarks>
     /// <param name="text">
     ///     The text to estimate. May be <see langword="null"/> or empty, both of which estimate as
@@ -97,6 +114,10 @@ public static class TokenEstimator
         }
 
         // Round up so short-but-present content is charged at least one token.
+        //
+        // The addition is in plain token arithmetic and stays there: a string cannot hold two
+        // gigabytes, so Length is capped a little under 2^30 and Length + 3 cannot approach
+        // int.MaxValue. See the remarks above for the measurement behind that cap.
         return (text.Length + CharactersPerToken - 1) / CharactersPerToken;
     }
 
@@ -157,12 +178,21 @@ public static class TokenEstimator
         // structure wrapped around them.
         //
         // Accumulated in a wider type than a token count, and range-tested before it is narrowed.
-        // Each declaration fits an int on its own, because a string cannot be longer than
-        // int.MaxValue characters and the ratio only divides; their sum need not, and an int
+        // Each declaration fits an int on its own, because a string cannot be longer than the
+        // runtime's object cap allows and the ratio only divides; their sum need not, and an int
         // accumulator would wrap it to a small or negative figure that every caller downstream
         // would then treat as a real measurement of the overhead. The declarations are the point at
         // which this figure first becomes computable, so it is rejected here and no later site has
         // to ask again.
+        //
+        // Each addend is widened before any of them are added, rather than after. Written as
+        // 'total += a + b + c + d' the four int estimates are summed in int arithmetic and only the
+        // result is widened, which makes the wide accumulator depend on a second invariant to be
+        // sound: that one declaration's three estimates cannot themselves wrap. They cannot - see
+        // EstimateTokens, where the string cap holds every estimate below 2^28 and three of them
+        // below 2^30 - so the previous form was not in fact defective. It is widened here anyway
+        // because an accumulator that exists to catch an overflow should not be reached through
+        // arithmetic that could have one, and because the cost is nothing.
         long total = 0;
         foreach (var tool in tools)
         {
@@ -171,7 +201,7 @@ public static class TokenEstimator
                 throw new ArgumentException("A tool in the list is null.", nameof(tools));
             }
 
-            total += EstimateTokens(tool.Name)
+            total += (long)EstimateTokens(tool.Name)
                 + EstimateTokens(tool.Description)
                 + EstimateTokens(tool.JsonSchema.ToString())
                 + PerToolOverheadTokens;

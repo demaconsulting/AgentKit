@@ -266,6 +266,9 @@ public sealed class SessionTranscript
     ///     every caller is within this class and passes a freshly allocated array.
     /// </remarks>
     /// <param name="entries">The entries, oldest first. Ownership passes to this instance.</param>
+    /// <exception cref="ArgumentException">
+    ///     The entries occupy more tokens than a token count can represent.
+    /// </exception>
     private SessionTranscript(TranscriptEntry[] entries)
     {
         _entries = entries;
@@ -273,13 +276,30 @@ public sealed class SessionTranscript
 
         // Sum once at construction: the total is consulted on every turn to decide whether the
         // rotation threshold has been reached, and the entry list never changes afterwards.
-        var total = 0;
+        //
+        // Accumulated in a wider type than a token count and range-tested before it is narrowed,
+        // for the same reason the tool declarations are: one entry fits a token count on its own,
+        // because a string cannot be longer than the runtime's object cap allows, but nine entries
+        // carrying the longest string that can exist do not. An int accumulator would wrap that to
+        // a negative figure, and EstimatedTokens is the figure every rotation decision is taken
+        // from - a negative one compares below every threshold, so the session that most needed to
+        // rotate would be the one that never did. This is the point at which the total first
+        // becomes computable, so it is rejected here rather than at each later site that reads it.
+        long total = 0;
         foreach (var entry in entries)
         {
             total += entry.EstimatedTokens;
         }
 
-        EstimatedTokens = total;
+        if (total > int.MaxValue)
+        {
+            throw new ArgumentException(
+                $"The transcript entries come to {total} tokens, which no context window could hold "
+                + "and no token count can represent.",
+                nameof(entries));
+        }
+
+        EstimatedTokens = (int)total;
     }
 
     /// <summary>
@@ -311,6 +331,9 @@ public sealed class SessionTranscript
     /// <param name="entry">The entry to append. Must not be <see langword="null"/>.</param>
     /// <returns>A new transcript; this one is unchanged.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    ///     The appended transcript would occupy more tokens than a token count can represent.
+    /// </exception>
     public SessionTranscript Append(TranscriptEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -335,7 +358,10 @@ public sealed class SessionTranscript
     /// </param>
     /// <returns>A new transcript, or this one when <paramref name="entries"/> is empty.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entries"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="entries"/> contains a <see langword="null"/> entry.</exception>
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="entries"/> contains a <see langword="null"/> entry, or the appended
+    ///     transcript would occupy more tokens than a token count can represent.
+    /// </exception>
     public SessionTranscript Append(IEnumerable<TranscriptEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
@@ -407,12 +433,21 @@ public sealed class SessionTranscript
 
         // Walk backwards from the newest entry, accumulating until the next one would not fit.
         // 'first' ends as the index of the oldest retained entry.
+        //
+        // The fit test is a subtraction rather than an addition, and that is not a style choice.
+        // 'used + candidate.EstimatedTokens > budgetTokens' is int arithmetic: with a tier-zero
+        // budget near int.MaxValue - which CompactionPolicy permits - and entries already
+        // accumulated near it, the sum wraps negative, compares below the budget, and the entry is
+        // retained even though it carries the retained set past the very bound this method
+        // documents. 'budgetTokens - used' cannot wrap, because the loop only continues while
+        // used <= budgetTokens and both are non-negative, so the difference is a non-negative int
+        // and the comparison is exact at every budget a policy can express.
         var used = 0;
         var first = _entries.Length;
         while (first > 0)
         {
             var candidate = _entries[first - 1];
-            if (used + candidate.EstimatedTokens > budgetTokens)
+            if (candidate.EstimatedTokens > budgetTokens - used)
             {
                 break;
             }

@@ -66,6 +66,13 @@ conversation, adds the fixed overhead for the total, and marks the result
 Reporting the conversation separately rather than leaving it to be inferred is the shape a real
 reporting adapter uses, so the engine's reported path is exercised as it will actually be driven.
 
+Both sums — the fixed overhead at construction and the conversation on every reading — are
+accumulated in a wider type than a token count and saturated where they are narrowed. Each term fits
+one on its own and they need not fit one together, and a wrapped negative figure here reports a
+total smaller than the conversation it contains, which `ContextUsage` refuses outright — an argument
+failure thrown out of a property a test merely reads. Saturating preserves the one relation
+`ContextUsage` requires, because the total is clamped no lower than the conversation it carries.
+
 Note what this fake cannot demonstrate: its overhead is measured with the very `TokenEstimator` the
 engine would otherwise have used, so its reported currency and this library's estimated currency
 coincide exactly. A test that needs to tell a measurement from an estimate must script the reported

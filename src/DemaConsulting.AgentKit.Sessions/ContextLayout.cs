@@ -47,7 +47,14 @@ public sealed class ContextTier
         Index = index;
         BudgetTokens = budgetTokens;
         Content = content;
-        EstimatedTokens = TokenEstimator.EstimateTokens(content);
+
+        // A blank record costs nothing, because a blank record is an empty one and an empty one is
+        // not seeded. Estimating Content directly charged a whitespace record its characters while
+        // IsEmpty, ContextLayout.ConversationTokens and ContextLayout.BuildSeed all agreed it held
+        // nothing - so IsWithinBudget could report a tier over budget for material no provider
+        // would ever receive. The cached estimate is the one figure every consumer of this tier
+        // measures it by, so it is where the single definition of empty has to be applied.
+        EstimatedTokens = string.IsNullOrWhiteSpace(content) ? 0 : TokenEstimator.EstimateTokens(content);
     }
 
     /// <summary>
@@ -68,6 +75,13 @@ public sealed class ContextTier
     /// <summary>
     ///     Gets the estimated tokens the record occupies.
     /// </summary>
+    /// <remarks>
+    ///     Zero for an empty tier, and a blank record is an empty tier — see <see cref="IsEmpty"/>
+    ///     for the one definition of empty this package uses. Charging a blank record its
+    ///     characters here would put this figure, and the <see cref="IsWithinBudget"/> comparison
+    ///     taken from it, at odds with <see cref="ContextLayout.BuildSeed"/>, which does not seed
+    ///     the record at all.
+    /// </remarks>
     public int EstimatedTokens { get; }
 
     /// <summary>
@@ -105,6 +119,13 @@ public sealed class ContextTier
     /// <summary>
     ///     Gets a value indicating whether the record fits the tier's budget.
     /// </summary>
+    /// <remarks>
+    ///     True for an empty tier whatever its budget, because an empty tier is charged nothing —
+    ///     including a tier whose record is blank, which <see cref="IsEmpty"/> reports as empty and
+    ///     <see cref="ContextLayout.BuildSeed"/> does not seed. This comparison used to charge such
+    ///     a tier its whitespace and could report it over budget while it contributed nothing to
+    ///     the seed at all.
+    /// </remarks>
     public bool IsWithinBudget => EstimatedTokens <= BudgetTokens;
 
     /// <summary>
@@ -276,14 +297,26 @@ public sealed class ContextLayout
     ///     provider-reported one about the same session. A blank record can no longer arrive from a
     ///     consolidation, because <see cref="RotationEngine"/> normalizes a blank summarizer answer
     ///     where it receives it; this remains correct for a layout a host composes itself through
-    ///     <see cref="ContextTier"/>'s public constructor.
+    ///     <see cref="ContextTier"/>'s public constructor. The tier's own
+    ///     <see cref="ContextTier.EstimatedTokens"/> is zero for a blank record as well, so the
+    ///     branch below and the figure it would have added now agree rather than merely coincide.
+    ///     </para>
+    ///     <para>
+    ///     <b>Accumulated wide and saturated rather than wrapped.</b> The transcript's own total
+    ///     fits a token count, because a transcript that could not is refused where it is appended
+    ///     to, and each tier's estimate fits one on its own; their sum need not, for a policy
+    ///     carrying enough tiers. An int accumulator would wrap that to a negative figure, which
+    ///     compares below every rotation threshold — so the largest context this library can
+    ///     account for would be the one it never rotated. Saturating at <see cref="int.MaxValue"/>
+    ///     says "at least everything a token count can hold", which crosses every threshold and
+    ///     fails every bound: the direction a figure this size has to err in.
     ///     </para>
     /// </remarks>
     public int ConversationTokens
     {
         get
         {
-            var total = Transcript.EstimatedTokens;
+            long total = Transcript.EstimatedTokens;
             foreach (var tier in _coarseTiers)
             {
                 if (tier.IsEmpty)
@@ -291,17 +324,26 @@ public sealed class ContextLayout
                     continue;
                 }
 
-                total += tier.EstimatedTokens + RecordFramingTokens(tier.Index);
+                total += (long)tier.EstimatedTokens + RecordFramingTokens(tier.Index);
             }
 
-            return total;
+            return (int)Math.Min(total, int.MaxValue);
         }
     }
 
     /// <summary>
     ///     Gets the tokens the whole context occupies, fixed overhead included.
     /// </summary>
-    public int TotalEstimatedTokens => SystemTokens + ToolDeclarationTokens + ConversationTokens;
+    /// <remarks>
+    ///     Summed wide and saturated at <see cref="int.MaxValue"/>, for the reason
+    ///     <see cref="ConversationTokens"/> is: the fixed overhead and the policy's bound are known
+    ///     to fit a token count together, because <see cref="Create"/> refuses a layout for which
+    ///     they do not, but a tier zero grown past its budget can carry the total beyond one. A
+    ///     wrapped negative total would pass <see cref="IsWithinBound"/> for the largest context
+    ///     this library can account for.
+    /// </remarks>
+    public int TotalEstimatedTokens =>
+        (int)Math.Min((long)SystemTokens + ToolDeclarationTokens + ConversationTokens, int.MaxValue);
 
     /// <summary>
     ///     Gets the most this layout can ever occupy: fixed overhead, every tier budget, and the

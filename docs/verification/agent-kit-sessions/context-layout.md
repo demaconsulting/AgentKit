@@ -63,7 +63,8 @@ while each looked individually correct.
 `ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord`,
 `ContextLayout_Create_UnrepresentableBound_Throws`,
 `ContextLayout_ConversationTokens_ExcludeTheFixedOverhead`,
-`ContextTier_IsWithinBudget_ReflectsTheRecordSize`
+`ContextTier_IsWithinBudget_ReflectsTheRecordSize`,
+`ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget`
 
 Asserts the bound is exactly the fixed overhead, every tier budget and the framing each tier record
 carries when seeded, and that a fresh layout sits within it; that conversation tokens count the
@@ -85,6 +86,16 @@ remaining way to exceed one; a system prompt and a declaration block of `int.Max
 refused at creation rather than allowed to wrap. A wrapped bound is negative, and an empty layout —
 which holds nothing at all — would then report itself outside the bound it was constructed to
 respect.
+
+The blank-record scenario is the other side of the same accounting, and it is where the
+whitespace-as-empty class reopened. A one-token tier holding a hundred characters of whitespace is
+empty to `IsEmpty`, absent from `ConversationTokens` and omitted from `BuildSeed`, and the test
+asserts the tier's own estimate is zero and that it therefore fits a budget it could not otherwise
+fit. Against an estimate taken from the content unconditionally it reports twenty-five tokens and
+`IsWithinBudget` is false — a tier declared over budget for material no provider would ever be sent.
+Normalizing a summarizer's answer closed this for the values a rotation produces and could not reach
+a record a host composed through the public tier constructor, which is the route this scenario
+takes.
 
 #### AgentKitSessions-ContextLayout-Immutable: A Layout Is Never Modified in Place
 

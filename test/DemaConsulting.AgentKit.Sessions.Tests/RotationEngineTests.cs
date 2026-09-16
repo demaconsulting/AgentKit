@@ -108,19 +108,24 @@ public class RotationEngineTests
     }
 
     /// <summary>
-    ///     Proves a forced consolidation keeps every tool call with its result, because the whole
-    ///     history travels into one consolidation rather than being cut at an estimated boundary.
+    ///     Proves a forced consolidation hands the summarizer the whole verbatim history in the
+    ///     order it was recorded, so nothing is dropped or reordered on the path that ignores the
+    ///     estimated split.
     /// </summary>
     /// <remarks>
-    ///     <b>Asserted against the material the summarizer was handed, not against what survived.</b>
-    ///     A forced consolidation retains nothing, so an assertion that the verbatim history is empty
-    ///     is true however the split behaved, and an assertion that the seed carries no tool result
-    ///     follows from it — a seed is the tier records plus that same empty history. Neither can
-    ///     fail, so neither exercises pair integrity. The material is where a broken split is
-    ///     visible: it is the one place a call separated from its result actually shows up.
+    ///     <b>This test does not exercise pair integrity, and no longer claims to.</b> The forced
+    ///     path splits at a budget of zero, which leaves <c>first == _entries.Length</c>; the
+    ///     orphan scan over an empty retained window has nothing to iterate and returns -1, so the
+    ///     snap is a structural no-op and the overflow is the whole transcript in recorded order
+    ///     however the pairing logic behaves. A deliberately broken snap could not change the
+    ///     outcome here, so an assertion about orphans would be true by construction. What this
+    ///     test does establish is that the forced split hands over everything, in order, with every
+    ///     identifier intact — the property a portion-taking or reordering split would break. Pair
+    ///     integrity is exercised where the snap actually decides something, in
+    ///     <see cref="RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult"/>.
     /// </remarks>
     [Fact]
-    public async Task RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult()
+    public async Task RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_ConsolidatesTheWholeHistoryInOrder()
     {
         // Arrange: three interleaved runs of parallel calls, 60 tokens in all, well within tier
         // zero's hundred-token budget so the estimated split would retain every one of them
@@ -142,9 +147,10 @@ public class RotationEngineTests
             ContextUsageOrigin.Provider,
             TestContext.Current.CancellationToken);
 
-        // Assert: the material the summarizer was handed holds every call with its own result, in
-        // the order they were recorded - which is the property a boundary cut breaks and the only
-        // place a broken cut is visible, since a forced consolidation retains nothing either way
+        // Assert: the material the summarizer was handed holds every entry the transcript did, in
+        // the order they were recorded and with every identifier intact. That is what a split
+        // taking a portion, or emitting the overflow newest-first, would break - and it is all this
+        // forced path can demonstrate, because the snap decides nothing at a budget of zero
         var request = Assert.Single(summarizer.Requests);
         var pairing = request.Material
             .Split('\n')
@@ -159,8 +165,8 @@ public class RotationEngineTests
             ],
             pairing);
 
-        // Assert: and nothing verbatim survived, so the other side of the split left no result
-        // behind without its call either
+        // Assert: and nothing verbatim survived, which is what "the whole history" means on this
+        // path. It follows from the zero budget rather than from the pairing logic
         Assert.Empty(outcome.Layout.Transcript.Entries);
     }
 
@@ -698,6 +704,56 @@ public class RotationEngineTests
         Assert.DoesNotContain(
             outcome.Layout.BuildSeed(),
             entry => entry.Kind == TranscriptEntryKind.ContextRecord);
+    }
+
+    /// <summary>
+    ///     Proves a blank previous record is charged nothing into the saturation ratio, so the one
+    ///     consumer that still measured whitespace as content reads the same string the same way as
+    ///     the cascade test three lines below it.
+    /// </summary>
+    /// <remarks>
+    ///     <b>Normalizing at the summarizer boundary cannot reach a record a host composed.</b> A
+    ///     blank record can no longer arrive from a consolidation, but <c>ContextTier</c>'s
+    ///     constructor is public and this engine accepts whatever layout it is handed. The
+    ///     saturation input re-estimated the previous record from its text rather than reading the
+    ///     tier's own estimate, so a blank record inflated the input the output is measured
+    ///     against — the same string that the cascade test, <c>ConsolidationRequest.IsDegradation</c>
+    ///     and the seed all treat as absent. Inflating the input suppresses the signal: a
+    ///     consolidation that genuinely removed nothing is compared against an input it was never
+    ///     given and reported as an ordinary success.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_BlankPreviousRecord_ChargesItNothingIntoTheSaturationRatio()
+    {
+        // Arrange: a host-composed layout whose tier one holds fifty tokens of pure whitespace, and
+        // a summarizer that echoes the material back - a consolidation that removed nothing at all
+        var policy = SessionTestData.SmallPolicy;
+        var transcript = SessionTestData.TranscriptOf(10, 20);
+        var summarizer = new FakeSummarizer(request => request.Material);
+        var layout = ContextLayout.Create(policy, 0, 0).WithTiers(
+            transcript,
+            [
+                new ContextTier(1, policy.TierBudgetTokens[1], new string(' ', 50 * TokenEstimator.CharactersPerToken)),
+                ContextTier.Empty(2, policy.TierBudgetTokens[2]),
+                ContextTier.Empty(3, policy.TierBudgetTokens[3]),
+            ]);
+
+        // Act
+        var outcome = await RotationEngine.RotateAsync(
+            layout, summarizer, ContextUsageOrigin.Estimated, TestContext.Current.CancellationToken);
+
+        // Assert: the material is the whole of the input the ratio was taken against, in every
+        // signal the rotation raised. Charging the whitespace as well put the input half as far
+        // again above the output, which is below the ratio and so reported no redundancy signal at
+        // all.
+        var (_, overflow) = transcript.SplitAtBudget(policy.TierBudgetTokens[0]);
+        var materialTokens = TokenEstimator.EstimateTokens(SessionTranscript.Render(overflow));
+
+        var signal = Assert.Single(
+            outcome.Saturations, s => s.Reason == SaturationReason.NoRedundancy);
+        Assert.Equal(materialTokens, signal.InputTokens);
+        Assert.Equal(materialTokens, signal.OutputTokens);
+        Assert.All(outcome.Saturations, s => Assert.Equal(materialTokens, s.InputTokens));
     }
 
     /// <summary>

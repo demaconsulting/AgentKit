@@ -878,6 +878,112 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves a provider that reports nothing when its session is created, and then reports
+    ///     totals over a real unreported overhead, has that overhead measured at the first report
+    ///     rather than credited as zero for the rest of the provider session's life.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This is the same defect as the creation-time one, reached through the door the
+    ///     reporting contract holds open.</b> <c>IContextUsageReporter</c> states that an
+    ///     implementation which sometimes knows returns <see langword="null"/> until it does, so a
+    ///     provider silent at creation is conformant. The fold was measured only at the instant the
+    ///     provider session was adopted: a provider silent at that instant was recorded as folding
+    ///     nothing and kept that figure until the next rotation created a new provider session —
+    ///     where the conversation is no longer empty and the measurement is no more separable than
+    ///     it was the first time. So a real fold was never credited at all, and the convergence
+    ///     check compared a reported window against a bound missing it.
+    ///     </para>
+    ///     <para>
+    ///     The arithmetic: the small policy's rotated context bounds at 311 tokens, so a 500-token
+    ///     window — threshold 350 — passes the check with no fold credited, which is what used to
+    ///     happen here. The provider charges 100 tokens it never breaks out, and once those are
+    ///     measured against this library's estimate of the one turn taken so far the requirement
+    ///     rises past 500 and the session is refused instead. Before the fix this turn returned an
+    ///     ordinary answer and the session rotated on every turn thereafter, raising no saturation
+    ///     signal.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen()
+    {
+        // Arrange: a provider silent until it has answered a turn, then reporting totals alone over
+        // 100 tokens of overhead it never breaks out, in a window that looks convergent only while
+        // that overhead is credited as nothing
+        var factory = new UnsplitReportingProviderSessionFactory(
+            windowTokens: 500,
+            unreportedOverheadTokens: 100,
+            conversationTokensPerTurn: 0,
+            silentUntilFirstTurn: true);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act: creation cannot refuse it, because the provider says nothing there - the estimated
+        // figure it falls back to carries the configured window, which converges
+        var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+        Assert.Equal(ContextUsageOrigin.Estimated, session.Usage.Origin);
+
+        // Act: the first turn is where the provider first speaks, and so where the fold is measured
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("m", TestContext.Current.CancellationToken));
+
+        // Assert: a fold was measured rather than credited as zero, and the requirement quoted is
+        // the one that carries it - above the 446 tokens the same policy needs with no fold at all
+        Assert.DoesNotContain("a further 0 tokens", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("requires at least 446", error.Message, StringComparison.Ordinal);
+
+        // Assert: the session was abandoned rather than left to rotate on every turn, and its
+        // provider session released
+        Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("again", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a late-reporting provider in a window large enough to converge once its fold is
+    ///     credited is accepted and settles, so the measurement above refuses the configurations
+    ///     that thrash rather than the reporting shape itself.
+    /// </summary>
+    /// <remarks>
+    ///     Without this scenario the refusal above would be satisfied by a session that simply gave
+    ///     up on any provider silent at creation — which is the other answer this finding could have
+    ///     taken, and the one that was rejected: an implementation reporting nothing until it knows
+    ///     is doing exactly what the reporting contract invites, and abandoning it after a real
+    ///     message has been spent is a worse outcome than measuring it approximately.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles()
+    {
+        // Arrange: the same silent-then-totals-only shape and the same unreported 100 tokens, in a
+        // 1,200-token window, with each turn adding 200 reported conversation tokens
+        var factory = new UnsplitReportingProviderSessionFactory(
+            windowTokens: 1200,
+            unreportedOverheadTokens: 100,
+            conversationTokensPerTurn: 200,
+            silentUntilFirstTurn: true);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: four turns, which crosses the threshold taken from the reported window and rotates
+        for (var turn = 0; turn < 4; turn++)
+        {
+            await session.SendAsync($"message {turn}", TestContext.Current.CancellationToken);
+        }
+
+        // Assert: it rotated rather than running on, and did not rotate on every turn
+        Assert.True(session.RotationCount >= 1);
+        Assert.True(session.RotationCount < 4);
+
+        // Assert: and one more turn reads the provider's own figures, because the replacement a
+        // rotation adopted is silent at creation in its turn and speaks on the first turn after
+        await session.SendAsync("settled", TestContext.Current.CancellationToken);
+        Assert.Equal(ContextUsageOrigin.Provider, session.Usage.Origin);
+    }
+
+    /// <summary>
     ///     Proves a missing configuration or provider factory is refused where the host wrote it,
     ///     rather than at the first conversation.
     /// </summary>
@@ -1618,15 +1724,27 @@ internal sealed class SplitReportingProviderSessionFactory(
 ///     reported separately.
 /// </param>
 /// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="silentUntilFirstTurn">
+///     Whether the session reports nothing until it has answered a turn, which
+///     <see cref="IContextUsageReporter"/> explicitly permits. The shape that used to be credited a
+///     fold of zero for the whole life of the provider session, because the one moment the fold was
+///     measured was the one moment this session says nothing.
+/// </param>
 internal sealed class UnsplitReportingProviderSession(
     int windowTokens,
     int unreportedOverheadTokens,
-    int conversationTokensPerTurn) : IProviderSession, IContextUsageReporter
+    int conversationTokensPerTurn,
+    bool silentUntilFirstTurn = false) : IProviderSession, IContextUsageReporter
 {
     /// <summary>
     ///     The conversation tokens charged so far, grown by each answered turn.
     /// </summary>
     private int _conversationTokens;
+
+    /// <summary>
+    ///     How many turns this session has answered.
+    /// </summary>
+    private int _turnCount;
 
     /// <summary>
     ///     Gets a value indicating whether this session was released.
@@ -1637,9 +1755,13 @@ internal sealed class UnsplitReportingProviderSession(
     /// <remarks>
     ///     Totals only: the overhead is inside <c>usedTokens</c> and nowhere else, so the engine
     ///     sees an <c>OverheadTokens</c> of zero and a conversation figure that silently carries it.
+    ///     A session configured to stay silent returns <see langword="null"/> until it has answered
+    ///     a turn, which is the "sometimes knows" shape the reporting contract describes.
     /// </remarks>
     public ContextUsage? CurrentUsage =>
-        ContextUsage.FromProvider(unreportedOverheadTokens + _conversationTokens, windowTokens);
+        silentUntilFirstTurn && _turnCount == 0
+            ? null
+            : ContextUsage.FromProvider(unreportedOverheadTokens + _conversationTokens, windowTokens);
 
     /// <inheritdoc/>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
@@ -1649,6 +1771,7 @@ internal sealed class UnsplitReportingProviderSession(
         cancellationToken.ThrowIfCancellationRequested();
 
         _conversationTokens += conversationTokensPerTurn;
+        _turnCount++;
         return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
     }
 
@@ -1672,10 +1795,14 @@ internal sealed class UnsplitReportingProviderSession(
 /// <param name="windowTokens">The window each created session reports.</param>
 /// <param name="unreportedOverheadTokens">The overhead each created session folds into its total.</param>
 /// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="silentUntilFirstTurn">
+///     Whether each created session reports nothing until it has answered a turn.
+/// </param>
 internal sealed class UnsplitReportingProviderSessionFactory(
     int windowTokens,
     int unreportedOverheadTokens,
-    int conversationTokensPerTurn) : IProviderSessionFactory
+    int conversationTokensPerTurn,
+    bool silentUntilFirstTurn = false) : IProviderSessionFactory
 {
     /// <summary>
     ///     Gets every session created so far, oldest first.
@@ -1691,7 +1818,7 @@ internal sealed class UnsplitReportingProviderSessionFactory(
         cancellationToken.ThrowIfCancellationRequested();
 
         var session = new UnsplitReportingProviderSession(
-            windowTokens, unreportedOverheadTokens, conversationTokensPerTurn);
+            windowTokens, unreportedOverheadTokens, conversationTokensPerTurn, silentUntilFirstTurn);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

@@ -237,15 +237,29 @@ rotated bound passes a threshold of 350, and the replacement it then produces is
 against that same 350 and rotates on every turn thereafter. The fold is therefore **measured, not
 assumed**.
 
-**The fold is a property of the live provider session, and is measured per provider session.**
-Whatever a provider-reported figure calls conversation at the instant a session is created, over and
-above this library's own count of the content that session was handed, is not conversation — it is
-the system prompt, the tool declarations and whatever framing the provider charges for, in the
-provider's own tokens. For the first provider session of a conversation the subtrahend is zero,
-because it is seeded with no history at all, and the whole of what it calls conversation is fold.
-For a replacement it is the estimated size of the rotated context that replacement was seeded with.
-The measurement therefore travels with the provider session it describes, and adopting a replacement
+**The fold is a property of the live provider session, and is measured per provider session, at the
+first instant that provider session reports anything.** Whatever a provider-reported figure calls
+conversation at that instant, over and above this library's own count of the conversation the
+session then holds, is not conversation — it is the system prompt, the tool declarations and
+whatever framing the provider charges for, in the provider's own tokens. For the first provider
+session of a conversation, reported at creation, the subtrahend is zero, because it is seeded with
+no history at all and the whole of what it calls conversation is fold. For a replacement reported at
+creation it is the estimated size of the rotated context that replacement was seeded with. The
+measurement therefore travels with the provider session it describes, and adopting a replacement
 replaces the fold along with the provider reference and the release flag, in one assignment.
+
+**A provider session that reports nothing when it is adopted has the measurement deferred, not
+settled at zero.** `IContextUsageReporter` permits `CurrentUsage` to be `null` at creation and says
+plainly that an implementation which sometimes knows returns `null` until it does — so at that
+instant the session has only its own estimate, which carries no fold to find. The measurement is
+taken instead at the first turn the provider does report on, against this library's estimate of the
+conversation by then, and is then fixed for that provider session's life. Refusing the reporting
+transition outright was the alternative and was rejected: it abandons a session over conformant
+adapter behavior, and abandons it after a real message has been spent, to avoid a measurement the
+library can simply take. Recording it as *unmeasured* rather than as a fold of zero is what makes
+the deferral possible, because no reading of the figure itself distinguishes a genuine zero — every
+split-reporting adapter — from an absent one, and a genuine zero must not be re-measured against a
+conversation that has since grown.
 
 *Measuring it once and reusing it was wrong in both directions, which is why this is a lifecycle
 property rather than another guard.* A totals-only first session replaced by one that reports its
@@ -254,7 +268,10 @@ replacement was refused and the session abandoned. The reverse — a split-repor
 replaced by a totals-only one — had no fold credited at all, so a replacement whose hidden overhead
 keeps every rotated context above its own threshold was accepted, and rotated on every turn
 thereafter while raising no saturation signal, because each individual consolidation reduces
-perfectly normally.
+perfectly normally. *Measuring it only at creation was wrong in a third direction*: a provider
+silent at creation and reporting totals from its first turn onward was credited nothing at all for
+overhead it charges on every turn, so it reached the same accepted-but-thrashing state through the
+door the reporting contract holds open.
 
 The subtraction is between a provider's own count and this library's estimate of the same entries, so
 it is as approximate as every other figure this check compares, and it **errs toward crediting too
@@ -277,10 +294,10 @@ all.
 totals alone. Requiring a split would either force it to fabricate one — indistinguishable from a
 measurement at the point it is consumed, which is the defect `ContextUsage` exists to remove — or
 push an otherwise sound adapter onto the estimating path, where this library's character ratio would
-decide when a real provider rotates. The one obligation such an adapter carries is to report from the
-moment a session exists rather than only once it has answered something, because a session's creation
-is the only moment its fold is separable; an adapter that begins reporting later is credited only
-what it breaks out, exactly as before.
+decide when a real provider rotates. Such an adapter should *prefer* to report from the moment a
+session exists rather than only once it has answered something, because a session's creation is the
+only moment its fold is exactly separable; an adapter that begins reporting later has it measured at
+its first report instead, approximately and in the safe direction.
 
 **Why the failure states the release's outcome, and what to do about it.** The catch around the
 release deliberately leaves the release flag false so a retry is possible, and the message

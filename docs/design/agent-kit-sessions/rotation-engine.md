@@ -178,6 +178,15 @@ public constructor — and `ContextTier`, this cascade test and `ConsolidationRe
 definition: blank is empty. A whitespace tier is consequently not seeded either, rather than costing
 a label and per-entry framing to say nothing.
 
+**Both this test and the saturation input read the tier rather than its text.** The cascade decision
+asks `tier.IsEmpty`, and the redundancy input is `tier.EstimatedTokens` plus the estimate of the new
+material — not a fresh estimate of the previous record's string. Re-estimating it charged a blank
+record's whitespace into the input the output is measured against, so within a single method the same
+string was absent to the cascade below it and present to the ratio above it. Inflating the input
+suppresses the signal: a consolidation that removed nothing at all was compared against an input it
+was never given and reported as an ordinary success. Because `ContextTier.EstimatedTokens` is zero
+for a blank record, reading the tier makes both agree by construction.
+
 **Recursion is bounded by the tier count**, so the worst case is one degradation per tier and one
 extra consolidation at each tier that cascaded.
 

@@ -200,8 +200,10 @@ public sealed class ContextUsage
     ///     overhead makes that window look larger than it is. <see cref="CompactingAgentSession"/>
     ///     therefore measures what an unsplit figure folds in — against the empty conversation its
     ///     first provider session starts from, where the fold is exactly visible — rather than
-    ///     taking this default at face value. An adapter reporting totals alone should simply report
-    ///     them from the moment the session exists, so that measurement can be taken.
+    ///     taking this default at face value. An adapter reporting totals alone should prefer to
+    ///     report them from the moment the session exists, so that measurement can be taken
+    ///     exactly; one that begins reporting later has it taken at its first report instead,
+    ///     approximately and in the safe direction.
     ///     </para>
     /// </remarks>
     /// <param name="usedTokens">The tokens the provider says are occupied. Must not be negative.</param>
@@ -268,30 +270,37 @@ public interface IContextUsageReporter
     ///     reports what the last exchange already revealed, so that reading it is free and cannot
     ///     fail.
     ///     <para>
-    ///     An implementation whose provider distinguishes the conversation from the system prompt
-    ///     and the tool declarations should pass that split to
-    ///     <see cref="ContextUsage.FromProvider"/> rather than leave it to be inferred, because it
-    ///     is the only figure in the provider's own tokens this library could otherwise only guess
-    ///     at. An implementation that cannot should still report from the moment the session exists
-    ///     rather than only once it has answered something: the empty conversation a session starts
-    ///     from is where <see cref="CompactingAgentSession"/> measures what an unsplit figure folds
-    ///     in, and an implementation that says nothing until after a turn is past that moment.
+    ///     An implementation whose provider distinguishes
+    ///     the conversation from the system prompt and the tool declarations should pass that split
+    ///     to <see cref="ContextUsage.FromProvider"/> rather than leave it to be inferred, because
+    ///     it is the only figure in the provider's own tokens this library could otherwise only
+    ///     guess at. An implementation that cannot should prefer to report from the moment the
+    ///     session exists rather than only once it has answered something: the empty conversation a
+    ///     session starts from is where <see cref="CompactingAgentSession"/> measures what an
+    ///     unsplit figure folds in exactly, and an implementation that says nothing until after a
+    ///     turn has that measured approximately instead.
     ///     </para>
     ///     <para>
-    ///     <b>The cost of reporting late, stated plainly, because nothing detects it.</b> The fold
-    ///     is measured once, when a provider session is created, and it is then credited for the
-    ///     whole life of that provider session. An implementation that returns
-    ///     <see langword="null"/> at that instant is credited a fold of zero and keeps it until the
-    ///     next rotation creates a new provider session — where it is measured again, against a
-    ///     conversation that is no longer empty, and so is no more separable than it was the first
-    ///     time. Nothing checks this figure against the provider afterwards: this library verifies
-    ///     that its accounting and the provider's agree, not that the fold it measured was the right
-    ///     one. What follows is that a provider charging real overhead it never breaks out, and
-    ///     reporting only after its first turn, is treated as charging none — so
-    ///     <see cref="CompactingAgentSession"/> may accept a window it cannot in fact converge in,
-    ///     and rotate on every turn without raising a saturation signal. There is no way for this
-    ///     library to detect that, and an implementation reporting totals alone is the only party
-    ///     that can prevent it: report from creation, or report the split.
+    ///     <b>Reporting late costs something, and the cost is now bounded rather than
+    ///     unbounded.</b> The fold is measured once per provider session, at the first instant that
+    ///     provider session produces a figure of its own. For an implementation reporting from
+    ///     creation that instant is creation, where the conversation is exactly what the session
+    ///     was seeded with and the measurement is exact. For an implementation that returns
+    ///     <see langword="null"/> at creation it is the first turn the implementation does report
+    ///     on, and the measurement is taken against this library's own estimate of the conversation
+    ///     by then — so a turn's worth of estimating error sits inside it. That error is credited
+    ///     as fold, which only ever raises the bound the rotation threshold must exceed, so it
+    ///     refuses a marginal window rather than accepting one that cannot settle.
+    ///     </para>
+    ///     <para>
+    ///     What it is no longer is unmeasured. An implementation silent at creation used to be
+    ///     credited a fold of zero for that whole provider session, so a provider charging real
+    ///     overhead it never breaks out was treated as charging none:
+    ///     <see cref="CompactingAgentSession"/> could accept a window it cannot in fact converge in
+    ///     and rotate on every turn without raising a saturation signal. Reporting from creation,
+    ///     or reporting the split, is still what an implementation should do — it is the difference
+    ///     between an exact measurement and an approximate one — but neither is required for the
+    ///     fold to be measured at all.
     ///     </para>
     /// </remarks>
     ContextUsage? CurrentUsage { get; }

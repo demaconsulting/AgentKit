@@ -94,6 +94,18 @@ overflow is the material a consolidation is about to be handed, so a caller able
 could change what the summarizer sees after the split had already decided it — the same defect
 `Entries` is protected against, applied to the other collection this type publishes.
 
+**What no scenario here can reach, and how it is verified instead.** The fit test's overflow
+condition requires a tier-zero budget near the largest representable token count *and* entries
+accumulated near it. Because a single entry is capped by the runtime's string limit at about 2^28
+tokens, nine entries carrying the longest string that can exist are needed to cross it — roughly
+sixteen gigabytes of live strings — which is not a test this suite can run, here or on any
+reasonable machine. The same is true of the cached total's rejection. Both were therefore confirmed
+by executing the exact expressions at those magnitudes outside the suite: the ninth entry makes
+`used + candidate` wrap to a negative figure that compares below the budget, so the old test retains
+it, while the subtraction reports correctly; and the same nine entries sum to −1,879,048,228 in
+`int` against 2,415,919,068 wide. The scenarios above continue to verify the behavior at ordinary
+magnitudes, which is where the fix must change nothing.
+
 #### AgentKitSessions-SessionTranscript-SnapsToolBoundary: A Boundary Inside a Tool Pair Snaps
 
 **Tests**: `SessionTranscript_SplitAtBudget_BoundaryInsideToolPair_SnapsPastTheResult`,

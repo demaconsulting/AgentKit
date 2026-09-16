@@ -72,7 +72,7 @@ comes from.
 
 **Tests**: `RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow`,
 `RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing`,
-`RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult`,
+`RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_ConsolidatesTheWholeHistoryInOrder`,
 `RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws`,
 `CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway`
 
@@ -90,16 +90,22 @@ nothing even on a provider-reported crossing, is handed back as the same instanc
 summarizer — so the forced path cannot manufacture an empty consolidation or a provider session per
 turn out of a session with nothing recorded.
 
-The third confirms the forced split keeps every tool call with its result, which it does by taking
-everything into one consolidation: three interleaved runs of parallel calls, 60 tokens in all and so
-comfortably inside tier zero's budget. It asserts against the **material the summarizer was handed**,
-reading back the labeled call and result lines and requiring the full interleaved sequence in
-recorded order — which is where a boundary cut separating a call from its result is visible. The
-other side of the split is asserted separately: nothing survived verbatim, so no result was left
-behind without its call either. Asserting the seed instead cannot fail: a forced consolidation
-retains nothing, a seed is the tier records plus that same empty history, and so no tool result can
-appear in it however the split behaved. Rewritten against a split that hands the summarizer two
-orphaned results with their calls dropped, the seed assertions pass and these fail.
+The third confirms the forced split hands over the **whole** verbatim history, in the order it was
+recorded: three interleaved runs of parallel calls, 60 tokens in all and so comfortably inside tier
+zero's budget. It asserts against the **material the summarizer was handed**, reading back the
+labeled call and result lines and requiring the full interleaved sequence in recorded order — which
+is what a split taking a portion, dropping an entry, or emitting the overflow newest-first would
+break.
+
+**What it deliberately does not claim.** It does not exercise the boundary snap that keeps a tool
+call with its result, and it no longer says it does. The forced path splits at a budget of zero, so
+the retained window begins past the last entry; the orphan scan over an empty window never enters
+its loop and reports none, and the overflow is the whole transcript in recorded order however the
+pairing logic behaves. A deliberately broken snap cannot change the outcome here, so an assertion
+about orphans — over the material, the retained window or the seed alike — would be true by
+construction. Pair integrity is exercised where the snap actually decides something, in
+`RotationEngine_RotateAsync_BoundaryInsideToolPair_NeverSeedsAnOrphanedResult` under
+*AgentKitSessions-SessionTranscript-SnapsToolBoundary*.
 
 The fourth refuses an undefined origin. The origin decides whether an estimated split may abandon the
 rotation, so a cast integer is a defect in the caller and is refused as the other enum-taking members
@@ -223,7 +229,9 @@ engine's own and not the summarizer's — and that the layout handed in still ho
 
 **Tests**: `RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty`,
 `RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation`,
-`ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed`
+`RotationEngine_RotateAsync_BlankPreviousRecord_ChargesItNothingIntoTheSaturationRatio`,
+`ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed`,
+`ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget`
 
 A summarizer returning whitespace is behaving within its contract — `ISummarizer` forbids only
 null — so the engine has to have an answer for it, and for several rounds that answer was
@@ -243,9 +251,27 @@ exactly the empty string, that it estimates at zero tokens and sits within budge
 saturation was reported, and that the layout's conversation figure equals its transcript alone and
 agrees with a seed carrying no record at all.
 
-The third exercises the same rule by the one route no summarizer takes. `ContextTier`'s constructor
+The third is where this class reopened, at a consumer that charged the record anyway. It composes a
+layout through the public tier constructor — the route no summarizer takes and no normalization can
+reach — whose tier one holds 50 tokens of whitespace, and rotates with a summarizer that echoes its
+material back, a consolidation that removed precisely nothing. The test asserts the redundancy signal
+exists and that its input is the material alone, exactly the estimate of the rendered overflow.
+Charging the whitespace as well puts the input half as far again above the output, which is below
+the saturation ratio, so the previous behavior reported no redundancy signal at all and the scenario
+fails there: a consolidation that had genuinely saturated was reported as an ordinary success. The
+same figure is asserted across every signal the rotation raised, so a cascade path cannot charge it
+either.
+
+The fourth exercises the same rule by the one route no summarizer takes. `ContextTier`'s constructor
 is public, so a host composing its own layout can still supply a blank record; the scenario builds
 one carrying 40 tokens of whitespace beside 60 tokens of verbatim history and asserts the
 conversation figure is 60 — neither the content nor its framing charged — matching a seed that emits
 no record. Charging the content before asking whether the tier was empty is what made the two
 accounts disagree.
+
+The fifth closes the reading at the tier itself, which is where every other consumer measures one. A
+one-token tier holding whitespace asserts an estimate of zero and a budget it therefore fits;
+against an estimate taken from the content unconditionally it is 25 tokens and over budget, which is
+a tier declared unfit for material no provider would ever be sent. Applying the definition of empty
+in the cached estimate rather than at each consumer is what keeps the three scenarios above from
+being three separate agreements that a fourth consumer can break.

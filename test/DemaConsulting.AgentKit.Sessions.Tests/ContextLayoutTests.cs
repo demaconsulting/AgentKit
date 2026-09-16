@@ -336,6 +336,34 @@ public class ContextLayoutTests
     }
 
     /// <summary>
+    ///     Proves a blank record is charged nothing by the tier itself, so the one consumer that
+    ///     measured it independently of <see cref="ContextTier.IsEmpty"/> now reads the same string
+    ///     the same way as every other.
+    /// </summary>
+    /// <remarks>
+    ///     <b>Normalizing at the summarizer boundary closed this class for the values a rotation
+    ///     produces and not for the values a host can compose.</b> The constructor is public, and
+    ///     the cached estimate was taken from the content unconditionally — so a blank record was
+    ///     empty to <c>IsEmpty</c>, empty to <c>ContextLayout.ConversationTokens</c> and absent from
+    ///     <c>BuildSeed</c>, while <c>EstimatedTokens</c> charged it in full and
+    ///     <c>IsWithinBudget</c> could report a tier over budget for material no provider would ever
+    ///     receive. The definition of empty belongs in the estimate, because the estimate is what
+    ///     every consumer measures a tier by.
+    /// </remarks>
+    [Fact]
+    public void ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget()
+    {
+        // Arrange / Act: a one-token tier holding a hundred characters of pure whitespace - which
+        // is twenty-five tokens if it is charged as content
+        var blank = new ContextTier(1, 1, new string(' ', 100));
+
+        // Assert: empty, charged nothing, and therefore within a budget it could not otherwise fit
+        Assert.True(blank.IsEmpty);
+        Assert.Equal(0, blank.EstimatedTokens);
+        Assert.True(blank.IsWithinBudget);
+    }
+
+    /// <summary>
     ///     Proves tier zero cannot be represented as a coarse tier: it holds verbatim history and is
     ///     a transcript, not a consolidated record.
     /// </summary>

@@ -25,9 +25,9 @@ holds verbatim history and is a `SessionTranscript`.
 - **`Index`** (`int`) — One or greater; tier zero is the transcript, not a tier object
 - **`BudgetTokens`** (`int`) — Positive
 - **`Content`** (`string`) — Never null; empty or blank means the tier holds nothing yet
-- **`EstimatedTokens`** (`int`) — Computed once at construction from `Content`
+- **`EstimatedTokens`** (`int`) — Computed once at construction from `Content`; zero when `Content` is blank
 - **`IsEmpty`** (`bool`) — Derived: `string.IsNullOrWhiteSpace(Content)`
-- **`IsWithinBudget`** (`bool`) — Derived: `EstimatedTokens <= BudgetTokens`
+- **`IsWithinBudget`** (`bool`) — Derived: `EstimatedTokens <= BudgetTokens`; always true for an empty tier
 
 `ContextLayout` properties:
 
@@ -39,7 +39,8 @@ holds verbatim history and is a `SessionTranscript`.
   contains null; a read-only view over the layout's own array
 - **`ConversationTokens`** (`int`) — Derived: transcript, every coarse tier, and the seed framing of each non-empty
   tier
-- **`TotalEstimatedTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens + ConversationTokens`
+- **`TotalEstimatedTokens`** (`int`) — Derived: `SystemTokens + ToolDeclarationTokens + ConversationTokens`, summed
+  wide and saturated at the largest representable token count
 - **`MaximumBoundTokens`** (`int`) — Derived:
   `SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy)`
 - **`IsWithinBound`** (`bool`) — Derived: `TotalEstimatedTokens <= MaximumBoundTokens`
@@ -65,6 +66,25 @@ coarse tier, because a bound must assume the worst case.
 **`ConversationTokens` excludes the fixed overhead** because the rotation threshold is a fraction of
 the effective window rather than of the whole one. Publishing both figures makes the comparison
 unambiguous rather than something each caller re-derives.
+
+**A blank record costs nothing, and the tier's own estimate is where that is decided.** `IsEmpty`,
+`ConversationTokens` and `BuildSeed` all treat a whitespace record as absent, so `EstimatedTokens`
+does too — it is computed as zero for one. Taking the estimate from the content unconditionally left
+the one consumer that measures a tier disagreeing with the three that skip it: `IsWithinBudget`
+could report a tier over budget for material no provider would ever receive, and any consumer
+reading the estimate directly charged it. Applying the definition of empty in the cached estimate
+rather than at each consumer is what makes every consumer agree by construction; the rotation
+engine's saturation input and cascade decision now read the tier rather than re-estimating its text
+for exactly that reason.
+
+**The two growing figures saturate rather than wrap.** `ConversationTokens` and
+`TotalEstimatedTokens` are accumulated in a wider type and clamped to the largest representable
+token count. Their terms each fit one on their own — the transcript refuses a total that does not,
+and a single tier estimate is capped by the runtime's string limit — but they need not fit one
+together for a policy carrying enough tiers. A wrapped negative total compares below every rotation
+threshold and inside every bound, so the largest context this library can account for would be the
+one it never rotated and never reported as over its bound. Saturating states "at least everything a
+token count can hold", which crosses every threshold and fails every bound.
 
 **`IsWithinBound` is a post-rotation property.** It is true immediately after a rotation and false
 in the ordinary course of a session between rotations, because tier zero is append-only and grows

@@ -71,6 +71,15 @@ twice the copying over a window that is filling.
 Immutability is what makes the rotation engine a pure function of its inputs and lets a test hold a
 before-and-after pair.
 
+**The cached total is accumulated wide and refused where it cannot be represented.** One entry fits
+a token count on its own — the runtime's string limit caps a single entry a long way below one — but
+nine entries carrying the longest string that can exist do not. An `int` accumulator wraps that to a
+negative figure, and `EstimatedTokens` is what every rotation decision is taken from: a negative
+total compares below every threshold, so the transcript that most needed to rotate would be the one
+that never did. Construction is where the total first becomes computable, so an unrepresentable one
+is rejected there rather than at each later site that reads it, exactly as the tool declarations
+are. An append is the only way a transcript grows, so it is the only operation that can raise it.
+
 #### SplitAtBudget(int budgetTokens)
 
 Splits the transcript into the newest entries that fit a verbatim budget and the older entries to
@@ -79,7 +88,9 @@ consolidate.
 **Algorithm:**
 
 1. Walk backwards from the newest entry, accumulating estimated tokens, stopping when the next entry
-   would not fit. The boundary index is the oldest retained entry.
+   would not fit — asked as *does the candidate exceed the budget less what is used*, never as *does
+   the used total plus the candidate exceed the budget*. The boundary index is the oldest retained
+   entry.
 2. While any retained entry is a `ToolResult` with no matching `ToolCall` earlier in the retained
    set, move the boundary to one past that result, pushing it and everything before it into the
    overflow. This repeats, because dropping the calls before an orphan can orphan a result that was
@@ -89,6 +100,15 @@ consolidate.
 
 **Why newest-first.** Recency is what tier zero is for, so the retained set is always a contiguous
 suffix: the most recent turns, held verbatim.
+
+**Why the fit test is a subtraction.** `used + candidate.EstimatedTokens > budgetTokens` is `int`
+arithmetic. A policy may budget tier zero at the largest representable token count, and a transcript
+may accumulate near it, at which point the sum wraps negative, compares below the budget, and the
+entry is retained — carrying the retained set past the very bound this split documents, silently and
+in the one direction the arrangement cannot tolerate. Asking whether the candidate exceeds the
+budget less what is used cannot wrap: the loop only continues while the used total is within the
+budget and both are non-negative, so the difference is a non-negative token count and the comparison
+is exact at every budget a policy can express.
 
 **Why the whole retained window is validated, not just its first entry.** A retained set holding a
 result whose call is gone is an orphan wherever it sits. Checking only the first entry missed the
@@ -147,7 +167,7 @@ every entry is validated as it arrives.
 ### Dependencies
 
 - **TokenEstimator** — supplies the character ratio and the per-entry framing allowance; see
-  _TokenEstimator Unit Design_.
+  *TokenEstimator Unit Design*.
 
 ### Callers
 

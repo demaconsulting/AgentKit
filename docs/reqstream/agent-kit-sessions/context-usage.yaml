@@ -104,21 +104,31 @@ sections:
               interface lets an adapter say "I do not know" by simply not implementing it, and lets
               an adapter that sometimes knows report nothing until it does.
 
-              The freedom to report nothing until later carries a cost the contract states rather
-              than hides, because nothing in this library can detect it. What an unsplit figure
-              folds into its conversation count is measured once, at the instant a provider session
-              is created, and credited for that provider session's whole life. An implementation
-              reporting nothing at that instant is credited a fold of zero and keeps it until the
-              next rotation creates a new provider session, where the conversation is no longer
-              empty and the fold is no more separable than it was the first time. The session then
-              verifies that its own accounting and the provider's agree, not that the fold it
-              measured was correct, and no later reading distinguishes a genuine zero from an
-              unmeasured one. A provider charging real overhead it never breaks out, and reporting
-              only after its first turn, is therefore treated as charging none, so a window it
-              cannot converge in may be accepted and the session may rotate on every turn without
-              raising a saturation signal. The implementation is the only party able to prevent
-              that, by reporting from creation or by reporting the split, which is why the contract
-              states it as an obligation an implementation carries rather than a preference.
+              The freedom to report nothing until later costs accuracy rather than the measurement
+              itself. What an unsplit figure folds into its conversation count is measured once per
+              provider session, at the first instant that provider session produces a figure of its
+              own: creation for an implementation that reports from creation, where the conversation
+              is exactly the seeded history and the subtraction is exact, and the first turn it does
+              report on otherwise, where the subtrahend is this library's own estimate of the
+              conversation by then and a turn's worth of estimating error sits inside the result.
+              That error is credited as fold, and the fold only ever raises the bound a rotation
+              threshold must exceed, so an over-credit refuses a marginal window rather than
+              accepting one that cannot settle.
+
+              Deferring the measurement rather than refusing the transition is deliberate. This
+              contract invites an implementation that sometimes knows to report nothing until it
+              does, so refusing would abandon a session over conformant adapter behavior, and would
+              abandon it after a real message had been spent. What reporting late no longer does is
+              leave the fold unmeasured: an implementation silent at creation used to be credited a
+              fold of zero for that provider session's whole life, so a provider charging real
+              overhead it never breaks out was treated as charging none, a window it cannot converge
+              in was accepted, and the session rotated on every turn without raising a saturation
+              signal. Reporting from creation, or reporting the split, remains what an
+              implementation should do, because it is the difference between an exact measurement
+              and an approximate one. See
+              AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow.
             tests:
               - ContextUsage_Reporter_MayReportNothing
               - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull
+              - CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen
+              - CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles

@@ -73,13 +73,17 @@ sections:
               chosen in the other may not reduce anything the provider is counting: a turn appends at
               least a message and an answer, so a rotation shaving an entry or two ages out less than
               the next turn adds. Consolidating everything reduces the conversation to the tier
-              records alone, is reached through the same split at a budget of zero so no tool call is
-              separated from its result, and terminates - an empty transcript consolidates nothing
-              and is reported as the non-rotation it is.
+              records alone, is reached through the same split at a budget of zero - which retains
+              nothing, so the whole history travels into one consolidation in the order it was
+              recorded and no pair can be divided because no division is made - and terminates: an
+              empty transcript consolidates nothing and is reported as the non-rotation it is. The
+              boundary snap that keeps a tool call with its result is not exercised on this path and
+              is verified where it decides something, under
+              AgentKitSessions-SessionTranscript-SnapsToolBoundary.
             tests:
               - RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow
               - RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing
-              - RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult
+              - RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_ConsolidatesTheWholeHistoryInOrder
               - RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws
               - CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway
 
@@ -193,8 +197,16 @@ sections:
               each consumer to read it the same way, so the tier record, the estimated conversation
               and the seed describe one thing by construction. The blank tests in the layout and the
               consolidation request are kept as well, because a host composing a layout through the
-              public tier constructor can still supply a blank record by a route no summarizer takes.
+              public tier constructor can still supply a blank record by a route no summarizer takes
+              - and every consumer that measures, charges or compares a tier record reaches the same
+              answer about one, because the tier's own cached estimate is zero for a blank record and
+              that estimate is what they all read. The saturation input and the cascade decision ask
+              the tier rather than re-reading its text for exactly that reason: re-estimating it
+              charged whitespace into the ratio that the cascade beside it treated as absent, which
+              suppressed a redundancy signal a consolidation had genuinely earned.
             tests:
               - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty
               - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation
+              - RotationEngine_RotateAsync_BlankPreviousRecord_ChargesItNothingIntoTheSaturationRatio
               - ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed
+              - ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget

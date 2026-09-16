@@ -465,7 +465,15 @@ public static class RotationEngine
             var merged = await ConsolidateAsync(tierIndex, previous, material, budget, cancellationToken)
                 .ConfigureAwait(false);
             var mergedTokens = TokenEstimator.EstimateTokens(merged);
-            var inputTokens = TokenEstimator.EstimateTokens(previous) + TokenEstimator.EstimateTokens(material);
+
+            // The previous record is charged through the tier's own cached estimate rather than
+            // re-estimated from its text, because that estimate is where this package's single
+            // definition of empty is applied: a blank record is an empty one and costs nothing.
+            // Estimating the text directly charged a whitespace record its characters into the
+            // saturation input, so the ratio was taken against material the cascade test below
+            // treats as absent and the seed never carries - the same string read two ways within
+            // one method.
+            var inputTokens = tier.EstimatedTokens + TokenEstimator.EstimateTokens(material);
 
             // A result nearly as large as its input means the material holds no redundancy left to
             // remove; rotating again would spend summarizer tokens for no reduction.
@@ -493,9 +501,10 @@ public static class RotationEngine
             // cascade is handed to a ConsolidationRequest, which refuses blank material, throwing an
             // ArgumentException out of this method that RotateAsync does not document and SendAsync
             // does not expect - and the whitespace record is permanent state by then, so every later
-            // rotation fails the same way. ContextTier.IsEmpty and ConsolidationRequest.IsDegradation
-            // use this same definition, so all three agree about the same string.
-            var canCascade = !string.IsNullOrWhiteSpace(previous) && tierIndex + 1 < policy.TierCount;
+            // rotation fails the same way. It is asked of the tier rather than of the string, so
+            // this decision, the tier's estimate and ConsolidationRequest.IsDegradation are reading
+            // one definition rather than three copies of it.
+            var canCascade = !tier.IsEmpty && tierIndex + 1 < policy.TierCount;
             if (!canCascade)
             {
                 Tiers[slot] = tier.WithContent(merged);
