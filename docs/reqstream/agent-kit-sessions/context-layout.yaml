@@ -25,7 +25,7 @@ sections:
               - Tier_RingOperations_Hold
               - Slot_Construct_Blank_Throws
 
-          - id: AgentKitSessions-ContextLayout-PublishesTheBound
+          - id: AgentKitSessions-ContextLayout-EstimatesItsSize
             title: >-
               The unit shall estimate the conversation it holds - the seeded slots, their framing and
               the verbatim tail - and the total including the fixed overhead.

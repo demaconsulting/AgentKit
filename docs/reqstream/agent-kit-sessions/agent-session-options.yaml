@@ -36,7 +36,7 @@ sections:
             tests:
               - AgentSessionOptions_Construct_MeasuresFixedOverhead
 
-          - id: AgentKitSessions-AgentSessionOptions-AssertsTheBound
+          - id: AgentKitSessions-AgentSessionOptions-DerivesRotationThreshold
             title: >-
               The options shall derive the estimated rotation threshold from the effective window and
               the internal rotation fraction, never below one token.

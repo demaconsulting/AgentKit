@@ -42,7 +42,7 @@ a blank slot, or ignores cancellation constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers: Coarse Tiers Age and Ring
+#### AgentKitSessions-RotationEngine-ConsolidatesFullTiers: Coarse Tiers Age and Ring
 
 **Tests**:
 
@@ -61,7 +61,7 @@ Builds material larger than the summarizer input allowance and asserts the summa
 than once while the rotation still produces one tier-one slot. This verifies chunking of oversized
 summarizer input.
 
-#### AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers: Older Turns Become One Tier-One Slot
+#### AgentKitSessions-RotationEngine-ConsolidatesIntoTierOne: Older Turns Become One Tier-One Slot
 
 **Test**: `RotationEngine_Rotate_ConsolidatesOlderIntoOneTierOneSlot`
 
@@ -69,7 +69,7 @@ Splits the layout at the level-adjusted verbatim tail, consolidates everything o
 and appends that slot to tier one. The newest turns remain verbatim and the request carries the low
 aggressiveness instruction.
 
-#### AgentKitSessions-RotationEngine-CascadesDegradation: A Turn Is Consolidated Once Per Tier
+#### AgentKitSessions-RotationEngine-ConsolidatesOncePerTier: A Turn Is Consolidated Once Per Tier
 
 **Test**: `RotationEngine_ManyRotations_ConsolidatesOncePerTier`
 
@@ -77,7 +77,7 @@ Drives enough rotations for material to reach all three tiers and asserts consol
 occur at tier one, tier two and tier three. This proves a turn's material is consolidated once per
 tier, three times over its life, instead of being repeatedly reworked on every rotation.
 
-#### AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers: Rule Five Fits the Seed
+#### AgentKitSessions-RotationEngine-ConsolidatesIntoTierOne: Rule Five Fits the Seed
 
 **Tests**:
 
@@ -92,7 +92,7 @@ dropping material. At the highest level, an expanding summarizer still terminate
 `MaterialDropped`; a single oversized newest turn bottoms out with that turn alone; helper methods
 stop at the low and high extremes; and `VerbatimTurnsFor` shortens the verbatim tail as level rises.
 
-#### AgentKitSessions-SessionTranscript-SnapsToolBoundary: A Rotation Never Seeds an Orphaned Result
+#### AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn: A Rotation Never Seeds an Orphaned Result
 
 **Test**: `SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn`
 
@@ -100,7 +100,7 @@ N/A for entry-level boundary adjustment - rotation now works with whole turns. T
 verifies tool calls and results are grouped into one turn before rotation decides what remains
 verbatim.
 
-#### AgentKitSessions-RotationEngine-ReportsSaturation: A Failure to Reduce Is Reported
+#### AgentKitSessions-RotationEngine-DropsUntilItFits: A Failure to Reduce Is Reported
 
 **Tests**:
 

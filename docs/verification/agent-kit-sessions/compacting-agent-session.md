@@ -62,7 +62,7 @@ Verifies the compacting session prefers provider-origin usage when the provider 
 threshold decisions therefore use provider figures on the provider path and estimated figures only on
 the silent-provider path.
 
-#### AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow: Pressure Adapts and Terminates
+#### AgentKitSessions-CompactingAgentSession-AdaptsLevelUnderPressure: Pressure Adapts and Terminates
 
 **Tests**:
 

@@ -34,7 +34,7 @@ sections:
             tests:
               - TranscriptEntry_Construct_ValidatesPairingIdentifier
 
-          - id: AgentKitSessions-SessionTranscript-SplitsAtTierBudget
+          - id: AgentKitSessions-SessionTranscript-SplitsAtTurnBoundary
             title: >-
               The unit shall split the history at a turn boundary, keeping the newest turns verbatim and
               returning everything older as rendered material, and shall drop the oldest turn on demand.
@@ -48,7 +48,7 @@ sections:
               - SessionTranscript_SplitAtTail_NothingOlder_RetainsAll
               - SessionTranscript_DropOldestTurn_RemovesTheOldest
 
-          - id: AgentKitSessions-SessionTranscript-SnapsToolBoundary
+          - id: AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn
             title: >-
               The unit shall never separate a tool call from its result, because a turn groups the
               message, the answer and all intervening tool traffic as one indivisible exchange.

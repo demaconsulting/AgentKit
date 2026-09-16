@@ -8,7 +8,7 @@ sections:
     sections:
       - title: RotationEngine Requirements
         requirements:
-          - id: AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
+          - id: AgentKitSessions-RotationEngine-ConsolidatesIntoTierOne
             title: >-
               The unit shall consolidate everything older than the level-adjusted verbatim tail into
               one slot and append it to tier one.
@@ -19,7 +19,7 @@ sections:
             tests:
               - RotationEngine_Rotate_ConsolidatesOlderIntoOneTierOneSlot
 
-          - id: AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers
+          - id: AgentKitSessions-RotationEngine-ConsolidatesFullTiers
             title: >-
               The unit shall consolidate a full coarse tier's slots as peers into one slot of the next
               tier and clear it, and shall make the coarsest tier a ring that drops its oldest slot when
@@ -35,7 +35,7 @@ sections:
               - RotationEngine_Rotate_FullTier_ConsolidatesAsPeersIntoNextTier
               - RotationEngine_Rotate_CoarsestTier_IsARing
 
-          - id: AgentKitSessions-RotationEngine-CascadesDegradation
+          - id: AgentKitSessions-RotationEngine-ConsolidatesOncePerTier
             title: >-
               The unit shall consolidate a given turn's material exactly once per tier - three times in
               its whole life - as it cascades from tier one to the coarsest tier.
@@ -60,7 +60,7 @@ sections:
             tests:
               - RotationEngine_Rotate_OversizedMaterial_IsChunked
 
-          - id: AgentKitSessions-RotationEngine-ReportsSaturation
+          - id: AgentKitSessions-RotationEngine-DropsUntilItFits
             title: >-
               The unit shall escalate the compaction level until the built seed fits and, once the
               highest level cannot make it fit, drop the oldest slot of the coarsest non-empty tier then

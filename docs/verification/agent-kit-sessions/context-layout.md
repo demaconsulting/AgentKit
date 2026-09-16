@@ -43,7 +43,7 @@ Asserts `SlotsPerTier` is four, `TierCount` is three, and the internal rotation 
 published fraction. Tier tests prove the ring reports full at its fixed complement, exposes the
 oldest slot and drops the oldest slot. Slot construction rejects blank records.
 
-#### AgentKitSessions-ContextLayout-PublishesTheBound: The Accounting Follows From the Configuration
+#### AgentKitSessions-ContextLayout-EstimatesItsSize: The Accounting Follows From the Configuration
 
 **Test**: `ContextLayout_EstimatedTokens_CountSeedAndOverhead`
 

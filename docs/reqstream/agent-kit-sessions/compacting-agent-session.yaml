@@ -34,7 +34,7 @@ sections:
             tests:
               - CompactingAgentSession_Send_RotatesAtThreshold
 
-          - id: AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow
+          - id: AgentKitSessions-CompactingAgentSession-AdaptsLevelUnderPressure
             title: >-
               The unit shall adapt its compaction level under pressure by hysteresis, escalating and
               dropping until the context fits, and shall report the level and any dropped material.

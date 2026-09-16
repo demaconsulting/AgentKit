@@ -30,7 +30,7 @@ any non-positive value accepted constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitSessions-CompactionPolicy-TierBudgets: The Defaults Are the Documented Design
+#### AgentKitSessions-CompactionPolicy-VerbatimTurns: The Defaults Are the Documented Design
 
 **Tests**:
 
@@ -41,7 +41,7 @@ Asserts the default policy carries the published verbatim turn count and that a 
 count replaces it. The requirement identifier is retained for traceability, but the verified public
 control is `VerbatimTurns`.
 
-#### AgentKitSessions-CompactionPolicy-TierBudgets: No Supplied Collection Exists
+#### AgentKitSessions-CompactionPolicy-VerbatimTurns: No Supplied Collection Exists
 
 N/A - the redesigned policy no longer accepts a list. There is no caller-owned collection to mutate;
 `CompactionPolicy_Construct_SetsVerbatimTurns` covers the only supplied value.

@@ -48,7 +48,7 @@ Builds options with instructions and a tool declaration, then asserts `SystemTok
 `ToolDeclarationTokens`, `FixedOverheadTokens` and `EffectiveWindowTokens` agree. This keeps the
 conversation occupancy distinct from fixed prompt overhead.
 
-#### AgentKitSessions-AgentSessionOptions-AssertsTheBound: The Effective Window Is Derived Consistently
+#### AgentKitSessions-AgentSessionOptions-DerivesRotationThreshold: The Effective Window Is Derived Consistently
 
 **Tests**:
 

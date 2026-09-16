@@ -46,7 +46,7 @@ sections:
           once the replacement exists and has been adopted, so a failure anywhere earlier leaves the
           session still able to answer.
         children:
-          - AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
+          - AgentKitSessions-RotationEngine-ConsolidatesIntoTierOne
           - AgentKitSessions-ContextLayout-SeedsMostStableFirst
           - AgentKitSessions-ProviderSession-AdapterInterface
           - AgentKitSessions-CompactingAgentSession-RotatesAtThreshold
@@ -72,13 +72,13 @@ sections:
           and consolidating a full tier batch-then-clear as peers, is what keeps the context strictly
           append-only between rotations, which preserves a provider's prompt cache.
         children:
-          - AgentKitSessions-CompactionPolicy-TierBudgets
+          - AgentKitSessions-CompactionPolicy-VerbatimTurns
           - AgentKitSessions-ContextLayout-TierModel
-          - AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers
-          - AgentKitSessions-RotationEngine-CascadesDegradation
+          - AgentKitSessions-RotationEngine-ConsolidatesFullTiers
+          - AgentKitSessions-RotationEngine-ConsolidatesOncePerTier
           - AgentKitSessions-CompactionPolicy-ValidatedDefaults
           - AgentKitSessions-CompactionPolicy-RejectsUnworkableConfiguration
-          - AgentKitSessions-SessionTranscript-SplitsAtTierBudget
+          - AgentKitSessions-SessionTranscript-SplitsAtTurnBoundary
         tests:
           - AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext
 
@@ -102,9 +102,9 @@ sections:
           summarizer input and the sizing of a seed before it is sent are internal mechanisms that
           support this and are not optional.
         children:
-          - AgentKitSessions-AgentSessionOptions-AssertsTheBound
-          - AgentKitSessions-ContextLayout-PublishesTheBound
-          - AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow
+          - AgentKitSessions-AgentSessionOptions-DerivesRotationThreshold
+          - AgentKitSessions-ContextLayout-EstimatesItsSize
+          - AgentKitSessions-CompactingAgentSession-AdaptsLevelUnderPressure
           - AgentKitSessions-TokenEstimator-DeterministicEstimate
           - AgentKitSessions-TokenEstimator-ChargesEntryFraming
           - AgentKitSessions-TokenEstimator-EstimatesToolDeclarations
@@ -153,7 +153,7 @@ sections:
           whole turn - the message, the answer and all intervening tool traffic - a call and its result
           cannot be separated, which retires the earlier design's rule that had to snap a boundary.
         children:
-          - AgentKitSessions-SessionTranscript-SnapsToolBoundary
+          - AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn
           - AgentKitSessions-SessionTranscript-PairedEntries
         tests:
           - SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn
@@ -173,7 +173,7 @@ sections:
           what to do about it - warn, stop, split the task, start fresh - depends on what the
           application is for and is deliberately left to the application.
         children:
-          - AgentKitSessions-RotationEngine-ReportsSaturation
+          - AgentKitSessions-RotationEngine-DropsUntilItFits
           - AgentKitSessions-AgentSession-ReportsCompaction
         tests:
           - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial

@@ -53,7 +53,7 @@ Verifies tool calls carry identifiers and plain messages do not. The boundary gu
 from whole-turn operations, while entry validation still ensures tool traffic is well formed inside a
 turn.
 
-#### AgentKitSessions-SessionTranscript-SplitsAtTierBudget: The Newest Turns Within Budget Are Retained
+#### AgentKitSessions-SessionTranscript-SplitsAtTurnBoundary: The Newest Turns Within Budget Are Retained
 
 **Tests**:
 
@@ -65,7 +65,7 @@ The requirement identifier is retained for traceability, but the operation now s
 The tests assert the newest turns remain verbatim, all older entries are returned for consolidation,
 a short transcript is retained whole, and the oldest turn can be dropped as the final fitting step.
 
-#### AgentKitSessions-SessionTranscript-SnapsToolBoundary: A Boundary Inside a Tool Pair Snaps
+#### AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn: A Boundary Inside a Tool Pair Snaps
 
 **Test**: `SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn`
 

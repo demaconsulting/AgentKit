@@ -8,7 +8,7 @@ sections:
     sections:
       - title: CompactionPolicy Requirements
         requirements:
-          - id: AgentKitSessions-CompactionPolicy-TierBudgets
+          - id: AgentKitSessions-CompactionPolicy-VerbatimTurns
             title: >-
               The policy shall carry the one control an application configures, the maximum number of
               recent turns kept verbatim, as a positive count.
