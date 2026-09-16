@@ -115,6 +115,33 @@ software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
+- **AgentKitSessions (System)** — The provider-agnostic agent session engine: an AgentKit-owned
+  conversation that keeps its own transcript out of session and compacts a full context by
+  rotating into a fresh provider session seeded with tiered, consolidated history
+- **AgentSession (Unit)** — The session contract an application programs against, and what one turn
+  reports back about the answer, the usage, the rotation and any saturation
+- **AgentSessionOptions (Unit)** — What an application configures about one session, and the fixed
+  overhead, effective window and rotation threshold derived from it
+- **CompactionPolicy (Unit)** — The validated per-tier token budgets, rotation threshold and
+  saturation ratio
+- **ContextUsage (Unit)** — The one usage shape both provider families are reduced to, and the
+  optional contract a provider session implements when it can account for its own window
+- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic every budget comparison
+  rests on
+- **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, and the
+  tier-zero boundary split that never separates a tool call from its result
+- **ContextLayout (Unit)** — The whole context as this system accounts for it: the coarse tiers, the
+  construction bound, and the most-stable-first seed
+- **RotationEngine (Unit)** — The deterministic aging function: fold the overflow into tier one,
+  cascade where a tier cannot hold old and new together, and report a failure to reduce
+- **Summarizer (Unit)** — The injected out-of-session consolidation contract, the request that
+  expresses the ratchet, and the documented default prompt
+- **ProviderSession (Unit)** — The whole interface between the compaction engine and a provider
+  adapter: the seed, the turn, the session and the factory
+- **InMemoryProviderSession (Unit)** — A provider session that contacts nothing, so the engine can
+  be exercised end to end without a live model
+- **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
+  rotations and provider-session disposal
 
 The following OTS items are also covered:
 
@@ -183,7 +210,7 @@ subsystem — without reducing the number of units anyone has to review. Subsyst
 introduced when a system in this repository has enough units that architectural boundaries
 between them carry real information.
 
-The repository contains four systems. `AgentKitTools` is a general-purpose capability package of
+The repository contains five systems. `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
@@ -200,12 +227,27 @@ depended upon by another capability package.
 turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
 justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
-Each is flat — one factory class — and the two share no code and never reference each other. The
-`SoftwareStructureView.svg` above renders all four systems.
+Each is flat — one factory class — and the two share no code and never reference each other.
+
+`AgentKitSessions` is the fifth system and a different kind of thing from the other four. Core and
+Tools are about what an agent may *do*; the two adapter systems are about *reaching* a provider.
+Sessions is about how long an agent can keep going: it owns the conversation lifecycle and compacts
+a full context by rotating into a fresh provider session seeded with tiered, consolidated history.
+It is a separate system rather than part of Core because Core is a small, slow-moving contract
+package and a session engine is neither, and rather than part of an adapter because the whole point
+is that the engine is provider-agnostic — the same rotation behavior on a provider that re-sends
+history each turn and on one that holds it server-side. In this increment it carries no provider
+dependency at all and no adapter wiring; its provider seam is the `IProviderSession` interface,
+which the adapters will implement in a later increment. It depends only on
+`Microsoft.Extensions.AI.Abstractions`, for the `AIFunction` tool currency, and deliberately not on
+`AgentKitCore`: it composes a session around tools an application already holds and needs none of
+Core's guarded-construction contract to do so.
+
+The `SoftwareStructureView.svg` above renders all five systems.
 
 The demonstration samples under `samples/` are not among them. They are runnable examples rather
 than deliverables, belong to no software package, and are excluded from the software-item tree for
-the reasons given under Scope above; the structure view renders only the four shipped systems.
+the reasons given under Scope above; the structure view renders only the five shipped systems.
 
 ## Folder Layout
 
@@ -297,6 +339,24 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed
+```
+
+`AgentKitSessions` has its own flat source tree, one file per unit:
+
+```text
+src/DemaConsulting.AgentKit.Sessions/
+├── AgentSession.cs             — the session contract and the per-turn response
+├── AgentSessionOptions.cs      — the configuration, the fixed overhead and the threshold
+├── CompactingAgentSession.cs   — the implementation that sequences turns and rotations
+├── CompactionPolicy.cs         — tier budgets, rotation threshold, saturation ratio
+├── ContextLayout.cs            — the coarse tiers, the construction bound and the seed
+├── ContextUsage.cs             — the usage shape and the optional reporting contract
+├── InMemoryProviderSession.cs  — a provider session that contacts nothing, and its factory
+├── ProviderSession.cs          — the seed, the turn, the session and the factory contracts
+├── RotationEngine.cs           — the deterministic aging function and its saturation reports
+├── SessionTranscript.cs        — the append-only history and the tier-zero boundary split
+├── Summarizer.cs               — the consolidation contract and the documented default prompt
+└── TokenEstimator.cs           — the deterministic character-ratio arithmetic
 ```
 
 The demonstration samples live under `samples/`, one folder per sample. They are not software

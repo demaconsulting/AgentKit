@@ -1,0 +1,57 @@
+---
+# Software Unit Requirements for TokenEstimator
+#
+# These requirements describe the design-level behavior of the TokenEstimator unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: TokenEstimator Requirements
+        requirements:
+          - id: AgentKitSessions-TokenEstimator-DeterministicEstimate
+            title: >-
+              The estimator shall estimate the tokens a run of text occupies from a fixed character
+              ratio, rounding up so that present content is never free and absent content costs
+              nothing.
+            justification: |
+              A real tokenizer is provider- and model-specific and changes with model releases, which
+              would make this library's behavior vary across upgrades and would make the rotation
+              engine impossible to unit-test without a model. Every number the engine computes feeds
+              a threshold decision taken at roughly 70 percent of the effective window, which leaves
+              generous headroom for a cheap estimate to be wrong in. Rounding up matters because a
+              budget that treated short content as free would let an unbounded number of short
+              entries accumulate inside it.
+            tests:
+              - TokenEstimator_EstimateTokens_AbsentText_ReturnsZero
+              - TokenEstimator_EstimateTokens_WholeMultiple_AppliesCharacterRatio
+              - TokenEstimator_EstimateTokens_PartialToken_RoundsUp
+
+          - id: AgentKitSessions-TokenEstimator-ChargesEntryFraming
+            title: >-
+              The estimator shall charge each transcript entry a flat allowance for its framing in
+              addition to the characters it carries.
+            justification: |
+              Every entry a provider receives is framed - a role marker, message delimiters, and for
+              a tool call or result an identifier tying the pair together - and that framing is
+              charged to the window even when the entry's own text is short. An estimator counting
+              only characters would systematically under-count a long run of small entries, which is
+              exactly the shape a tool-using agent produces.
+            tests:
+              - TokenEstimator_EstimateEntryTokens_AddsFramingAllowance
+              - TokenEstimator_EstimateEntryTokens_NullEntry_Throws
+
+          - id: AgentKitSessions-TokenEstimator-EstimatesToolDeclarations
+            title: >-
+              The estimator shall estimate the fixed overhead of a set of tool declarations from each
+              tool's name, description and schema, returning zero for no tools and rejecting a null
+              tool.
+            justification: |
+              Tool declarations are fixed overhead subtracted before any rotation percentage is
+              applied, so they must be measured rather than guessed. The three pieces of text a
+              provider is given are the name a model selects by, the description it selects on, and
+              the schema it fills in. A null tool cannot be estimated, and skipping it would
+              understate the overhead and delay rotation; it is refused instead.
+            tests:
+              - TokenEstimator_EstimateToolDeclarationTokens_NoTools_ReturnsZero
+              - TokenEstimator_EstimateToolDeclarationTokens_GrowsWithToolCount
+              - TokenEstimator_EstimateToolDeclarationTokens_NullTool_Throws

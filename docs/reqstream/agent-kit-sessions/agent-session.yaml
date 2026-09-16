@@ -1,0 +1,55 @@
+---
+# Software Unit Requirements for AgentSession
+#
+# These requirements describe the design-level behavior of the AgentSession unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: AgentSession Requirements
+        requirements:
+          - id: AgentKitSessions-AgentSession-SessionContract
+            title: >-
+              The session contract shall expose sending a message, the context usage after the most
+              recent turn, the number of rotations so far, and asynchronous disposal, and nothing
+              about providers or compaction mechanism.
+            justification: |
+              An application that wants a long-running agent should not have to learn how the window
+              is managed to get one. Keeping the contract to a message, a usage figure, a rotation
+              count and disposal means an application can adopt it without knowing what a tier is,
+              and means the contract can be extended later without breaking anyone. Disposal is part
+              of the contract rather than an implementation detail because the implementation owns a
+              live provider session, which for some providers is server-side state that keeps being
+              billed for until released.
+            tests:
+              - AgentSessionResponse_Construct_OrdinaryTurn_ReportsNoCompaction
+              - CompactingAgentSession_DisposeAsync_ReleasesTheLiveProviderSession
+
+          - id: AgentKitSessions-AgentSession-ReportsCompaction
+            title: >-
+              A turn response shall report the answer, the resulting context usage, whether the
+              session rotated, and any saturation the rotation found.
+            justification: |
+              Compaction is reported rather than hidden. An application that never looks is never
+              troubled by it, which is the point; but an application that does look can log a
+              rotation, act on a saturation signal, or explain to a user why one answer took longer
+              than the last. Hiding it would make a saturated agent indistinguishable from a healthy
+              one, which is precisely the condition that most needs to be visible.
+            tests:
+              - AgentSessionResponse_Construct_SaturatedRotation_SurfacesTheSignals
+              - AgentSessionResponse_Saturations_CannotBeCastAndMutated
+              - AgentSessionResponse_Construct_OrdinaryTurn_ReportsNoCompaction
+
+          - id: AgentKitSessions-AgentSession-RejectsMalformedTurnReport
+            title: >-
+              A turn response shall reject a missing answer, a missing usage figure, or a null
+              saturation signal.
+            justification: |
+              Each of these could only come from a defect in an adapter or in the engine, and each
+              would surface in the application that displayed or inspected the response rather than
+              where it was produced. Refusing them at construction puts the failure where it can be
+              diagnosed.
+            tests:
+              - AgentSessionResponse_Construct_NullText_Throws
+              - AgentSessionResponse_Construct_NullUsage_Throws
+              - AgentSessionResponse_Construct_NullSaturationSignal_Throws

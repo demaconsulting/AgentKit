@@ -63,6 +63,19 @@ input-files:
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-copilot.md
   - docs/design/agent-kit-agents-copilot/copilot-agent-factory.md
+  - docs/design/agent-kit-sessions.md
+  - docs/design/agent-kit-sessions/agent-session.md
+  - docs/design/agent-kit-sessions/agent-session-options.md
+  - docs/design/agent-kit-sessions/compaction-policy.md
+  - docs/design/agent-kit-sessions/context-usage.md
+  - docs/design/agent-kit-sessions/token-estimator.md
+  - docs/design/agent-kit-sessions/session-transcript.md
+  - docs/design/agent-kit-sessions/context-layout.md
+  - docs/design/agent-kit-sessions/rotation-engine.md
+  - docs/design/agent-kit-sessions/summarizer.md
+  - docs/design/agent-kit-sessions/provider-session.md
+  - docs/design/agent-kit-sessions/in-memory-provider-session.md
+  - docs/design/agent-kit-sessions/compacting-agent-session.md
   - docs/design/ots.md
   - docs/design/ots/apimark.md
   - docs/design/ots/buildmark.md

@@ -11,10 +11,11 @@ throughout the repository.
   of capabilities that are safe by construction, where an unsafe operation is not refused
   at call time but is impossible to express. An application author decides which tools an
   agent receives and configures the controls those tools carry; AgentKit ensures each tool
-  behaves correctly and predictably within them. It deliberately does not provide an agent
-  runtime, context-window management, or provider abstraction — Microsoft Agent Framework
-  supplies those, and AgentKit's tools work with it, with the GitHub Copilot SDK, and with
-  any `IChatClient` alike.
+  behaves correctly and predictably within them. It does not provide an agent runtime or a provider
+  abstraction — Microsoft Agent Framework supplies those, and AgentKit's tools work with it, with
+  the GitHub Copilot SDK, and with any `IChatClient` alike — but it does provide its own session
+  lifecycle with tiered context compaction, so a long-running agent behaves the same way on every
+  provider.
 - **languages**: `C#`
 - **technologies**: `.NET`, `Microsoft.Extensions.AI`
 
