@@ -10,58 +10,41 @@ sections:
         requirements:
           - id: AgentKitSessions-ProviderSession-AdapterInterface
             title: >-
-              The provider session contract shall consist of sending a message and asynchronous
-              disposal, with a separate factory creating a session from a seed carrying the
-              instructions, the tools and the history.
+              The unit shall define the whole interface between the compaction engine and a provider
+              adapter as a seed carrying instructions, tools and history, and a minimal session and
+              factory.
             justification: |
-              This is the whole interface between the compaction engine and a provider adapter, and
-              it is deliberately minimal: the engine sends a message, records what came back, and
-              eventually disposes the session once a fresh one has replaced it. Everything else -
-              streaming, tool invocation, retries, provider configuration - is the adapter's
-              business, and putting it here would tie the engine to a provider shape. The factory is
-              separate from the session because rotation must create a replacement while the engine
-              holds no reference to a provider's API itself. Disposal is in the contract because it
-              is the mechanism that discards server-side history.
+              The seed is the whole interface between the engine and an adapter: the engine never
+              touches a provider's API, it produces a seed and an adapter turns it into whatever its
+              provider requires. That is what keeps the engine provider-agnostic and lets it be tested
+              against a fake. The seed copies its lists so an adapter holding it across a rotation cannot
+              observe a later mutation.
             tests:
-              - ProviderSessionSeed_Construct_CarriesInstructionsToolsAndHistorySeparately
-              - ProviderSessionSeed_Construct_CopiesTheSuppliedLists
-              - InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes
+              - ProviderSessionSeed_Construct_CopiesToolsAndHistory
 
           - id: AgentKitSessions-ProviderSession-RecordsWhatATurnProduced
             title: >-
-              A provider turn shall carry the answer and the history entries the turn produced, with
-              the entries always ending in an assistant message carrying the answer, recorded exactly
-              once.
+              The unit shall record what one turn against a provider produced, ending with the answer
+              exactly once whether or not the adapter supplied intervening entries.
             justification: |
-              The answer and the history entries answer different questions: the answer is what the
-              application shows or acts on, while the entries are what every consumer records - the
-              compaction engine's transcript, and any session keeping its own history from the turns
-              it produced. The turn appends the answer itself, on both paths, because an answer
-              appended by one consumer would be missing from the others and the two records would
-              then describe different conversations. Leaving it out of the entries altogether was
-              worse: an agent that uses tools on nearly every turn would have almost none of its own
-              output in the history a rotation seeds the replacement session from, which is the
-              material the engine exists to preserve. An adapter that already ended its entries with
-              the answer is not made to strip it - a trailing assistant entry carrying exactly the
-              answer is taken to be the answer - so either adapter style yields exactly one copy.
+              The answer is always the last entry and is recorded exactly once - as the only entry when
+              none were supplied, and after the supplied ones when they were - so that every consumer
+              records the same conversation. An adapter that has already ended with the answer is not
+              made to strip it, so either adapter style yields exactly one copy.
             tests:
-              - ProviderTurn_Construct_NoEntries_RecordsOneAssistantMessage
-              - ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer
-              - ProviderTurn_Construct_EntriesAlreadyEndingWithTheAnswer_RecordItOnce
-              - ProviderTurn_Construct_TrailingAssistantEntryWithDifferentText_AppendsTheAnswer
+              - ProviderTurn_Construct_NoEntries_RecordsAnswerAlone
+              - ProviderTurn_Construct_RecordsAnswerExactlyOnce
 
           - id: AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn
             title: >-
-              A seed shall reject a missing tool list, a missing history, and a null entry in either;
-              a turn shall reject a missing answer and a null entry.
+              The unit shall reject a null tool or history list, a null entry within one, a null
+              response text, and a malformed pairing identifier.
             justification: |
-              Each of these would otherwise be discovered by an adapter mid-construction or by the
-              engine at a later rotation, where the failure would be attributed to the provider
-              rather than to the composition that caused it. Refusing them at construction puts the
-              failure where it can be diagnosed.
+              Rejecting a null entry at the seam rather than leaving an adapter to discover it
+              mid-construction is what keeps a failure attributed to the composition rather than the
+              provider. A tool call or result requires a non-blank identifier and any other kind of
+              entry refuses one, so a call can always be paired with its result.
             tests:
-              - ProviderSessionSeed_Construct_NullTools_Throws
-              - ProviderSessionSeed_Construct_NullHistory_Throws
-              - ProviderSessionSeed_Construct_NullHistoryEntry_Throws
-              - ProviderTurn_Construct_NullResponseText_Throws
-              - ProviderTurn_Construct_NullEntry_Throws
+              - ProviderSessionSeed_Construct_NullArguments_Throw
+              - ProviderTurn_Construct_NullArguments_Throw
+              - TranscriptEntry_Construct_ValidatesPairingIdentifier

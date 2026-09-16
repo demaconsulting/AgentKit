@@ -10,108 +10,54 @@ sections:
         requirements:
           - id: AgentKitSessions-ContextLayout-TierModel
             title: >-
-              The layout shall hold the fixed overhead, one coarse tier per tier budget above tier
-              zero, and the verbatim tier-zero history, allocating the coarse tiers to match the
-              policy at creation and refusing any replacement tier whose index or budget disagrees
-              with the policy.
+              The unit shall model the context as a round-robin structure: a verbatim tail of whole
+              turns and a fixed number of tiers, each a ring of a fixed number of consolidated slots.
             justification: |
-              Tier zero holds verbatim history and is therefore a transcript rather than a
-              consolidated record, so it is not represented as a coarse tier. Allocating the coarse
-              tiers up front means the hierarchy always matches the policy and no code path has to
-              grow it later - a tier appearing mid-session would make the bound unverifiable at the
-              moment it mattered most. Validating the count alone is not enough for the same reason:
-              a tier's position in the list is what rotation reads the policy's budget by, what the
-              seed labels the record by, and what the bound is computed from, so a tier-one slot
-              carrying tier three's index or budget would leave the policy, the tiers, the labels
-              and the bound describing different hierarchies while each looked individually correct.
+              A round-robin database does not measure the size of its archives: a fixed number of fine
+              samples consolidate into one coarse sample, and each archive holds a fixed number of them,
+              so resolution decays with age by construction and nothing is weighed. The slots-per-tier
+              and tier counts are internal constants because they are the values the recall measurement
+              was taken at and an application has no basis for choosing them. A slot must hold a
+              non-blank record, and a tier is a ring that reports full at its complement and drops its
+              oldest.
             tests:
-              - ContextLayout_Create_AllocatesOneCoarseTierPerBudgetAboveTierZero
-              - ContextLayout_WithTiers_WrongTierCount_Throws
-              - ContextLayout_WithTiers_TierIndexDisagreesWithThePolicy_Throws
-              - ContextLayout_WithTiers_TierBudgetDisagreesWithThePolicy_Throws
-              - ContextTier_Construct_TierZero_Throws
+              - ContextLayout_Constants_AreTheRoundRobinShape
+              - Tier_RingOperations_Hold
+              - Slot_Construct_Blank_Throws
 
           - id: AgentKitSessions-ContextLayout-PublishesTheBound
             title: >-
-              The layout shall publish the conversation tokens excluding fixed overhead, the total
-              including it, the construction bound of fixed overhead plus every tier budget plus the
-              framing each tier record carries when it is seeded, and whether it currently sits
-              within that bound.
+              The unit shall estimate the conversation it holds - the seeded slots, their framing and
+              the verbatim tail - and the total including the fixed overhead.
             justification: |
-              The rotation threshold is a fraction of the effective window, so the figure it is
-              compared against must exclude the fixed overhead; publishing both makes the comparison
-              unambiguous rather than something each caller re-derives. The bound counts the seed
-              framing because that framing is part of what the provider receives: a bound counting
-              raw tier content alone is an under-count that a seed with every tier exactly within
-              its budget would exceed, and for a provider reporting no usage that under-count is
-              what would drive rotation. The bound depends on the
-              configuration alone and not on what the session has done, which is what makes it
-              something an application can reason about before starting. It is a post-rotation
-              property: between rotations tier zero is append-only and grows past its budget, which
-              is exactly what the rotation threshold's headroom is reserved for. A fixed overhead
-              that would carry the bound past what a token count can represent is refused at
-              creation, because a wrapped bound is negative and a layout holding nothing at all
-              would then report itself outside it; the policy already guarantees its own half of
-              the bound, so the fixed overhead is the only remaining way to exceed one. The two
-              figures that grow with the session - the conversation and the total that includes the
-              fixed overhead - are accumulated in a wider type than a token count and saturate at
-              the largest one rather than wrapping. Their terms each fit a token count on their own
-              and need not fit one together, and a wrapped negative total compares below every
-              rotation threshold and inside every bound, so the largest context this library can
-              account for would be the one it never rotated and never reported as over its bound.
-              Saturating says "at least everything a token count can hold", which crosses every
-              threshold and fails every bound - the direction a figure of that size must err in.
+              The estimate is the fallback used when a provider reports no usage and when the session
+              sizes a seed it has not yet sent. It counts the slots and the framing their seeded records
+              carry, because that framing is part of what the provider receives, plus the verbatim tail;
+              the total adds the fixed overhead.
             tests:
-              - ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget
-              - ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord
-              - ContextLayout_Create_UnrepresentableBound_Throws
-              - ContextLayout_ConversationTokens_ExcludeTheFixedOverhead
-              - ContextTier_IsWithinBudget_ReflectsTheRecordSize
-              - ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget
+              - ContextLayout_EstimatedTokens_CountSeedAndOverhead
 
           - id: AgentKitSessions-ContextLayout-Immutable
             title: >-
-              The layout shall be immutable, every change returning a new layout and leaving the
-              original unmodified, and the tier list it publishes shall not be castable back to its
-              backing array.
+              The unit shall be immutable, every mutator returning a new layout, and shall reject a
+              malformed replacement of its tiers.
             justification: |
-              Immutability is what makes the rotation engine a pure function of the layout it was
-              handed and lets a test compare a before and an after. It also means a caller holding a
-              layout snapshot across a turn is never surprised by it changing underneath them. An
-              IReadOnlyList over a bare array can be cast back and written through, which would
-              change both the conversation tokens and the next seed of a layout documented as
-              immutable, so a read-only view is published instead.
+              Immutability is what makes the rotation engine a pure function and lets a test compare a
+              before and after. A replacement carrying the wrong number of tiers, or a null tier, is
+              refused so a layout can never be internally inconsistent.
             tests:
-              - ContextLayout_WithTranscript_LeavesTheOriginalUnchanged
-              - ContextLayout_CoarseTiers_CannotBeCastAndMutated
+              - ContextLayout_Create_IsEmpty
+              - ContextLayout_WithTiers_Malformed_Throws
 
           - id: AgentKitSessions-ContextLayout-SeedsMostStableFirst
             title: >-
-              The layout shall build the seed history most stable first - coarsest records, then
-              finer records, then the verbatim recent turns - labeling each record with its level and
-              omitting empty tiers.
+              The unit shall build the seed most-stable-first - the coarsest tier, then each finer tier,
+              then the verbatim tail - labeling each slot with its detail level.
             justification: |
-              Stability decreasing from left to right is what allows a provider's prompt cache to
-              match the longest possible prefix between turns. A model handed several consolidated
-              records with no ordering cue cannot tell which supersedes which, so each is labeled
-              with its level. An empty tier is skipped because seeding an empty record would spend
-              framing tokens to say nothing. The system prompt and tool declarations are not seeded
-              as history because providers accept them as configuration, which is also why they are
-              accounted for as fixed overhead. The seed is published as a read-only view rather than
-              the list it was built in, following the same idiom as the tier list: it is handed
-              straight to a provider-session factory, so a caller able to cast it back could alter
-              the history a fresh session is created from.
-
-              A blank record is treated as an empty tier throughout, and the conversation figure
-              charges a tier's content only where the tier is not empty. Adding the content before
-              asking whether the tier was empty charged a blank record that the seed then omitted, so
-              the threshold was compared against tokens no provider would ever receive and the
-              estimating path disagreed with the provider-reported one about the same session. A
-              blank record can no longer arrive from a consolidation - the rotation engine normalizes
-              a blank summarizer answer where it receives it - but the tier constructor is public and
-              a host composing its own layout may still supply one.
+              The further back in the seed's prefix the more stable the content, which is the shape a
+              provider's prompt cache rewards. Each slot is labeled with the detail level it belongs to,
+              because a model handed several records with no ordering cue cannot tell which supersedes
+              which.
             tests:
-              - ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory
-              - ContextLayout_BuildSeed_EmptyLayout_EmitsNothing
-              - ContextLayout_BuildSeed_CannotBeCastAndMutated
-              - ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed
+              - ContextLayout_BuildSeed_IsCoarsestFirst
+              - ContextLayout_BuildSeed_LabelsSlotsByTier

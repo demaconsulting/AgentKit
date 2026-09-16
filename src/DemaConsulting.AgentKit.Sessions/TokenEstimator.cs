@@ -35,7 +35,7 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     This class is static, holds no state, and is safe for concurrent use.
 ///     </para>
 /// </remarks>
-public static class TokenEstimator
+internal static class TokenEstimator
 {
     /// <summary>
     ///     The number of characters treated as one token.

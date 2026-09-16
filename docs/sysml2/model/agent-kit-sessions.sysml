@@ -4,9 +4,9 @@ package AgentKitSessions {
      * AgentKitSessions is the provider-agnostic session engine: an AgentKit-owned
      * conversation that keeps its own transcript out of session, watches how much of the
      * provider's context window it occupies, and when the window fills consolidates older
-     * history into fixed-budget tiers, creates a fresh provider session seeded with the
-     * preserved content, and only then disposes the one it replaced. Rotation rather than
-     * in-place reduction is
+     * history into a round-robin structure of tiered slots, creates a fresh provider session
+     * seeded with the preserved content, and only then disposes the one it replaced. Rotation
+     * rather than in-place reduction is
      * the only mechanism both provider shapes support - one resends history each turn,
      * the other holds it server-side - so the behavior is identical on either. The system
      * carries no provider dependency of its own; provider adapters are a later increment.

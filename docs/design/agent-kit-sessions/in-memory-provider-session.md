@@ -1,144 +1,112 @@
 ## InMemoryProviderSession
 
-![AgentKit Sessions Structure](AgentKitSessionsView.svg)
-
-The `InMemoryProviderSession` unit publishes a provider session that contacts nothing, and
-`InMemoryProviderSessionFactory`, which creates them and remembers every one it made.
-
 ### Purpose
 
-**Shipped rather than confined to this library's tests, deliberately.** The compaction engine's
-whole promise is that a long-running agent keeps the detail that matters, and that promise is only
-believable if it can be exercised end to end without a live model. An application author writing
-their own summarizer, choosing tier budgets, or deciding what to do about a saturation signal needs
-the same ability. Keeping the fake in the package makes that a supported activity instead of
-something each consumer reimplements.
-
-**It can be either provider shape.** Real providers differ: one reports current and limit figures,
-the other reports nothing. Through the `reportsUsage` switch this session can be either, so both
-engine paths — preferring the provider's account, and falling back to the library's own estimate —
-are reachable from a test. Without that, one of the two ships unexercised.
-
-The factory's remembering is the point. Rotation creates a replacement session and disposes the
-previous one, and both halves have to be observable for that behavior to be verifiable at all:
-against a real provider a leaked session holds a server-side conversation open and keeps being
-billed for.
+`InMemoryProviderSession` is the built-in provider-session implementation that contacts nothing. It
+lets repository tests exercise creation, usage reporting, rotation evidence and disposal without a live
+provider.
 
 ### Data Model
 
-`InMemoryProviderSession` properties:
+`InMemoryProviderSession` internal state:
 
-- **`Seed`** (`ProviderSessionSeed`) — What this session was created from; exposed so a test can assert what a
-  rotation carried forward
-- **`WindowTokens`** (`int`) — The context window this session pretends to have; positive
-- **`FixedOverheadTokens`** (`int`) — The instructions plus the tool declarations, charged as a real provider would
-- **`History`** (`IReadOnlyList<TranscriptEntry>`) — Seeded entries first, everything since after them; cleared on
-  disposal
-- **`TurnCount`** (`int`) — How many turns this session has answered
-- **`IsDisposed`** (`bool`) — Whether the session has been disposed
-- **`CurrentUsage`** (`ContextUsage?`) — The fixed overhead plus every history entry, with the history total also
-  reported as the conversation, marked `Provider`; null when configured not to report
+- **`Seed`** (`ProviderSessionSeed`) — The seed used to create this session.
+- **`WindowTokens`** (`int`) — Pretend provider context window.
+- **`FixedOverheadTokens`** (`int`) — Estimated instruction and tool declaration overhead.
+- **`History`** (`IReadOnlyList<TranscriptEntry>`) — Live read-only view of seeded and accepted
+  entries.
+- **`TurnCount`** (`int`) — Number of accepted turns.
+- **`IsDisposed`** (`bool`) — Whether disposal has occurred.
 
-Private state: the responder producing a turn for a message, and the `reportsUsage` switch.
+`InMemoryProviderSessionFactory` internal state:
 
-`InMemoryProviderSessionFactory` properties: `WindowTokens`, `ReportsUsage`, and `Sessions` — every
-session created so far, oldest first. For a conversation that ran to completion, `Sessions.Count`
-equals the rotation count plus one.
+- **`WindowTokens`** (`int`) — Window passed to created sessions.
+- **`ReportsUsage`** (`bool`) — Whether created sessions return usage or simulate a silent provider.
+- **`Sessions`** (`IReadOnlyList<InMemoryProviderSession>`) — Snapshot of created sessions, oldest
+  first.
 
-**Sessions are not safe for concurrent use**, consistent with `IProviderSession`: one session serves
-one conversation. **The factory is**, as `IProviderSessionFactory` requires: it serializes creation
-under its own lock and returns a snapshot from `Sessions`, so several sessions rotating against one
-factory can neither lose a created session nor observe the record halfway through an addition.
+The responder delegate maps an incoming message to a `ProviderTurn`. If none is supplied, the default
+responder acknowledges the message.
 
 ### Key Methods
 
 #### The InMemoryProviderSession Constructor
 
-Copies the seeded history into its own list and measures the fixed overhead the seed implies. The
-overhead is charged here too, so a test exercising the rotation threshold sees the same arithmetic
-the engine performs against a real provider.
+**Purpose:** Create an in-memory provider session from a seed and responder.
+
+**Algorithm:** Validate seed, responder and positive window. Copy seed history into the live history
+list. Estimate fixed overhead from seed instructions and tools.
+
+**Preconditions:** `seed` and `responder` are not null; `windowTokens` is positive.
+
+**Postconditions:** The session is ready to accept messages and can report usage when configured to do
+so.
 
 #### CurrentUsage
 
-Returns null when configured not to report. Otherwise sums every history entry's estimate as the
-conversation, adds the fixed overhead for the total, and marks the result
-`ContextUsageOrigin.Provider` — because from the engine's point of view that is exactly what it is.
-Reporting the conversation separately rather than leaving it to be inferred is the shape a real
-reporting adapter uses, so the engine's reported path is exercised as it will actually be driven.
+**Purpose:** Return provider-like usage for the in-memory history.
 
-Both sums — the fixed overhead at construction and the conversation on every reading — are
-accumulated in a wider type than a token count and saturated where they are narrowed. Each term fits
-one on its own and they need not fit one together, and a wrapped negative figure here reports a
-total smaller than the conversation it contains, which `ContextUsage` refuses outright — an argument
-failure thrown out of a property a test merely reads. Saturating preserves the one relation
-`ContextUsage` requires, because the total is clamped no lower than the conversation it carries.
+**Algorithm:** If usage reporting is disabled, return null. Otherwise sum estimated entry tokens for
+the current history, add fixed overhead, cap narrowed totals at the largest token count, and return a
+`ContextUsage.FromProvider` reading with the conversation split.
 
-Note what this fake cannot demonstrate: its overhead is measured with the very `TokenEstimator` the
-engine would otherwise have used, so its reported currency and this library's estimated currency
-coincide exactly. A test that needs to tell a measurement from an estimate must script the reported
-figures instead; see *CompactingAgentSession Unit Verification Design*.
+**Preconditions:** None beyond construction invariants.
+
+**Postconditions:** The reading is marked provider-reported because it stands in for a provider's own
+figures from the engine's point of view.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
-Invokes the responder, then records the incoming message and everything the turn produced — the tool
-work and the answer that ends it — increments `TurnCount` and returns the turn. Recording the turn's
-entries in full is what keeps this session's history and the engine's transcript describing the same
-conversation.
+**Purpose:** Accept a message, produce a provider turn, and append the whole exchange to memory.
 
-**Why nothing is recorded until the responder has answered.** A responder that throws, or returns
-null, would otherwise leave a user message behind that no turn ever answered, while
-`CompactingAgentSession` correctly records nothing when a provider refuses a turn. This session is
-shipped, and adapter authors read it as the reference implementation; a fake whose history diverges
-from the contract under failure is worse than no fake. Both halves of the turn are appended
-together, so an observer of `History` never sees a message without the turn that answered it.
+**Algorithm:** Reject null message, disposed state and cancellation. Run the responder before editing
+history. Check cancellation again. Append the user message and turn entries together, then increment
+`TurnCount`.
 
-**Why cancellation is checked on both sides of the responder.** `IProviderSession` documents that a
-canceled turn leaves the session as it was, and a check made only before the responder honors that
-for a token canceled earlier and not for one canceled while the responder was running — a responder
-may cancel the token itself, and an adapter for a real provider awaits a call a cancellation can
-overtake. The responder then completed normally, the message and the answer were recorded, and
-`TurnCount` was incremented, for a turn whose caller had been told it was canceled. Checking again
-before the result is accepted makes a canceled turn leave no history whichever moment the
-cancellation arrived in.
+**Preconditions:** `message` is not null; the session is not disposed; cancellation has not been
+requested.
 
-**Throws:** `ArgumentNullException` for a null message; `ObjectDisposedException` once disposed;
-`OperationCanceledException` on cancellation; `InvalidOperationException` when the responder returns
-null.
+**Postconditions:** On success, history contains both the user message and response entries. If the
+responder throws or cancellation is observed, history is unchanged.
 
 #### DisposeAsync()
 
-Marks the session disposed and drops its history, which is what makes a leaked session detectable in
-a test. Disposing twice is permitted and does nothing the second time.
+**Purpose:** Mark the session disposed and clear observable history.
+
+**Algorithm:** Set `IsDisposed` true and clear the backing history list. Repeated disposal is allowed.
+
+**Preconditions:** None.
+
+**Postconditions:** Later sends fail, and tests can observe that the session was released.
 
 #### InMemoryProviderSessionFactory.CreateAsync(ProviderSessionSeed seed, CancellationToken cancellationToken)
 
-Creates a session, records it under the factory's lock, and returns it. The default responder — selected when
-none is supplied — echoes the message back as an assistant answer, which is enough to exercise the
-lifecycle when what the model says does not matter, and names the message so a test can tell turns
-apart.
+**Purpose:** Create and remember an in-memory session.
+
+**Algorithm:** Validate seed and cancellation, create the session, append it to the factory's session
+record under a lock, and return it as `IProviderSession`.
+
+**Preconditions:** `seed` is not null; cancellation has not been requested.
+
+**Postconditions:** `Sessions` includes the created session in creation order.
 
 ### Error Handling
 
-- **Null seed or responder** — `ArgumentNullException` propagates
-- **Non-positive window** — `ArgumentOutOfRangeException` propagates
-- **Null message** — `ArgumentNullException` propagates
-- **Send after disposal** — `ObjectDisposedException` propagates
-- **Responder returns null** — `InvalidOperationException` propagates; nothing is recorded
-- **Responder throws** — Propagates; nothing is recorded
-- **Second disposal** — Permitted; does nothing
+- **Null seed or responder** — `ArgumentNullException` propagates.
+- **Non-positive window** — `ArgumentOutOfRangeException` propagates.
+- **Responder returns null** — `InvalidOperationException` propagates.
+- **Disposed session send** — `ObjectDisposedException` propagates.
+- **Cancellation before or after responder execution** — `OperationCanceledException` propagates and
+  history is unchanged.
 
 ### Dependencies
 
-- **ProviderSession** — implements `IProviderSession` and `IProviderSessionFactory`, and consumes
-  `ProviderSessionSeed` and `ProviderTurn`; see *ProviderSession Unit Design*.
-- **ContextUsage** — implements `IContextUsageReporter` and produces `ContextUsage`; see
-  *ContextUsage Unit Design*.
-- **TokenEstimator** — measures the simulated fixed overhead; see *TokenEstimator Unit Design*.
-- **AgentSessionOptions** — supplies `DefaultProviderWindowTokens` as the factory's default window;
-  see *AgentSessionOptions Unit Design*.
-- **SessionTranscript** — supplies `TranscriptEntry`; see *SessionTranscript Unit Design*.
+- **ProviderSession** — Implements `IProviderSession` and uses seeds and turns.
+- **ContextUsage** — Reports provider-style usage when enabled.
+- **TokenEstimator** — Estimates fixed overhead and history size.
+- **TranscriptEntry** — Stores in-memory history.
 
 ### Callers
 
-An application or a test hands the factory to `CompactingAgentSession.CreateAsync`. Nothing inside
-the engine references these types: they satisfy the provider seam like any other adapter would.
+The repository's tests use the in-memory provider to verify lifecycle and rotation behavior without a
+model. The implementation is internal and is not part of the public API.

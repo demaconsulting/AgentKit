@@ -32,8 +32,8 @@ public sealed class ProviderSessionSeed
     ///     contain no <see langword="null"/> entry.
     /// </param>
     /// <param name="history">
-    ///     The history to seed, most stable first, as produced by
-    ///     <see cref="ContextLayout.BuildSeed"/>. Must not be <see langword="null"/>; may be empty
+    ///     The history to seed, most stable first, as produced by the compaction engine. Must not
+    ///     be <see langword="null"/>; may be empty
     ///     for a session that has not started.
     /// </param>
     /// <exception cref="ArgumentNullException">

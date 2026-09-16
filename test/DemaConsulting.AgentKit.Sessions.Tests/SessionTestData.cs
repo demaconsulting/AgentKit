@@ -1,121 +1,120 @@
 namespace DemaConsulting.AgentKit.Sessions.Tests;
 
 /// <summary>
-///     Builders for transcripts and layouts whose token sizes are exact rather than approximate.
+///     Builders for turns, transcripts, slots, tiers and layouts whose sizes are exact rather than
+///     approximate.
 /// </summary>
 /// <remarks>
-///     Every decision the compaction engine makes is a comparison of a token count against a
-///     budget, so a test that cannot state a transcript's size exactly cannot state which branch it
+///     Every decision the compaction engine makes is a comparison of a count — turns or estimated
+///     tokens — so a test that cannot state a transcript's size exactly cannot state which branch it
 ///     is exercising. These builders invert the token estimate — a whole number of characters per
-///     token, plus a flat per-entry allowance — so a test can ask for an entry of precisely twenty
-///     tokens and reason about the boundary it falls on.
+///     token, plus a flat per-entry allowance — so a test can ask for a turn of a chosen size.
 /// </remarks>
 internal static class SessionTestData
 {
     /// <summary>
-    ///     Builds a user entry occupying exactly the requested number of tokens.
+    ///     Builds a user entry occupying approximately the requested number of tokens.
     /// </summary>
-    /// <param name="tokens">
-    ///     The tokens the entry must occupy, framing included. Must leave room for the framing
-    ///     allowance and the tag.
-    /// </param>
-    /// <param name="tag">A short marker so a test can identify this entry in rendered material.</param>
-    /// <returns>A user entry of exactly <paramref name="tokens"/> tokens.</returns>
+    /// <param name="tokens">The tokens the entry must occupy, framing included.</param>
+    /// <param name="tag">A short marker so a test can identify the entry in rendered material.</param>
+    /// <returns>A user entry of about <paramref name="tokens"/> tokens.</returns>
     public static TranscriptEntry UserOfTokens(int tokens, string tag)
     {
-        var characters = (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken;
+        var characters = Math.Max(tag.Length, (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken);
         return TranscriptEntry.User(tag.PadRight(characters, '.'));
     }
 
     /// <summary>
-    ///     Builds a tool call entry occupying exactly the requested number of tokens.
+    ///     Builds the entries of one turn: a user message and an assistant answer of a chosen size.
     /// </summary>
-    /// <remarks>
-    ///     Sized exactly, like <see cref="UserOfTokens"/>, because a test about where a tier
-    ///     boundary falls can only state which case it exercises if it can place that boundary on a
-    ///     chosen entry.
-    /// </remarks>
-    /// <param name="tokens">The tokens the entry must occupy, framing included.</param>
-    /// <param name="toolCallId">The identifier the matching result will answer.</param>
-    /// <returns>A tool call entry of exactly <paramref name="tokens"/> tokens.</returns>
-    public static TranscriptEntry ToolCallOfTokens(int tokens, string toolCallId)
+    /// <param name="tokens">The tokens the turn should occupy in total, framing included.</param>
+    /// <param name="tag">A short marker identifying the turn.</param>
+    /// <returns>The entries of one turn.</returns>
+    public static IReadOnlyList<TranscriptEntry> TurnEntries(int tokens, string tag)
     {
-        var characters = (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken;
-        return TranscriptEntry.ToolCall(toolCallId, toolCallId.PadRight(characters, '.'));
+        var half = Math.Max(1, tokens / 2);
+        return [UserOfTokens(half, $"u{tag}"), AssistantOfTokens(tokens - half, $"a{tag}")];
     }
 
     /// <summary>
-    ///     Builds a tool result entry occupying exactly the requested number of tokens.
+    ///     Builds an assistant entry occupying approximately the requested number of tokens.
     /// </summary>
     /// <param name="tokens">The tokens the entry must occupy, framing included.</param>
-    /// <param name="toolCallId">The identifier of the call this answers.</param>
-    /// <returns>A tool result entry of exactly <paramref name="tokens"/> tokens.</returns>
-    public static TranscriptEntry ToolResultOfTokens(int tokens, string toolCallId)
+    /// <param name="tag">A short marker so a test can identify the entry.</param>
+    /// <returns>An assistant entry of about <paramref name="tokens"/> tokens.</returns>
+    public static TranscriptEntry AssistantOfTokens(int tokens, string tag)
     {
-        var characters = (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken;
-        return TranscriptEntry.ToolResult(toolCallId, toolCallId.PadRight(characters, '.'));
+        var characters = Math.Max(tag.Length, (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken);
+        return TranscriptEntry.Assistant(tag.PadRight(characters, '.'));
     }
 
     /// <summary>
-    ///     Builds a transcript of equally sized user entries, oldest first.
+    ///     Builds a transcript of equally sized turns, oldest first.
     /// </summary>
-    /// <param name="count">How many entries to build.</param>
-    /// <param name="tokensEach">The tokens each entry occupies, framing included.</param>
-    /// <returns>A transcript of <paramref name="count"/> entries.</returns>
+    /// <param name="count">How many turns to build.</param>
+    /// <param name="tokensEach">The tokens each turn occupies, framing included.</param>
+    /// <returns>A transcript of <paramref name="count"/> turns.</returns>
     public static SessionTranscript TranscriptOf(int count, int tokensEach)
     {
         var transcript = SessionTranscript.Empty;
         for (var index = 0; index < count; index++)
         {
-            transcript = transcript.Append(UserOfTokens(tokensEach, $"e{index}"));
+            transcript = transcript.AppendTurn(TurnEntries(tokensEach, $"{index}"));
         }
 
         return transcript;
     }
 
     /// <summary>
-    ///     Builds a layout with no fixed overhead, carrying the supplied transcript.
+    ///     Builds a slot carrying a record of a chosen token size.
     /// </summary>
-    /// <remarks>
-    ///     Zero fixed overhead keeps a rotation test's arithmetic about the tiers alone; the
-    ///     accounting for the system prompt and tool declarations is exercised where it belongs, in
-    ///     the options and layout tests.
-    /// </remarks>
-    /// <param name="policy">The policy whose budgets the layout observes.</param>
-    /// <param name="transcript">The verbatim history the layout starts with.</param>
-    /// <returns>A layout carrying <paramref name="transcript"/> and no coarse records.</returns>
-    public static ContextLayout LayoutOf(CompactionPolicy policy, SessionTranscript transcript) =>
-        ContextLayout.Create(policy, 0, 0).WithTranscript(transcript);
+    /// <param name="tokens">The tokens the record occupies.</param>
+    /// <param name="tag">A short marker identifying the slot.</param>
+    /// <returns>A slot of about <paramref name="tokens"/> tokens.</returns>
+    public static Slot SlotOfTokens(int tokens, string tag)
+    {
+        var characters = Math.Max(tag.Length, tokens * TokenEstimator.CharactersPerToken);
+        return new Slot(tag.PadRight(characters, '.'));
+    }
 
     /// <summary>
-    ///     Gets a four-tier policy small enough that a test can fill it with a handful of entries.
+    ///     Builds a tier holding the supplied slots, oldest first.
     /// </summary>
-    /// <remarks>
-    ///     The same shape as the shipped defaults — a large verbatim tier and progressively smaller
-    ///     coarse tiers — scaled down so that the boundary cases are reachable without building a
-    ///     transcript of thousands of tokens.
-    /// </remarks>
-    public static CompactionPolicy SmallPolicy { get; } = new([100, 60, 40, 30]);
+    /// <param name="slots">The slots, oldest first.</param>
+    /// <returns>A tier holding the slots.</returns>
+    public static Tier TierOf(params Slot[] slots)
+    {
+        var tier = Tier.Empty;
+        foreach (var slot in slots)
+        {
+            tier = tier.Append(slot);
+        }
+
+        return tier;
+    }
 
     /// <summary>
-    ///     Gets a window in which a session using <see cref="SmallPolicy"/> converges.
+    ///     Builds a layout with no fixed overhead, carrying the supplied tail and tiers.
     /// </summary>
-    /// <remarks>
-    ///     <para>
-    ///     <b>Named rather than written as a literal, because the number is a conclusion.</b>
-    ///     <see cref="SmallPolicy"/> budgets 230 tokens across its tiers and costs 81 more in the
-    ///     framing their seeded records carry, so a rotated conversation occupies up to 311 tokens.
-    ///     For the session to settle, that has to land below the rotation threshold — 70 percent of
-    ///     the effective window — which takes at least 446 tokens. These tests carry no system
-    ///     prompt and no tools, so the effective window is the whole window.
-    ///     </para>
-    ///     <para>
-    ///     600 is chosen over the bare minimum to leave visible hysteresis: measured against a
-    ///     summarizer that fills every tier to its budget, a session here rotates roughly once every
-    ///     three or four turns rather than on every turn. Nine of these tests previously ran at 400,
-    ///     which holds the 311-token bound and so passed the guard as it was then written, but is
-    ///     below 446 and therefore rotates without ever settling.
-    ///     </para>
-    /// </remarks>
-    public static int ConvergentWindowTokens => 600;
+    /// <param name="tail">The verbatim tail.</param>
+    /// <param name="tiers">The three coarse tiers, tier one first.</param>
+    /// <returns>A layout carrying the supplied structure.</returns>
+    public static ContextLayout LayoutOf(SessionTranscript tail, params Tier[] tiers)
+    {
+        var filled = new Tier[ContextLayout.TierCount];
+        for (var index = 0; index < ContextLayout.TierCount; index++)
+        {
+            filled[index] = index < tiers.Length ? tiers[index] : Tier.Empty;
+        }
+
+        return ContextLayout.Create(0, 0).WithTiers(tail, filled);
+    }
+
+    /// <summary>
+    ///     A responder that answers with a message of a chosen token size.
+    /// </summary>
+    /// <param name="answerTokens">The tokens the answer should occupy.</param>
+    /// <returns>A responder producing a sized answer.</returns>
+    public static Func<string, ProviderTurn> SizedResponder(int answerTokens) =>
+        message => new ProviderTurn(AssistantOfTokens(answerTokens, "r").Text);
 }

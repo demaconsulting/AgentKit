@@ -3,178 +3,179 @@ using System.Collections.ObjectModel;
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
-///     One coarse tier: a consolidated record of older history, and the budget it must fit within.
+///     One slot: a single consolidated record of a span of older history.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     A tier is deliberately a single string rather than a structured record. What a consolidation
+///     A slot is deliberately a single string rather than a structured record. What a consolidation
 ///     produces is prose written for the agent to rely on later, and imposing a structure on it
 ///     here would either constrain the summarizer or require this library to parse a model's
-///     output — both of which would make the arrangement brittle for no gain. The tier's job is to
-///     hold that prose and to know whether it still fits.
-///     </para>
-///     <para>
-///     Tier zero is not represented by this type: it holds verbatim history and is a
-///     <see cref="SessionTranscript"/>. Instances of this type carry index one and above.
+///     output. The slot's job is to hold that prose and its cached size estimate.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
 ///     </para>
 /// </remarks>
-public sealed class ContextTier
+internal sealed class Slot
 {
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ContextTier"/> class.
+    ///     Initializes a new instance of the <see cref="Slot"/> class.
     /// </summary>
-    /// <param name="index">
-    ///     The tier's position, counting the verbatim tier as zero. Must be one or greater.
-    /// </param>
-    /// <param name="budgetTokens">The tokens this tier may occupy. Must be positive.</param>
-    /// <param name="content">
-    ///     The consolidated record. Must not be <see langword="null"/>; empty means the tier holds
-    ///     nothing yet.
-    /// </param>
-    /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="index"/> is less than one, or <paramref name="budgetTokens"/> is not positive.
-    /// </exception>
-    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    public ContextTier(int index, int budgetTokens, string content)
+    /// <param name="content">The consolidated record. Must not be <see langword="null"/> or blank.</param>
+    /// <exception cref="ArgumentException"><paramref name="content"/> is <see langword="null"/> or blank.</exception>
+    public Slot(string content)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(index, 1);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(budgetTokens);
-        ArgumentNullException.ThrowIfNull(content);
+        // A blank slot holds nothing and would spend framing to say nothing. The engine normalizes
+        // a blank summarizer answer to empty and never builds a slot from one, so a blank arriving
+        // here is a defect rather than history.
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            throw new ArgumentException("A slot must hold a non-blank record.", nameof(content));
+        }
 
-        Index = index;
-        BudgetTokens = budgetTokens;
         Content = content;
-
-        // A blank record costs nothing, because a blank record is an empty one and an empty one is
-        // not seeded. Estimating Content directly charged a whitespace record its characters while
-        // IsEmpty, ContextLayout.ConversationTokens and ContextLayout.BuildSeed all agreed it held
-        // nothing - so IsWithinBudget could report a tier over budget for material no provider
-        // would ever receive. The cached estimate is the one figure every consumer of this tier
-        // measures it by, so it is where the single definition of empty has to be applied.
-        EstimatedTokens = string.IsNullOrWhiteSpace(content) ? 0 : TokenEstimator.EstimateTokens(content);
+        EstimatedTokens = TokenEstimator.EstimateTokens(content);
     }
 
     /// <summary>
-    ///     Gets the tier's position, counting the verbatim tier as zero.
-    /// </summary>
-    public int Index { get; }
-
-    /// <summary>
-    ///     Gets the tokens this tier may occupy.
-    /// </summary>
-    public int BudgetTokens { get; }
-
-    /// <summary>
-    ///     Gets the consolidated record, or an empty string when the tier holds nothing yet.
+    ///     Gets the consolidated record.
     /// </summary>
     public string Content { get; }
 
     /// <summary>
-    ///     Gets the estimated tokens the record occupies.
+    ///     Gets the estimated tokens the record occupies, as a fallback measure.
     /// </summary>
-    /// <remarks>
-    ///     Zero for an empty tier, and a blank record is an empty tier — see <see cref="IsEmpty"/>
-    ///     for the one definition of empty this package uses. Charging a blank record its
-    ///     characters here would put this figure, and the <see cref="IsWithinBudget"/> comparison
-    ///     taken from it, at odds with <see cref="ContextLayout.BuildSeed"/>, which does not seed
-    ///     the record at all.
-    /// </remarks>
+    public int EstimatedTokens { get; }
+}
+
+/// <summary>
+///     One tier: an ordered ring of at most <see cref="ContextLayout.SlotsPerTier"/> slots, oldest
+///     first.
+/// </summary>
+/// <remarks>
+///     <para>
+///     A tier holds a fixed number of consolidated slots. When it is full and another slot arrives,
+///     what happens depends on which tier it is — a coarser tier consolidates its slots as peers and
+///     empties, while the coarsest tier drops its oldest slot as a ring — but the tier itself only
+///     knows how to hold slots, report whether it is full, and hand back its oldest.
+///     </para>
+///     <para>
+///     Instances are immutable: every mutator returns a new tier.
+///     </para>
+/// </remarks>
+internal sealed class Tier
+{
+    /// <summary>
+    ///     The slots, oldest first.
+    /// </summary>
+    private readonly Slot[] _slots;
+
+    /// <summary>
+    ///     The read-only view handed out by <see cref="Slots"/>.
+    /// </summary>
+    private readonly ReadOnlyCollection<Slot> _slotsView;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Tier"/> class.
+    /// </summary>
+    /// <param name="slots">The slots, oldest first. Ownership passes to this instance.</param>
+    private Tier(Slot[] slots)
+    {
+        _slots = slots;
+        _slotsView = Array.AsReadOnly(slots);
+
+        var total = 0;
+        foreach (var slot in slots)
+        {
+            total += slot.EstimatedTokens;
+        }
+
+        EstimatedTokens = total;
+    }
+
+    /// <summary>
+    ///     Gets the tier holding no slots.
+    /// </summary>
+    public static Tier Empty { get; } = new([]);
+
+    /// <summary>
+    ///     Gets the slots, oldest first.
+    /// </summary>
+    public IReadOnlyList<Slot> Slots => _slotsView;
+
+    /// <summary>
+    ///     Gets the number of slots the tier holds.
+    /// </summary>
+    public int Count => _slots.Length;
+
+    /// <summary>
+    ///     Gets a value indicating whether the tier holds its full complement of slots.
+    /// </summary>
+    public bool IsFull => _slots.Length >= ContextLayout.SlotsPerTier;
+
+    /// <summary>
+    ///     Gets a value indicating whether the tier holds no slots.
+    /// </summary>
+    public bool IsEmpty => _slots.Length == 0;
+
+    /// <summary>
+    ///     Gets the estimated tokens the tier's slots occupy together.
+    /// </summary>
     public int EstimatedTokens { get; }
 
     /// <summary>
-    ///     Gets a value indicating whether the tier holds no record yet.
+    ///     Gets the oldest slot in the tier.
     /// </summary>
-    /// <remarks>
-    ///     <para>
-    ///     An empty tier is the signal that a consolidation into it is a first recording rather than
-    ///     an extension, which is what <see cref="ConsolidationRequest.IsDegradation"/> reports to
-    ///     the summarizer. It is also what <see cref="ContextLayout.BuildSeed"/> skips, so an empty
-    ///     tier costs no framing.
-    ///     </para>
-    ///     <para>
-    ///     <b>Blank counts as empty, which is the one definition this package uses.</b>
-    ///     <see cref="ConsolidationRequest"/> refuses blank material outright, so a record of pure
-    ///     whitespace is material no consolidation would accept; treating it as content here would
-    ///     make neighboring validators disagree about the same string. It did: a summarizer
-    ///     returning <c>"   "</c> — which <see cref="ISummarizer"/> permits, forbidding only
-    ///     <see langword="null"/> — produced a tier that was non-empty here, was seeded with a full
-    ///     label and framing to say nothing, and was then handed to a
-    ///     <see cref="ConsolidationRequest"/> that rejected it, throwing an undocumented
-    ///     <see cref="ArgumentException"/> out of a rotation and permanently out of every rotation
-    ///     afterwards.
-    ///     </para>
-    ///     <para>
-    ///     A record produced by a rotation can no longer be blank at all:
-    ///     <see cref="RotationEngine"/> normalizes a blank summarizer answer to
-    ///     <see cref="string.Empty"/> where it receives it, so the disagreement is closed by removing
-    ///     the value rather than by each consumer reading it the same way. This test remains because
-    ///     the constructor above is public and a host composing its own layout may still supply one.
-    ///     </para>
-    /// </remarks>
-    public bool IsEmpty => string.IsNullOrWhiteSpace(Content);
+    /// <exception cref="InvalidOperationException">The tier is empty.</exception>
+    public Slot Oldest => _slots.Length > 0
+        ? _slots[0]
+        : throw new InvalidOperationException("An empty tier has no oldest slot.");
 
     /// <summary>
-    ///     Gets a value indicating whether the record fits the tier's budget.
+    ///     Returns a tier with one more slot at the end.
     /// </summary>
-    /// <remarks>
-    ///     True for an empty tier whatever its budget, because an empty tier is charged nothing —
-    ///     including a tier whose record is blank, which <see cref="IsEmpty"/> reports as empty and
-    ///     <see cref="ContextLayout.BuildSeed"/> does not seed. This comparison used to charge such
-    ///     a tier its whitespace and could report it over budget while it contributed nothing to
-    ///     the seed at all.
-    /// </remarks>
-    public bool IsWithinBudget => EstimatedTokens <= BudgetTokens;
-
-    /// <summary>
-    ///     Returns a tier with the same index and budget carrying a different record.
-    /// </summary>
-    /// <param name="content">The new record. Must not be <see langword="null"/>.</param>
+    /// <param name="slot">The slot to append. Must not be <see langword="null"/>.</param>
     /// <returns>A new tier; this one is unchanged.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    public ContextTier WithContent(string content) => new(Index, BudgetTokens, content);
+    /// <exception cref="ArgumentNullException"><paramref name="slot"/> is <see langword="null"/>.</exception>
+    public Tier Append(Slot slot)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+
+        return new Tier([.. _slots, slot]);
+    }
 
     /// <summary>
-    ///     Creates a tier holding no record yet.
+    ///     Returns a tier with its oldest slot removed.
     /// </summary>
-    /// <param name="index">The tier's position. Must be one or greater.</param>
-    /// <param name="budgetTokens">The tokens the tier may occupy. Must be positive.</param>
-    /// <returns>An empty tier.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="index"/> is less than one, or <paramref name="budgetTokens"/> is not positive.
-    /// </exception>
-    public static ContextTier Empty(int index, int budgetTokens) => new(index, budgetTokens, string.Empty);
+    /// <returns>A new tier; this one is unchanged.</returns>
+    /// <exception cref="InvalidOperationException">The tier is empty.</exception>
+    public Tier DropOldest()
+    {
+        if (_slots.Length == 0)
+        {
+            throw new InvalidOperationException("An empty tier has no slot to drop.");
+        }
+
+        return new Tier(_slots[1..]);
+    }
 }
 
 /// <summary>
 ///     The whole of a session's context as this library accounts for it: fixed overhead, the coarse
-///     tiers, and the verbatim recent history.
+///     tiers of consolidated slots, and the verbatim recent turns.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>Laid out most-stable-first.</b> The arrangement is
-///     <c>[system][tool declarations][tier N coarse] ... [tier 1][tier 0 verbatim]</c>, and
-///     <see cref="BuildSeed"/> emits it in exactly that order. Stability decreases from left to
-///     right, which is what allows a provider's prompt cache to match the longest possible prefix
-///     between turns.
+///     <b>A round-robin structure configured in counts.</b> The context holds
+///     <see cref="TierCount"/> coarse tiers, each a ring of at most <see cref="SlotsPerTier"/>
+///     consolidated slots, and behind them a verbatim tail of whole turns. Resolution decays with
+///     age by construction: recent turns are word for word, older history is a slot in tier one,
+///     older still is a slot in a coarser tier. Nothing is weighed against a token budget.
 ///     </para>
 ///     <para>
-///     <b>Bounded by construction, in estimated tokens.</b> The most this layout can ever hold is
-///     the system prompt, plus the tool declarations, plus the sum of the tier budgets, plus the
-///     framing <see cref="BuildSeed"/> wraps each tier record in — published as
-///     <see cref="MaximumBoundTokens"/>. <see cref="IsWithinBound"/> asserts it. Every term is
-///     measured by <see cref="TokenEstimator"/>'s character ratio, so the bound is a bound in this
-///     library's own currency and inherits that ratio's accuracy: it is a rule of thumb held to
-///     within the headroom the rotation fraction reserves, not a guarantee about the tokens a
-///     provider will charge. The framing is part of the bound because it is part of what the
-///     provider receives: a bound that counted only raw tier content would be an under-count, and
-///     for a provider that reports no usage that under-count is what would drive the rotation
-///     decision. The bound is a <em>post-rotation</em> property and is documented as one: between
-///     rotations the context is strictly append-only, so tier zero grows past its budget until the
-///     next rotation batches everything back inside the bound. That growth is exactly what the
-///     rotation threshold's headroom is reserved for.
+///     <b>Laid out most-stable-first.</b> <see cref="BuildSeed"/> emits the coarsest tier first,
+///     then each finer tier, then the verbatim tail, so the further back in the seed's prefix the
+///     more stable the content — the shape a provider's prompt cache rewards.
 ///     </para>
 ///     <para>
 ///     Instances are immutable: every mutator returns a new layout. That is what makes the rotation
@@ -182,8 +183,41 @@ public sealed class ContextTier
 ///     concurrent use.
 ///     </para>
 /// </remarks>
-public sealed class ContextLayout
+internal sealed class ContextLayout
 {
+    /// <summary>
+    ///     The number of slots one tier holds. An internal constant, not a setting: it is the value
+    ///     the recall measurement was taken at, and an application has no basis for choosing it.
+    /// </summary>
+    public const int SlotsPerTier = 4;
+
+    /// <summary>
+    ///     The number of coarse tiers. An internal constant, not a setting, for the same reason as
+    ///     <see cref="SlotsPerTier"/>.
+    /// </summary>
+    public const int TierCount = 3;
+
+    /// <summary>
+    ///     The fraction of the effective window at which a session rotates. An internal constant.
+    /// </summary>
+    /// <remarks>
+    ///     Rotating at 70 percent leaves 30 percent of the effective window as headroom, which
+    ///     absorbs one turn's overshoot on a provider that can only report its usage after a turn,
+    ///     and keeps the session clear of another compactor's floor.
+    /// </remarks>
+    public const double RotationThreshold = 0.70;
+
+    /// <summary>
+    ///     The most material handed to the summarizer in one consolidation, in estimated tokens,
+    ///     before it is chunked. An internal constant.
+    /// </summary>
+    /// <remarks>
+    ///     A rotation can gather far more history than a summarizer's own window holds — a
+    ///     large-window provider's first rotation, especially. Material larger than this is split
+    ///     into chunks each consolidated separately, and the chunk records consolidated in turn.
+    /// </remarks>
+    public const int MaxSummarizerInputTokens = 8_000;
+
     /// <summary>
     ///     The text preceding a tier's own index in a seeded record's label.
     /// </summary>
@@ -195,53 +229,30 @@ public sealed class ContextLayout
     private const string RecordLabelSuffix = ", coarser levels cover older material):\n";
 
     /// <summary>
-    ///     The coarse tiers, tier one first.
+    ///     The coarse tiers, tier one first (finest coarse) and the coarsest last.
     /// </summary>
-    private readonly ContextTier[] _coarseTiers;
+    private readonly Tier[] _tiers;
 
     /// <summary>
-    ///     The read-only view handed out by <see cref="CoarseTiers"/>.
+    ///     The read-only view handed out by <see cref="Tiers"/>.
     /// </summary>
-    /// <remarks>
-    ///     Built once at construction rather than per read, because the property is consulted on
-    ///     every rotation. Handing out the backing array instead would let a caller cast it back to
-    ///     <c>ContextTier[]</c> and replace an element, changing both <see cref="ConversationTokens"/>
-    ///     and the next <see cref="BuildSeed"/> of a layout documented as immutable.
-    /// </remarks>
-    private readonly ReadOnlyCollection<ContextTier> _coarseTiersView;
+    private readonly ReadOnlyCollection<Tier> _tiersView;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContextLayout"/> class.
     /// </summary>
-    /// <remarks>
-    ///     Private because a layout is only ever produced by <see cref="Create"/> or by one of the
-    ///     <c>With</c> methods, both of which guarantee the tier array matches the policy. Taking
-    ///     ownership of the array avoids copying it on every rotation.
-    /// </remarks>
-    /// <param name="policy">The policy whose budgets this layout observes.</param>
     /// <param name="systemTokens">The tokens the system prompt occupies.</param>
     /// <param name="toolDeclarationTokens">The tokens the tool declarations occupy.</param>
-    /// <param name="transcript">The verbatim tier-zero history.</param>
-    /// <param name="coarseTiers">The coarse tiers, tier one first. Ownership passes to this instance.</param>
-    private ContextLayout(
-        CompactionPolicy policy,
-        int systemTokens,
-        int toolDeclarationTokens,
-        SessionTranscript transcript,
-        ContextTier[] coarseTiers)
+    /// <param name="tail">The verbatim recent turns.</param>
+    /// <param name="tiers">The coarse tiers, tier one first. Ownership passes to this instance.</param>
+    private ContextLayout(int systemTokens, int toolDeclarationTokens, SessionTranscript tail, Tier[] tiers)
     {
-        Policy = policy;
         SystemTokens = systemTokens;
         ToolDeclarationTokens = toolDeclarationTokens;
-        Transcript = transcript;
-        _coarseTiers = coarseTiers;
-        _coarseTiersView = Array.AsReadOnly(coarseTiers);
+        Tail = tail;
+        _tiers = tiers;
+        _tiersView = Array.AsReadOnly(tiers);
     }
-
-    /// <summary>
-    ///     Gets the policy whose budgets this layout observes.
-    /// </summary>
-    public CompactionPolicy Policy { get; }
 
     /// <summary>
     ///     Gets the tokens the system prompt occupies.
@@ -262,380 +273,152 @@ public sealed class ContextLayout
     public int ToolDeclarationTokens { get; }
 
     /// <summary>
-    ///     Gets the verbatim tier-zero history.
+    ///     Gets the verbatim recent turns.
     /// </summary>
-    public SessionTranscript Transcript { get; }
+    public SessionTranscript Tail { get; }
 
     /// <summary>
-    ///     Gets the coarse tiers, tier one first.
+    ///     Gets the coarse tiers, tier one first and the coarsest last.
     /// </summary>
-    /// <remarks>
-    ///     Holds one fewer element than <see cref="CompactionPolicy.TierCount"/>, because tier zero
-    ///     is the transcript rather than a consolidated record. Element zero is tier one. The list
-    ///     is a genuine read-only view: a caller cannot reach the backing array through it.
-    /// </remarks>
-    public IReadOnlyList<ContextTier> CoarseTiers => _coarseTiersView;
+    public IReadOnlyList<Tier> Tiers => _tiersView;
 
     /// <summary>
-    ///     Gets the tokens the conversation occupies: the coarse tiers, the framing their records
-    ///     are seeded with, and the verbatim history.
+    ///     Gets the estimated tokens the conversation occupies: the coarse slots, the framing their
+    ///     seeded records carry, and the verbatim tail.
     /// </summary>
     /// <remarks>
-    ///     <para>
-    ///     Excludes the fixed overhead, so this is the figure the rotation threshold — expressed as
-    ///     a fraction of the effective window — is compared against. A non-empty tier is charged the
-    ///     framing <see cref="BuildSeed"/> wraps it in as well as its own content, because that
-    ///     framing is part of what the provider is sent; an empty tier is charged nothing because it
-    ///     is not seeded at all.
-    ///     </para>
-    ///     <para>
-    ///     <b>Charged strictly inside the non-empty branch, so this account cannot outrun the
-    ///     seed.</b> The content used to be added before the tier was asked whether it was empty, so
-    ///     a blank record — which <see cref="ContextTier.IsEmpty"/> reports as empty and
-    ///     <see cref="BuildSeed"/> omits — was counted here anyway. The threshold was then compared
-    ///     against tokens no provider would ever receive, and the estimating path disagreed with the
-    ///     provider-reported one about the same session. A blank record can no longer arrive from a
-    ///     consolidation, because <see cref="RotationEngine"/> normalizes a blank summarizer answer
-    ///     where it receives it; this remains correct for a layout a host composes itself through
-    ///     <see cref="ContextTier"/>'s public constructor. The tier's own
-    ///     <see cref="ContextTier.EstimatedTokens"/> is zero for a blank record as well, so the
-    ///     branch below and the figure it would have added now agree rather than merely coincide.
-    ///     </para>
-    ///     <para>
-    ///     <b>Accumulated wide and saturated rather than wrapped.</b> The transcript's own total
-    ///     fits a token count, because a transcript that could not is refused where it is appended
-    ///     to, and each tier's estimate fits one on its own; their sum need not, for a policy
-    ///     carrying enough tiers. An int accumulator would wrap that to a negative figure, which
-    ///     compares below every rotation threshold — so the largest context this library can
-    ///     account for would be the one it never rotated. Saturating at <see cref="int.MaxValue"/>
-    ///     says "at least everything a token count can hold", which crosses every threshold and
-    ///     fails every bound: the direction a figure this size has to err in.
-    ///     </para>
+    ///     Excludes the fixed overhead. A fallback estimate, used when a provider reports no usage
+    ///     of its own and when the session sizes a seed it has not yet sent.
     /// </remarks>
-    public int ConversationTokens
+    public int EstimatedConversationTokens
     {
         get
         {
-            long total = Transcript.EstimatedTokens;
-            foreach (var tier in _coarseTiers)
+            var total = 0;
+            foreach (var entry in BuildSeed())
             {
-                if (tier.IsEmpty)
-                {
-                    continue;
-                }
-
-                total += (long)tier.EstimatedTokens + RecordFramingTokens(tier.Index);
+                total += entry.EstimatedTokens;
             }
 
-            return (int)Math.Min(total, int.MaxValue);
+            return total;
         }
     }
 
     /// <summary>
-    ///     Gets the tokens the whole context occupies, fixed overhead included.
+    ///     Gets the estimated tokens the whole context occupies, fixed overhead included.
     /// </summary>
-    /// <remarks>
-    ///     Summed wide and saturated at <see cref="int.MaxValue"/>, for the reason
-    ///     <see cref="ConversationTokens"/> is: the fixed overhead and the policy's bound are known
-    ///     to fit a token count together, because <see cref="Create"/> refuses a layout for which
-    ///     they do not, but a tier zero grown past its budget can carry the total beyond one. A
-    ///     wrapped negative total would pass <see cref="IsWithinBound"/> for the largest context
-    ///     this library can account for.
-    /// </remarks>
-    public int TotalEstimatedTokens =>
-        (int)Math.Min((long)SystemTokens + ToolDeclarationTokens + ConversationTokens, int.MaxValue);
+    public int TotalEstimatedTokens => SystemTokens + ToolDeclarationTokens + EstimatedConversationTokens;
 
     /// <summary>
-    ///     Gets the most this layout can ever occupy: fixed overhead, every tier budget, and the
-    ///     framing every tier record is seeded with.
+    ///     Creates an empty layout for a measured fixed overhead.
     /// </summary>
-    /// <remarks>
-    ///     This is the bound the whole arrangement exists to respect. It is a property of the
-    ///     configuration alone — it does not depend on what the session has done — which is what
-    ///     makes it something an application can reason about before starting. The framing allowance
-    ///     assumes every coarse tier holds a record, which is the worst case and therefore the only
-    ///     honest one for a bound.
-    ///     <para>
-    ///     Always positive. A policy refuses construction unless its budgets and framing fit a token
-    ///     count, and <see cref="Create"/> refuses a fixed overhead that would carry the total past
-    ///     one, so this addition cannot wrap and report a negative bound that
-    ///     <see cref="IsWithinBound"/> would then deny an empty layout.
-    ///     </para>
-    /// </remarks>
-    public int MaximumBoundTokens =>
-        SystemTokens + ToolDeclarationTokens + Policy.TotalTierBudgetTokens + SeedFramingTokens(Policy);
-
-    /// <summary>
-    ///     Gets a value indicating whether the context currently sits within its construction bound.
-    /// </summary>
-    /// <remarks>
-    ///     True immediately after a rotation. False in the ordinary course of a session between
-    ///     rotations, because tier zero is append-only and grows past its budget until the next
-    ///     rotation. A caller checking this outside a post-rotation assertion is asking the wrong
-    ///     question; see the class remarks.
-    /// </remarks>
-    public bool IsWithinBound => TotalEstimatedTokens <= MaximumBoundTokens;
-
-    /// <summary>
-    ///     Gets the tokens the framing of the seeded tier records adds for a policy, over and above
-    ///     the tier budgets themselves.
-    /// </summary>
-    /// <remarks>
-    ///     <para>
-    ///     <see cref="BuildSeed"/> does not hand a provider a tier's raw content: it wraps each
-    ///     non-empty tier in a transcript entry carrying a label that says which detail level the
-    ///     record belongs to, and every entry is charged
-    ///     <see cref="TokenEstimator.PerEntryOverheadTokens"/> of message framing on top. Both are
-    ///     tokens the provider actually receives, so both belong in the bound; counting only the
-    ///     raw content would let the seed exceed <see cref="MaximumBoundTokens"/> even with every
-    ///     tier exactly within its budget.
-    ///     </para>
-    ///     <para>
-    ///     Published as a static function of the policy because
-    ///     <see cref="AgentSessionOptions"/> must refuse a window that cannot hold the bound, and it
-    ///     has to compute that bound before any layout exists.
-    ///     </para>
-    /// </remarks>
-    /// <param name="policy">The policy whose coarse tiers are counted. Must not be <see langword="null"/>.</param>
-    /// <returns>The framing tokens every coarse tier record costs when seeded, summed.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
-    public static int SeedFramingTokens(CompactionPolicy policy)
-    {
-        ArgumentNullException.ThrowIfNull(policy);
-
-        // Safe to narrow: a policy refuses construction unless its budgets and this framing
-        // together fit a token count, so the framing alone certainly does.
-        return (int)SeedFramingTokens(policy.TierCount);
-    }
-
-    /// <summary>
-    ///     Computes the seed framing for a tier count, in a wider type than a token count.
-    /// </summary>
-    /// <remarks>
-    ///     Taken as a bare tier count, and returned wide, so that <see cref="CompactionPolicy"/> can
-    ///     use it while validating the very budgets a policy instance would be built from — before
-    ///     any policy exists to pass, and before the total is known to be representable.
-    /// </remarks>
-    /// <param name="tierCount">The number of tiers, counting the verbatim tier zero.</param>
-    /// <returns>The framing tokens every coarse tier record costs when seeded, summed.</returns>
-    internal static long SeedFramingTokens(int tierCount)
-    {
-        // One record per coarse tier - every tier above the verbatim tier zero - because a bound
-        // must assume every tier holds a record.
-        long total = 0;
-        for (var tierIndex = 1; tierIndex < tierCount; tierIndex++)
-        {
-            total += RecordFramingTokens(tierIndex);
-        }
-
-        return total;
-    }
-
-    /// <summary>
-    ///     Creates an empty layout for a policy and a measured fixed overhead.
-    /// </summary>
-    /// <remarks>
-    ///     Allocates one empty coarse tier per non-verbatim budget, so the tier array matches the
-    ///     policy from the outset and no code path has to grow it later.
-    /// </remarks>
-    /// <param name="policy">The policy whose budgets the layout observes. Must not be <see langword="null"/>.</param>
     /// <param name="systemTokens">The tokens the system prompt occupies. Must not be negative.</param>
-    /// <param name="toolDeclarationTokens">
-    ///     The tokens the tool declarations occupy. Must not be negative.
-    /// </param>
-    /// <returns>A layout holding no history and no records.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
+    /// <param name="toolDeclarationTokens">The tokens the tool declarations occupy. Must not be negative.</param>
+    /// <returns>A layout holding no history and no slots.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     <paramref name="systemTokens"/> or <paramref name="toolDeclarationTokens"/> is negative.
     /// </exception>
-    /// <exception cref="ArgumentException">
-    ///     The fixed overhead and the policy's bound together cannot be represented as a token count.
-    /// </exception>
-    public static ContextLayout Create(CompactionPolicy policy, int systemTokens, int toolDeclarationTokens)
+    public static ContextLayout Create(int systemTokens, int toolDeclarationTokens)
     {
-        ArgumentNullException.ThrowIfNull(policy);
         ArgumentOutOfRangeException.ThrowIfNegative(systemTokens);
         ArgumentOutOfRangeException.ThrowIfNegative(toolDeclarationTokens);
 
-        // The policy already guarantees its own half of the bound is representable, so the only way
-        // the whole bound can escape a token count is a fixed overhead large enough to do it. Refuse
-        // that here rather than let MaximumBoundTokens wrap into a negative figure that IsWithinBound
-        // would then report false against for a layout holding nothing at all.
-        var bound = (long)systemTokens
-            + toolDeclarationTokens
-            + policy.TotalTierBudgetTokens
-            + SeedFramingTokens(policy.TierCount);
-        if (bound > int.MaxValue)
-        {
-            throw new ArgumentException(
-                $"The system prompt, the tool declarations and the policy's bound come to {bound} "
-                + "tokens, which no context window could hold and no token count can represent.",
-                nameof(systemTokens));
-        }
+        var tiers = new Tier[TierCount];
+        Array.Fill(tiers, Tier.Empty);
 
-        // One coarse tier per budget above tier zero; tier zero is the transcript.
-        var tiers = new ContextTier[policy.TierCount - 1];
-        for (var index = 0; index < tiers.Length; index++)
-        {
-            tiers[index] = ContextTier.Empty(index + 1, policy.TierBudgetTokens[index + 1]);
-        }
-
-        return new ContextLayout(policy, systemTokens, toolDeclarationTokens, SessionTranscript.Empty, tiers);
+        return new ContextLayout(systemTokens, toolDeclarationTokens, SessionTranscript.Empty, tiers);
     }
 
     /// <summary>
-    ///     Returns a layout with a different verbatim history.
+    ///     Returns a layout with a different verbatim tail.
     /// </summary>
-    /// <param name="transcript">The new tier-zero history. Must not be <see langword="null"/>.</param>
+    /// <param name="tail">The new verbatim tail. Must not be <see langword="null"/>.</param>
     /// <returns>A new layout; this one is unchanged.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="transcript"/> is <see langword="null"/>.</exception>
-    public ContextLayout WithTranscript(SessionTranscript transcript)
+    /// <exception cref="ArgumentNullException"><paramref name="tail"/> is <see langword="null"/>.</exception>
+    public ContextLayout WithTail(SessionTranscript tail)
     {
-        ArgumentNullException.ThrowIfNull(transcript);
+        ArgumentNullException.ThrowIfNull(tail);
 
-        return new ContextLayout(Policy, SystemTokens, ToolDeclarationTokens, transcript, _coarseTiers);
+        return new ContextLayout(SystemTokens, ToolDeclarationTokens, tail, _tiers);
     }
 
     /// <summary>
-    ///     Returns a layout with different coarse tiers and a different verbatim history.
+    ///     Returns a layout with different coarse tiers and a different verbatim tail.
     /// </summary>
     /// <remarks>
-    ///     Both are replaced together because a rotation changes both at once, and applying them
-    ///     separately would produce an intermediate layout that never actually exists.
+    ///     Both are replaced together because a rotation changes both at once.
     /// </remarks>
-    /// <param name="transcript">The new tier-zero history. Must not be <see langword="null"/>.</param>
-    /// <param name="coarseTiers">
+    /// <param name="tail">The new verbatim tail. Must not be <see langword="null"/>.</param>
+    /// <param name="tiers">
     ///     The new coarse tiers, tier one first. Must not be <see langword="null"/>, must contain no
-    ///     <see langword="null"/> entry, must hold exactly one fewer element than the policy's tier
-    ///     count, and each element must carry the index and the budget the policy gives that slot:
-    ///     the element at position <c>i</c> must have <c>Index == i + 1</c> and
-    ///     <c>BudgetTokens == Policy.TierBudgetTokens[i + 1]</c>.
+    ///     <see langword="null"/> entry, and must hold exactly <see cref="TierCount"/> tiers.
     /// </param>
     /// <returns>A new layout; this one is unchanged.</returns>
     /// <exception cref="ArgumentNullException">
-    ///     <paramref name="transcript"/> or <paramref name="coarseTiers"/> is <see langword="null"/>.
+    ///     <paramref name="tail"/> or <paramref name="tiers"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="coarseTiers"/> holds the wrong number of tiers, contains a
-    ///     <see langword="null"/> entry, or contains a tier whose index or budget disagrees with the
-    ///     policy.
+    ///     <paramref name="tiers"/> holds the wrong number of tiers or contains a
+    ///     <see langword="null"/> entry.
     /// </exception>
-    public ContextLayout WithTiers(SessionTranscript transcript, IReadOnlyList<ContextTier> coarseTiers)
+    public ContextLayout WithTiers(SessionTranscript tail, IReadOnlyList<Tier> tiers)
     {
-        ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(coarseTiers);
+        ArgumentNullException.ThrowIfNull(tail);
+        ArgumentNullException.ThrowIfNull(tiers);
 
-        if (coarseTiers.Count != Policy.TierCount - 1)
+        if (tiers.Count != TierCount)
         {
             throw new ArgumentException(
-                $"Expected {Policy.TierCount - 1} coarse tiers for a {Policy.TierCount}-tier policy, "
-                + $"but {coarseTiers.Count} were supplied.",
-                nameof(coarseTiers));
+                $"Expected {TierCount} tiers, but {tiers.Count} were supplied.",
+                nameof(tiers));
         }
 
-        var copied = new ContextTier[coarseTiers.Count];
-        for (var index = 0; index < coarseTiers.Count; index++)
+        var copied = new Tier[TierCount];
+        for (var index = 0; index < TierCount; index++)
         {
-            var tier = coarseTiers[index]
-                ?? throw new ArgumentException("A tier in the list is null.", nameof(coarseTiers));
-
-            // A tier's position in this list is what every other part of the layout reads it by:
-            // rotation indexes the policy's budget for slot i+1, the seed labels the record by the
-            // tier's own index, and the bound is computed from the policy. A tier whose index or
-            // budget disagrees with the policy would leave those four accounts describing different
-            // things - a tier-one slot carrying tier three's budget is consolidated against one
-            // budget and charged against another - so it is refused here rather than allowed to
-            // produce a layout that is internally inconsistent.
-            var expectedIndex = index + 1;
-            if (tier.Index != expectedIndex)
-            {
-                throw new ArgumentException(
-                    $"The tier at position {index} has index {tier.Index}, but the policy places tier "
-                    + $"{expectedIndex} there.",
-                    nameof(coarseTiers));
-            }
-
-            var expectedBudget = Policy.TierBudgetTokens[expectedIndex];
-            if (tier.BudgetTokens != expectedBudget)
-            {
-                throw new ArgumentException(
-                    $"Tier {expectedIndex} carries a budget of {tier.BudgetTokens} tokens, but the "
-                    + $"policy budgets it {expectedBudget}.",
-                    nameof(coarseTiers));
-            }
-
-            copied[index] = tier;
+            copied[index] = tiers[index]
+                ?? throw new ArgumentException("A tier in the list is null.", nameof(tiers));
         }
 
-        return new ContextLayout(Policy, SystemTokens, ToolDeclarationTokens, transcript, copied);
+        return new ContextLayout(SystemTokens, ToolDeclarationTokens, tail, copied);
     }
 
     /// <summary>
     ///     Builds the history a fresh provider session is seeded with, most stable first.
     /// </summary>
     /// <remarks>
-    ///     <para>
-    ///     Emits the coarse tiers from coarsest to finest, then the verbatim history in its own
-    ///     order. Each tier record is labeled with how old the material it covers is, because a
-    ///     model handed several records with no ordering cue cannot tell which supersedes which.
-    ///     Empty tiers are skipped: seeding an empty record would spend framing tokens to say
-    ///     nothing.
-    ///     </para>
-    ///     <para>
-    ///     The system prompt and the tool declarations are <em>not</em> emitted here. They are
-    ///     supplied to a provider through its own configuration rather than as history, which is
-    ///     why they are accounted for as fixed overhead and not as entries.
-    ///     </para>
+    ///     Emits the tiers from coarsest to finest, each slot oldest first, then the verbatim tail
+    ///     in its own order. Each slot is labeled with the detail level it belongs to, because a
+    ///     model handed several records with no ordering cue cannot tell which supersedes which. The
+    ///     system prompt and tool declarations are not emitted here — they are supplied to a
+    ///     provider through its own configuration.
     /// </remarks>
     /// <returns>The seed history, most stable first. Never <see langword="null"/>.</returns>
     public IReadOnlyList<TranscriptEntry> BuildSeed()
     {
-        var seed = new List<TranscriptEntry>(_coarseTiers.Length + Transcript.Entries.Count);
+        var seed = new List<TranscriptEntry>();
 
         // Coarsest first: the oldest, least detailed material sits furthest from the live turn.
-        for (var index = _coarseTiers.Length - 1; index >= 0; index--)
+        for (var tierIndex = TierCount - 1; tierIndex >= 0; tierIndex--)
         {
-            var tier = _coarseTiers[index];
-            if (tier.IsEmpty)
+            var tier = _tiers[tierIndex];
+            foreach (var slot in tier.Slots)
             {
-                continue;
+                seed.Add(TranscriptEntry.ContextRecord(RecordLabel(tierIndex + 1) + slot.Content));
             }
-
-            seed.Add(TranscriptEntry.ContextRecord(RecordLabel(tier.Index) + tier.Content));
         }
 
         // Then the verbatim recent history, in the order it happened.
-        seed.AddRange(Transcript.Entries);
+        seed.AddRange(Tail.Entries);
 
-        // Published as a genuine read-only view rather than the list itself. The seed is handed
-        // straight to a provider-session factory, and a caller that cast it back to List<T> could
-        // alter the history a fresh session is created from between building it and using it.
         return Array.AsReadOnly(seed.ToArray());
     }
 
     /// <summary>
-    ///     Builds the label a tier's record carries when it is seeded.
+    ///     Builds the label a slot's record carries when it is seeded.
     /// </summary>
-    /// <remarks>
-    ///     Shared by <see cref="BuildSeed"/> and <see cref="RecordFramingTokens"/> so the text that
-    ///     is emitted and the text that is charged for can never drift apart — which is exactly how
-    ///     the bound came to under-count the seed in the first place.
-    /// </remarks>
-    /// <param name="tierIndex">The tier the record belongs to.</param>
+    /// <param name="tierIndex">The one-based tier the slot belongs to.</param>
     /// <returns>The label, ending in the newline that separates it from the record.</returns>
     private static string RecordLabel(int tierIndex) =>
         $"{RecordLabelPrefix}{tierIndex}{RecordLabelSuffix}";
-
-    /// <summary>
-    ///     Estimates the tokens one tier's seeded record costs beyond the record itself.
-    /// </summary>
-    /// <remarks>
-    ///     The label plus the per-entry message framing. Estimating the label separately from the
-    ///     content can only over-state the combined estimate, never under-state it, because the
-    ///     estimator rounds up — which is the direction a bound must err in.
-    /// </remarks>
-    /// <param name="tierIndex">The tier the record belongs to.</param>
-    /// <returns>The framing tokens the seeded record costs.</returns>
-    private static int RecordFramingTokens(int tierIndex) =>
-        TokenEstimator.EstimateTokens(RecordLabel(tierIndex)) + TokenEstimator.PerEntryOverheadTokens;
 }

@@ -3,8 +3,7 @@ using System.Collections.ObjectModel;
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
-///     What one transcript entry is, which decides how it is framed for a provider and whether it
-///     may be separated from its neighbor.
+///     What one transcript entry is, which decides how it is framed for a provider.
 /// </summary>
 public enum TranscriptEntryKind
 {
@@ -36,16 +35,14 @@ public enum TranscriptEntryKind
 }
 
 /// <summary>
-///     One indivisible item of session history, as the engine records it out of session.
+///     One item of session history, as the engine records it out of session.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>Why the engine keeps its own transcript.</b> Consolidation must run <em>out of
-///     session</em>: asking a live session to summarize itself spends that session's own context
-///     on the summary and triggers the provider's built-in compactor, which is self-defeating.
-///     The engine therefore maintains this record itself and hands the material to a separate,
-///     stateless summarizer call. That also means the transcript is available when a provider
-///     session has been disposed, which is exactly when a fresh one must be seeded.
+///     <b>The currency of the provider seam.</b> A <see cref="ProviderSessionSeed"/> carries these
+///     as the history a fresh provider session resumes from, and a <see cref="ProviderTurn"/>
+///     returns these as what a turn produced. An adapter maps its provider's own message shape to
+///     and from them, and needs nothing else from this library to do so.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
@@ -59,10 +56,9 @@ public sealed class TranscriptEntry
     /// <remarks>
     ///     The identifier is required for a tool call and a tool result, and rejected for
     ///     everything else. That asymmetry is deliberate: pairing a call with its result is what
-    ///     lets a tier boundary be snapped so the two never separate, and an unidentified call
-    ///     could not be paired. An identifier on a plain message would be meaningless and is
-    ///     refused rather than ignored, so a caller that supplies one learns it misunderstood the
-    ///     model.
+    ///     lets a provider match the outcome to the request, and an unidentified call could not be
+    ///     paired. An identifier on a plain message would be meaningless and is refused rather than
+    ///     ignored, so a caller that supplies one learns it misunderstood the model.
     /// </remarks>
     /// <param name="kind">The kind of entry this is.</param>
     /// <param name="text">
@@ -91,7 +87,7 @@ public sealed class TranscriptEntry
         // rules below - it is neither a call nor a result, so no identifier is required and none
         // is refused - be accepted, and then render through ToTranscriptLine's default branch as
         // though it were a consolidated record, making malformed input part of the context an
-        // agent is seeded from. Refused here, following ToolResult.Denied's precedent.
+        // agent is seeded from. Refused here.
         if (!Enum.IsDefined(kind))
         {
             throw new ArgumentOutOfRangeException(
@@ -101,8 +97,7 @@ public sealed class TranscriptEntry
         }
 
         // Validate the pairing identifier before any assignment, so an entry that could not be
-        // paired - and would therefore be capable of orphaning a tool call at a tier boundary -
-        // never exists even briefly.
+        // paired never exists even briefly.
         var pairing = kind is TranscriptEntryKind.ToolCall or TranscriptEntryKind.ToolResult;
         if (pairing && string.IsNullOrWhiteSpace(toolCallId))
         {
@@ -144,9 +139,9 @@ public sealed class TranscriptEntry
     ///     Gets the estimated tokens this entry occupies in a context window, including framing.
     /// </summary>
     /// <remarks>
-    ///     Computed once at construction because the entry is immutable, and because every tier
-    ///     boundary decision walks the transcript and would otherwise re-estimate the same text on
-    ///     every rotation.
+    ///     Computed once at construction because the entry is immutable. It is a fallback estimate,
+    ///     used when a provider reports no usage of its own and when the session sizes a seed it has
+    ///     not yet sent.
     /// </remarks>
     public int EstimatedTokens { get; }
 
@@ -221,300 +216,245 @@ public sealed class TranscriptEntry
 }
 
 /// <summary>
-///     The append-only verbatim history the engine keeps out of session, and the source of every
-///     tier boundary decision.
+///     One turn of a session: the message that was sent, the answer, and every tool call and tool
+///     result produced in between, kept together as a single indivisible exchange.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>A turn is the unit of the verbatim tail and the granularity of every boundary.</b> The
+///     round-robin structure keeps a number of whole turns word for word and consolidates whole
+///     turns; nothing is ever split partway through one. Grouping the tool traffic with the answer
+///     it belongs to is what retires the old rule that had to snap a boundary so a tool call was
+///     never separated from its result — with a turn as the unit, they cannot be separated because
+///     they are one thing.
+///     </para>
+///     <para>
+///     Instances are immutable after construction and safe for concurrent use.
+///     </para>
+/// </remarks>
+internal sealed class SessionTurn
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="SessionTurn"/> class.
+    /// </summary>
+    /// <param name="entries">The entries of one turn, in order. Ownership passes to this instance.</param>
+    internal SessionTurn(TranscriptEntry[] entries)
+    {
+        Entries = Array.AsReadOnly(entries);
+
+        var total = 0;
+        foreach (var entry in entries)
+        {
+            total += entry.EstimatedTokens;
+        }
+
+        EstimatedTokens = total;
+    }
+
+    /// <summary>
+    ///     Gets the entries this turn is made of, in order.
+    /// </summary>
+    public IReadOnlyList<TranscriptEntry> Entries { get; }
+
+    /// <summary>
+    ///     Gets the estimated tokens this turn occupies, including per-entry framing.
+    /// </summary>
+    public int EstimatedTokens { get; }
+}
+
+/// <summary>
+///     The append-only verbatim history the engine keeps out of session, grouped into whole turns.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     <b>Append-only between rotations, by design.</b> Nothing already sent to a provider is ever
 ///     rewritten while a session is live. That is what preserves prompt caching: a provider that
 ///     recognizes an unchanged prefix charges less for it, and an in-place edit anywhere in the
-///     history invalidates that prefix for every following turn. All reshaping happens in one
-///     batch at rotation, where the cache is invalidated anyway because the session is being
-///     replaced.
+///     history invalidates that prefix for every following turn. All reshaping happens in one batch
+///     at rotation, where the cache is invalidated anyway because the session is being replaced.
 ///     </para>
 ///     <para>
-///     Instances are immutable: <see cref="Append(TranscriptEntry)"/> returns a new transcript
-///     rather than mutating this one. That makes the rotation engine a pure function of its inputs
-///     and lets a test hold a before-and-after pair. Instances are safe for concurrent use.
+///     <b>Turn-granular.</b> The transcript holds a list of whole turns. The verbatim tail is the
+///     newest turns; everything older is what a rotation consolidates. Both are counted in turns,
+///     never tokens, which is what lets the compaction structure be configured in counts.
+///     </para>
+///     <para>
+///     Instances are immutable: every mutator returns a new transcript. That makes the rotation
+///     engine a pure function of its inputs and lets a test compare a before and after. Instances
+///     are safe for concurrent use.
 ///     </para>
 /// </remarks>
-public sealed class SessionTranscript
+internal sealed class SessionTranscript
 {
     /// <summary>
-    ///     The entries, oldest first.
+    ///     The turns, oldest first.
     /// </summary>
-    private readonly TranscriptEntry[] _entries;
+    private readonly SessionTurn[] _turns;
 
     /// <summary>
-    ///     The read-only view handed out by <see cref="Entries"/>.
+    ///     The read-only view handed out by <see cref="Turns"/>.
     /// </summary>
-    /// <remarks>
-    ///     Built once at construction rather than per read. Handing out the backing array would let
-    ///     a caller cast it back to <c>TranscriptEntry[]</c> and replace an entry — including with
-    ///     <see langword="null"/> — corrupting the token total cached below and every rotation
-    ///     decision taken from it.
-    /// </remarks>
-    private readonly ReadOnlyCollection<TranscriptEntry> _entriesView;
+    private readonly ReadOnlyCollection<SessionTurn> _turnsView;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SessionTranscript"/> class.
     /// </summary>
-    /// <remarks>
-    ///     Private because a transcript is only ever built from <see cref="Empty"/> by appending.
-    ///     Taking ownership of the array avoids copying it on every append, which is safe because
-    ///     every caller is within this class and passes a freshly allocated array.
-    /// </remarks>
-    /// <param name="entries">The entries, oldest first. Ownership passes to this instance.</param>
-    /// <exception cref="ArgumentException">
-    ///     The entries occupy more tokens than a token count can represent.
-    /// </exception>
-    private SessionTranscript(TranscriptEntry[] entries)
+    /// <param name="turns">The turns, oldest first. Ownership passes to this instance.</param>
+    private SessionTranscript(SessionTurn[] turns)
     {
-        _entries = entries;
-        _entriesView = Array.AsReadOnly(entries);
+        _turns = turns;
+        _turnsView = Array.AsReadOnly(turns);
 
-        // Sum once at construction: the total is consulted on every turn to decide whether the
-        // rotation threshold has been reached, and the entry list never changes afterwards.
-        //
-        // Accumulated in a wider type than a token count and range-tested before it is narrowed,
-        // for the same reason the tool declarations are: one entry fits a token count on its own,
-        // because a string cannot be longer than the runtime's object cap allows, but nine entries
-        // carrying the longest string that can exist do not. An int accumulator would wrap that to
-        // a negative figure, and EstimatedTokens is the figure every rotation decision is taken
-        // from - a negative one compares below every threshold, so the session that most needed to
-        // rotate would be the one that never did. This is the point at which the total first
-        // becomes computable, so it is rejected here rather than at each later site that reads it.
-        long total = 0;
-        foreach (var entry in entries)
+        var total = 0;
+        foreach (var turn in turns)
         {
-            total += entry.EstimatedTokens;
+            total += turn.EstimatedTokens;
         }
 
-        if (total > int.MaxValue)
-        {
-            throw new ArgumentException(
-                $"The transcript entries come to {total} tokens, which no context window could hold "
-                + "and no token count can represent.",
-                nameof(entries));
-        }
-
-        EstimatedTokens = (int)total;
+        EstimatedTokens = total;
     }
 
     /// <summary>
-    ///     Gets the transcript holding no entries.
+    ///     Gets the transcript holding no turns.
     /// </summary>
-    /// <remarks>
-    ///     A single shared instance rather than a factory method, because the type is immutable and
-    ///     sharing it is therefore free of risk.
-    /// </remarks>
     public static SessionTranscript Empty { get; } = new([]);
 
     /// <summary>
-    ///     Gets the entries, oldest first.
+    ///     Gets the turns, oldest first.
     /// </summary>
-    /// <remarks>
-    ///     A genuine read-only view: a caller cannot reach the backing array through it, so the
-    ///     cached token total can never disagree with the entries it was computed from.
-    /// </remarks>
-    public IReadOnlyList<TranscriptEntry> Entries => _entriesView;
+    public IReadOnlyList<SessionTurn> Turns => _turnsView;
 
     /// <summary>
-    ///     Gets the estimated tokens every entry in this transcript occupies together.
+    ///     Gets the number of turns held verbatim.
+    /// </summary>
+    public int TurnCount => _turns.Length;
+
+    /// <summary>
+    ///     Gets the estimated tokens every turn in this transcript occupies together.
     /// </summary>
     public int EstimatedTokens { get; }
 
     /// <summary>
-    ///     Returns a transcript with one more entry at the end.
+    ///     Gets every entry of every turn, oldest first.
     /// </summary>
-    /// <param name="entry">The entry to append. Must not be <see langword="null"/>.</param>
-    /// <returns>A new transcript; this one is unchanged.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">
-    ///     The appended transcript would occupy more tokens than a token count can represent.
-    /// </exception>
-    public SessionTranscript Append(TranscriptEntry entry)
+    /// <remarks>
+    ///     The flattened view a fresh provider session is seeded with as verbatim history, and the
+    ///     material a rotation renders for the summarizer.
+    /// </remarks>
+    public IReadOnlyList<TranscriptEntry> Entries
     {
-        ArgumentNullException.ThrowIfNull(entry);
+        get
+        {
+            var entries = new List<TranscriptEntry>();
+            foreach (var turn in _turns)
+            {
+                entries.AddRange(turn.Entries);
+            }
 
-        var appended = new TranscriptEntry[_entries.Length + 1];
-        _entries.CopyTo(appended, 0);
-        appended[^1] = entry;
-        return new SessionTranscript(appended);
+            return entries;
+        }
     }
 
     /// <summary>
-    ///     Returns a transcript with several more entries at the end, in order.
+    ///     Returns a transcript with one more turn at the end.
     /// </summary>
     /// <remarks>
-    ///     Offered alongside the single-entry append because one turn of a tool-using agent
-    ///     produces a run of entries — an assistant message, then call and result pairs — and
-    ///     appending them one at a time would allocate a new array for each.
+    ///     The entries of one exchange — the message, the answer, and any tool traffic between them
+    ///     — are grouped as a single turn, so the boundary machinery only ever deals in whole
+    ///     exchanges.
     /// </remarks>
     /// <param name="entries">
-    ///     The entries to append, in order. Must not be <see langword="null"/> and must contain no
-    ///     <see langword="null"/> entry. An empty sequence returns this transcript unchanged.
+    ///     The entries of the turn, in order. Must not be <see langword="null"/>, must contain no
+    ///     <see langword="null"/> entry, and must not be empty.
     /// </param>
-    /// <returns>A new transcript, or this one when <paramref name="entries"/> is empty.</returns>
+    /// <returns>A new transcript; this one is unchanged.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entries"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="entries"/> contains a <see langword="null"/> entry, or the appended
-    ///     transcript would occupy more tokens than a token count can represent.
+    ///     <paramref name="entries"/> is empty or contains a <see langword="null"/> entry.
     /// </exception>
-    public SessionTranscript Append(IEnumerable<TranscriptEntry> entries)
+    public SessionTranscript AppendTurn(IEnumerable<TranscriptEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        var added = entries as IReadOnlyList<TranscriptEntry> ?? [.. entries];
-        if (added.Count == 0)
+        var turnEntries = entries as IReadOnlyList<TranscriptEntry> ?? [.. entries];
+        if (turnEntries.Count == 0)
         {
-            return this;
+            throw new ArgumentException("A turn must hold at least one entry.", nameof(entries));
         }
 
-        var appended = new TranscriptEntry[_entries.Length + added.Count];
-        _entries.CopyTo(appended, 0);
-        for (var index = 0; index < added.Count; index++)
+        var copied = new TranscriptEntry[turnEntries.Count];
+        for (var index = 0; index < turnEntries.Count; index++)
         {
-            appended[_entries.Length + index] = added[index]
-                ?? throw new ArgumentException("An entry in the sequence is null.", nameof(entries));
+            copied[index] = turnEntries[index]
+                ?? throw new ArgumentException("An entry in the turn is null.", nameof(entries));
         }
 
+        var appended = new SessionTurn[_turns.Length + 1];
+        _turns.CopyTo(appended, 0);
+        appended[^1] = new SessionTurn(copied);
         return new SessionTranscript(appended);
     }
 
     /// <summary>
-    ///     Splits this transcript into the newest entries that fit a verbatim budget and the older
-    ///     entries that must be consolidated, never separating a tool call from its result.
+    ///     Splits the transcript into the entries of every turn older than the last
+    ///     <paramref name="keepTurns"/>, and the transcript of those newest turns held verbatim.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>Newest-first, because recency is what tier zero is for.</b> The walk starts at the
-    ///     end and accumulates backwards until the next entry would not fit, so the retained set is
-    ///     always a contiguous suffix — the most recent turns, held verbatim.
+    ///     The boundary is turn-granular: the newest <paramref name="keepTurns"/> whole turns are
+    ///     retained, and everything older is returned as rendered material for a single
+    ///     consolidation. A tool call is never separated from its result, because a turn holds both.
     ///     </para>
     ///     <para>
-    ///     <b>Tool call and result pairs are indivisible, so the boundary snaps.</b> A retained set
-    ///     holding a tool result whose call went into the overflow is an orphan: some providers
-    ///     reject that outright, and a model presented with it cannot tell what was asked. The
-    ///     boundary therefore moves <em>later</em> — past any result whose call is not also
-    ///     retained — rather than earlier. That is checked across the whole retained window, not
-    ///     merely at its first entry, because an interleaved turn such as <c>call c1, call c2,
-    ///     result c1, result c2</c> can put the boundary on c2's call and strand c1's result behind
-    ///     it. Moving later can only shrink the retained set, so snapping can never push it back
-    ///     over budget, whereas moving earlier to recover the call could.
-    ///     </para>
-    ///     <para>
-    ///     <b>An entry larger than the whole budget retains nothing.</b> That is reported honestly
-    ///     rather than papered over by retaining it anyway: an oversized entry that cannot fit tier
-    ///     zero is consolidated like any other overflow, and the caller sees an empty retained set.
-    ///     The same is true of an interleaved run with no orphan-free suffix inside the budget —
-    ///     the whole run is consolidated together, which is the only split that keeps every pair
-    ///     intact.
-    ///     </para>
-    ///     <para>
-    ///     The overflow is published as a genuine read-only view over a slice this transcript owns,
-    ///     for the same reason <see cref="Entries"/> is: a caller that cast it back to an array
-    ///     could alter the material a consolidation is about to be given.
+    ///     When the transcript holds no more than <paramref name="keepTurns"/> turns there is
+    ///     nothing older, so the older set is empty and the whole transcript is retained.
     ///     </para>
     /// </remarks>
-    /// <param name="budgetTokens">
-    ///     The verbatim token budget the retained entries must fit within. Must not be negative;
-    ///     zero retains nothing.
-    /// </param>
+    /// <param name="keepTurns">The number of newest turns to keep verbatim. Must not be negative.</param>
     /// <returns>
-    ///     The retained newest entries as a transcript, and the older entries to consolidate,
-    ///     oldest first.
+    ///     The entries of the older turns, oldest first, and the retained newest turns as a
+    ///     transcript.
     /// </returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="budgetTokens"/> is negative.</exception>
-    public (SessionTranscript Retained, IReadOnlyList<TranscriptEntry> Overflow) SplitAtBudget(int budgetTokens)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="keepTurns"/> is negative.</exception>
+    public (IReadOnlyList<TranscriptEntry> Older, SessionTranscript Retained) SplitAtTail(int keepTurns)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(budgetTokens);
+        ArgumentOutOfRangeException.ThrowIfNegative(keepTurns);
 
-        // Walk backwards from the newest entry, accumulating until the next one would not fit.
-        // 'first' ends as the index of the oldest retained entry.
-        //
-        // The fit test is a subtraction rather than an addition, and that is not a style choice.
-        // 'used + candidate.EstimatedTokens > budgetTokens' is int arithmetic: with a tier-zero
-        // budget near int.MaxValue - which CompactionPolicy permits - and entries already
-        // accumulated near it, the sum wraps negative, compares below the budget, and the entry is
-        // retained even though it carries the retained set past the very bound this method
-        // documents. 'budgetTokens - used' cannot wrap, because the loop only continues while
-        // used <= budgetTokens and both are non-negative, so the difference is a non-negative int
-        // and the comparison is exact at every budget a policy can express.
-        var used = 0;
-        var first = _entries.Length;
-        while (first > 0)
+        if (_turns.Length <= keepTurns)
         {
-            var candidate = _entries[first - 1];
-            if (candidate.EstimatedTokens > budgetTokens - used)
-            {
-                break;
-            }
-
-            used += candidate.EstimatedTokens;
-            first--;
+            return ([], this);
         }
 
-        // Snap the boundary later so the retained set never holds a tool result whose call was
-        // consolidated away. Checking only the first retained entry is not enough: a valid
-        // interleaved turn - call c1, call c2, result c1, result c2 - can put the boundary on
-        // c2's call, which is not a result and so passes that check while c1's result stays
-        // retained with its call in the overflow. Parallel tool calls are ordinary agent traffic,
-        // so the whole retained window is validated instead.
-        //
-        // Moving later only removes entries, so this can never exceed the budget just satisfied.
-        // It repeats because moving past an orphan also drops the calls before it, which can
-        // orphan a result that was paired a moment ago.
-        int orphan;
-        while ((orphan = FirstOrphanedResult(first)) >= 0)
+        var boundary = _turns.Length - keepTurns;
+
+        var older = new List<TranscriptEntry>();
+        for (var index = 0; index < boundary; index++)
         {
-            first = orphan + 1;
+            older.AddRange(_turns[index].Entries);
         }
 
-        // Nothing overflowed: hand back this very transcript rather than an equal copy.
-        if (first == 0)
-        {
-            return (this, []);
-        }
-
-        return (new SessionTranscript(_entries[first..]), Array.AsReadOnly(_entries[..first]));
+        return (older, new SessionTranscript(_turns[boundary..]));
     }
 
     /// <summary>
-    ///     Finds the first entry in a candidate retained window that is a tool result with no
-    ///     matching call inside that same window.
+    ///     Returns a transcript with the oldest turn removed.
     /// </summary>
     /// <remarks>
-    ///     The match must be a call <em>earlier</em> in the window, because a result recorded
-    ///     before the call it answers is not a pairing a provider would accept either. Scanning
-    ///     forward with the calls seen so far is what makes an interleaved run — several calls
-    ///     issued together, their results arriving afterwards in any order — resolve correctly.
+    ///     The last resort of the drop-until-it-fits rule: when every consolidated slot has been
+    ///     dropped and a seed still does not fit, the oldest verbatim turn is discarded. The loop
+    ///     that does this bottoms out at the newest turn alone, which is why this never has to
+    ///     remove the last turn.
     /// </remarks>
-    /// <param name="first">The index the retained window would begin at.</param>
-    /// <returns>The index of the first orphaned result, or -1 when every retained result is paired.</returns>
-    private int FirstOrphanedResult(int first)
+    /// <returns>A new transcript without its oldest turn; this one is unchanged.</returns>
+    /// <exception cref="InvalidOperationException">The transcript holds no turns to drop.</exception>
+    public SessionTranscript DropOldestTurn()
     {
-        HashSet<string>? calls = null;
-        for (var index = first; index < _entries.Length; index++)
+        if (_turns.Length == 0)
         {
-            var entry = _entries[index];
-
-            if (entry.Kind == TranscriptEntryKind.ToolCall)
-            {
-                calls ??= new HashSet<string>(StringComparer.Ordinal);
-                calls.Add(entry.ToolCallId!);
-                continue;
-            }
-
-            if (entry.Kind == TranscriptEntryKind.ToolResult
-                && calls?.Contains(entry.ToolCallId!) != true)
-            {
-                return index;
-            }
+            throw new InvalidOperationException("The transcript holds no turns to drop.");
         }
 
-        return -1;
+        return new SessionTranscript(_turns[1..]);
     }
 
     /// <summary>
@@ -524,15 +464,6 @@ public sealed class SessionTranscript
     ///     Static and deterministic: the same entries always render to the same string, which is
     ///     what allows a fake summarizer in a test to assert on exactly what the engine asked it to
     ///     consolidate.
-    ///     <para>
-    ///     A null element is refused by argument rather than dereferenced. This method is public and
-    ///     is the one entry point here that took a sequence without checking its contents: a null
-    ///     among them produced a <see cref="NullReferenceException"/> from inside the projection,
-    ///     which this method did not document and which names neither the parameter nor the position
-    ///     at fault. <see cref="Append(IEnumerable{TranscriptEntry})"/>,
-    ///     <see cref="ProviderSessionSeed"/> and <see cref="ProviderTurn"/> all reject a null
-    ///     element with an <see cref="ArgumentException"/>, so this one does the same.
-    ///     </para>
     /// </remarks>
     /// <param name="entries">
     ///     The entries to render, oldest first. Must not be <see langword="null"/> and must contain
@@ -545,8 +476,6 @@ public sealed class SessionTranscript
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        // Materialized once rather than enumerated twice, because the sequence may be lazy and a
-        // caller's generator must not be asked to produce the same run again for the validation.
         var rendered = entries as IReadOnlyList<TranscriptEntry> ?? [.. entries];
         var lines = new string[rendered.Count];
         for (var index = 0; index < rendered.Count; index++)

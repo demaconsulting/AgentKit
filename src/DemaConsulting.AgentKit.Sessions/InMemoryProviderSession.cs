@@ -11,9 +11,9 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     <b>Shipped rather than confined to this library's tests, deliberately.</b> The compaction
 ///     engine's whole promise is that a long-running agent keeps the detail that matters, and that
 ///     promise is only believable if it can be exercised end to end without a live model. An
-///     application author writing their own summarizer, choosing tier budgets, or deciding what to
-///     do about a saturation signal needs the same ability. Keeping the fake in the package makes
-///     that a supported activity instead of something each consumer reimplements.
+///     application author writing their own summarizer, choosing a verbatim tail length, or acting
+///     on the reported compaction level needs the same ability. Keeping the fake in the package
+///     makes that a supported activity instead of something each consumer reimplements.
 ///     </para>
 ///     <para>
 ///     <b>It reports usage by default, so the provider-reported path is exercised.</b> Real
@@ -27,7 +27,7 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     Instances are not safe for concurrent use, consistent with <see cref="IProviderSession"/>.
 ///     </para>
 /// </remarks>
-public sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
+internal sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
 {
     /// <summary>
     ///     The answer for a given message.
@@ -259,7 +259,7 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
 ///     not themselves safe for concurrent use.
 ///     </para>
 /// </remarks>
-public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
+internal sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
 {
     /// <summary>
     ///     Guards the record of created sessions.

@@ -10,54 +10,43 @@ sections:
         requirements:
           - id: AgentKitSessions-Summarizer-InjectedContract
             title: >-
-              The consolidation contract shall be an injected, stateless call receiving the previous
-              record, the new material and the target tier, and returning the consolidated record.
+              The unit shall define an injected, stateless consolidation contract that receives the
+              material to consolidate, an aggressiveness clause and the target tier, and never a length.
             justification: |
-              Injecting the summarizer is what lets a test supply a deterministic fake and get a
-              rotation engine that is a pure function of its inputs, while production supplies an
-              implementation backed by a model; nothing in the engine knows or cares which it has.
-              The material arrives as an argument precisely so that consolidation does not happen
-              inside the live session being compacted - asking a session to summarize itself spends
-              that session's own context on the summary and provokes the provider's built-in
-              compactor.
+              The summarizer is injected so the rotation engine can be tested without a model: a test
+              supplies a deterministic fake, production supplies a model-backed implementation, and
+              nothing in the engine knows which it has. The request carries a plain-language instruction
+              telling the summarizer how tersely to consolidate rather than a token count, because a
+              model cannot be asked to hit an output size.
             tests:
-              - ConsolidationRequest_IsDegradation_TrueWhenNoPreviousRecord
-              - RotationEngine_RotateAsync_SecondRotation_CarriesThePreviousRecordForward
-
-          - id: AgentKitSessions-Summarizer-RejectsMalformedRequest
-            title: >-
-              A consolidation request shall reject tier zero as a target, blank material, and a
-              non-positive tier budget.
-            justification: |
-              Tier zero is verbatim history by definition, so a request to consolidate into it could
-              only be a defect in the engine. Blank material would spend a model round trip to say
-              nothing. A tier that could hold nothing is not a tier. Each is refused where it was
-              constructed rather than discovered from a record that makes no sense.
-            tests:
-              - ConsolidationRequest_Construct_TierZero_Throws
-              - ConsolidationRequest_Construct_BlankMaterial_Throws
-              - ConsolidationRequest_Construct_NonPositiveBudget_Throws
+              - ConsolidationRequest_Construct_CarriesTierMaterialAndInstruction
 
           - id: AgentKitSessions-Summarizer-ConsolidationPrompt
             title: >-
-              The library shall publish a default consolidation prompt that asks for specificity and
-              content - paths, values, decisions and their reasons, constraints, errors and their
-              resolutions, and outstanding work - names no target size, and composes a request with
-              the previous record placed before the new material.
+              The unit shall publish a consolidation prompt that treats the material as peers, licenses
+              collapsing repetition, names the specific categories that must survive, and appends the
+              per-level aggressiveness clause.
             justification: |
-              Asking a model to hit a token budget does not work: in the compaction spike that
-              preceded this package, consolidations asked for between 9,870 and 19,741 tokens
-              returned 1,665 and 4,259 tokens (n = 2 requests, recorded in that spike). A model
-              cannot count its own output. The prompt therefore names categories of information that
-              must survive and lets length follow from how much the material contains, with the
-              engine measuring the result itself. Publishing the prompt rather than burying it lets
-              an application read exactly what its summarizer is being asked to do and replace it
-              with wording suited to its own domain. The previous record comes first because that is
-              the order the ratchet reads in: carry this forward, then fold this in.
+              Under batch-then-clear consolidation the pieces of material are peers, so there is no
+              previous record being folded into and the prompt drops that framing. It explicitly
+              licenses collapsing repetition, because deduplication is what makes a consolidation buy
+              room, while keeping its strength: preserving specific named facts, decisions, errors and
+              outstanding work. Each compaction level selects its own aggressiveness clause, and the
+              clause is never a number handed to the model.
             tests:
-              - ConsolidationPrompt_Instruction_NamesNoTargetSize
-              - ConsolidationPrompt_Instruction_AsksForSpecificContent
-              - ConsolidationPrompt_Compose_PlacesThePreviousRecordBeforeTheNewMaterial
-              - ConsolidationPrompt_Compose_Degradation_StatesThereIsNoPreviousRecord
-              - ConsolidationPrompt_Compose_AlwaysCarriesTheInstruction
-              - ConsolidationPrompt_Compose_NullRequest_Throws
+              - ConsolidationPrompt_Compose_HasNoPreviousRecordSection
+              - ConsolidationPrompt_Instruction_LicensesCollapsingRepetition
+              - ConsolidationPrompt_InstructionFor_SelectsPerLevelClause
+
+          - id: AgentKitSessions-Summarizer-RejectsMalformedRequest
+            title: >-
+              The unit shall reject a tier index below one, blank material, a blank instruction, and a
+              null request to compose.
+            justification: |
+              The verbatim tail is tier zero and is never consolidated into, so a result belongs to tier
+              one or greater. There is nothing to consolidate without material and no aggressiveness
+              without an instruction, so a blank of either is refused before a request exists.
+            tests:
+              - ConsolidationRequest_Construct_TierBelowOne_Throws
+              - ConsolidationRequest_Construct_Blank_Throws
+              - ConsolidationPrompt_Compose_Null_Throws

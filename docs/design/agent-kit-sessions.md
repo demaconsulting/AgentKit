@@ -3,199 +3,187 @@
 ![AgentKit Sessions Structure](AgentKitSessionsView.svg)
 
 The AgentKitSessions system is an AgentKit-owned agent session with automatic context compaction,
-built so that the same session behaves identically on every provider. This increment is the
-provider-agnostic engine only: it contains no Copilot and no `IChatClient` wiring, and everything in
-it is deterministic and exercisable without a live model.
+built so that the same session behavior works across provider shapes. This increment is the
+provider-neutral engine only: it contains no Copilot or `IChatClient` adapter wiring, and the core
+is deterministic enough to exercise without a live model.
 
 ## Purpose
 
-AgentKit ships guarded tools that behave identically on two provider backends. A guarded tool set is
-of no use to an agent that cannot run long enough to use it, and until now the repository had no
-session lifecycle at all — so a long-running agent was impossible and the kit could not fulfil its
-stated purpose. This system adds the missing half.
+AgentKit ships guarded tools that behave identically on supported provider backends. A guarded tool
+set is useful only when an agent can run long enough to use it, so this system adds a provider-neutral
+session lifecycle for long-running conversations.
 
 An application asks this system for a session, sends messages to it, and reads answers back. When
-the conversation grows past what the provider's context window can hold, the session compacts itself
-and carries on. The application is told that this happened, so it can log it or act on it, but it is
-never required to manage it.
+the conversation approaches the provider's context limit, the session rotates into a fresh provider
+session seeded with preserved context. The application receives the answer for every accepted turn
+and can observe whether rotation happened, which compaction level is active, and whether any material
+had to be dropped.
 
 ## Architecture
 
-The system is deliberately flat: twelve units sit directly under the system with no intervening
-subsystems, mirroring how `AgentKitCore` is organized. The units divide into four groups, which are
-boundaries of responsibility rather than subsystems:
+The system is deliberately flat: twelve unit design documents sit directly under the system with no
+intervening subsystem. The units divide into four responsibility groups:
 
-- **The contract an application programs against** — `AgentSession` (the `IAgentSession` interface
-  and the per-turn response), `AgentSessionOptions` (what an application configures), and
-  `CompactionPolicy` (the controls governing compaction).
-- **The accounting** — `TokenEstimator` (the deterministic arithmetic), `ContextUsage` (the one
-  usage shape both provider families are reduced to), `SessionTranscript` (the append-only verbatim
-  record), and `ContextLayout` (the whole context as this system accounts for it).
-- **The engine** — `RotationEngine` (the deterministic aging function) and `Summarizer` (the
-  injected out-of-session consolidation contract and its documented default prompt).
-- **The provider seam** — `ProviderSession` (the minimal adapter interface),
-  `InMemoryProviderSession` (a provider that contacts nothing), and `CompactingAgentSession` (the
-  implementation that sequences all of the above).
+- **The contract an application programs against** — `AgentSession` provides `IAgentSession` and
+  `AgentSessionResponse`; `AgentSessionOptions` carries instructions, tools, window size and the
+  summarizer; `CompactionPolicy` carries the single application setting, `VerbatimTurns`.
+- **The accounting** — `ContextUsage` records usage in either provider-reported or estimated form;
+  `TokenEstimator` supplies the fallback estimate; `SessionTranscript` holds whole turns; and
+  `ContextLayout` holds the verbatim tail plus consolidated tiers.
+- **The engine** — `RotationEngine` applies the round-robin aging rules, and `Summarizer` defines the
+  injected out-of-session consolidation contract and prompt composition.
+- **The provider seam** — `ProviderSession` defines seed, turn, session and factory contracts;
+  `InMemoryProviderSession` is the deterministic in-memory provider used to exercise the lifecycle;
+  and `CompactingAgentSession` sequences live turns, rotation and disposal.
 
-A session runs as follows. `CompactingAgentSession` records each outgoing message and everything a
-turn produced in its own `SessionTranscript`, held inside a `ContextLayout`. After each turn it asks
-the live provider session for its own account of the window, falling back to `TokenEstimator` when
-the provider offers none. When the conversation — the part of the usage outside the system prompt and
-the tool declarations, carried on the usage figure by whoever produced it — reaches
-the rotation threshold, it calls `RotationEngine`, which consolidates older history through the
-injected `ISummarizer` into the coarse tiers of the layout. The session then creates a replacement
-provider session from `ContextLayout.BuildSeed`, and only then disposes the one it replaced.
-
-**The threshold is derived from whichever window the usage figure was measured against.** A provider
-that reports its own window governs; the threshold `AgentSessionOptions` computed from the
-configured window governs only the family of providers that report nothing. Both apply identical
-arithmetic — remove the overhead, apply the policy's rotation fraction, floor at one token —
-so they differ only in which window they measure and whose overhead they remove. A reported window
-has the provider's own reported overhead removed; a configured window has this library's estimate of
-it removed. The two are never crossed, because subtracting an estimate from a measurement gives a
-figure in neither currency. Rotating at a fraction of the window exists to
-keep the provider's own compactor from ever firing, and that guarantee is about the window the
-provider actually has, so a configured window that disagrees with a reported one does not decide.
+A session runs as follows. `CompactingAgentSession` sends the message to the live provider session.
+Only after the provider accepts the turn does the session record the user message, answer and all
+intervening tool calls and results as one whole turn in `ContextLayout.Tail`. It then reads provider
+usage when the provider reports it, or estimates usage from the layout otherwise. When conversation
+occupancy reaches the 0.70 threshold of the effective window, the session asks `RotationEngine` to
+age the layout, builds a `ProviderSessionSeed` from the result, creates and adopts a replacement
+provider session, and finally disposes the superseded session.
 
 ### Rotation, Not In-Place Reduction
 
-When the context fills, this system summarizes older history, creates a fresh provider session
-seeded with the preserved content, and only then disposes the one it replaced.
+When the context fills, this system consolidates older history, creates a fresh provider session
+seeded with the preserved content, adopts that replacement, and only then disposes the session it
+replaced.
 
-**This is the only reduction mechanism both provider shapes support.** One provider shape re-sends
-the whole history on every turn and would accept an edited history; the other keeps history
-server-side and offers no supported way to retract a turn from it. Editing in place therefore works
-on one and not the other, and an engine that behaved differently on the two would defeat the
-repository's central promise. Rotating — replace the session, seed the replacement — works on both.
-Disposal is part of the mechanism rather than housekeeping: for a provider holding the conversation
-server-side, disposal is what actually discards it.
+This is the reduction mechanism both provider shapes support. One provider shape re-sends history on
+every turn; another holds history server-side and has no general way to retract a prior turn. A
+replacement seeded from preserved context works in both cases. Disposal is part of the mechanism
+rather than housekeeping: for a provider that holds conversation state, disposal is what releases the
+superseded context.
 
-### Tiered Retention With Fixed Per-Tier Budgets
+### Round-Robin Retention
 
 Context is laid out most-stable-first:
 
 ```text
-[system][tool declarations][tier N coarse] ... [tier 1][tier 0 verbatim]
+[system][tool declarations][tier 3 coarse] [tier 2] [tier 1] [verbatim tail]
 ```
 
-Tier zero holds the most recent turns verbatim; each higher tier holds a progressively coarser
-record of older history. Every tier carries a fixed token budget, and the budgets are what make the
-arrangement bounded.
+The verbatim tail holds whole recent turns. Behind it are three tiers, each a ring of at most four
+consolidated slots. Resolution decays with age: recent turns remain word for word, older material is
+held in a tier-one slot, older still in progressively coarser slots. Nothing is weighed against a
+per-tier token allowance; the shape is defined by counts.
+
+`CompactionPolicy.VerbatimTurns` is the one setting an application controls. The default is 20 turns,
+and it is a maximum rather than a quota. Internal constants define four slots per tier, three tiers,
+the 0.70 rotation threshold, and the hysteresis windows `k = VerbatimTurns` and
+`m = 2 * VerbatimTurns`.
 
 The alternative — a single rolling summary — was measured and rejected. Over 50 rotations with a
-deliberately compressed window (n = 50 rotations, one run per arrangement, recorded in the
-compaction spike that preceded this package), recall by rotations-ago was:
+compressed window (n = 50 rotations, one run per arrangement, recorded in the compaction spike that
+preceded this package), recall by rotations-ago was:
 
-- **Flat rolling summary** (100% at 0–4, 50% at 5–9, 67% at 10–14, 0% beyond 15) — 5 of 23
-- **Tiered** (50–100% held out to 50 rotations) — 13 of 17
+- **Flat rolling summary** (100% at 0-4, 50% at 5-9, 67% at 10-14, 0% beyond 15) — 5 of 23
+- **Tiered** (50-100% held out to 50 rotations) — 13 of 17
 
-The tiered arrangement also spent 17 percent fewer summarizer tokens (381,440 against 461,173),
-because it consolidates only the tiers that actually overflowed. The mechanism behind the flat
-arrangement's collapse is that repeated re-summarization is a downward ratchet: its final context
-had shrunk to 363 tokens against the tiered arrangement's 3,158.
-
-**The cost is real and is recorded here rather than left for someone to discover.** Tier content
-occupies window space, so the tiered arrangement completed roughly 27 percent fewer turns of work
-per rotation. That is the price of remembering, and it is the trade this system deliberately makes.
+The tiered arrangement also spent 17 percent fewer summarizer tokens (381,440 against 461,173)
+because it consolidated only material that aged into a coarser tier. The cost is that remembered tier
+content occupies context window space; the same measurement completed roughly 27 percent fewer turns
+of work per rotation. That is the deliberate trade for retaining older detail.
 
 ### Aging Only at Rotation, in a Batch
 
-Between rotations the context is strictly append-only: nothing already sent is ever rewritten. That
-is what preserves a provider's prompt caching, since an in-place edit anywhere in the history
-invalidates the cached prefix for every following turn. At rotation, every overflowing tier
-consolidates at once, cascading into coarser tiers where required. Batching costs nothing extra,
-because a rotation invalidates the cache anyway.
+Between rotations the context is append-only. Nothing already sent to a provider is rewritten while
+a session is live, preserving provider prompt-cache prefixes. All reshaping happens during rotation,
+where the provider session is being replaced anyway.
+
+The rotation rules are:
+
+1. Append each accepted exchange as one whole turn.
+2. At 0.70 occupancy, consolidate everything older than the level-adjusted tail into one tier-one
+   slot.
+3. When a coarse tier from tier one through the next-to-last tier is full and another slot arrives,
+   consolidate that tier's slots as peers into one slot of the next tier, then clear the full tier.
+4. The last tier is a ring: when it is full, appending a slot drops its oldest slot.
+5. After building the seed, escalate the compaction level until the seed fits. At the highest level,
+   drop the oldest slot of the coarsest non-empty tier, then the oldest verbatim turn, until it fits;
+   report when material was dropped.
+
+Rule 5 terminates because there are finitely many levels, slots and turns, and the drop loop stops
+when the newest turn stands alone.
 
 ### Rotating at Seventy Percent of the Effective Window
 
-The effective window is the provider window minus the system prompt and the tool declarations — both
-fixed overhead present on every turn and never consolidated. Rotation fires when the conversation
-reaches 70 percent of what is left.
+The effective window is the provider window minus fixed overhead: system instructions and tool
+declarations. Rotation fires when the conversation reaches 0.70 of what is left. Tool declarations
+are not a small correction — the compaction spike estimated a declaration block of 2,589 tokens for a
+set of 11 tools (n = 11 tools, one measurement, recorded in that spike) — so removing overhead before
+applying the threshold keeps the trigger meaningful.
 
-Applying the percentage to the raw window instead would make the rotation point drift with how many
-tools an application attached: attach more tools and the agent silently gets less conversation
-before rotating. Tool declarations are not a small correction — the compaction spike *estimated* a
-declaration block of 2,589 tokens for a set of 11 tools (n = 11 tools, one measurement, recorded in
-that spike) — so removing them before the percentage is applied is what makes the threshold mean
-what it says.
+Occupancy is measured after each provider turn. A provider that reports its own usage supplies the
+window, total, and conversation split used for the comparison. A provider that reports nothing uses
+this library's estimate against the configured window. The two currencies are never mixed: both sides
+of a comparison come from the provider report or both come from the library estimate.
 
-That figure is also the reason the removal must be done in the right currency. 2,589 is a
-character-ratio estimate of JSON schemas, which is the material the ratio serves worst, so a
-provider's real count for the same declarations may differ substantially. When the provider reports
-its own overhead, that is what is removed from its own window; the estimate is removed only from the
-window a host configured, for the provider family that reports nothing.
-
-Seventy percent leaves 30 percent of headroom, which covers both the error in a character-ratio
-token estimate and the turn in flight when the threshold is crossed.
-
-**A rotated context must land below the rotation threshold. That is the convergence invariant, and
-it is a constraint on sizing rather than a property of the mechanism.** A rotation leaves the
-conversation holding at most the sum of the tier budgets plus the framing their seeded records
-carry. If that figure is not strictly below the threshold, the layout a rotation produces is already
-over the threshold, so the next turn rotates again — and every turn after it, indefinitely, while
-raising no saturation signal, because each individual consolidation reduces perfectly normally. The
-tier budgets merely make a rotated context *fit* the window; landing below the threshold is what
-makes the session *settle*, and the two conditions are separated by a factor of the rotation
-fraction. `AgentSessionOptions` refuses any configuration that fails the invariant, and
-`CompactingAgentSession` refuses any provider-reported window that fails it — crediting, in the
-reported case, any fixed overhead the provider charges for and does not break out of its conversation
-figure, because a rotated context will still be counted as carrying it. That overhead is measured
-rather than estimated, per provider session and at the moment each one is created — it is what the
-provider reports as conversation over and above this library's count of the content that session was
-seeded with, which for the first session of a conversation is nothing at all. It therefore travels
-with the live provider session and is replaced when a rotation replaces it; a figure measured once
-and reused refused convergent replacements in one direction and accepted thrashing ones in the
-other. The rotation trigger's
-zero-overhead default for an unsplit figure is safe only for the trigger, where it fires early,
-and errs the opposite way here.
-
-How much headroom there is beyond the one guaranteed turn depends on how generously the window was
-sized against the tier budgets. With the tiers sized in the low thousands of tokens against a window
-several times larger, a rotation lands the session near 40 percent rather than just under the
-threshold and rotation is comfortably infrequent; sized close to the invariant's minimum, the same
-mechanism guarantees only that a rotation is followed by at least one turn that does not rotate.
-The earlier claim that "a rotation lands the session near 40 percent" was stated as though it were a
-property of the mechanism; it is a property of that sizing.
+The rotation engine also sizes the seed it is about to send, using this library's estimate because
+the seed has not yet been reported by any provider. If the seed is too large, rule 5 escalates and,
+if necessary, drops material before the replacement provider session is created.
 
 ### The Summarizer Runs Out of Session
 
-Consolidation is a separate stateless call that receives the material as input. Asking the live
-session to summarize itself was measured and rejected: it consumes the session's own context to
-produce the summary and triggers the provider's built-in compactor, which is self-defeating. The
-system therefore maintains its own transcript, which also means the material is still available when
-a provider session has been disposed — exactly when a fresh one must be seeded.
+Consolidation is a separate stateless call that receives material as input. Asking the live provider
+session to summarize itself would spend the session's own context and could invoke provider behavior
+that the library is trying to avoid. The system therefore keeps its own transcript and hands rendered
+material to an injected `ISummarizer`.
 
-### Never Asking a Model to Hit a Token Budget
+Oversized summarizer input is chunked internally. The engine splits large material at piece
+boundaries, consolidates each chunk, and consolidates the chunk records until one slot remains. This
+mechanism is internal and required; applications do not configure it.
 
-The consolidation prompt asks for specificity and content: every file path, value, decision and
-reason, constraint, error and resolution, and outstanding item. It names no target size.
+### Consolidation as Peer Reduction
 
-Asking for one does not work. In the compaction spike, consolidations asked for between 9,870 and
-19,741 tokens returned 1,665 and 4,259 tokens (n = 2 requests, recorded in that spike). A model
-cannot count its own output. The engine therefore measures the result itself and treats output size
-as a signal about how much information the material carried rather than as something to be dictated.
+A `ConsolidationRequest` carries three values: `Instruction`, `Material` and `TierIndex`. There is no
+previous record, target size, or degradation flag. The pieces handed to a consolidation are peers:
+either a span of older transcript entries or the slots of a full tier.
 
-### Consolidation as a Ratchet
+The prompt preserves specific named facts, decisions, paths, values, errors, resolutions,
+constraints and outstanding work. It also permits collapsing repetition across the material, because
+removing redundancy is how a consolidation buys room. The prompt does not ask a model to hit a token
+count. In the compaction spike, consolidations asked for between 9,870 and 19,741 tokens returned
+1,665 and 4,259 tokens (n = 2 requests, recorded in that spike), demonstrating that output size must
+be measured by the engine rather than dictated to the model.
 
-Each consolidation receives the previous record for that material as an **input**, not as context,
-and must not drop detail that record kept — unless the consolidation is deliberately degrading the
-material to a coarser tier. That is the distinction between a legitimate coarsening and an
-accidental loss, and it is what stops the tiered arrangement from decaying into the flat one.
+### Compaction Level and Dropped Material
+
+`CompactionLevel` is session state with `Low`, `Medium` and `High` values. It is reported on every
+`AgentSessionResponse` and exposed on `IAgentSession`. Low keeps up to `VerbatimTurns` recent turns,
+Medium keeps half, and High keeps a quarter, always leaving at least one turn. The level also selects
+the plain-language terseness clause passed to the summarizer.
+
+The level adapts by hysteresis. If a window fills again within `k` turns of a prior rotation, the next
+rotation starts one level terser. If the session runs for `m` turns without filling, with `m` greater
+than `k`, the level relaxes one step when a later rotation settles without further escalation. During
+one rotation the engine may escalate further while rebuilding the seed.
+
+`AgentSessionResponse.MaterialDropped` reports the last resort: even the highest level did not make
+the seed fit, so the engine discarded the oldest preserved material. The library reports that fact and
+leaves any policy decision to the application.
 
 ## External Interfaces
 
-- **`IAgentSession`** — Direction: Inbound (application to system); Format: .NET interface; Constraints: One
-  session is one conversation; turns are sequential; the session must be disposed
-- **`ISummarizer`** — Direction: Outbound (system to application); Format: .NET interface; Constraints: Stateless;
-  must run out of session; must not return null; must be safe for concurrent use
-- **`IProviderSessionFactory` / `IProviderSession`** — Direction: Outbound (system to adapter); Format: .NET
-  interface; Constraints: The factory must be safe for concurrent use; a session serves one conversation
-- **`IContextUsageReporter`** — Direction: Outbound, optional; Format: .NET interface; Constraints: Implemented
-  only by a provider session that can account for its own window; must not contact the provider to answer
+- **`IAgentSession`** — Direction: inbound, application to system; format: .NET interface;
+  constraints: one conversation per session, sequential turns, caller disposes the session.
+- **`AgentSessionResponse`** — Direction: outbound, system to application; format: immutable .NET
+  class; constraints: includes answer text, usage, rotation flag, compaction level and dropped-material
+  flag.
+- **`AgentSessionOptions` / `CompactionPolicy`** — Direction: inbound configuration; format:
+  immutable .NET classes; constraints: summarizer required, positive window, `VerbatimTurns` positive.
+- **`ISummarizer`** — Direction: outbound, system to application implementation; format: .NET
+  interface; constraints: stateless, out of session, safe for concurrent use, must not return null.
+- **`IProviderSessionFactory` / `IProviderSession`** — Direction: outbound, system to adapter;
+  format: .NET interfaces; constraints: factory is safe for concurrent use, session serves one
+  conversation and is disposable.
+- **`IContextUsageReporter`** — Direction: optional outbound query; format: .NET interface;
+  constraints: implemented only by sessions that can report usage without contacting a provider.
 
 Tools are carried as `Microsoft.Extensions.AI` `AIFunction` instances, which is the same tool
 currency the rest of AgentKit uses, so a session accepts exactly what a tool pack produces with no
-conversion layer between them.
+conversion layer.
 
 ## Dependencies
 
@@ -203,163 +191,118 @@ conversion layer between them.
   options carry and the provider-session seed hands to an adapter; see
   *Microsoft.Extensions.AI.Abstractions Design*.
 
-**This system takes no reference on AgentKitCore.** It composes a session around tools an
-application already holds and needs none of Core's guarded-construction contract to do so. Adding an
-unused reference purely for family symmetry would misrepresent the dependency graph and the SBOM.
-The relationship is conceptual rather than compiled: the tools an application puts into
-`AgentSessionOptions` are exactly the ones `ToolPackBuilder` produces.
+This system takes no reference on AgentKitCore. It composes a session around tools an application
+already holds and needs none of Core's guarded-construction contract to do so. The relationship is
+conceptual rather than compiled: the tools an application puts into `AgentSessionOptions` are exactly
+the ones `ToolPackBuilder` produces.
 
-**This system takes no provider dependency at all.** `Microsoft.Agents.AI` and
-`Microsoft.Agents.AI.GitHub.Copilot` are carried by the two provider-adapter systems, and this
-increment deliberately adds no third. The provider seam is `IProviderSession`, which an adapter
-implements; the adapters that will do so are a later increment.
+This system takes no provider dependency. Provider-specific adapters live outside this engine and
+implement `IProviderSessionFactory` and `IProviderSession`.
 
 ## Risk Control Measures
 
-The segregation that matters here is between the **engine** and any **provider**. The engine never
-touches a provider API: it produces a `ProviderSessionSeed` and consumes a `ProviderTurn`, and an
-adapter does everything else. That boundary is what makes the compaction behavior identical across
-providers rather than merely intended to be, and it is what allows the whole engine to be verified
-against `InMemoryProviderSession` with no network access, no credentials and no model.
+The primary segregation is between the engine and any provider. The engine never touches a provider
+API. It produces `ProviderSessionSeed`, consumes `ProviderTurn`, and asks an adapter for current
+usage only through `IContextUsageReporter`. This boundary makes the compaction behavior testable
+against `InMemoryProviderSession` with no network access, credentials or model.
 
-The second control is that the context is **bounded by construction, in estimated tokens**, rather
-than by convention. The total is the system prompt, plus the tool declarations, plus the sum of the
-tier budgets, plus the framing each tier record carries when it is seeded into a replacement
-session. The framing is counted because it is part of what the provider receives: a bound counting
-raw tier content alone would be exceeded by a seed in which every tier sat exactly within its budget,
-and for a provider that reports no usage that under-count is what would drive rotation. Every term is
-measured by `TokenEstimator`'s four-characters-per-token ratio, so the bound is a rule of thumb held
-within the headroom the rotation fraction reserves, not a claim about what a provider's tokenizer
-will charge.
+The second control is one-currency accounting. A provider-reported figure and this library's estimate
+are never combined in one subtraction or threshold comparison. `ContextUsage` carries conversation
+usage beside total usage, so whoever produced the total also produced the split. The estimator is used
+only when no provider report exists and for seed sizing before a replacement is sent.
 
-`AgentSessionOptions` refuses at construction any configuration in which a rotated context of that
-size would not land **below the rotation threshold**, and `CompactingAgentSession` applies the same
-refusal to a provider-reported window. Asserting only that the window *holds* the bound is the
-necessary condition, not the sufficient one: a window between the bound and the bound divided by the
-rotation fraction holds a rotated context and still rotates on every turn. A session that constructs
-is one whose arrangement fits **and** settles, as this library measures the context.
+The third control is adaptive reporting. Repeated pressure raises `CompactionLevel`; last-resort
+discarding sets `MaterialDropped`. The library keeps answering when it can, but it does not hide the
+fact that fidelity has been reduced or material was discarded.
 
-The currency discipline is what keeps that honest. A figure a provider reported and a figure this
-library estimated are never mixed in one subtraction, and a decision made in one currency is never
-allowed to be overruled by a computation in the other. `ContextUsage` carries the conversation count
-alongside the totals, so whoever produced the figures also produced the split, and every rotation
-comparison is made wholly in reported tokens or wholly in estimated ones. `FixedOverheadTokens` is an
-estimate and is applied only to the configured window. Where the two roles genuinely differ the
-currency is passed along rather than assumed: a provider knows *whether* the context is too large,
-the estimator is all there is for deciding *what* to consolidate, so `RotateAsync` is told which
-currency crossed the threshold and a provider-reported crossing forces a real consolidation even
-where the estimated split sees room left in tier zero. The one place the two currencies necessarily
-meet — comparing an estimated tier bound against a reported window, when a reported window is
-refused — is documented as approximate rather than presented as exact.
-
-The third is **saturation detection**. An agent whose context holds no redundancy left will keep
-crossing the rotation threshold, spending summarizer tokens and buying nothing, while every rotation
-appears to succeed. The system detects that and surfaces it; it deliberately does not act on it,
-because what to do about a saturated agent depends on what the application is for.
+The fourth control is provider-session ownership. `CompactingAgentSession` pairs the live provider
+session with its release state so disposal remains retryable. Creation and rotation guard the windows
+where a provider session has been returned but not yet adopted: if adoption fails, the unowned session
+is released; if creation cannot release it, `AgentSessionCreationException.RetainedProviderSession`
+carries the handle so the caller can retry disposal.
 
 ## Data Flow
 
 ```text
 application message
   -> IProviderSession.SendAsync
-  -> on success, the message and the ProviderTurn entries (which end with the answer) are recorded
-     together in SessionTranscript (inside ContextLayout); a turn the provider never accepted
-     records nothing
-  -> usage read from IContextUsageReporter, or estimated by TokenEstimator
-  -> if conversation tokens < threshold: return the answer
+  -> on success, record the user message and ProviderTurn entries as one whole turn
+  -> read ContextUsage from IContextUsageReporter, or estimate it from ContextLayout
+  -> if conversation occupancy is below the threshold: return the answer
   -> otherwise:
-       RotationEngine.RotateAsync(layout, summarizer, usage origin)
-         -> SessionTranscript.SplitAtBudget (snapping tool pairs); a provider-reported crossing
-            that the estimated split sees no overflow for splits at zero instead, consolidating
-            the whole verbatim history
-         -> ISummarizer.ConsolidateAsync per overflowing tier, cascading
-         -> new ContextLayout + saturation reports
+       choose the starting CompactionLevel through hysteresis
+       RotationEngine.RotateAsync(layout, summarizer, level, verbatim turns, threshold)
+         -> split the tail by whole turns at the level-adjusted tail length
+         -> consolidate older material into tier one
+         -> cascade full tiers as peer slot batches
+         -> size the built seed, escalate until it fits, then drop oldest material if needed
        IProviderSessionFactory.CreateAsync(ContextLayout.BuildSeed())
-       dispose the replaced IProviderSession
-  -> return the answer, the usage, the rotation flag and any saturation
+       adopt the replacement and dispose the replaced IProviderSession
+  -> return the answer, usage, rotation flag, level and dropped-material flag
 ```
 
 ## Design Constraints
 
-- **Provider-agnostic.** No type in this system names a provider, and no code path in it performs
-  network access.
-- **Deterministic.** Every decision the engine makes is arithmetic over the layout it was handed.
-  Injecting the summarizer isolates the single non-deterministic collaborator, which is what makes
-  the heart of the system unit-testable without a model.
-- **Tool call and result pairs are indivisible.** A tier boundary falling between them is snapped,
-  because some providers reject an orphaned pair outright and no model can interpret one.
-- **Published collections are owned copies behind read-only views.** Every type in this system that
-  publishes an `IReadOnlyList` copies the caller's collection at construction and hands out a
-  read-only view of that copy, never the array or list itself. An `IReadOnlyList` over a bare array
-  can be cast back to the array and written through, which for these types would let a cached token
-  total, a saturation verdict or a validated seed disagree with its own contents.
-- **Bounded by construction, asserted.** See *Risk Control Measures* above. The bound is in estimated
-  tokens, and it is a
-  post-rotation property: between rotations tier zero is append-only and grows past its budget,
-  which is precisely what the rotation threshold's headroom is reserved for. The assertion is the
-  convergence invariant — a rotated context lands below the rotation threshold — not merely that it
-  fits the window.
-- **One currency per comparison.** A provider-reported figure and an estimated one are never combined
-  in a single subtraction, and no decision made in one currency is silently overruled by a
-  computation in the other. `ContextUsage` carries the conversation count so the split is made by
-  whoever made the totals, and `AgentSessionOptions.FixedOverheadTokens` is applied only to the
-  configured window. Where a decision in one currency must feed a computation in the other, the
-  currency travels with it: `RotationEngine.RotateAsync` takes the `ContextUsageOrigin` of the
-  crossing that triggered it, and a provider-reported crossing consolidates the whole verbatim
-  history rather than letting an estimated split conclude there was nothing to do.
-- **A rotation that consolidates nothing is not a rotation.** When the transcript already fits tier
-  zero the engine returns the layout unchanged and reports no consolidations, and
-  `CompactingAgentSession` treats that as a turn that did not rotate. Replacing a provider session
-  to arrive at the context the session already had costs a session per turn and is invisible,
-  because nothing consolidated and so nothing could saturate.
-- **One definition of empty, established at the boundary.** `ISummarizer` forbids only null, so a
-  whitespace answer is contract-conformant. `RotationEngine` normalizes a blank answer to an empty
-  string where it receives it, before the value is sized, cascaded on or stored, so a tier record, a
-  cascade's older record and a consolidation's material are one thing rather than three readings of
-  the same string. The blank tests those consumers carry remain for the one route a summarizer does
-  not take: a layout a host composed through `ContextTier`'s public constructor.
-- **A diagnostic states facts.** A message reports what was attempted and what is known, never what
-  was hoped for. The refusal of an unusable reported window says the provider's release was
-  attempted, because the release it makes can fail and the flag it leaves behind says so.
-- **Multi-platform and multi-runtime.** Windows, Linux and macOS; .NET 8, 9 and 10, matching the
-  rest of the repository.
+- **Provider-neutral.** No type in this system names a provider, and no engine path performs network
+  access.
+- **Deterministic core.** Every decision in the engine is arithmetic over the layout and the current
+  level. Injecting the summarizer isolates the single collaborator that may vary.
+- **Turn-granular boundaries.** A turn is one exchange: the user message, answer and all intervening
+  tool calls and results. Boundaries are placed between turns only.
+- **Append-only between rotations.** Existing history is reshaped only when the provider session is
+  being replaced.
+- **Fixed internal shape.** The layout has three tiers, four slots per tier and a 0.70 rotation
+  threshold. Applications configure only the maximum verbatim tail.
+- **Seed sizing before send.** The replacement seed is estimated before creation; the engine escalates
+  or drops material before giving the seed to an adapter.
+- **Chunked consolidation input.** Oversized consolidation material is broken into groups and reduced
+  back to one slot.
+- **Owned copies behind read-only views.** Public list properties expose immutable snapshots or
+  read-only views over storage the object owns.
+- **Multi-platform.** The library follows the repository's supported operating systems and target
+  frameworks.
 
 ## Structure
 
-- **AgentSession (Unit)** — the `IAgentSession` contract and the per-turn response.
-- **AgentSessionOptions (Unit)** — the configured instructions, tools, window, policy and
-  summarizer, and the fixed overhead, effective window and rotation threshold derived from them.
-- **CompactionPolicy (Unit)** — the validated tier budgets, rotation threshold and saturation ratio.
-- **ContextUsage (Unit)** — the one usage shape, and the optional provider reporting contract.
-- **TokenEstimator (Unit)** — the deterministic character-ratio arithmetic.
-- **SessionTranscript (Unit)** — the append-only verbatim history and the tier-zero boundary split.
-- **ContextLayout (Unit)** — the coarse tiers, the construction bound, and the seed.
-- **RotationEngine (Unit)** — the deterministic aging function and its saturation reports.
-- **Summarizer (Unit)** — the injected consolidation contract and the documented default prompt.
+- **AgentSession (Unit)** — the `IAgentSession` contract and per-turn response.
+- **AgentSessionOptions (Unit)** — configuration, fixed overhead, effective window and threshold.
+- **CompactionPolicy (Unit)** — the positive maximum verbatim tail length.
+- **ContextUsage (Unit)** — usage accounting and optional provider usage reporting.
+- **TokenEstimator (Unit)** — deterministic fallback estimates and seed sizing support.
+- **SessionTranscript (Unit)** — append-only whole-turn history and rendering.
+- **ContextLayout (Unit)** — the verbatim tail, internal tiers, slots and seed ordering.
+- **RotationEngine (Unit)** — round-robin aging, chunking, escalation and dropping.
+- **Summarizer (Unit)** — injected consolidation contract and prompt composition.
 - **ProviderSession (Unit)** — the adapter seam: seed, turn, session and factory.
-- **InMemoryProviderSession (Unit)** — a provider session that contacts nothing, and its factory.
-- **CompactingAgentSession (Unit)** — the implementation that sequences all of the above.
+- **InMemoryProviderSession (Unit)** — the in-memory provider session and factory.
+- **CompactingAgentSession (Unit)** — the implementation that sequences turns and rotations.
+
+The public surface was reduced from 28 to 18 types. `CompactionLevel` is public; layout, transcript,
+estimator,
+rotation, prompt and in-memory provider implementation details are internal, along with slot and tier
+storage used by the round-robin layout.
 
 ## Folder Layout
 
 ```text
 src/DemaConsulting.AgentKit.Sessions/
-├── AgentSession.cs             — the session contract and the per-turn response
-├── AgentSessionOptions.cs      — the configuration, the fixed overhead and the threshold
+├── AgentSession.cs             — the session contract and per-turn response
+├── AgentSessionOptions.cs      — configuration, fixed overhead and threshold
 ├── CompactingAgentSession.cs   — the implementation that sequences turns and rotations
-├── CompactionPolicy.cs         — tier budgets, rotation threshold, saturation ratio
-├── ContextLayout.cs            — the coarse tiers, the construction bound and the seed
-├── ContextUsage.cs             — the usage shape and the optional reporting contract
-├── InMemoryProviderSession.cs  — a provider session that contacts nothing, and its factory
-├── ProviderSession.cs          — the seed, the turn, the session and the factory contracts
-├── RotationEngine.cs           — the deterministic aging function and its saturation reports
-├── SessionTranscript.cs        — the append-only history and the tier-zero boundary split
-├── Summarizer.cs               — the consolidation contract and the documented default prompt
-└── TokenEstimator.cs           — the deterministic character-ratio arithmetic
+├── CompactionLevel.cs          — the reported compaction level
+├── CompactionPolicy.cs         — the maximum verbatim tail length
+├── ContextLayout.cs            — the verbatim tail, coarse tiers, slots and seed
+├── ContextUsage.cs             — the usage shape and optional reporting contract
+├── InMemoryProviderSession.cs  — the in-memory provider session and factory
+├── ProviderSession.cs          — the seed, turn, session and factory contracts
+├── RotationEngine.cs           — round-robin aging, chunking, escalation and dropping
+├── SessionTranscript.cs        — append-only whole-turn history and rendering
+├── Summarizer.cs               — the consolidation contract and prompt composition
+└── TokenEstimator.cs           — deterministic fallback estimates
 ```
 
-The folder is flat because the system is flat: each unit is one file directly under the project
-root, mirroring the software structure above.
+The folder is flat because the system is flat: each unit is one file directly under the project root,
+mirroring the software structure above.
 
 ## Document Conventions
 
@@ -367,4 +310,4 @@ Throughout this document:
 
 - Class names, method names, property names, and file names appear in `monospace` font.
 - The word **shall** denotes a design constraint that the implementation must satisfy.
-- Text tables are used in preference to diagrams, which may not render in all PDF viewers.
+- Text tables are used in preference to diagrams that may not render in all PDF viewers.

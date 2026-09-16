@@ -1,506 +1,155 @@
 ## CompactingAgentSession
 
-![AgentKit Sessions Structure](AgentKitSessionsView.svg)
-
-The `CompactingAgentSession` class is the session that keeps its own transcript, watches the window,
-and rotates into a fresh provider session when the context fills.
-
 ### Purpose
 
-This is where the parts meet. The options say what the agent is and when to compact; the layout
-accounts for the context; the rotation engine ages it; the provider-session factory produces the
-replacement. This class owns the sequencing and nothing else, which is what keeps every other part
-independently testable.
-
-**Rotation is a replacement, not an edit.** When the conversation crosses the rotation threshold, the
-engine consolidates older history, a new provider session is created and adopted seeded from the
-preserved content, and only then is the session it replaced disposed. That is the only reduction
-both provider shapes support, and it is why the behavior is identical on either.
-
-**The transcript is kept here, out of session.** Consolidation is a separate stateless call that
-receives the material as input, never a request to the live session to summarize itself: doing that
-spends the session's own context on the summary and provokes the provider's built-in compactor.
+`CompactingAgentSession` is the concrete `IAgentSession` implementation. It owns the live provider
+session, the out-of-session layout, usage state, rotation counters and adaptive compaction level, and
+it sequences the safe replacement of provider sessions.
 
 ### Data Model
 
-Public properties:
+Private state:
 
-- **`Layout`** (`ContextLayout`) — The engine's own account of the context. Replaced wholesale on every turn; the
-  instance read is a snapshot
-- **`Usage`** (`ContextUsage`) — The usage after the most recent turn, marked with where it came from
-- **`RotationCount`** (`int`) — How many times the provider session has been replaced
-- **`ConsolidationCount`** (`int`) — The total consolidations every rotation of this session has performed
+- **`_options`** (`AgentSessionOptions`) — Configuration and summarizer.
+- **`_factory`** (`IProviderSessionFactory`) — Creates initial and replacement provider sessions.
+- **`_live`** (`LiveProviderSession`) — Provider session paired with its release state.
+- **`_disposed`** (`bool`) — Prevents further sends after disposal begins.
+- **`_turnsSinceRotation`** (`int`) — Hysteresis clock.
 
-Private state: the options, the provider-session factory, the **live provider session**, and a
-disposal flag.
+Public and internal state:
 
-**The live provider session is one value, not a reference plus some fields beside it.** A private
-`LiveProviderSession` holds the provider session itself, the fixed overhead that provider charges
-without breaking it out of its conversation figure, and whether that provider has actually been
-released. All three are facts about *one* provider session rather than about this object, so a
-rotation replaces them together in the same assignment. Held as separate fields they could be — and
-repeatedly were — left describing a session that had already been replaced: a fold measured against
-the first provider session went on validating every replacement, and a release flag set against one
-provider would have described its successor. The combination can no longer be written at all rather
-than being guarded against.
+- **`Layout`** (`ContextLayout`) — Internal context shape: fixed overhead, tiers and verbatim tail.
+- **`Usage`** (`ContextUsage`) — Latest usage reading.
+- **`RotationCount`** (`int`) — Completed replacements.
+- **`Level`** (`CompactionLevel`) — Current adaptive compaction level, initially Low.
+- **`ConsolidationCount`** (`int`) — Total summarizer calls across completed rotations.
 
-The disposal flag stays on the session, because it answers a question about the session rather than
-about any provider: whether further turns are accepted. The release flag answers a question about
-the provider, and travels with it.
+Derived hysteresis windows:
 
-`ConsolidationCount` is exposed because summarizer calls are the dominant cost of this arrangement,
-and the tiered scheme's advantage over a flat rolling summary is partly that it makes fewer of them.
-Exposing the running total lets an application see that cost rather than infer it.
+- **`K`** — `VerbatimTurns`; a second rotation within this many turns escalates.
+- **`M`** — `2 * VerbatimTurns`; a quiet stretch this long allows relaxation. `M` is greater than
+  `K`, so escalation and relaxation cannot both apply to one rotation.
 
-**Instances are not safe for concurrent use**, consistent with `IAgentSession`: one session is one
-conversation, and turns within a conversation are sequential by nature.
+`LiveProviderSession` pairs an `IProviderSession` with a `Released` flag. The flag is set only after
+the provider's own disposal completes, which keeps disposal retryable.
 
 ### Key Methods
 
 #### CreateAsync(AgentSessionOptions options, IProviderSessionFactory providerSessionFactory, CancellationToken cancellationToken)
 
-Creates the session and its first provider session. The first provider session is seeded with no
-history, because there is none yet; the instructions and tools it carries are the same ones every
-later rotation will carry.
+**Purpose:** Create the compacting session and its first provider session.
 
-A static asynchronous factory rather than a constructor, because creating the first provider session
-is asynchronous and a constructor cannot await. It is also the one moment the conversation is
-**empty by construction**, so whatever a provider-reported usage figure attributes to the
-conversation here is fixed overhead it did not break out; that figure is measured and travels with
-that provider session for as long as it is live. A provider that reports its window from the outset
-is checked here, and a session whose provider reports a window it could not converge in is refused
-with the provider's release attempted.
+**Algorithm:** Validate inputs, create an empty `ProviderSessionSeed`, ask the factory for a provider
+session, and construct `CompactingAgentSession`. Construction creates an empty layout, adopts the
+provider and reads usage. If construction fails after the provider exists, release the unowned
+provider session; if that release fails, throw `AgentSessionCreationException` carrying
+`RetainedProviderSession`.
 
-**Why this path has its own failure type.** Creation is the only path that abandons a session the
-caller never receives. Everywhere else a caller holding the session retries a failed release by
-disposing it again; here the only handle to a provider-side session the provider still holds was
-discarded with the instance, so the retryable state the release flag records was unreachable — the
-diagnostic told an operator the release needed retrying and left nothing to retry it with. The
-refusal is therefore an `AgentSessionCreationException`, which derives from
-`InvalidOperationException` and carries `RetainedProviderSession`: the provider session itself when
-the release failed, and `null` when it succeeded. **What a caller is expected to do:** fix the
-sizing the message describes, and if `RetainedProviderSession` is not null, dispose it — a retry that
-may fail again, which is the adapter's defect and not one this library can repair on its behalf.
-Handing the handle back was preferred to retrying the release internally, which can guarantee
-nothing, and to returning a broken session, which would let a turn be sent to a session that cannot
-settle.
+**Preconditions:** `options` and `providerSessionFactory` are not null; the factory returns a non-null
+provider session.
 
-**`RetainedProviderSession` is an initializer, not a constructor parameter.** The type needs the
-standard exception constructors, and an `(string, IAsyncDisposable?)` overload beside
-`(string, Exception)` converts to neither of them, so `new AgentSessionCreationException(message,
-null)` — the natural way for an application to say that nothing is retained — was ambiguous and did
-not compile. The retained session is also orthogonal to the message and the inner exception rather
-than an alternative to them: the creation path that carries a session also carries an adapter's
-failure. An initializer composes with all three constructors, where an overload or a static factory
-per combination multiplies them. Resolved while the package's adapters have not shipped, because
-this is new public API and the same change later would be a breaking one.
-
-**Nothing this path creates is left unowned.** Between the factory returning a provider session and
-this session taking ownership of it there is a window in which the provider session belongs to no
-one, and that window throws by design rather than by accident: constructing the session reads the
-provider's usage, which is adapter code, and `ContextUsage` refuses an impossible split rather than
-clamping it — deliberately, so that an adapter's arithmetic defect surfaces where the adapter wrote
-it. Left alone, the instance was discarded, the exception carried no handle, and the provider-side
-session was left with no reference to it anywhere in the process. For a provider holding history
-server-side that is a remote session never discarded, on a condition the library designs for. The
-construction is therefore guarded and the provider session released.
-
-**What the release decides is how the failure is reported.** A released provider session means
-nothing is held and nothing needs handing back, so the adapter's own failure travels unchanged: a
-wrapper would only move it away from the code that produced it, which is the one thing the refusal
-exists to avoid. When the release itself fails there *is* something held and no other handle to it,
-and an `AgentSessionCreationException` carrying it in `RetainedProviderSession` — with the adapter's
-failure as the inner exception — is the only way to hand it back. So this type is not how every
-failed creation is reported; it is how a creation that still holds something is reported.
-
-**Throws:** `ArgumentNullException` for a null options or factory; `InvalidOperationException` when
-the factory returns null; `AgentSessionCreationException` when the created session reports a window
-the session could not converge in, or when the session could not be constructed and the provider
-session could not then be released; whatever stopped the construction, unchanged, when the provider
-session was released; `OperationCanceledException` on cancellation.
+**Postconditions:** On success, the session owns the live provider session and reports initial usage.
+On failure, no provider session is silently orphaned.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
+**Purpose:** Answer one message and rotate afterward when occupancy reaches the threshold.
+
 **Algorithm:**
 
-1. Reject use after disposal, and reject a blank message.
-2. Take the turn against the live provider session, refusing a null result rather than
-   dereferencing it.
-3. **Once the provider has accepted it**, append the outgoing message and everything the turn
-   produced to the transcript, in that order and in a single append.
-4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
-   layout against the configured window.
-5. Refuse a reported window in which a rotated context could not land below the rotation threshold,
-   releasing the live provider first.
-6. Compare the usage figure's own conversation tokens against the rotation threshold derived from the
-   window that usage figure was measured against: the provider's reported window, less the overhead
-   that provider itself reported, when the provider reported one; the configured window, less the
-   estimated fixed overhead, otherwise.
-7. Below the threshold, return the answer with `RotationOccurred` false.
-8. At or above it, rotate, and return the answer with `RotationOccurred` true and any saturation the
-   rotation reported.
+1. Reject sends after disposal and blank messages.
+2. Send the message to the live provider session.
+3. Record the user message and provider turn entries as one whole turn.
+4. Increment the hysteresis clock.
+5. Read provider usage if available, otherwise estimate from the layout.
+6. Compare conversation occupancy with a threshold computed in the same currency.
+7. If below threshold, return the answer with current level and no dropped material.
+8. If at or above threshold, rotate and return the answer with updated level, rotation flag and
+   dropped-material flag.
 
-**Why conversation tokens rather than raw usage, and why they are not computed here.** The threshold
-is a fraction of the effective window, so the comparison must exclude the fixed overhead. The
-exclusion is performed by whoever produced the usage figure, not by this class: `ContextUsage`
-carries the conversation count, and this class reads it. Computing it here — by subtracting
-`AgentSessionOptions.FixedOverheadTokens` from the usage, which is what this class used to do — mixed
-two currencies whenever the provider reported. The usage and the window were then real tokens from
-the provider's own tokenizer and the subtrahend was this library's four-characters-per-token
-estimate of the system prompt and the tool declarations, so the difference was a figure in neither,
-and every threshold comparison downstream inherited the error. Tool declarations are nested JSON
-schemas, which is the material that ratio serves worst: the compaction spike estimated eleven tools
-at 2,589 tokens, and the real count for such a set can differ substantially. Reading a carried
-conversation count keeps each path within one currency — reported throughout, or estimated
-throughout.
+**Preconditions:** `message` is not null, empty or blank; the session is not disposed.
 
-**Why the threshold follows the window the usage came from.** The two numbers must describe the same
-window or the comparison means nothing. The guarantee rotation exists to deliver — rotating early
-enough that the provider's own compactor never fires — is a claim about the window the provider
-actually has, so a provider that reports one overrides the configured figure. A host configuring
-128,000 tokens against a provider reporting 32,000 would otherwise be allowed four times past the
-provider's own firing point, which is the failure this package exists to prevent; the reverse
-mismatch would rotate long before it needed to, spending summarizer tokens and prompt cache for
-nothing. Both paths apply the same arithmetic — remove the overhead, apply the policy's rotation
-fraction, floor at one token — so they differ only in which window they measure and whose overhead
-they remove from it. The reported path removes `ContextUsage.OverheadTokens`, which is the reported
-total less the reported conversation and so is in the provider's own tokens; the estimate path keeps
-the configured threshold, in which the estimated overhead was removed from the configured window the
-estimate was measured against. A provider that reports totals but no split is credited no overhead
-at all, which rotates earlier rather than later and so errs on the side the guarantee needs — a
-statement about *this* comparison and no other; the convergence check below cannot inherit it.
-
-**Why a null turn is refused rather than dereferenced.** `IProviderSession.SendAsync` is annotated as
-returning a turn, but an annotation is a promise rather than an enforcement: an adapter compiled
-without nullable analysis, or one whose own transport returned nothing, can still hand back null.
-Dereferenced, it produced an opaque `NullReferenceException` from the middle of this method, after
-the provider may already have accepted the message and while the engine's transcript still said
-nothing had happened — a defect in the adapter reported as a defect in the engine. The provider
-factory, the summarizer and the in-memory responder all convert a null result into an explicit
-`InvalidOperationException`, and this path now does the same. Nothing is recorded either way, so the
-session is left exactly as it was.
-
-**Why nothing is recorded until the provider accepts the turn.** A provider is entitled to honor
-cancellation or fail before taking the turn — the in-memory provider does exactly that for a token
-that was already canceled, and for one canceled while its responder was running. A message recorded
-ahead of that would be a turn no provider ever saw,
-which would survive in the transcript, be consolidated at the next rotation, and be seeded into the
-replacement session as though it had happened. Recording after the call means a refused turn leaves
-the session exactly as it was.
-
-**Why the turn is recorded in one append rather than two.** A `SessionTranscript` is immutable and
-copies its whole backing array on each append, so appending the message and then the turn's entries
-copied a filling window twice per turn. That is quadratic in the number of entries between rotations
-with double the constant, and a long conversation is the entire case this package exists for.
-Collecting both halves into one sequence leaves the observable order identical, halves the copying,
-and preserves the rule above: nothing at all is appended until the provider has returned.
-
-**Why compaction happens after the answer.** The turn is served by the session that was live when it
-arrived, and the replacement is prepared for the turn after. A caller therefore never waits on a
-summarizer before receiving an answer the session could already give.
-
-**Why a reported window a session could not converge in is refused rather than adapted.** A rotation
-leaves the conversation holding at most the tier budgets plus the framing each seeded tier record
-carries. The invariant the session needs is that this figure lands **below** the rotation threshold;
-merely holding it is the necessary condition, not the sufficient one, and asserting only that was
-the defect. For any window between the bound and the bound divided by the rotation fraction, the
-guard passed, the session rotated, the rotated layout was still at or above the threshold, and it
-rotated again on every following turn — spending a summarizer call and a provider session per turn
-while raising no saturation signal, because each individual consolidation reduced perfectly
-normally. Adapting was considered and rejected: shrinking the tier budgets to fit would silently
-discard the compaction policy the host configured and would have to re-consolidate records already
-written against larger budgets, which is precisely what an immutable layout exists to prevent;
-ignoring the reported window would reinstate the defect the reported-window override removes,
-letting the session run past the provider's own compactor. `AgentSessionOptions` already refuses a
-*configured* window on the same test, through the shared `ConvergesAt` predicate, so failing here
-keeps one rule — a window a session could not converge in is refused —
-and differs only in when the figure becomes knowable. The check runs at creation and after every
-turn, because a provider may only begin reporting, or report a smaller window, once it has answered
-something. The live provider is released before the exception is thrown, since the session is being
-abandoned mid-life; a failure to release is swallowed rather than allowed to replace the
-configuration error the caller can act on, and the release flag — which lives on the provider —
-stays false so a retry still reaches it. The release is unconditional: every entry point
-holds a provider session that has not been released — `CreateAsync` a freshly created one,
-`SendAsync` one already checked against disposal, and `RotateAsync` a replacement it has just
-adopted — so a guard on the release flag asserted something already known. The message states the
-release's *actual* outcome rather than claiming one, and names the retry that applies to the path it
-was thrown from: disposing this session again, or disposing the handle the creation failure carries.
-
-**Why overhead a provider does not break out is credited to that bound.** `FromProvider` accepts
-totals without a conversation split, and the figure it produces then reports zero overhead and calls
-the whole of its usage conversation. That default is safe for the rotation trigger, which is a
-comparison of an inflated conversation against a threshold taken from the whole window and so fires
-early. It is not safe here, and *the same default being safe in one place and unsafe in the other is
-how this was missed*: crediting no overhead makes the window look larger than it is, while the figure
-a rotated context will actually report still carries the fold. A 500-token window with a 311-token
-rotated bound passes a threshold of 350, and the replacement it then produces is reported at 411
-against that same 350 and rotates on every turn thereafter. The fold is therefore **measured, not
-assumed**.
-
-**The fold is a property of the live provider session, and is measured per provider session, at the
-first instant that provider session reports anything.** Whatever a provider-reported figure calls
-conversation at that instant, over and above this library's own count of the conversation the
-session then holds, is not conversation — it is the system prompt, the tool declarations and
-whatever framing the provider charges for, in the provider's own tokens. For the first provider
-session of a conversation, reported at creation, the subtrahend is zero, because it is seeded with
-no history at all and the whole of what it calls conversation is fold. For a replacement reported at
-creation it is the estimated size of the rotated context that replacement was seeded with. The
-measurement therefore travels with the provider session it describes, and adopting a replacement
-replaces the fold along with the provider reference and the release flag, in one assignment.
-
-**A provider session that reports nothing when it is adopted has the measurement deferred, not
-settled at zero.** `IContextUsageReporter` permits `CurrentUsage` to be `null` at creation and says
-plainly that an implementation which sometimes knows returns `null` until it does — so at that
-instant the session has only its own estimate, which carries no fold to find. The measurement is
-taken instead at the first turn the provider does report on, against this library's estimate of the
-conversation by then, and is then fixed for that provider session's life. Refusing the reporting
-transition outright was the alternative and was rejected: it abandons a session over conformant
-adapter behavior, and abandons it after a real message has been spent, to avoid a measurement the
-library can simply take. Recording it as *unmeasured* rather than as a fold of zero is what makes
-the deferral possible, because no reading of the figure itself distinguishes a genuine zero — every
-split-reporting adapter — from an absent one, and a genuine zero must not be re-measured against a
-conversation that has since grown.
-
-*Measuring it once and reusing it was wrong in both directions, which is why this is a lifecycle
-property rather than another guard.* A totals-only first session replaced by one that reports its
-split had a fold credited that the replacement does not charge, so a perfectly convergent
-replacement was refused and the session abandoned. The reverse — a split-reporting first session
-replaced by a totals-only one — had no fold credited at all, so a replacement whose hidden overhead
-keeps every rotated context above its own threshold was accepted, and rotated on every turn
-thereafter while raising no saturation signal, because each individual consolidation reduces
-perfectly normally. *Measuring it only at creation was wrong in a third direction*: a provider
-silent at creation and reporting totals from its first turn onward was credited nothing at all for
-overhead it charges on every turn, so it reached the same accepted-but-thrashing state through the
-door the reporting contract holds open.
-
-The subtraction is between a provider's own count and this library's estimate of the same entries, so
-it is as approximate as every other figure this check compares, and it **errs toward crediting too
-much**: a provider counting framing this library never sees has that difference credited as fold as
-well. Over-crediting is **not** harmless — raising the bound refuses a window the session would have
-run in perfectly well, which fails a working configuration outright — so the subtraction is confined
-to the one case where no better reading exists: a provider reporting **no split at all**. An adapter
-that reports a split has already stated its overhead, that overhead is subtracted from the window
-directly, and the fold is credited as zero without any subtraction being attempted. Crediting one
-there would take the difference between the provider's tokenizer and a four-characters-to-the-token
-estimate of the same text — nested JSON and code tokenize far worse than that ratio — and call it
-overhead somebody was hiding. This condition, and not the moment of measurement, is what makes the
-fold separable: a replacement provider session seeded with tier records is no more an empty
-conversation than a first report is. The fold is therefore exactly zero for both adapters shipped
-today — one reports the split, the other is estimated — and the in-memory session, which counts the
-seeded entries with this very estimator, is credited exactly nothing.
-
-The fold is added to the **bound**, which is the side of the comparison the reported conversation
-figure sits on, rather than subtracted from the window; subtracting it would discount it by the
-rotation fraction while the comparison pays for all of it. The trigger is left exactly as it was, and
-the two are then consistent by construction: a rotated context reports at most the bound plus the
-fold, and this check has established that the threshold exceeds that sum. For a provider reporting
-the split the fold is zero and nothing changes, and for an estimated figure the check does not run at
-all.
-
-**What an adapter that genuinely cannot split its counts should do: nothing.** It keeps reporting
-totals alone. Requiring a split would either force it to fabricate one — indistinguishable from a
-measurement at the point it is consumed, which is the defect `ContextUsage` exists to remove — or
-push an otherwise sound adapter onto the estimating path, where this library's character ratio would
-decide when a real provider rotates. Such an adapter should *prefer* to report from the moment a
-session exists rather than only once it has answered something, because an empty conversation is the
-one case in which its fold is measured exactly; an adapter that begins reporting later, and reporting
-totals alone, has it measured at its first report instead and so approximately. An adapter that
-reports a split is unaffected either way, being credited no fold whenever it is measured.
-
-**Why the failure states the release's outcome, and what to do about it.** The catch around the
-release deliberately leaves the release flag false so a retry is possible, and the message
-nonetheless claimed the session "has been released" — untrue in exactly the case it was reporting.
-Worse, on the `CreateAsync` path no handle was returned at all, so the retryable state the flag
-recorded was unreachable: an operator was told a retry was needed and given nothing to retry with.
-The release now reports whether it succeeded, so the message states that rather than claiming an
-attempt, and it names the retry appropriate to the path — disposing this session again, or disposing
-the `RetainedProviderSession` the creation failure carries. This package's rule is that a diagnostic
-states facts, and a fact a caller can act on.
-
-The window this check measures is the reported window less the overhead the provider itself
-reported, so that subtraction is in one currency. The bound it is compared against — the tier budgets
-and their seed framing — is not: those are configured and enforced in estimated tokens, because that
-is the only currency a host can express them in before a provider has said anything. The check is
-therefore an approximate comparison and is not claimed to be more, which is part of what the
-rotation fraction's thirty percent of unspent window is for. What it no longer does is corrupt the
-reported window itself before making the comparison.
-
-**Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
-`InvalidOperationException` when the live provider session returns a null turn, or when the live
-provider — or a replacement a rotation adopted — reports a
-window the session could not converge in; `OperationCanceledException` on cancellation.
+**Postconditions:** A provider-accepted turn is recorded exactly once. Rotation, when completed,
+prepares the replacement for the next turn; the current answer is produced before rotation.
 
 #### RotateAsync(CancellationToken cancellationToken)
 
-Ages the context by one rotation and replaces the live provider session with one seeded from the
-result.
+**Purpose:** Age the layout and replace the live provider session safely.
 
-**Algorithm:** consolidate through `RotationEngine`, telling it which currency the crossing was
-measured in — the `Origin` of this turn's usage figure; if it consolidated nothing, abandon the rotation
-and report that none occurred; otherwise build a seed from the new layout and measure that seed;
-create the replacement; read its usage once and measure its own fold against the seed;
-adopt it — swapping the live provider value, which carries the provider reference, its fold and its
-release flag together, and updating the layout, the rotation count, the
-consolidation total and the usage in one step containing no `await`; dispose the one it replaced;
-validate the replacement's reported window; return that a rotation occurred, with the saturation
-reports.
+**Algorithm:** Compute the starting level from hysteresis, call `RotationEngine.RotateAsync`, relax the
+settled level after a long quiet stretch when appropriate, and skip replacement if the engine did no
+consolidation and dropped nothing. Otherwise build a seed, create a replacement, read replacement
+usage before adoption, adopt the replacement, update layout, counters, usage, level and hysteresis
+clock in one no-await block, then attempt to dispose the superseded provider session.
 
-**Why the fold is measured here rather than inherited.** The seed is measured because the fold a
-replacement charges is what it reports over and above this library's count of the content it was
-handed; inheriting the figure measured from the session being replaced is what left a fold
-validating replacements it was never measured from, in both directions. Because the fold rides on
-the live provider value, the adoption cannot update the provider reference without updating the fold
-with it.
+**Preconditions:** The current usage has reached the rotation threshold.
 
-**Why the trigger's currency is handed to the engine.** The threshold comparison above is made in
-whichever currency this turn's usage carries, while the engine's split is measured in estimated
-tokens throughout. When a provider reported the crossing the two disagree by construction, and an
-engine left to assume otherwise consolidated nothing, seeded no replacement, and reported the turn
-as ordinary — leaving the provider to run into its own compactor with both halves behaving exactly
-as documented in their own currency. Passing `ContextUsage.Origin` makes a provider-reported
-crossing force a real consolidation; see *RotationEngine Unit Design*.
-
-**Why the replacement is validated before the rotation is reported as successful.** Nothing obliges
-a factory to return a session like the one it replaced — a routed deployment, a changed model or a
-downgraded tier all report a smaller window — and the adoption reads the replacement's usage, so the
-window is knowable at that moment. It was read and not checked, so a session this library could
-never converge in was adopted, the turn was answered normally, and the caller was told the rotation
-had succeeded; the replacement was found unusable only on the turn after, once a message had
-already been sent into it. `EnsureReportedWindowConvergesAsync` is therefore run against it here,
-which releases the replacement and abandons the session rather than returning. It is placed **after**
-the superseded session has been disposed, so abandoning the rotation over an unusable replacement
-does not also leak the session it replaced. That release can itself fail, like any other, which is
-why the message it throws states the release's outcome and tells a caller holding this session to
-dispose it again.
-
-**Why a rotation that consolidated nothing is abandoned.** The engine returns the layout unchanged
-when the transcript already fits tier zero and the crossing was this library's own estimate, and for
-a pure function over a layout that genuinely
-costs nothing. It is not free here: carrying it out creates a replacement provider session, disposes
-the live one, increments the rotation count, and tells the caller a rotation happened — all to
-arrive at exactly the context the session already had. Repeated every turn that is a provider
-session per turn spent to achieve nothing, and it is invisible, because no consolidation ran and so
-nothing could saturate. Measured before this was fixed, a policy of `[100, 1]` in a 128-token window
-— accepted by both guards as they then stood — did that on 16 of 20 turns, creating 17 provider
-sessions while reporting no saturation at any point.
-
-The convergence invariant makes this case unreachable for a layout sitting within its tier budgets:
-the threshold it guarantees exceeds the coarse tiers and their framing by more than tier zero's
-budget, so anything able to cross the threshold must overflow tier zero. It remains reachable for a
-layout whose tier is over budget — precisely the saturated case the library exists to report — so
-the guard is kept rather than argued away. A provider-reported crossing reaches it only when there
-is no verbatim history at all to consolidate, because the engine forces a consolidation otherwise.
-
-**The order is deliberate: consolidate first, create the replacement second, adopt it third, dispose
-the old session last.** A summarizer failure therefore leaves the session exactly as it was, still
-able to answer, rather than leaving it with no provider session at all. Disposing only once the
-replacement exists is also what makes the swap atomic from a caller's point of view.
-
-**Why the adoption precedes the disposal, and carries no await.** Updating the state after awaiting
-the disposal is not exception-safe: an adapter whose `DisposeAsync` fails leaves this session
-pointing at the replacement while its layout and counters still describe the session it replaced, so
-the next turn appends to — and may rotate — the wrong transcript. Performing the whole transition
-before that await, with nothing to suspend on in the middle, means the provider reference, the
-layout and the counters describe the same session at every point an exception could be observed.
-
-**Why a replacement that cannot be adopted is released rather than orphaned.** Reading a
-replacement's usage is the same adapter code, in the same kind of window: the factory has handed the
-session over and this session has not yet taken it. A failure there leaves this session coherent
-against the provider it already had, which is the correct outcome, and used to leave the replacement
-itself lost — never released, with no handle escaping. It is released before the failure travels on.
-Nothing is handed back on this path, unlike creation, because there is nowhere to hand it: the
-caller holds a working session, and the session it holds is not the one that failed. The rotation is
-simply not carried out, so the conversation stays on the provider that still has it.
-
-**Why a failed disposal does not fail the rotation.** By the time the superseded session is
-disposed, the rotation has already succeeded: the context was consolidated, the replacement was
-created, and this session is coherent against it. The exception is caught and not rethrown, because
-throwing it on would report the opposite to the caller and leave it holding a session it would
-reasonably believe to be broken. The cost of an adapter that cannot release its session is a
-provider-side session that outlives its use — the adapter's own defect, which discarding a good
-session on top of it does not repair. Explicit `DisposeAsync` on this session is a different matter
-and does propagate: a caller that asked for the session to be released is entitled to learn that it
-was not.
+**Postconditions:** On success, state describes the replacement session. If consolidation or
+replacement creation fails before adoption, the old provider session remains live and coherent.
 
 #### DisposeAsync()
 
-Disposes whichever provider session is currently live. Sessions replaced by earlier rotations were
-already disposed at the moment they were replaced, so nothing is left holding server-side state.
+**Purpose:** Release the currently live provider session.
 
-A failure to release propagates — the deliberate opposite of a rotation, which swallows the same
-failure because by then it has already succeeded. **Because it propagates, disposal stays
-retryable.** The disposal flag and the release flag are separate, they answer different
-questions — whether this session may still be used, and whether anything is still held on the
-provider's side — and they live in different places for the same reason: the first on the session,
-the second on the provider session it describes. The first is set from the first call, so the session
-refuses further turns whether
-or not the release succeeded; the second is set only once the provider's own disposal has completed.
-A later call therefore attempts the release again rather than returning as though it had happened,
-so a transient provider failure does not become a permanent leak. Marking the session released
-before awaiting the release would make that impossible: every later call would return at the flag
-while the provider still held the conversation. Because the flag travels with the provider, a session
-released and then rotated cannot be read as leaving its replacement released.
+**Algorithm:** Mark the session disposed and call `_live.ReleaseAsync()`.
 
-Once the release has succeeded, disposing again is permitted and does nothing, because a disposal
-pattern that threw on a second call would make defensive cleanup harder than leaving the resource
-open.
+**Preconditions:** None.
+
+**Postconditions:** When provider disposal succeeds, the live provider session is released. If
+disposal fails, the exception propagates and a later disposal call retries the same provider release.
 
 #### ReadUsage(IProviderSession provider, AgentSessionOptions options, ContextLayout layout)
 
-Static, because it depends on nothing but its arguments. Returns the provider's own figures when it
-implements `IContextUsageReporter` and reports something, and an estimate from the layout otherwise.
-Keeping the preference rule as a single visible decision, rather than scattering it across the call
-sites that need a usage figure, is what keeps the two provider families on one code path.
+**Purpose:** Choose provider-reported usage when present and estimate otherwise.
+
+**Algorithm:** If the provider implements `IContextUsageReporter` and returns a non-null reading, use
+that reading. Otherwise return `ContextUsage.FromEstimate` from the layout's total and conversation
+estimates against the configured window.
+
+**Preconditions:** Arguments are valid session objects.
+
+**Postconditions:** The usage origin records which path produced the reading.
+
+#### RotationThreshold(ContextUsage usage, AgentSessionOptions options)
+
+**Purpose:** Compute the threshold in the same currency as the usage reading.
+
+**Algorithm:** For estimated usage, return the threshold already computed from the configured window.
+For provider usage, subtract provider-reported overhead from the provider-reported window and apply
+`AgentSessionOptions.RotationThresholdFor`.
+
+**Preconditions:** `usage` is valid.
+
+**Postconditions:** The comparison uses one currency throughout.
 
 ### Error Handling
 
-- **Null options or provider factory** — `ArgumentNullException` propagates
-- **Provider factory returns null** — `InvalidOperationException` propagates
-- **Provider session returns a null turn** — `InvalidOperationException` propagates; nothing is
-  recorded, so the session is left exactly as it was
-- **Blank message** — `ArgumentException` propagates
-- **Provider reports a window the session could not converge in** — `InvalidOperationException`
-  propagates, stating whether the release succeeded and naming the retry that applies; the live
-  provider's release is attempted first and the session refuses further turns. This applies to a
-  replacement adopted by a rotation as much as to the session a turn was taken against. At creation
-  it is an `AgentSessionCreationException`, which carries the provider session when the release
-  failed, because the caller receives no session to retry it with
-- **Release fails while refusing an unusable window** — Caught and not reported; the configuration
-  error is the one the caller can act on, the release flag stays false on the provider so the release
-  remains retryable, and the message says so and names what to retry it with
-- **A provider session cannot be adopted** — The provider session is released and the failure
-  propagates unchanged; at creation, where the caller receives no session, a release that also failed
-  turns the failure into an `AgentSessionCreationException` carrying the provider session with the
-  original as its inner exception
-- **Release fails for a provider session that was never adopted** — At creation the handle is carried
-  on the failure; during a rotation it is discarded, because the caller holds a working session that
-  is not the one that failed and the rotation's own failure is the one it needs
-- **Use after disposal** — `ObjectDisposedException` propagates
-- **Summarizer fails during rotation** — Propagates; the session is left intact and still able to answer
-- **Superseded provider session fails to dispose during rotation** — Caught and not reported; the
-  rotation already succeeded and the session is coherent against its replacement
-- **Live provider session fails to dispose on `DisposeAsync`** — Propagates; a caller that asked for
-  the session to be released is entitled to learn that it was not, and the release may be retried by
-  disposing again
-- **Rotation reports saturation** — Surfaced on the response; not an exception
-- **Second disposal** — Permitted; releases the provider session if an earlier attempt failed,
-  otherwise does nothing
+- **Null options, factory or provider session** — `ArgumentNullException` or `InvalidOperationException`
+  propagates.
+- **Provider usage throws during creation** — The unowned provider session is released; if release
+  succeeds, the original exception is rethrown.
+- **Provider usage throws during creation and release fails** — `AgentSessionCreationException`
+  propagates with `RetainedProviderSession` set.
+- **Provider usage throws for a replacement** — The replacement is released and the existing session
+  remains live.
+- **Superseded provider disposal fails after rotation** — The failure is swallowed because rotation
+  has already succeeded.
+- **Explicit disposal fails** — The failure propagates and remains retryable.
+- **Blank message** — `ArgumentException` propagates.
+- **Send after disposal** — `ObjectDisposedException` propagates.
+- **Cancellation** — Propagates from the provider, summarizer or factory and leaves pre-adoption state
+  coherent.
 
 ### Dependencies
 
-- **AgentSession** — implements `IAgentSession` and returns `AgentSessionResponse`; see
-  *AgentSession Unit Design*.
-- **AgentSessionOptions** — the configuration and every derived figure; see *AgentSessionOptions
-  Unit Design*.
-- **ContextLayout** — the state a rotation acts on, and the seed builder; see *ContextLayout Unit
-  Design*.
-- **SessionTranscript** — the append-only record of each turn; see *SessionTranscript Unit Design*.
-- **RotationEngine** — performs the rotation; see *RotationEngine Unit Design*.
-- **ProviderSession** — the seed, the session and the factory; see *ProviderSession Unit Design*.
-- **ContextUsage** — the usage figure and the optional reporting contract; see *ContextUsage Unit
-  Design*.
+- **AgentSessionOptions** — Supplies configuration, summarizer and thresholds.
+- **ContextLayout** — Holds the out-of-session context.
+- **ContextUsage** — Drives threshold decisions and response reporting.
+- **RotationEngine** — Ages layout and reports settled level and dropped material.
+- **ProviderSession** — Supplies live provider sessions and replacements.
+- **AgentSession** — Defines `IAgentSession` and `AgentSessionResponse`.
 
 ### Callers
 
-An application calls `CreateAsync` once and then `SendAsync` per turn, holding the result as an
-`IAgentSession`. Within this system nothing else calls it.
+Applications call `CreateAsync`, then use the returned `IAgentSession`. No other unit constructs
+`CompactingAgentSession` directly.
