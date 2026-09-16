@@ -38,20 +38,18 @@ public class InMemoryProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves both provider shapes are reachable: a reporting session yields provider-origin
-    ///     usage, and a silent one yields none so the engine falls back to its estimate.
+    ///     Proves the session answers for its own window, as every adapter does: it reports what it
+    ///     holds and the window it was given, both as a provider's own figures.
     /// </summary>
     [Fact]
-    public void InMemoryProviderSession_Usage_SimulatesBothShapes()
+    public void InMemoryProviderSession_Usage_AnswersForItsOwnWindow()
     {
         var seed = new ProviderSessionSeed(null, [], []);
 
-        var reporting = new InMemoryProviderSession(seed, _ => new ProviderTurn("x"), 1000, reportsUsage: true);
-        Assert.NotNull(reporting.CurrentUsage);
-        Assert.Equal(ContextUsageOrigin.Provider, reporting.CurrentUsage.Origin);
+        var session = new InMemoryProviderSession(seed, _ => new ProviderTurn("x"), 1000);
 
-        var silent = new InMemoryProviderSession(seed, _ => new ProviderTurn("x"), 1000, reportsUsage: false);
-        Assert.Null(silent.CurrentUsage);
+        Assert.Equal(ContextUsageOrigin.Provider, session.CurrentUsage.Origin);
+        Assert.Equal(1000, session.CurrentUsage.WindowTokens);
     }
 
     /// <summary>

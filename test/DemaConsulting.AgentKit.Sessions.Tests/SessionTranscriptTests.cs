@@ -48,8 +48,11 @@ public class SessionTranscriptTests
         var (older, retained) = transcript.SplitAtTail(keepTurns: 2);
 
         Assert.Equal(2, retained.TurnCount);
-        // Three older turns, each two entries.
-        Assert.Equal(6, older.Count);
+
+        // Three older turns, returned as turns rather than flattened entries so that consolidation
+        // chunking can never split one across two summarizer calls.
+        Assert.Equal(3, older.Count);
+        Assert.All(older, turn => Assert.Equal(2, turn.Entries.Count));
     }
 
     /// <summary>

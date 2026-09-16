@@ -21,18 +21,14 @@ public class AgentSessionOptionsTests
             summarizer,
             instructions: null,
             tools: null,
-            providerWindowTokens: 1000,
             compaction: new CompactionPolicy(verbatimTurns: 8));
 
         Assert.Same(summarizer, options.Summarizer);
-        Assert.Equal(1000, options.ProviderWindowTokens);
-        Assert.Equal(1000, options.EffectiveWindowTokens);
-        Assert.Equal(700, options.RotationThresholdTokens);
         Assert.Equal(8, options.VerbatimTurns);
     }
 
     /// <summary>
-    ///     Proves the defaults: the shared policy, the default window, and its verbatim tail.
+    ///     Proves the defaults: the shared policy and its verbatim tail.
     /// </summary>
     [Fact]
     public void AgentSessionOptions_Construct_Defaults()
@@ -40,7 +36,6 @@ public class AgentSessionOptionsTests
         var options = new AgentSessionOptions(new FakeSummarizer());
 
         Assert.Same(CompactionPolicy.Default, options.Compaction);
-        Assert.Equal(AgentSessionOptions.DefaultProviderWindowTokens, options.ProviderWindowTokens);
         Assert.Equal(CompactionPolicy.DefaultVerbatimTurns, options.VerbatimTurns);
     }
 
@@ -54,12 +49,11 @@ public class AgentSessionOptionsTests
         var tool = AIFunctionFactory.Create(() => 0, "probe", "A probe tool.");
 
         var options = new AgentSessionOptions(
-            new FakeSummarizer(), instructions: "system prompt here", tools: [tool], providerWindowTokens: 100_000);
+            new FakeSummarizer(), instructions: "system prompt here", tools: [tool]);
 
         Assert.True(options.SystemTokens > 0);
         Assert.True(options.ToolDeclarationTokens > 0);
         Assert.Equal(options.SystemTokens + options.ToolDeclarationTokens, options.FixedOverheadTokens);
-        Assert.Equal(options.ProviderWindowTokens - options.FixedOverheadTokens, options.EffectiveWindowTokens);
     }
 
     /// <summary>
@@ -70,20 +64,6 @@ public class AgentSessionOptionsTests
     public void AgentSessionOptions_Construct_NullSummarizer_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new AgentSessionOptions(null!));
-    }
-
-    /// <summary>
-    ///     Proves a non-positive window, and a window the overhead leaves no room in, are refused
-    ///     where the application wrote them.
-    /// </summary>
-    [Fact]
-    public void AgentSessionOptions_Construct_UnworkableWindow_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new AgentSessionOptions(new FakeSummarizer(), providerWindowTokens: 0));
-
-        Assert.Throws<ArgumentException>(() =>
-            new AgentSessionOptions(new FakeSummarizer(), instructions: new string('a', 4000), providerWindowTokens: 10));
     }
 
     /// <summary>

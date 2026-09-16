@@ -76,7 +76,7 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Usage_PrefersProviderReport()
     {
-        var factory = new InMemoryProviderSessionFactory(windowTokens: 1000, reportsUsage: true);
+        var factory = new InMemoryProviderSessionFactory(windowTokens: 1000);
         await using var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
 
         await session.SendAsync("hello", TestContext.Current.CancellationToken);
@@ -91,9 +91,10 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Send_RotatesAtThreshold()
     {
-        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), reportsUsage: false);
+        var factory = new InMemoryProviderSessionFactory(
+            SessionTestData.SizedResponder(15), windowTokens: 300);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), providerWindowTokens: 300, compaction: new CompactionPolicy(verbatimTurns: 2));
+            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 2));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         for (var turn = 0; turn < 20; turn++)
@@ -127,7 +128,7 @@ public class CompactingAgentSessionTests
     {
         var factory = new DivergentTokenizerProviderSessionFactory(multiplier, windowTokens: 400, SessionTestData.SizedResponder(15));
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), providerWindowTokens: 400, compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 8));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         var answered = 0;
@@ -151,9 +152,9 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial()
     {
-        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), reportsUsage: true, windowTokens: 100);
+        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 100);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.5), providerWindowTokens: 100, compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.5), compaction: new CompactionPolicy(verbatimTurns: 8));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         var responses = new List<AgentSessionResponse>();
@@ -177,9 +178,9 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher()
     {
-        var one = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
-        var two = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
-        var three = await RunDivergentAsync(multiplier: 3.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
+        var one = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, TestContext.Current.CancellationToken);
+        var two = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, TestContext.Current.CancellationToken);
+        var three = await RunDivergentAsync(multiplier: 3.0, providerWindow: 2000, TestContext.Current.CancellationToken);
 
         // Rule 2 reads the provider's own count against its own window, so a larger multiplier crosses
         // the threshold sooner: strictly more rotations and a strictly higher escalation level.
@@ -209,11 +210,9 @@ public class CompactingAgentSessionTests
         var answerTokens = 700;
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(SessionTestData.AssistantOfTokens(answerTokens, "r").Text),
-            reportsUsage: true,
             windowTokens: 2000);
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.05),
-            providerWindowTokens: 2000,
             compaction: new CompactionPolicy(verbatimTurns: 2));
         await using var session = await CompactingAgentSession.CreateAsync(
             options, factory, TestContext.Current.CancellationToken);
@@ -258,18 +257,16 @@ public class CompactingAgentSessionTests
     /// </summary>
     /// <param name="multiplier">The provider's tokenizer multiplier relative to this library's estimate.</param>
     /// <param name="providerWindow">The window the provider reports as its own.</param>
-    /// <param name="configuredWindow">The window the application configures.</param>
     /// <param name="cancellationToken">A token to observe for cancellation.</param>
     /// <returns>The rotation count, the highest level seen, and whether any turn dropped material.</returns>
     private static async Task<(int Rotations, CompactionLevel MaxLevel, bool AnyDropped)> RunDivergentAsync(
         double multiplier,
         int providerWindow,
-        int configuredWindow,
         CancellationToken cancellationToken)
     {
         var factory = new DivergentTokenizerProviderSessionFactory(multiplier, providerWindow, SessionTestData.SizedResponder(15));
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), providerWindowTokens: configuredWindow, compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 8));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, cancellationToken);
 
         var maxLevel = CompactionLevel.Low;
@@ -348,10 +345,10 @@ public class CompactingAgentSessionTests
     {
         var bad = new UsageThrowingProviderSession(throwOnDispose: false);
         var factory = new ScriptedProviderSessionFactory(
-            seed => new InMemoryProviderSession(seed, SessionTestData.SizedResponder(15), 100, reportsUsage: false),
+            seed => new InMemoryProviderSession(seed, SessionTestData.SizedResponder(15), 100),
             _ => bad);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), providerWindowTokens: 100, compaction: new CompactionPolicy(verbatimTurns: 2));
+            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 2));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         // Drive turns until a rotation is attempted; adopting the bad replacement throws.

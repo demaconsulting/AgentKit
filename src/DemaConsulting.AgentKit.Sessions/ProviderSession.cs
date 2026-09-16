@@ -224,8 +224,8 @@ public sealed class ProviderTurn
 ///     and it is the only way to discard server-side history that the engine can rely on.
 ///     </para>
 ///     <para>
-///     An implementation that can report its own context usage also implements
-///     <see cref="IContextUsageReporter"/>; the engine tests for it and estimates when it is absent.
+///     An implementation answers for its own context window through <see cref="CurrentUsage"/>,
+///     which is the one token figure the engine consumes.
 ///     </para>
 ///     <para>
 ///     Implementations need not be safe for concurrent use: one session serves one conversation,
@@ -251,6 +251,35 @@ public interface IProviderSession : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The session has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Gets this session's account of how much of the provider's context window it occupies.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The adapter answers, however it must.</b> Rotation happens when the window is filling,
+    ///     which is the one thing this library needs a token count for, and the adapter is the only
+    ///     place that can answer honestly for its provider. Some report both figures directly. Some
+    ///     report occupancy but not a limit, in which case the adapter is told its window once, where
+    ///     the provider is configured, and answers with it thereafter. An adapter for a provider that
+    ///     reveals nothing estimates, and owns that choice.
+    ///     </para>
+    ///     <para>
+    ///     Making this part of the contract rather than an optional extra is what gives the engine a
+    ///     single path. It previously fell back to its own estimate against a window configured
+    ///     separately on the session, which meant two sources of truth for one fact and a rule for
+    ///     deciding between them - and the engine reading a number whose provenance it had to check
+    ///     before it could use it.
+    ///     </para>
+    ///     <para>
+    ///     Read after every turn. An implementation must not contact the provider to answer: this
+    ///     reports what the last exchange already revealed, so that reading it is free and cannot
+    ///     fail. An adapter whose provider distinguishes the conversation from the system prompt and
+    ///     tool declarations should pass that split to <see cref="ContextUsage.FromProvider"/> rather
+    ///     than leave it to be inferred.
+    ///     </para>
+    /// </remarks>
+    ContextUsage CurrentUsage { get; }
 }
 
 /// <summary>

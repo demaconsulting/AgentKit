@@ -18,7 +18,7 @@ namespace DemaConsulting.AgentKit.Sessions.Tests;
 ///     Any test of the drop-until-it-fits rule that does not use this fake is not testing it.
 ///     </para>
 /// </remarks>
-internal sealed class DivergentTokenizerProviderSession : IProviderSession, IContextUsageReporter
+internal sealed class DivergentTokenizerProviderSession : IProviderSession
 {
     /// <summary>
     ///     The answer for a given message.
@@ -81,7 +81,7 @@ internal sealed class DivergentTokenizerProviderSession : IProviderSession, ICon
     ///     the whole history, with no overhead broken out — the totals-only shape a provider that
     ///     cannot split its counts uses.
     /// </remarks>
-    public ContextUsage? CurrentUsage
+    public ContextUsage CurrentUsage
     {
         get
         {

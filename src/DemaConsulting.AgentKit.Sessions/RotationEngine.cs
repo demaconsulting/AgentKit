@@ -168,27 +168,28 @@ internal static class RotationEngine
     };
 
     /// <summary>
-    ///     Performs one rotation, returning the aged layout that fits.
+    ///     Performs one rotation: ages the turns older than the level's tail into tier one, and
+    ///     cascades the tiers that fill as a result.
     /// </summary>
+    /// <remarks>
+    ///     Nothing here measures whether the result will fit. A rotation moves material and reports
+    ///     what it did; deciding how hard to compact, and whether to discard a slot outright, belongs
+    ///     to the session, which is the only place that knows how quickly the window filled.
+    /// </remarks>
     /// <param name="layout">The layout to rotate. Must not be <see langword="null"/>.</param>
     /// <param name="summarizer">
     ///     The out-of-session summarizer performing each consolidation. Must not be
     ///     <see langword="null"/>, and must not return <see langword="null"/>.
     /// </param>
-    /// <param name="startLevel">The compaction level to begin the rotation at.</param>
+    /// <param name="level">The compaction level to rotate at.</param>
     /// <param name="verbatimTurns">The configured maximum verbatim tail length.</param>
-    /// <param name="rotationThresholdTokens">
-    ///     The estimated conversation size the built seed must land at or below, in this library's
-    ///     own tokens. Must be positive.
-    /// </param>
     /// <param name="cancellationToken">Cancels the rotation.</param>
-    /// <returns>The aged layout, the consolidation count, the settled level, and whether material was dropped.</returns>
+    /// <returns>The aged layout, the consolidation count, the level, and whether material was dropped.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="layout"/> or <paramref name="summarizer"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     <paramref name="startLevel"/> is not a defined <see cref="CompactionLevel"/> member, or
-    ///     <paramref name="rotationThresholdTokens"/> is not positive.
+    ///     <paramref name="level"/> is not a defined <see cref="CompactionLevel"/> member.
     /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="summarizer"/> returned <see langword="null"/> from a consolidation.
@@ -197,61 +198,28 @@ internal static class RotationEngine
     public static async Task<RotationOutcome> RotateAsync(
         ContextLayout layout,
         ISummarizer summarizer,
-        CompactionLevel startLevel,
+        CompactionLevel level,
         int verbatimTurns,
-        int rotationThresholdTokens,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(summarizer);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rotationThresholdTokens);
 
-        if (!Enum.IsDefined(startLevel))
+        if (!Enum.IsDefined(level))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(startLevel),
-                startLevel,
+                nameof(level),
+                level,
                 "The compaction level must be a defined CompactionLevel member.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var level = startLevel;
-        var consolidationTotal = 0;
+        var (rotated, consolidations, dropped) =
+            await BuildAtLevelAsync(layout, summarizer, level, verbatimTurns, cancellationToken)
+                .ConfigureAwait(false);
 
-        // Escalate until the built seed fits. Each attempt rebuilds from the original layout at the
-        // current level, so the terser tail is applied cleanly rather than layered on the last try.
-        while (true)
-        {
-            var (candidate, consolidations, droppedBuilding) =
-                await BuildAtLevelAsync(layout, summarizer, level, verbatimTurns, cancellationToken)
-                    .ConfigureAwait(false);
-            consolidationTotal += consolidations;
-
-            // A rotation that consolidated nothing has not made progress, whatever this library's
-            // estimate says about the result. The trigger is the provider's own occupancy and the
-            // verbatim tail is held by a count of turns, so a provider counting well above our
-            // estimate reaches its threshold while the tail is still shorter than the configured
-            // maximum - leaving nothing older to consolidate, a candidate identical to the layout
-            // it came from, and a session that goes on using a provider session already past its
-            // window. Requiring progress rather than only a fit makes the tail shorten until there
-            // is something to age out.
-            if (consolidations > 0 && candidate.EstimatedConversationTokens <= rotationThresholdTokens)
-            {
-                return new RotationOutcome(candidate, consolidationTotal, level, droppedBuilding);
-            }
-
-            if (level != CompactionLevel.High)
-            {
-                level = Escalate(level);
-                continue;
-            }
-
-            // At the highest level and the tersest structure still does not fit: drop until it does.
-            var (dropped, droppedLayout) = DropUntilFits(candidate, rotationThresholdTokens);
-            return new RotationOutcome(
-                droppedLayout, consolidationTotal, level, dropped || droppedBuilding);
-        }
+        return new RotationOutcome(rotated, consolidations, level, dropped);
     }
 
     /// <summary>
@@ -273,26 +241,39 @@ internal static class RotationEngine
     {
         var state = new RotationState(summarizer, level, layout.Tiers);
 
-        var keep = VerbatimTurnsFor(level, verbatimTurns);
+        // A rotation must move something. The level sets how much of the tail to keep, but the tail
+        // is a count of turns while the trigger is the provider's occupancy in tokens: a provider
+        // counting well above this library's estimate reaches its threshold while the tail is still
+        // shorter than its configured maximum. Keeping the level's figure blindly would then leave
+        // nothing older to consolidate, produce a layout identical to the one handed in, and send
+        // the session back to a provider it has already been told is full. So the tail keeps at most
+        // what the level asks for and at most one turn fewer than it holds, whichever is smaller.
+        var keep = Math.Min(
+            VerbatimTurnsFor(level, verbatimTurns),
+            layout.Tail.TurnCount - 1);
+
+        if (keep < 0)
+        {
+            // One turn or none: there is nothing older than the newest turn to move.
+            return (layout, 0, false);
+        }
+
         var (older, retained) = layout.Tail.SplitAtTail(keep);
         if (older.Count == 0)
         {
             return (state.BuildLayout(layout, retained), state.ConsolidationCount, state.MaterialDropped);
         }
 
-        var items = older.Select(entry => entry.ToTranscriptLine()).ToList();
-        var slot = await state.ConsolidateItemsAsync(items, tierIndex: 1, cancellationToken)
+        var slot = await state.ConsolidateTurnsAsync(older, tierIndex: 1, cancellationToken)
             .ConfigureAwait(false);
 
         // A blank answer produces no slot, and the material it was asked to consolidate must then
         // stay where it is. Retaining only the tail here would discard those turns while recording
         // nothing in their place - a silent loss, reported as an ordinary success, and committed to
-        // the provider when the replacement session is seeded from the shortened layout. Keeping
-        // them verbatim leaves the context no smaller, which is precisely the condition rule 5
-        // measures: it escalates, and failing that drops material and says so.
+        // the provider when the replacement session is seeded from the shortened layout.
         if (slot is null)
         {
-            return (state.BuildLayout(layout, layout.Tail), state.ConsolidationCount, state.MaterialDropped);
+            return (state.BuildLayout(layout, layout.Tail), state.ConsolidationCount, true);
         }
 
         await state.AppendSlotAsync(slot, tier: 0, cancellationToken).ConfigureAwait(false);
@@ -300,58 +281,6 @@ internal static class RotationEngine
         return (state.BuildLayout(layout, retained), state.ConsolidationCount, state.MaterialDropped);
     }
 
-    /// <summary>
-    ///     Drops the oldest slot of the coarsest non-empty tier, then the oldest verbatim turn,
-    ///     until the built seed fits or the newest turn stands alone.
-    /// </summary>
-    /// <remarks>
-    ///     Pure arithmetic over the layout: no summarizer call is made, because a drop discards
-    ///     material rather than reducing it. Terminates because slots and turns are finite and the
-    ///     loop bottoms out at the newest turn alone.
-    /// </remarks>
-    /// <param name="layout">The layout whose seed still does not fit.</param>
-    /// <param name="rotationThresholdTokens">The estimated conversation size the seed must fit within.</param>
-    /// <returns>Whether anything was dropped, and the layout that fits or holds only its newest turn.</returns>
-    private static (bool Dropped, ContextLayout Layout) DropUntilFits(
-        ContextLayout layout,
-        int rotationThresholdTokens)
-    {
-        var dropped = false;
-
-        while (layout.EstimatedConversationTokens > rotationThresholdTokens)
-        {
-            var coarsest = -1;
-            for (var index = ContextLayout.TierCount - 1; index >= 0; index--)
-            {
-                if (layout.Tiers[index].Count > 0)
-                {
-                    coarsest = index;
-                    break;
-                }
-            }
-
-            if (coarsest >= 0)
-            {
-                var tiers = layout.Tiers.ToArray();
-                tiers[coarsest] = tiers[coarsest].DropOldest();
-                layout = layout.WithTiers(layout.Tail, tiers);
-                dropped = true;
-                continue;
-            }
-
-            if (layout.Tail.TurnCount > 1)
-            {
-                layout = layout.WithTail(layout.Tail.DropOldestTurn());
-                dropped = true;
-                continue;
-            }
-
-            // Every slot is gone and the newest turn stands alone; there is nothing left to drop.
-            break;
-        }
-
-        return (dropped, layout);
-    }
 
     /// <summary>
     ///     The mutable working set of one rotation at one level: the tiers being aged and the
@@ -465,15 +394,49 @@ internal static class RotationEngine
         }
 
         /// <summary>
-        ///     Consolidates a list of pieces into one slot, chunking the material when it is too
-        ///     large for a single summarizer call.
+        ///     Consolidates whole turns into one slot, keeping each turn indivisible.
         /// </summary>
-        /// <param name="items">The rendered pieces to consolidate, oldest first.</param>
+        /// <remarks>
+        ///     Each turn is rendered as a single piece, so the chunking below can place a turn in one
+        ///     group or another but can never split one across two summarizer calls. That is what
+        ///     makes turn-granular boundaries real: a tool result can never reach a summarizer in a
+        ///     different call from the tool call it answers.
+        /// </remarks>
+        /// <param name="turns">The turns to consolidate, oldest first.</param>
+        /// <param name="tierIndex">The one-based tier the result belongs to, for the request.</param>
+        /// <param name="cancellationToken">Cancels the consolidation.</param>
+        /// <returns>The consolidated slot, or <see langword="null"/> when the consolidation failed.</returns>
+        public async Task<Slot?> ConsolidateTurnsAsync(
+            IReadOnlyList<SessionTurn> turns,
+            int tierIndex,
+            CancellationToken cancellationToken)
+        {
+            if (turns.Count == 0)
+            {
+                return null;
+            }
+
+            var pieces = turns
+                .Select(turn => string.Join("\n", turn.Entries.Select(entry => entry.ToTranscriptLine())))
+                .ToList();
+
+            return await ConsolidateItemsAsync(pieces, tierIndex, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     Consolidates a list of indivisible pieces into one slot, chunking when the material is
+        ///     too large for a single summarizer call.
+        /// </summary>
+        /// <remarks>
+        ///     A piece is never split. Callers decide what a piece is: a whole turn for rule two, a
+        ///     whole slot record for a rule three cascade.
+        /// </remarks>
+        /// <param name="items">The pieces to consolidate, oldest first.</param>
         /// <param name="tierIndex">The one-based tier the result belongs to, for the request.</param>
         /// <param name="cancellationToken">Cancels the consolidation.</param>
         /// <returns>
         ///     The consolidated slot, or <see langword="null"/> when there is nothing to consolidate
-        ///     or the summarizer returned only blank records.
+        ///     or any part of the consolidation came back blank.
         /// </returns>
         public async Task<Slot?> ConsolidateItemsAsync(
             IReadOnlyList<string> items,
@@ -508,15 +471,18 @@ internal static class RotationEngine
             {
                 var record = await ConsolidateAsync(string.Join("\n", group), tierIndex, cancellationToken)
                     .ConfigureAwait(false);
-                if (record.Length > 0)
-                {
-                    records.Add(record);
-                }
-            }
 
-            if (records.Count == 0)
-            {
-                return null;
+                // One blank chunk fails the whole consolidation rather than being skipped. Dropping
+                // it and combining the rest would discard that chunk's span of history while the
+                // result looked like an ordinary success - the same silent loss a blank answer used
+                // to cause on a single-call consolidation, hidden one level further down. Reporting failure
+                // leaves the caller holding the material, which it keeps verbatim.
+                if (record.Length == 0)
+                {
+                    return null;
+                }
+
+                records.Add(record);
             }
 
             if (records.Count == 1)

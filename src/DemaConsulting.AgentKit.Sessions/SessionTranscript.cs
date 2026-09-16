@@ -412,11 +412,10 @@ internal sealed class SessionTranscript
     /// </remarks>
     /// <param name="keepTurns">The number of newest turns to keep verbatim. Must not be negative.</param>
     /// <returns>
-    ///     The entries of the older turns, oldest first, and the retained newest turns as a
-    ///     transcript.
+    ///     The older turns, oldest first, and the retained newest turns as a transcript.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="keepTurns"/> is negative.</exception>
-    public (IReadOnlyList<TranscriptEntry> Older, SessionTranscript Retained) SplitAtTail(int keepTurns)
+    public (IReadOnlyList<SessionTurn> Older, SessionTranscript Retained) SplitAtTail(int keepTurns)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keepTurns);
 
@@ -427,13 +426,12 @@ internal sealed class SessionTranscript
 
         var boundary = _turns.Length - keepTurns;
 
-        var older = new List<TranscriptEntry>();
-        for (var index = 0; index < boundary; index++)
-        {
-            older.AddRange(_turns[index].Entries);
-        }
-
-        return (older, new SessionTranscript(_turns[boundary..]));
+        // Whole turns, not their flattened entries. A turn is the indivisible unit here: consolidation
+        // chunks large material into several summarizer calls, and handing that grouping a flat run of
+        // entries lets it split one turn's message, tool call, tool result and answer across separate
+        // calls - presenting a result whose call is in another chunk, which is exactly the orphaning
+        // that turn-granular boundaries exist to make impossible.
+        return (_turns[..boundary], new SessionTranscript(_turns[boundary..]));
     }
 
     /// <summary>

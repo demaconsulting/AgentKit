@@ -22,7 +22,7 @@ public partial class AgentKitSessionsTests
     [Fact]
     public async Task AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering()
     {
-        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), reportsUsage: true, windowTokens: 400);
+        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 400);
         var options = new AgentSessionOptions(new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 4));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
@@ -43,7 +43,7 @@ public partial class AgentKitSessionsTests
     public async Task AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext()
     {
         var summarizer = new FakeSummarizer(MarkerPreserving);
-        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(30), reportsUsage: true, windowTokens: 1000);
+        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(30), windowTokens: 1000);
         var options = new AgentSessionOptions(summarizer, compaction: new CompactionPolicy(verbatimTurns: 5));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
@@ -59,27 +59,40 @@ public partial class AgentKitSessionsTests
     }
 
     /// <summary>
-    ///     Proves the same conversation compacts and keeps answering on both provider shapes: one
-    ///     reporting its own usage, one silent so the estimate is used.
+    ///     Proves the session reads the window from the provider session rather than from anything
+    ///     configured alongside it, by running the same conversation against two providers that
+    ///     differ only in the window they report.
     /// </summary>
+    /// <remarks>
+    ///     The window is a fact about the provider, so the adapter is the only thing that knows it.
+    ///     A session carrying its own copy would have two sources for one fact and a rule for
+    ///     choosing between them; the narrow window here must therefore compact where the wide one
+    ///     does not, with nothing but the provider distinguishing them.
+    /// </remarks>
     [Fact]
-    public async Task AgentKitSessions_SameConversation_CompactsOnBothProviderShapes()
+    public async Task AgentKitSessions_WindowComesFromTheProvider_NarrowCompactsWhereWideDoesNot()
     {
-        await Run(reportsUsage: true, ContextUsageOrigin.Provider);
-        await Run(reportsUsage: false, ContextUsageOrigin.Estimated);
+        var narrow = await RunAsync(windowTokens: 300);
+        var wide = await RunAsync(windowTokens: 100_000);
 
-        static async Task Run(bool reportsUsage, ContextUsageOrigin expected)
+        Assert.True(narrow > 0, "A narrow provider window must provoke compaction.");
+        Assert.Equal(0, wide);
+
+        static async Task<int> RunAsync(int windowTokens)
         {
-            var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 300, reportsUsage: reportsUsage);
-            var options = new AgentSessionOptions(new FakeSummarizer(0.2), providerWindowTokens: 300, compaction: new CompactionPolicy(verbatimTurns: 3));
-            await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+            var factory = new InMemoryProviderSessionFactory(
+                SessionTestData.SizedResponder(15), windowTokens: windowTokens);
+            var options = new AgentSessionOptions(
+                new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 3));
+            await using var session = await CompactingAgentSession.CreateAsync(
+                options, factory, TestContext.Current.CancellationToken);
 
             for (var turn = 0; turn < 20; turn++)
             {
                 await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
             }
 
-            Assert.Equal(expected, session.Usage.Origin);
+            return session.RotationCount;
         }
     }
 

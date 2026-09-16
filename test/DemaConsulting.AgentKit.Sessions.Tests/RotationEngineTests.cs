@@ -9,7 +9,6 @@ public class RotationEngineTests
     /// <summary>
     ///     A threshold large enough that a small layout always fits without escalating or dropping.
     /// </summary>
-    private const int Roomy = 1_000_000;
 
     /// <summary>
     ///     Proves rule 2: everything older than the level-adjusted tail is consolidated into one
@@ -22,7 +21,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.TranscriptOf(5, tokensEach: 40));
 
         var outcome = await RotationEngine.RotateAsync(
-            layout, summarizer, CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
+            layout, summarizer, CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None);
 
         Assert.Equal(1, outcome.Layout.Tiers[0].Count);
         Assert.Equal(2, outcome.Layout.Tail.TurnCount);
@@ -44,7 +44,8 @@ public class RotationEngineTests
         var layout = SessionTestData.LayoutOf(SessionTestData.TranscriptOf(3, tokensEach: 40), tierOne);
 
         var outcome = await RotationEngine.RotateAsync(
-            layout, summarizer, CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
+            layout, summarizer, CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None);
 
         // Rule 2 made a tier-1 slot; tier 1 was full, so rule 3 consolidated its four slots into
         // tier 2 and the arriving slot took the emptied tier 1.
@@ -65,7 +66,8 @@ public class RotationEngineTests
             SessionTestData.TranscriptOf(3, tokensEach: 40), full, full, full);
 
         var outcome = await RotationEngine.RotateAsync(
-            layout, FakeSummarizer.Fixed(1), CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
+            layout, FakeSummarizer.Fixed(1), CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None);
 
         // The cascade reached the coarsest tier; the ring holds it at its complement.
         Assert.Equal(ContextLayout.SlotsPerTier, outcome.Layout.Tiers[ContextLayout.TierCount - 1].Count);
@@ -94,7 +96,8 @@ public class RotationEngineTests
         {
             layout = layout.WithTail(layout.Tail.AppendTurn(SessionTestData.TurnEntries(20, $"r{rotation}")));
             var outcome = await RotationEngine.RotateAsync(
-                layout, summarizer, CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
+                layout, summarizer, CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None);
             layout = outcome.Layout;
         }
 
@@ -120,20 +123,88 @@ public class RotationEngineTests
     public async Task RotationEngine_Rotate_OversizedMaterial_IsChunked()
     {
         var summarizer = FakeSummarizer.Fixed(2);
-        var perEntry = ContextLayout.MaxSummarizerInputTokens; // each entry alone approaches the bound
-        var bigTurn = SessionTranscript.Empty
-            .AppendTurn([
-                SessionTestData.UserOfTokens(perEntry, "u"),
-                SessionTestData.AssistantOfTokens(perEntry, "a"),
-            ])
-            .AppendTurn(SessionTestData.TurnEntries(20, "recent"));
+
+        // Three turns, each large enough that no two fit one summarizer call together, plus a recent
+        // turn to keep. Chunking must therefore split the material across calls.
+        var perEntry = ContextLayout.MaxSummarizerInputTokens / 2;
+        var transcript = SessionTranscript.Empty;
+        foreach (var name in (string[])["one", "two", "three"])
+        {
+            transcript = transcript.AppendTurn([
+                SessionTestData.UserOfTokens(perEntry, $"u{name}"),
+                SessionTestData.AssistantOfTokens(perEntry, $"a{name}"),
+            ]);
+        }
+
+        transcript = transcript.AppendTurn(SessionTestData.TurnEntries(20, "recent"));
 
         var outcome = await RotationEngine.RotateAsync(
-            SessionTestData.LayoutOf(bigTurn), summarizer, CompactionLevel.Low, verbatimTurns: 1, Roomy, CancellationToken.None);
+            SessionTestData.LayoutOf(transcript), summarizer, CompactionLevel.Low, verbatimTurns: 1,
+            CancellationToken.None);
 
         // Chunking produces more than the single call a consolidation without chunking would.
-        Assert.True(summarizer.CallCount > 1);
+        Assert.True(summarizer.CallCount > 1, $"Expected several calls, saw {summarizer.CallCount}.");
         Assert.Equal(1, outcome.Layout.Tiers[0].Count);
+
+        // Every call's material holds whole turns: a turn's user entry and its answer are never
+        // separated, which is what keeps a tool result from reaching a summarizer without its call.
+        foreach (var request in summarizer.Requests)
+        {
+            foreach (var name in (string[])["one", "two", "three"])
+            {
+                var sawUser = request.Material.Contains($"u{name}", StringComparison.Ordinal);
+                var sawAnswer = request.Material.Contains($"a{name}", StringComparison.Ordinal);
+                Assert.True(
+                    sawUser == sawAnswer,
+                    $"Turn '{name}' was split across summarizer calls: user={sawUser}, answer={sawAnswer}.");
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Proves one blank chunk fails the whole consolidation rather than being quietly skipped,
+    ///     so the span of history that chunk covered is not lost while the result looks like an
+    ///     ordinary success.
+    /// </summary>
+    /// <remarks>
+    ///     This is the blank-answer defect one level down. On a single-call consolidation a blank answer
+    ///     produces no slot and the material stays verbatim. On the chunked path the blank record
+    ///     used to be filtered out of the list and the surviving chunks combined, so that chunk's
+    ///     turns vanished with nothing recorded in their place and nothing reported - and the loss
+    ///     was committed to the provider as soon as the replacement session was seeded.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_Rotate_OneBlankChunk_KeepsTheWholeMaterial()
+    {
+        var calls = 0;
+        var summarizer = new FakeSummarizer(_ =>
+        {
+            calls++;
+            return calls == 2 ? "   " : new string('s', 8);
+        });
+
+        // Three turns too large to consolidate together, so the material is chunked and the second
+        // chunk comes back blank.
+        var perEntry = ContextLayout.MaxSummarizerInputTokens / 2;
+        var transcript = SessionTranscript.Empty;
+        foreach (var name in (string[])["one", "two", "three"])
+        {
+            transcript = transcript.AppendTurn([
+                SessionTestData.UserOfTokens(perEntry, $"u{name}"),
+                SessionTestData.AssistantOfTokens(perEntry, $"a{name}"),
+            ]);
+        }
+
+        transcript = transcript.AppendTurn(SessionTestData.TurnEntries(20, "recent"));
+
+        var outcome = await RotationEngine.RotateAsync(
+            SessionTestData.LayoutOf(transcript), summarizer, CompactionLevel.Low, verbatimTurns: 1,
+            CancellationToken.None);
+
+        Assert.True(summarizer.CallCount > 1, "The material must have been chunked for this to be the case under test.");
+        Assert.True(outcome.Layout.Tiers[0].IsEmpty);
+        Assert.Equal(transcript.TurnCount, outcome.Layout.Tail.TurnCount);
+        Assert.True(outcome.MaterialDropped, "A consolidation that failed must be reported, not passed off as success.");
     }
 
     /// <summary>
@@ -153,9 +224,9 @@ public class RotationEngineTests
     ///     provider's own compactor fires and truncates history.
     ///     </para>
     ///     <para>
-    ///     The tail here holds four turns against a maximum of twelve, so nothing ages out at the
-    ///     lowest level and the threshold is roomy enough that a fit test alone would accept it. The
-    ///     rotation must instead shorten the tail until something can be consolidated.
+    ///     The tail here holds four turns against a maximum of twelve, so keeping the level's figure
+    ///     blindly would age nothing out. Capping the tail at one turn fewer than it holds moves the
+    ///     oldest turn instead, which is the least the rotation can do and still have done something.
     ///     </para>
     /// </remarks>
     [Fact]
@@ -165,15 +236,13 @@ public class RotationEngineTests
 
         var outcome = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.TranscriptOf(4, tokensEach: 20)),
-            summarizer, CompactionLevel.Low, verbatimTurns: 12, Roomy, CancellationToken.None);
+            summarizer, CompactionLevel.Low, verbatimTurns: 12, CancellationToken.None);
 
         Assert.True(
             outcome.ConsolidationCount > 0,
             "A rotation that consolidated nothing leaves the session on a provider it was told is full.");
         Assert.False(outcome.Layout.Tiers[0].IsEmpty);
-        Assert.True(
-            outcome.Level > CompactionLevel.Low,
-            $"Shortening the tail is how progress is made, so the level must have escalated, but was {outcome.Level}.");
+        Assert.Equal(3, outcome.Layout.Tail.TurnCount);
     }
 
     /// <summary>
@@ -195,66 +264,11 @@ public class RotationEngineTests
 
         var outcome = await RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(transcript),
-            FakeSummarizer.Blank(), CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
+            FakeSummarizer.Blank(), CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None);
 
         Assert.True(outcome.Layout.Tiers[0].IsEmpty);
         Assert.Equal(transcript.TurnCount, outcome.Layout.Tail.TurnCount);
-    }
-
-    /// <summary>
-    ///     Proves a seed that does not fit escalates the compaction level until it does, keeping more
-    ///     history than dropping would.
-    /// </summary>
-    [Fact]
-    public async Task RotationEngine_Rotate_SeedThatDoesNotFit_Escalates()
-    {
-        var layout = SessionTestData.LayoutOf(SessionTestData.TranscriptOf(8, tokensEach: 40));
-
-        var outcome = await RotationEngine.RotateAsync(
-            layout, FakeSummarizer.Fixed(1), CompactionLevel.Low, verbatimTurns: 8, rotationThresholdTokens: 150, CancellationToken.None);
-
-        Assert.NotEqual(CompactionLevel.Low, outcome.Level);
-        Assert.False(outcome.MaterialDropped);
-        Assert.True(outcome.Layout.EstimatedConversationTokens <= 150);
-    }
-
-    /// <summary>
-    ///     Proves the drop-until-it-fits rule terminates and reports material dropped when even the
-    ///     tersest structure does not fit, exercised with a summarizer that expands its input.
-    /// </summary>
-    [Fact]
-    public async Task RotationEngine_Rotate_ExpandingSummarizer_DropsAndTerminates()
-    {
-        var layout = SessionTestData.LayoutOf(SessionTestData.TranscriptOf(6, tokensEach: 40));
-
-        var outcome = await RotationEngine.RotateAsync(
-            layout, FakeSummarizer.Expanding(), CompactionLevel.Low, verbatimTurns: 4, rotationThresholdTokens: 60, CancellationToken.None);
-
-        Assert.True(outcome.MaterialDropped);
-        Assert.Equal(CompactionLevel.High, outcome.Level);
-        // Bottomed out at a context it could not reduce further: the newest turn stands alone or it
-        // fits.
-        Assert.True(outcome.Layout.Tail.TurnCount >= 1);
-    }
-
-    /// <summary>
-    ///     Proves the drop loop terminates when a single verbatim turn is larger than the whole
-    ///     allowance: it drops the older turns and bottoms out at the newest turn alone.
-    /// </summary>
-    [Fact]
-    public async Task RotationEngine_Rotate_SingleOversizedTurn_BottomsOutAtNewestTurn()
-    {
-        var tail = SessionTranscript.Empty
-            .AppendTurn(SessionTestData.TurnEntries(40, "old"))
-            .AppendTurn(SessionTestData.TurnEntries(40, "mid"))
-            .AppendTurn([SessionTestData.UserOfTokens(500, "huge")]);
-
-        var outcome = await RotationEngine.RotateAsync(
-            SessionTestData.LayoutOf(tail), FakeSummarizer.Fixed(1),
-            CompactionLevel.High, verbatimTurns: 20, rotationThresholdTokens: 60, CancellationToken.None);
-
-        Assert.True(outcome.MaterialDropped);
-        Assert.Equal(1, outcome.Layout.Tail.TurnCount);
     }
 
     /// <summary>
@@ -265,7 +279,8 @@ public class RotationEngineTests
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() => RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.TranscriptOf(4, tokensEach: 40)),
-            FakeSummarizer.Null(), CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None));
+            FakeSummarizer.Null(), CompactionLevel.Low, verbatimTurns: 2
+            , CancellationToken.None));
     }
 
     /// <summary>
@@ -282,7 +297,7 @@ public class RotationEngineTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => RotationEngine.RotateAsync(
             SessionTestData.LayoutOf(SessionTestData.TranscriptOf(4, tokensEach: 40)),
-            summarizer, CompactionLevel.Low, verbatimTurns: 2, Roomy, cancellation.Token));
+            summarizer, CompactionLevel.Low, verbatimTurns: 2, cancellation.Token));
     }
 
     /// <summary>

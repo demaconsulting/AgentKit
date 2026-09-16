@@ -44,7 +44,6 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///             summarizer,
 ///             instructions: "You are a research assistant confined to the permitted locations.",
 ///             tools: tools,
-///             providerWindowTokens: 32_000,
 ///             compaction: new CompactionPolicy(verbatimTurns: 12));
 ///     }
 ///     </code>
@@ -52,25 +51,19 @@ namespace DemaConsulting.AgentKit.Sessions;
 public sealed class AgentSessionOptions
 {
     /// <summary>
-    ///     The provider window assumed when an application configures none.
-    /// </summary>
-    /// <remarks>
-    ///     A provider reached through an <c>IChatClient</c> reports no window size, so one has to be
-    ///     assumed. 128,000 tokens is a common contemporary window and is offered as a starting
-    ///     point rather than a claim about any particular model. An application that knows its
-    ///     provider's window should say so: under-stating it wastes context, and over-stating it
-    ///     rotates too late, which is the failure that loses work.
-    /// </remarks>
-    public const int DefaultProviderWindowTokens = 128_000;
-
-    /// <summary>
     ///     Initializes a new instance of the <see cref="AgentSessionOptions"/> class.
     /// </summary>
     /// <remarks>
     ///     Only the summarizer is required, because compaction cannot happen without one and
     ///     defaulting it would give an application a session that silently never compacts.
-    ///     Everything else defaults. Validation happens before any assignment so a rejected
-    ///     configuration never exists even briefly.
+    ///     Everything else defaults.
+    ///     <para>
+    ///     The provider's context window is deliberately not configured here. It is a fact about the
+    ///     provider, so it belongs where the provider is constructed: an adapter reads it from a
+    ///     native API where one exists, or is told it once, and answers for it thereafter. Carrying
+    ///     a second copy in these options invited the two to disagree, and the session then had to
+    ///     decide which to believe.
+    ///     </para>
     /// </remarks>
     /// <param name="summarizer">
     ///     The out-of-session summarizer performing each consolidation. Must not be
@@ -81,69 +74,40 @@ public sealed class AgentSessionOptions
     ///     The tools the agent may call. <see langword="null"/> means none. Must contain no
     ///     <see langword="null"/> entry.
     /// </param>
-    /// <param name="providerWindowTokens">
-    ///     The provider's context window in tokens. Must be positive.
-    /// </param>
     /// <param name="compaction">
     ///     The compaction controls. <see langword="null"/> selects <see cref="CompactionPolicy.Default"/>.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="summarizer"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="providerWindowTokens"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, the tool declarations
-    ///     are too large for a token count, or the window left after the system prompt and tool
-    ///     declarations is not positive.
+    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, or the tool declarations
+    ///     are too large for a token count.
     /// </exception>
     public AgentSessionOptions(
         ISummarizer summarizer,
         string? instructions = null,
         IReadOnlyList<AIFunction>? tools = null,
-        int providerWindowTokens = DefaultProviderWindowTokens,
         CompactionPolicy? compaction = null)
     {
         ArgumentNullException.ThrowIfNull(summarizer);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(providerWindowTokens);
 
         var policy = compaction ?? CompactionPolicy.Default;
         var toolList = tools ?? [];
 
-        // Measure the fixed overhead first: everything below is arithmetic on what is left after it.
-        // Estimating the declarations also validates the tool list, because a null declaration
-        // cannot be estimated.
+        // Measure the fixed overhead the seed carries. Estimating the declarations also validates
+        // the tool list, because a null declaration cannot be estimated.
         var systemTokens = TokenEstimator.EstimateTokens(instructions);
         var toolTokens = TokenEstimator.EstimateToolDeclarationTokens(toolList);
-
-        // Accumulated wide so the subtraction is exact even for an overhead near the top of a token
-        // count.
-        var overhead = (long)systemTokens + toolTokens;
-        var remaining = providerWindowTokens - overhead;
-
-        // Refuse a configuration whose overhead leaves no room for conversation. That is a host
-        // configuration defect, surfaced where the application wrote it.
-        if (remaining <= 0)
-        {
-            throw new ArgumentException(
-                $"The system prompt ({systemTokens} tokens) and tool declarations ({toolTokens} tokens) "
-                + $"leave no room in a {providerWindowTokens}-token window.",
-                nameof(providerWindowTokens));
-        }
-
-        var effective = (int)remaining;
 
         Summarizer = summarizer;
         Instructions = instructions;
 
         // Copy the caller's tools into storage these options own, exposed only as a read-only view.
         // The declarations are measured once, just above: a caller that could add or remove a tool
-        // afterwards would change what every future rotation seeds without changing the effective
-        // window or the threshold derived from it.
+        // afterwards would change what every future rotation seeds without changing the measurement.
         Tools = Array.AsReadOnly<AIFunction>([.. toolList]);
-        ProviderWindowTokens = providerWindowTokens;
         Compaction = policy;
         SystemTokens = systemTokens;
         ToolDeclarationTokens = toolTokens;
-        EffectiveWindowTokens = effective;
-        RotationThresholdTokens = RotationThresholdFor(effective);
     }
 
     /// <summary>

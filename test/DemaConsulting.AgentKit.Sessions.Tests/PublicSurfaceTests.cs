@@ -40,7 +40,6 @@ public class PublicSurfaceTests
             "ContextUsage",
             "ContextUsageOrigin",
             "IAgentSession",
-            "IContextUsageReporter",
             "IProviderSession",
             "IProviderSessionFactory",
             "ISummarizer",

@@ -39,7 +39,7 @@ internal sealed class ScriptedProviderSessionFactory(params Func<ProviderSession
 ///     arithmetically impossible — the condition the session must release rather than orphan.
 /// </summary>
 /// <param name="throwOnDispose">Whether releasing the session also fails.</param>
-internal sealed class UsageThrowingProviderSession(bool throwOnDispose) : IProviderSession, IContextUsageReporter
+internal sealed class UsageThrowingProviderSession(bool throwOnDispose) : IProviderSession
 {
     /// <summary>
     ///     Gets a value indicating whether the session was disposed.
@@ -47,7 +47,7 @@ internal sealed class UsageThrowingProviderSession(bool throwOnDispose) : IProvi
     public bool IsDisposed { get; private set; }
 
     /// <inheritdoc/>
-    public ContextUsage? CurrentUsage => throw new InvalidOperationException("The adapter reported an impossible split.");
+    public ContextUsage CurrentUsage => throw new InvalidOperationException("The adapter reported an impossible split.");
 
     /// <inheritdoc/>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default) =>
@@ -76,6 +76,10 @@ internal sealed class DisposeThrowingProviderSession : IProviderSession
     ///     Gets how many times release was attempted.
     /// </summary>
     public int DisposeAttempts { get; private set; }
+
+    /// <inheritdoc/>
+    /// <remarks>Roomy, so nothing this double is used for ever provokes a rotation.</remarks>
+    public ContextUsage CurrentUsage => ContextUsage.FromProvider(1, 1_000_000, 1);
 
     /// <inheritdoc/>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default) =>

@@ -112,7 +112,7 @@ public sealed class CompactingAgentSession : IAgentSession
 
         Layout = ContextLayout.Create(options.SystemTokens, options.ToolDeclarationTokens);
         _live = LiveProviderSession.Adopt(provider);
-        Usage = ReadUsage(provider, options, Layout);
+        Usage = ReadUsage(provider);
     }
 
     /// <summary>
@@ -280,13 +280,13 @@ public sealed class CompactingAgentSession : IAgentSession
         Layout = Layout.WithTail(Layout.Tail.AppendTurn([TranscriptEntry.User(message), .. turn.Entries]));
         _turnsSinceRotation++;
 
-        Usage = ReadUsage(_live.Session, _options, Layout);
+        Usage = ReadUsage(_live.Session);
 
         // Rule 2: rotate when occupancy reaches the rotation threshold. Both figures come from the
         // same usage reading, so both are in the same currency: a provider that reported its own
         // conversation count is measured entirely in that provider's tokens, and an estimate is
         // measured entirely in ours. Nothing is subtracted here.
-        if (Usage.ConversationTokens < RotationThreshold(Usage, _options))
+        if (Usage.ConversationTokens < RotationThreshold(Usage))
         {
             return new AgentSessionResponse(
                 turn.ResponseText, Usage, rotationOccurred: false, Level, materialDropped: false);
@@ -364,40 +364,47 @@ public sealed class CompactingAgentSession : IAgentSession
         var sinceRotation = _turnsSinceRotation;
         var hadPriorRotation = RotationCount > 0;
 
-        // Cross-rotation escalation: a window that fills again within k turns of a rotation starts
-        // the next rotation one level terser.
-        var startLevel = hadPriorRotation && sinceRotation <= K ? RotationEngine.Escalate(originalLevel) : originalLevel;
+        // Pressure is measured in turns, not tokens: the question is how quickly the window filled
+        // again after the last rotation, and both figures are counts this session already keeps.
+        var underPressure = hadPriorRotation && sinceRotation <= K;
+        var quiet = hadPriorRotation && sinceRotation >= M;
 
-        // Rule 5 sizes the seed it built against the same capacity rule 2 triggered on, so a
-        // provider that reports its own window governs both. Taking the configured window here
-        // instead left rule 5 inert wherever the two disagreed: an application using a reporting
-        // adapter has no reason to set a window, so the default sat far above anything a real
-        // rotation produces, every candidate passed on the first attempt, and neither the escalation
-        // ladder nor the drop loop could ever run.
-        //
-        // The seed is measured in this library's estimate and the capacity is the provider's own, so
-        // this asks whether an estimated size fits a real limit. That is an approximation, but not
-        // the currency error this design exists to remove: it compares a size against a capacity
-        // rather than subtracting an estimate from a measurement, and it is self-correcting, because
-        // an estimate that lets an oversized seed through is contradicted by the provider's own
-        // figure on the very next turn, which rotates again from a shorter tail.
+        // The response to pressure is one step terser, and at the tersest level there is nowhere
+        // further to go - so the oldest card goes in the bin. That is the ring in rule four, brought
+        // forward because the context is filling faster than the ring's own schedule empties it. It
+        // is a count, not a measurement: nothing here judges a context it has not sent.
+        var level = originalLevel;
+        var layout = Layout;
+        var droppedForPressure = false;
+
+        if (underPressure)
+        {
+            if (level == CompactionLevel.High)
+            {
+                var (dropped, reduced) = DropOldestSlot(layout);
+                layout = reduced;
+                droppedForPressure = dropped;
+            }
+            else
+            {
+                level = RotationEngine.Escalate(level);
+            }
+        }
+        else if (quiet)
+        {
+            level = RotationEngine.Relax(level);
+        }
+
         var outcome = await RotationEngine
-            .RotateAsync(Layout, _options.Summarizer, startLevel, _options.VerbatimTurns,
-                RotationThreshold(Usage, _options), cancellationToken)
+            .RotateAsync(layout, _options.Summarizer, level, _options.VerbatimTurns, cancellationToken)
             .ConfigureAwait(false);
 
-        // Decide the level this turn reports and the next rotation starts from. The engine's settled
-        // level already reflects any in-rotation escalation and any drop; a rotation that instead
-        // ran after a long quiet stretch, escalating nothing, relaxes one level.
         var settledLevel = outcome.Level;
-        if (hadPriorRotation && sinceRotation >= M && settledLevel == originalLevel)
-        {
-            settledLevel = RotationEngine.Relax(settledLevel);
-        }
+        var materialDropped = outcome.MaterialDropped || droppedForPressure;
 
         // Nothing aged out and nothing was dropped: there is no new context to seed a replacement
         // from. Record the level change and report the turn as the ordinary turn it was.
-        if (outcome.ConsolidationCount == 0 && !outcome.MaterialDropped)
+        if (outcome.ConsolidationCount == 0 && !materialDropped)
         {
             Level = settledLevel;
             return (false, false);
@@ -414,7 +421,7 @@ public sealed class CompactingAgentSession : IAgentSession
         LiveProviderSession adopted;
         try
         {
-            replacementUsage = ReadUsage(replacement, _options, outcome.Layout);
+            replacementUsage = ReadUsage(replacement);
             adopted = LiveProviderSession.Adopt(replacement);
         }
         catch (Exception)
@@ -442,7 +449,37 @@ public sealed class CompactingAgentSession : IAgentSession
         // failure: the rotation has already succeeded.
         await previous.TryReleaseAsync().ConfigureAwait(false);
 
-        return (true, outcome.MaterialDropped);
+        return (true, materialDropped);
+    }
+
+    /// <summary>
+    ///     Drops the oldest slot of the coarsest tier that holds one.
+    /// </summary>
+    /// <remarks>
+    ///     The ring in rule four, brought forward. Normally the coarsest tier sheds its oldest slot
+    ///     only when a new one arrives, which is roughly once every sixteen rotations; under
+    ///     sustained pressure the context is filling faster than that schedule empties it, so the
+    ///     same move is made on demand. The coarsest tier is chosen because its slot covers the
+    ///     oldest and least detailed span of the conversation - the part the agent will miss least.
+    ///     No measurement is involved: this is a count of slots.
+    /// </remarks>
+    /// <param name="layout">The layout to reduce.</param>
+    /// <returns>Whether a slot was dropped, and the layout without it.</returns>
+    private static (bool Dropped, ContextLayout Layout) DropOldestSlot(ContextLayout layout)
+    {
+        for (var index = ContextLayout.TierCount - 1; index >= 0; index--)
+        {
+            if (layout.Tiers[index].Count == 0)
+            {
+                continue;
+            }
+
+            var tiers = layout.Tiers.ToArray();
+            tiers[index] = tiers[index].DropOldest();
+            return (true, layout.WithTiers(layout.Tail, tiers));
+        }
+
+        return (false, layout);
     }
 
     /// <summary>
@@ -474,68 +511,39 @@ public sealed class CompactingAgentSession : IAgentSession
     }
 
     /// <summary>
-    ///     Reads usage from the provider when it reports any, and estimates it otherwise.
+    ///     Reads the provider session's account of how full it is.
     /// </summary>
     /// <remarks>
-    ///     Static because it depends on nothing but its arguments, which makes the preference rule —
-    ///     provider figures over our own — a single visible decision. The estimated figure carries
-    ///     the layout's own conversation total alongside its total, so the split it publishes is
-    ///     estimated on both sides, exactly as the provider's is reported on both sides. Nothing
-    ///     downstream ever has to mix the two.
+    ///     A single line kept as a named method because it marks the one place a token figure enters
+    ///     the engine. There is nothing to choose between and nothing to reconcile: the adapter
+    ///     answers for its own provider, and the engine believes it.
     /// </remarks>
     /// <param name="provider">The live provider session.</param>
-    /// <param name="options">The configured window, used when estimating.</param>
-    /// <param name="layout">The engine's own account of the context, used when estimating.</param>
-    /// <returns>The usage figure, marked with where it came from.</returns>
-    private static ContextUsage ReadUsage(
-        IProviderSession provider,
-        AgentSessionOptions options,
-        ContextLayout layout)
-    {
-        // A provider's own figures count framing this library never sees, so prefer them whenever
-        // they are offered.
-        if (provider is IContextUsageReporter reporter && reporter.CurrentUsage is { } reported)
-        {
-            return reported;
-        }
-
-        return ContextUsage.FromEstimate(
-            layout.TotalEstimatedTokens, options.ProviderWindowTokens, layout.EstimatedConversationTokens);
-    }
+    /// <returns>The provider session's usage figure.</returns>
+    private static ContextUsage ReadUsage(IProviderSession provider) => provider.CurrentUsage;
 
     /// <summary>
-    ///     Derives the conversation size at which this turn should rotate, from the same window the
-    ///     usage figure was measured against.
+    ///     Derives the conversation size at which this turn should rotate, from the window the
+    ///     provider reported.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>A provider that reports its own window overrides the configured one.</b> The whole
-    ///     point of rotating at a fraction of the window is that the provider's own compactor never
-    ///     fires, and that guarantee is about the window the provider actually has.
+    ///     One path, one source. The provider session answers how full it is and out of how much,
+    ///     and both figures come back together from the same place, so the window, the overhead and
+    ///     the conversation compared against the threshold are all counted the same way. There is no
+    ///     second window to reconcile and nothing to decide between.
     ///     </para>
     ///     <para>
-    ///     <b>The overhead removed from a reported window is the provider's own.</b> It comes from
-    ///     <see cref="ContextUsage.OverheadTokens"/>, both terms counted by the provider's
-    ///     tokenizer, so the window, the overhead and the conversation the threshold is compared
-    ///     against are all in one currency. When the figure is the library's own estimate it was
-    ///     taken against the configured window, so the threshold the options already computed is the
-    ///     matching one.
+    ///     Where an adapter's provider does not publish these figures, the adapter supplies them
+    ///     itself - reading them from a native API, taking a window given to it at construction, or
+    ///     estimating - and owns that choice. The engine asks one question and believes the answer,
+    ///     which is what keeps this comparison in a single currency.
     ///     </para>
     /// </remarks>
-    /// <param name="usage">The usage figure this turn produced, and where it came from.</param>
-    /// <param name="options">What the application configured.</param>
+    /// <param name="usage">The usage figure this turn produced.</param>
     /// <returns>The conversation tokens at which the session rotates.</returns>
-    private static int RotationThreshold(ContextUsage usage, AgentSessionOptions options)
-    {
-        // An estimate was measured against the configured window, so the configured threshold is
-        // already the matching one.
-        if (usage.Origin != ContextUsageOrigin.Provider)
-        {
-            return options.RotationThresholdTokens;
-        }
-
-        return AgentSessionOptions.RotationThresholdFor(usage.WindowTokens - usage.OverheadTokens);
-    }
+    private static int RotationThreshold(ContextUsage usage) =>
+        AgentSessionOptions.RotationThresholdFor(usage.WindowTokens - usage.OverheadTokens);
 
     /// <summary>
     ///     One live provider session together with whether it has been released, held as one value so
