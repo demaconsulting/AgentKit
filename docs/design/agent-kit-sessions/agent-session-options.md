@@ -50,7 +50,21 @@ The second is handled before the saturating arithmetic rather than inside it: th
 floored at the bound plus one, which for such a policy is not a representable token count at all, and
 a clamp given that floor reports a defect in this helper instead of the non-convergent window the
 caller asked about. An overhead allowance that carries the bound to or past `int.MaxValue` is the
-same condition reached by another road and saturates identically. `ConvergesAt` is the predicate used
+same condition reached by another road and saturates identically.
+
+The first — a rotation fraction too small for any window — is now handled the same way: **before**
+the floating-point answer reaches an integer at all. The analytic quotient for such a fraction is
+`+Infinity`, and how a non-finite or out-of-range floating-point value converts to an integer is not
+something to rely on: .NET 8 and 9 wrap it to the most negative value, .NET 10 saturates to the most
+positive, and this package targets all three. Wrapped, it landed below the clamp's lower bound, the
+search started at the conversation bound, and the confirmation loop advanced toward the largest
+representable token count a single token at a time — a constructor that does not return, measured at
+over two minutes without completing under .NET 8 against about a millisecond under .NET 10. The
+quotient is therefore range-tested as a `double`, and a requirement at or above `int.MaxValue` is
+answered directly as the saturated case it is. The test is written negated so a non-finite quotient
+saturates rather than falling through.
+
+`ConvergesAt` is the predicate used
 for deciding, precisely because a window
 equal to a saturated minimum would pass a comparison while failing the invariant it stands for.
 
@@ -85,14 +99,25 @@ is the failure that loses work.
 1. Reject a null summarizer and a non-positive provider window.
 2. Select the supplied compaction policy, or `CompactionPolicy.Default`.
 3. Measure `SystemTokens` from the instructions and `ToolDeclarationTokens` from the tools. This
-   step also validates the tool list, because a null declaration cannot be estimated.
-4. Compute the effective window as the provider window less the fixed overhead. Reject a
-   non-positive result.
+   step also validates the tool list, because a null declaration cannot be estimated, and refuses a
+   declaration block too large for a token count — the point at which that figure first becomes
+   computable.
+4. Compute the effective window as the provider window less the fixed overhead, **accumulating the
+   overhead in a wider type and rejecting a non-positive result before narrowing it**.
 5. Reject an effective window smaller than the policy's total tier budget plus the seed framing that
    policy's tier records carry.
 6. Assign, copying the tool list into storage these options own, and compute the rotation threshold
    by truncating the effective window multiplied by the policy's threshold fraction, clamped to at
    least one token.
+
+**Why the overhead is accumulated wide.** Each term is a token count a character ratio produced, so
+each fits an `int` on its own; their sum need not. An `int` subtraction would wrap the difference
+*positive*, pass the non-positive guard, and leave `FixedOverheadTokens`, `EffectiveWindowTokens` and
+the rotation threshold all describing a window nobody configured. It is the same class of defect the
+policy bound is already rejected for, and it is handled the same way: at the point the figure first
+becomes computable, so every later site can stay in plain token arithmetic. Reaching it takes several
+gigabytes of prompt or schema text, so it is not exercised by a test; that is recorded in
+*AgentSessionOptions Unit Verification Design* rather than implied.
 
 **Why the overhead is subtracted before the percentage.** Tool declarations are sent with every
 request and are never consolidated; for a realistic tool set they run to thousands of tokens — the
@@ -127,7 +152,11 @@ receives exactly that.
 - **Null summarizer** — `ArgumentNullException` propagates
 - **Non-positive provider window** — `ArgumentOutOfRangeException` propagates
 - **Null tool in the list** — `ArgumentException` propagates
-- **Fixed overhead consumes the whole window** — `ArgumentException` propagates, naming both measured figures
+- **Tool declarations larger than a token count** — `ArgumentException` propagates from the
+  estimator, before the figure is narrowed
+- **Fixed overhead consumes the whole window** — `ArgumentException` propagates, naming both measured
+  figures; the overhead is accumulated in a wider type so a sum past a token count is refused here
+  rather than wrapping past the guard
 - **Effective window too small for a rotated context to land below the rotation threshold** —
   `ArgumentException` propagates, naming the budgets, the framing, the window and the minimum the
   policy requires

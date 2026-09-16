@@ -530,7 +530,7 @@ public class CompactingAgentSessionTests
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
 
         // Act
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
             CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
 
         // Assert: the failure names the reported window, what a rotated context occupies, and what
@@ -540,8 +540,10 @@ public class CompactingAgentSessionTests
         Assert.Contains("446", error.Message, StringComparison.Ordinal);
 
         // Assert: the session was abandoned mid-life, so the provider it had already created was
-        // released rather than left holding a conversation the caller has no handle to
+        // released rather than left holding a conversation the caller has no handle to - and
+        // because the release succeeded the failure carries nothing for the caller to clean up
         Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+        Assert.Null(error.RetainedProviderSession);
     }
 
     /// <summary>
@@ -566,11 +568,12 @@ public class CompactingAgentSessionTests
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
 
         // Act / Assert: refused, even though a rotated context would have fitted
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
             CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
 
         Assert.Contains("446", error.Message, StringComparison.Ordinal);
         Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+        Assert.Null(error.RetainedProviderSession);
     }
 
     /// <summary>
@@ -683,16 +686,24 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves the refusal does not claim the provider session was released when the release it
-    ///     attempted threw.
+    ///     Proves a release that fails while a creation is being refused is reported honestly, and
+    ///     that the provider session it could not release is handed to the caller rather than
+    ///     discarded with the instance.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     <b>The message was untrue in exactly the case it reports.</b> The catch around the
     ///     release deliberately leaves the release flag false so a later call can retry, and the
-    ///     text nonetheless said the session "has been released". On this path <c>CreateAsync</c>
-    ///     returns no handle at all, so an operator reading that has no way to discover the provider
-    ///     still holds the session and no object left to retry the release on. Messages in this
-    ///     package state facts, so this one states what was attempted rather than what was achieved.
+    ///     text nonetheless said the session "has been released". Messages in this package state
+    ///     facts, so this one states the release's actual outcome.
+    ///     </para>
+    ///     <para>
+    ///     <b>And the retryable state was unreachable.</b> Saying the release needed retrying left
+    ///     the caller nothing to retry it with: <c>CreateAsync</c> returns no handle on this path,
+    ///     so the only <c>CompactingAgentSession</c> holding the provider session was discarded
+    ///     while the provider still held a conversation. The failure therefore carries the provider
+    ///     session itself, so disposing it is a retry a caller can actually perform.
+    ///     </para>
     /// </remarks>
     [Fact]
     public async Task CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease()
@@ -704,7 +715,7 @@ public class CompactingAgentSessionTests
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
 
         // Act
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
             CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
 
         // Assert: the configuration defect is still the failure reported, rather than the adapter's
@@ -719,6 +730,13 @@ public class CompactingAgentSessionTests
         // Assert: and the message says the release was attempted rather than claiming it happened
         Assert.DoesNotContain("has been released", error.Message, StringComparison.Ordinal);
         Assert.Contains("attempted", error.Message, StringComparison.Ordinal);
+
+        // Assert: the handle is not discarded - the caller receives the very session the provider
+        // still holds, and disposing it is a retry that actually reaches the provider
+        Assert.Same(session, error.RetainedProviderSession);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await error.RetainedProviderSession!.DisposeAsync());
+        Assert.Equal(2, session.DisposeAttempts);
     }
 
     /// <summary>
@@ -804,7 +822,7 @@ public class CompactingAgentSessionTests
             new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
 
         // Act: refused before a single turn is spent against it
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
             CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
 
         // Assert: the overhead the provider folded in was measured against the empty conversation
@@ -872,6 +890,252 @@ public class CompactingAgentSessionTests
             CompactingAgentSession.CreateAsync(null!, new InMemoryProviderSessionFactory(), TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             CompactingAgentSession.CreateAsync(options, null!, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a provider session that returns no turn at all is refused by name rather than
+    ///     dereferenced.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The annotation is a promise, not an enforcement.</b> An adapter compiled without
+    ///     nullable analysis, or one whose own transport returned nothing, can still hand back a
+    ///     null turn. Dereferenced, it produced an opaque <c>NullReferenceException</c> from the
+    ///     middle of a turn the provider may already have accepted, while the engine's transcript
+    ///     still said nothing had happened. The factory, the summarizer and the in-memory responder
+    ///     all convert a null result into an explicit refusal; this path now does the same.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReturnsNullTurn_Throws()
+    {
+        // Arrange: an adapter that answers with nothing at all
+        var factory = new ThrowingDisposeProviderSessionFactory(_ => null!, disposeFailures: 0);
+        var options = new AgentSessionOptions(new FakeSummarizer());
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("anything", TestContext.Current.CancellationToken));
+
+        // Assert: named rather than opaque
+        Assert.Contains("null", error.Message, StringComparison.Ordinal);
+
+        // Assert: and nothing was recorded for a turn no provider produced
+        Assert.Empty(session.Layout.Transcript.Entries);
+    }
+
+    /// <summary>
+    ///     Proves a totals-only session replaced by one that reports its conversation split hands
+    ///     the fold over with the provider, so a convergent replacement is accepted.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The fold belongs to the provider session it was measured from.</b> Measured once
+    ///     against the first provider session and reused, it went on being credited to replacements
+    ///     it was never measured from. Here the first session folds 100 tokens into its conversation
+    ///     figure, so the session credits it 100 and requires 589 tokens of effective window. The
+    ///     replacement reports its overhead separately: it folds nothing, so it requires only the
+    ///     446 tokens the policy needs, and its 500-token effective window satisfies that.
+    ///     </para>
+    ///     <para>
+    ///     Against the stale fold this rotation threw, abandoning a session whose replacement was
+    ///     perfectly usable, over an overhead that replacement does not charge.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_TotalsOnlyReplacedBySplitReporting_TakesTheReplacementsFold()
+    {
+        // Arrange: a totals-only first session folding 100 tokens, in a 900-token window that
+        // converges once those 100 are credited, then a split-reporting replacement whose 600-token
+        // window leaves 500 once its own reported overhead is paid for
+        var factory = new ShapeScriptedProviderSessionFactory(
+        [
+            new ProviderReportingShape(900, OverheadTokens: 100, ReportsSplit: false, ConversationTokensPerTurn: 600),
+            new ProviderReportingShape(600, OverheadTokens: 100, ReportsSplit: true, ConversationTokensPerTurn: 0)
+        ]);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: one turn large enough to overflow tier zero, crossing the 630-token threshold
+        var response = await session.SendAsync(
+            new string('m', 600), TestContext.Current.CancellationToken);
+
+        // Assert: the rotation carried through rather than being abandoned over a fold the
+        // replacement does not charge
+        Assert.True(response.RotationOccurred);
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.Equal(1, session.RotationCount);
+
+        // Assert: and the session is live against the replacement, not abandoned
+        Assert.Equal(ContextUsageOrigin.Provider, session.Usage.Origin);
+    }
+
+    /// <summary>
+    ///     Proves a split-reporting session replaced by a totals-only one measures the replacement's
+    ///     own fold, so a replacement that could never settle is refused during the rotation that
+    ///     adopted it.
+    /// </summary>
+    /// <remarks>
+    ///     <b>This is the same defect in the other direction.</b> The first session reports its
+    ///     split, so the fold measured at creation is zero — and reused, it credited zero to a
+    ///     replacement folding 400 tokens into a 500-token window. The rotated context the
+    ///     replacement holds is then reported at 400 above the small policy's own 311, against a
+    ///     rotation threshold of 350, so the session rotates on every turn thereafter and raises no
+    ///     saturation signal while doing it, because each consolidation reduces perfectly normally.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement()
+    {
+        // Arrange: a split-reporting first session in a comfortable window, then a totals-only
+        // replacement folding 400 tokens into a 500-token window
+        var factory = new ShapeScriptedProviderSessionFactory(
+        [
+            new ProviderReportingShape(4000, OverheadTokens: 0, ReportsSplit: true, ConversationTokensPerTurn: 3000),
+            new ProviderReportingShape(500, OverheadTokens: 400, ReportsSplit: false, ConversationTokensPerTurn: 0)
+        ]);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: one turn large enough to overflow tier zero, crossing the 2,800-token threshold
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync(new string('m', 600), TestContext.Current.CancellationToken));
+
+        // Assert: the replacement's own fold was measured and named, rather than the zero the
+        // session it replaced was measured at
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.Contains("400", error.Message, StringComparison.Ordinal);
+
+        // Assert: both provider sessions were released, and the session refuses further turns
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.True(factory.Sessions[1].IsDisposed);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("again", TestContext.Current.CancellationToken));
+    }
+}
+
+/// <summary>
+///     What one provider session in a scripted conversation reports about itself.
+/// </summary>
+/// <remarks>
+///     The two reporting shapes <see cref="ContextUsage.FromProvider(int, int, int?)"/> accepts,
+///     expressed as data so one conversation can change shape between rotations. No other fake here
+///     can do that: each produces sessions of a single shape, which is exactly why a fold measured
+///     against the first session of a conversation could go on being credited to every replacement
+///     without any test noticing.
+/// </remarks>
+/// <param name="WindowTokens">The window the session reports.</param>
+/// <param name="OverheadTokens">
+///     The fixed overhead the session charges on every reading. Reported outside the conversation
+///     when <paramref name="ReportsSplit"/> is <see langword="true"/>, and folded silently into the
+///     conversation figure otherwise.
+/// </param>
+/// <param name="ReportsSplit">Whether the session reports its conversation separately from its total.</param>
+/// <param name="ConversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+internal sealed record ProviderReportingShape(
+    int WindowTokens,
+    int OverheadTokens,
+    bool ReportsSplit,
+    int ConversationTokensPerTurn);
+
+/// <summary>
+///     A provider session reporting whichever shape the script gave it, and counting the history it
+///     was seeded with as a real adapter would.
+/// </summary>
+/// <remarks>
+///     Counting the seed matters: a session created by a rotation holds a rotated context, so a fake
+///     that ignored it would make every replacement look as though it held nothing and would hide
+///     the very measurement under test.
+/// </remarks>
+/// <param name="seed">What the session was started from.</param>
+/// <param name="shape">What it reports about itself.</param>
+internal sealed class ShapeScriptedProviderSession(ProviderSessionSeed seed, ProviderReportingShape shape)
+    : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     This library's estimate of the history the session was seeded with, which a provider
+    ///     counting the same entries would arrive at.
+    /// </summary>
+    private readonly int _seededTokens = seed.History.Sum(entry => entry.EstimatedTokens);
+
+    /// <summary>
+    ///     The conversation tokens the answered turns have added.
+    /// </summary>
+    private int _turnTokens;
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    public ContextUsage? CurrentUsage
+    {
+        get
+        {
+            var conversation = _seededTokens + _turnTokens;
+
+            // Split: the overhead is reported outside the conversation, so nothing is folded.
+            // Totals only: the overhead is inside the single occupied figure and nowhere else, so
+            // the engine sees an OverheadTokens of zero and a conversation silently carrying it.
+            return shape.ReportsSplit
+                ? ContextUsage.FromProvider(
+                    shape.OverheadTokens + conversation, shape.WindowTokens, conversation)
+                : ContextUsage.FromProvider(shape.OverheadTokens + conversation, shape.WindowTokens);
+        }
+    }
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _turnTokens += shape.ConversationTokensPerTurn;
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="ShapeScriptedProviderSession"/> instances, giving each the next shape in a
+///     script, and remembers every one it made.
+/// </summary>
+/// <remarks>
+///     Once the script is exhausted every further session takes the last shape in it, so a scenario
+///     states only the sessions it cares about.
+/// </remarks>
+/// <param name="shapes">What each successive session reports. Must not be empty.</param>
+internal sealed class ShapeScriptedProviderSessionFactory(IReadOnlyList<ProviderReportingShape> shapes)
+    : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<ShapeScriptedProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var shape = shapes[Math.Min(Sessions.Count, shapes.Count - 1)];
+        var session = new ShapeScriptedProviderSession(seed, shape);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
     }
 }
 

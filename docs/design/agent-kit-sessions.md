@@ -140,7 +140,12 @@ fraction. `AgentSessionOptions` refuses any configuration that fails the invaria
 `CompactingAgentSession` refuses any provider-reported window that fails it — crediting, in the
 reported case, any fixed overhead the provider charges for and does not break out of its conversation
 figure, because a rotated context will still be counted as carrying it. That overhead is measured
-against the empty conversation the session starts from rather than estimated; the rotation trigger's
+rather than estimated, per provider session and at the moment each one is created — it is what the
+provider reports as conversation over and above this library's count of the content that session was
+seeded with, which for the first session of a conversation is nothing at all. It therefore travels
+with the live provider session and is replaced when a rotation replaces it; a figure measured once
+and reused refused convergent replacements in one direction and accepted thrashing ones in the
+other. The rotation trigger's
 zero-overhead default for an unsplit figure is safe only for the trigger, where it fires early,
 and errs the opposite way here.
 

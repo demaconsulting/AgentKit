@@ -63,7 +63,16 @@ it fills in.
 
 **Throws:** `ArgumentException` for a null tool — skipping it would understate the fixed overhead
 and delay rotation past the point it was meant to fire, which is a quiet miscalculation rather than
-a visible failure.
+a visible failure — and for a declaration block whose estimate exceeds a token count.
+
+**Why the total is accumulated wide.** Each declaration fits a token count on its own, because a
+string cannot be longer than the largest representable length and the ratio only divides. The sum
+need not, and an `int` accumulator would wrap it to a small or negative figure that every site
+downstream would consume as a real measurement of the fixed overhead: the effective window, the
+rotation threshold and the published overhead would all then describe a window nobody configured.
+The declarations are where that figure first becomes computable, so it is accumulated in a wider type
+and rejected here rather than re-checked at each later site. It is not reachable by any test this
+build will run; see *TokenEstimator Unit Verification Design*.
 
 **Order of magnitude.** The compaction spike that preceded this package measured a declaration block
 of 2,589 tokens for a set of 11 tools (n = 11 tools, one measurement, recorded in that spike). It is
@@ -76,6 +85,8 @@ reproduces.
 - **Null transcript entry** — `ArgumentNullException` propagates
 - **Null or empty tool list** — Returns zero; not an error
 - **Null tool within the list** — `ArgumentException` propagates
+- **Declaration block larger than a token count** — `ArgumentException` propagates, rejected before
+  the wide total is narrowed
 
 ### Dependencies
 

@@ -69,3 +69,10 @@ assertion is what pins the behavior that matters downstream: this figure is fixe
 subtracted before any rotation percentage, so an estimate that did not grow with the tool set would
 let the rotation point drift as tools were attached. Skipping a null tool would understate the
 overhead and delay rotation past the point it was meant to fire.
+
+The rejection of a declaration block too large for a token count is **not exercised by a test**, and
+that is recorded rather than implied. Reaching it needs several gigabytes of declaration text in one
+process, which no build here will allocate. It is kept because the total is the one figure here that
+can escape a token count while every term composing it cannot — a wrapped sum would be consumed
+downstream as a real measurement of the fixed overhead — and it is placed at the point that figure
+first becomes computable so no later site has to re-check it.

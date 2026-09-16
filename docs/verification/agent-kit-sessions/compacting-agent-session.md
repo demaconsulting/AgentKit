@@ -185,6 +185,8 @@ figures are computed with the very estimator the split uses.
 `CompactingAgentSession_SendAsync_ProviderReportsTotalsInAConvergentWindow_RotatesAndSettles`,
 `CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows`,
 `CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows`,
+`CompactingAgentSession_SendAsync_TotalsOnlyReplacedBySplitReporting_TakesTheReplacementsFold`,
+`CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement`,
 `CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease`
 
 The scenario the reported-window override made reachable. The tests configure a 4,000-token window
@@ -194,9 +196,11 @@ effective tokens to converge. Allowed through, the reported window would set a r
 rotated context sits above, so every turn would cross the threshold, rotate, and cross it again: a
 summarizer call and a provider session spent per turn, forever, with the context never converging
 and no saturation signal raised, because each individual consolidation reduces perfectly normally.
-Every refusal test therefore asserts an `InvalidOperationException` and that the provider session was
-released, because the session is being abandoned mid-life and the caller is left with no handle to
-dispose. The first asserts the message names both figures, so a host can see which to change.
+Every refusal test therefore asserts an `InvalidOperationException` — an
+`AgentSessionCreationException` on the creation path, which derives from it — and that the provider
+session was released, because the session is being abandoned mid-life and the caller is left with no
+handle to dispose. The first asserts the message names both figures, so a host can see which to
+change.
 
 The tests differ in **when the window first becomes knowable, and which session reports it**. The
 first two use the shipped in-memory session, which reports from the moment it exists, so the refusal
@@ -238,15 +242,34 @@ accepts no further turn. Without the check the turn is answered normally and the
 replacement surfaces only on the turn after, by which point the caller has been told the rotation
 succeeded and has already sent a message into a session that cannot settle.
 
-The seventh is about **what the failure says rather than what it does**. Its provider reports an
+The seventh and eighth are the pair about **whose fold is being credited**, and they run in opposite
+directions because the defect did. Their factory is scripted by *reporting shape* rather than by
+window, so one conversation can change shape between rotations — no other fake here can do that, and
+that is exactly why a fold measured against the first provider session could go on validating every
+replacement without a test noticing. The seventh replaces a totals-only session folding 100 tokens
+with a split-reporting one whose 600-token window leaves 500 once its own reported overhead is paid
+for: the replacement folds nothing, needs only the 446 tokens the policy requires, and the rotation
+must carry through. Against a fold measured once and reused it needed 589 and the rotation threw,
+abandoning a session whose replacement was perfectly usable. The eighth is the reverse: a
+split-reporting first session, whose fold is zero, replaced by a totals-only one folding 400 tokens
+into a 500-token window. The replacement must be refused during the rotation that adopted it, and
+the test asserts the refusal names the 400 tokens *that replacement* charges. Against the reused
+fold of zero the replacement was accepted, and the session rotated on every turn thereafter while
+raising no saturation signal. Both assert only what the fold decides; both provider sessions and the
+rotation machinery are otherwise identical.
+
+The ninth is about **what the failure says, and what it hands back**. Its provider reports an
 unusable window and then fails the release the refusal attempts, which is the one case where the
 claim and the outcome came apart: the catch deliberately leaves the release flag false so a later
-call can retry, and the message nonetheless said the session had been released. On the creation path
-no session handle is returned at all, so an operator reading that has nothing left to retry the
-release with and no reason to suspect the provider still holds it. The test asserts the release was
-attempted once and did not succeed, that the configuration defect is still the failure reported
-rather than the adapter's disposal failure, and that the message says the release was *attempted*
-rather than claiming it happened.
+call can retry, and the message nonetheless said the session had been released. Worse, on the
+creation path no session handle is returned at all, so the retryable state that flag records was
+unreachable — the diagnostic said a retry was needed and left nothing to retry with. The test
+asserts the release was attempted once and did not succeed, that the configuration defect is still
+the failure reported rather than the adapter's disposal failure, that the message says the release
+was *attempted* rather than claiming it happened, and that the failure is an
+`AgentSessionCreationException` carrying the very provider session the provider still holds — which
+the test then disposes, observing a second attempt actually reach the adapter. The other creation
+tests assert the complement: when the release succeeds the failure carries nothing.
 
 #### AgentKitSessions-CompactingAgentSession-PrefersProviderUsage: The Better Measurement Wins
 
@@ -262,12 +285,19 @@ sees, which is why they are preferred whenever offered.
 #### AgentKitSessions-CompactingAgentSession-RejectsBlankMessage: Invalid Use Is Refused
 
 **Tests**: `CompactingAgentSession_SendAsync_BlankMessage_Throws`,
-`CompactingAgentSession_CreateAsync_NullArguments_Throw`
+`CompactingAgentSession_CreateAsync_NullArguments_Throw`,
+`CompactingAgentSession_SendAsync_ProviderReturnsNullTurn_Throws`
 
 A data-driven scenario covering a null, empty and whitespace message, each refused with
 `ArgumentException` — a blank turn spends context to say nothing and is a defect in the calling
 application rather than something to forward to a provider. A missing configuration or provider
 factory is refused where the host wrote it rather than at the first conversation.
+
+The third covers the malformed answer rather than the malformed question: an adapter that returns no
+turn at all despite the nullable annotation. It asserts an `InvalidOperationException` naming the
+null rather than the `NullReferenceException` a dereference produced, and that the transcript is
+still empty — an adapter's defect reported as the adapter's, with the session left exactly as it
+was.
 
 #### AgentKitSessions-CompactingAgentSession-DisposesProviderSession: Disposal Releases the Live Session
 

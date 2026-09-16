@@ -70,49 +70,29 @@ public sealed class CompactingAgentSession : IAgentSession
     private readonly IProviderSessionFactory _factory;
 
     /// <summary>
-    ///     Fixed overhead the first provider session folded into its own conversation count instead
-    ///     of breaking out, measured at the one moment it is directly observable.
+    ///     The live provider session and everything that belongs to it, replaced whole at every
+    ///     rotation.
     /// </summary>
     /// <remarks>
-    ///     <para>
-    ///     <b>Measured, not assumed.</b> The first provider session is seeded with no history at
-    ///     all, so whatever a provider-reported figure attributes to the conversation at that
-    ///     instant is not conversation: it is the system prompt, the tool declarations and whatever
-    ///     framing of its own the provider charges for, counted in the provider's tokens and folded
-    ///     into a figure it did not split. That is the only moment the fold is visible, and it is
-    ///     visible exactly.
-    ///     </para>
-    ///     <para>
-    ///     Zero for a provider that reports the split — its empty conversation is zero — and zero
-    ///     for an estimated figure, whose split this library makes itself. So this changes nothing
-    ///     for either adapter shipped today and exists entirely for the third:
-    ///     <see cref="ContextUsage.FromProvider(int, int, int?)"/> is public and documented to
-    ///     accept totals alone, and the session that receives them has to know what it is not being
-    ///     told. See <see cref="EnsureReportedWindowConvergesAsync"/>.
-    ///     </para>
+    ///     The reference is to a <see cref="LiveProviderSession"/> rather than to an
+    ///     <see cref="IProviderSession"/> because the fold a provider charges without reporting, and
+    ///     whether that provider has been released, are properties of <em>that</em> provider session
+    ///     and not of this object. Holding them here as separate fields is what let a fold measured
+    ///     against the first provider session go on validating replacements it was never measured
+    ///     from; adopting a replacement now replaces them together, because they are one value.
     /// </remarks>
-    private readonly int _unreportedOverheadTokens;
-
-    /// <summary>
-    ///     The live provider session, replaced at every rotation.
-    /// </summary>
-    private IProviderSession _provider;
+    private LiveProviderSession _live;
 
     /// <summary>
     ///     Whether this session has been disposed, and so refuses further turns.
     /// </summary>
-    private bool _disposed;
-
-    /// <summary>
-    ///     Whether the live provider session has actually been released.
-    /// </summary>
     /// <remarks>
-    ///     Tracked separately from <see cref="_disposed"/> because the two answer different
+    ///     Separate from <see cref="LiveProviderSession.Released"/> because the two answer different
     ///     questions: whether this session may still be used, and whether anything is still held on
     ///     the provider's side. A release that failed leaves the second false, which is what allows
     ///     it to be retried.
     /// </remarks>
-    private bool _released;
+    private bool _disposed;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="CompactingAgentSession"/> class.
@@ -131,17 +111,15 @@ public sealed class CompactingAgentSession : IAgentSession
     {
         _options = options;
         _factory = factory;
-        _provider = provider;
 
         Layout = ContextLayout.Create(options.Compaction, options.SystemTokens, options.ToolDeclarationTokens);
-        Usage = ReadUsage(provider, options, Layout);
 
-        // The layout above carries no history, and the provider session was seeded with none, so
-        // this reading is taken against an empty conversation. Anything a provider-reported figure
-        // calls conversation here is therefore fixed overhead it did not break out, measured in its
-        // own tokens. See the field's remarks.
-        _unreportedOverheadTokens =
-            Usage.Origin == ContextUsageOrigin.Provider ? Usage.ConversationTokens : 0;
+        var usage = ReadUsage(provider, options, Layout);
+
+        // Seeded with nothing, so nothing it reports as conversation is conversation: the whole of
+        // that figure is fold. See LiveProviderSession.Adopt.
+        _live = LiveProviderSession.Adopt(provider, usage, seededConversationTokens: 0);
+        Usage = usage;
     }
 
     /// <summary>
@@ -190,7 +168,9 @@ public sealed class CompactingAgentSession : IAgentSession
     /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="providerSessionFactory"/> returned <see langword="null"/>, or the created
-    ///     provider session reports a context window this session could not converge in.
+    ///     provider session reports a context window this session could not converge in — the
+    ///     second reported as an <see cref="AgentSessionCreationException"/>, which carries the
+    ///     provider session when its release failed.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static async Task<CompactingAgentSession> CreateAsync(
@@ -211,7 +191,11 @@ public sealed class CompactingAgentSession : IAgentSession
         // session could not converge in is knowable before the first turn is ever spent against it.
         // Refused here for the same reason AgentSessionOptions refuses the equivalent configured
         // window at construction: a rotated context would never land below the rotation threshold.
-        await session.EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
+        //
+        // The caller receives no session on this path, so it is told so: the failure carries the
+        // provider session itself whenever the release attempt failed, which is the one state in
+        // which something is still held and nothing is left to retry it with.
+        await session.EnsureReportedWindowConvergesAsync(callerHoldsSession: false).ConfigureAwait(false);
         return session;
     }
 
@@ -235,9 +219,10 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
-    ///     The provider session factory returned <see langword="null"/> during a rotation, or the
-    ///     live provider — or a replacement a rotation adopted — reports a context window this
-    ///     session could not converge in.
+    ///     The live provider session returned <see langword="null"/> for a turn, the provider
+    ///     session factory returned <see langword="null"/> during a rotation, or the live provider —
+    ///     or a replacement a rotation adopted — reports a context window this session could not
+    ///     converge in.
     /// </exception>
     public async Task<AgentSessionResponse> SendAsync(
         string message,
@@ -258,7 +243,17 @@ public sealed class CompactingAgentSession : IAgentSession
         // exactly that for a token that was already canceled - and a message recorded ahead of that
         // would be a turn no provider ever saw, which a later rotation would nonetheless
         // consolidate and seed into the replacement session.
-        var turn = await _provider.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        //
+        // A null result is refused rather than dereferenced. The interface is annotated as
+        // returning a turn, but an adapter compiled without nullable analysis, or one whose own
+        // transport returned nothing, can still produce one - and by then the provider may already
+        // have accepted the message, so the failure has to name what happened rather than surface
+        // as a NullReferenceException from the middle of this method while the transcript still
+        // says the turn never occurred. The factory, the summarizer and the in-memory responder all
+        // convert a null result into this same refusal.
+        var turn = await _live.Session.SendAsync(message, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                "The provider session returned null; it must return a turn.");
 
         // The turn's entries end with the answer, whether the adapter supplied entries or not, so
         // recording them records the whole turn - message, any tool work, and what the agent
@@ -276,13 +271,13 @@ public sealed class CompactingAgentSession : IAgentSession
         Layout = Layout.WithTranscript(
             Layout.Transcript.Append([TranscriptEntry.User(message), .. turn.Entries]));
 
-        Usage = ReadUsage(_provider, _options, Layout);
+        Usage = ReadUsage(_live.Session, _options, Layout);
 
         // A reported window this session could not converge in makes rotation incapable of settling,
         // so it is refused here rather than allowed to thrash. A provider may only begin reporting -
         // or report a smaller window - after a turn, so the check belongs on every turn and not
         // merely at creation.
-        await EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
+        await EnsureReportedWindowConvergesAsync(callerHoldsSession: true).ConfigureAwait(false);
 
         // Compare the conversation against the threshold. Both figures come from the same usage
         // reading, so both are in the same currency: a provider that reported its own conversation
@@ -328,13 +323,10 @@ public sealed class CompactingAgentSession : IAgentSession
         // is in the middle of releasing.
         _disposed = true;
 
-        if (_released)
-        {
-            return;
-        }
-
-        await _provider.DisposeAsync().ConfigureAwait(false);
-        _released = true;
+        // The release flag belongs to the provider session, not to this object, so a rotation that
+        // replaced the provider replaced the flag with it. A session released and then rotated
+        // cannot therefore be read as leaving its replacement released.
+        await _live.ReleaseAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -407,13 +399,28 @@ public sealed class CompactingAgentSession : IAgentSession
             return (false, outcome.Saturations);
         }
 
+        // Built once and measured, because the fold credited to the replacement is what it reports
+        // over and above this library's count of the very content it is being handed. See
+        // LiveProviderSession.Adopt.
+        var seedHistory = outcome.Layout.BuildSeed();
+        var seededConversationTokens = 0L;
+        foreach (var entry in seedHistory)
+        {
+            seededConversationTokens += entry.EstimatedTokens;
+        }
+
         var seed = new ProviderSessionSeed(
             _options.Instructions,
             _options.Tools,
-            outcome.Layout.BuildSeed());
+            seedHistory);
 
         var replacement = await _factory.CreateAsync(seed, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The provider session factory returned null.");
+
+        // Read once, and read before the adoption, so the usage the session publishes and the fold
+        // the replacement is credited are the same reading of the same session.
+        var replacementUsage = ReadUsage(replacement, _options, outcome.Layout);
+        var adopted = LiveProviderSession.Adopt(replacement, replacementUsage, seededConversationTokens);
 
         // The whole state transition happens here, as one block containing no await: the provider
         // reference, the layout and the counters describe the same session at every point an
@@ -422,12 +429,15 @@ public sealed class CompactingAgentSession : IAgentSession
         // could be left pointing at the replacement while its layout and counters still described
         // the session it replaced, and the next turn would then append to, and possibly rotate, the
         // wrong transcript.
-        var previous = _provider;
-        _provider = replacement;
+        //
+        // The fold and the release flag travel inside the adopted value, so nothing measured
+        // against the session being replaced survives the swap.
+        var previous = _live;
+        _live = adopted;
         Layout = outcome.Layout;
         RotationCount++;
         ConsolidationCount += outcome.ConsolidationCount;
-        Usage = ReadUsage(replacement, _options, Layout);
+        Usage = replacementUsage;
 
         // The previous session is finished with only once its replacement exists and has been
         // adopted. For a provider holding history server-side this is what actually discards it.
@@ -438,15 +448,7 @@ public sealed class CompactingAgentSession : IAgentSession
         // caller and leave it holding a session it would reasonably believe to be broken. The cost
         // of an adapter that cannot dispose is a provider-side session that outlives its use - the
         // adapter's own defect, which discarding a good session on top of it does not repair.
-        try
-        {
-            await previous.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Intentionally swallowed; see above. Nothing is caught that the caller could act on:
-            // the session being disposed is one this object has already given up all reference to.
-        }
+        await previous.TryReleaseAsync().ConfigureAwait(false);
 
         // The replacement is held to the same window rule the session it replaced was held to. A
         // factory is under no obligation to return a session like the one before it - a routed
@@ -460,7 +462,7 @@ public sealed class CompactingAgentSession : IAgentSession
         // unusable replacement does not also leak the session it replaced. The check releases the
         // replacement itself and marks this session disposed before it throws; that release can fail
         // like any other, which is why the message it throws claims only that release was attempted.
-        await EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
+        await EnsureReportedWindowConvergesAsync(callerHoldsSession: true).ConfigureAwait(false);
 
         return (true, outcome.Saturations);
     }
@@ -491,8 +493,9 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     while the figure a rotated context will actually report still carries the fold. A window
     ///     of 500 tokens with a rotated bound of 311 passes a threshold of 350 while the provider
     ///     quietly charges 100 tokens it never broke out — and the replacement, reported at 411
-    ///     against that same 350, rotates on every following turn. So
-    ///     <see cref="_unreportedOverheadTokens"/> is added to the bound the threshold must exceed,
+    ///     against that same 350, rotates on every following turn. So the live provider's own
+    ///     <see cref="LiveProviderSession.UnreportedOverheadTokens"/> is added to the bound the
+    ///     threshold must exceed,
     ///     which is where it belongs: it is on the side of the comparison the reported conversation
     ///     figure is on. The trigger is deliberately left alone, and the two are then exactly
     ///     consistent — a rotated context reports at most the bound plus the fold, and this check
@@ -534,22 +537,37 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     knowable.
     ///     </para>
     ///     <para>
+    ///     <b>The fold belongs to the provider session it was measured from.</b> It is carried on
+    ///     <see cref="LiveProviderSession"/> rather than on this session, so adopting a replacement
+    ///     replaces it. Measuring it once and reusing it was wrong in both directions: a totals-only
+    ///     session replaced by one reporting a split had a fold credited that the replacement does
+    ///     not charge, and a convergent replacement was refused; a split-reporting session replaced
+    ///     by a totals-only one had no fold credited at all, and a replacement whose hidden overhead
+    ///     keeps it above its own threshold was accepted, to rotate on every turn thereafter.
+    ///     </para>
+    ///     <para>
     ///     The live provider is released before the exception is thrown, because the session is
-    ///     being abandoned mid-life and a caller that receives this exception has no session to
-    ///     dispose. A failure to release is swallowed rather than allowed to replace the
-    ///     configuration error, which is the one the caller can act on; the release flag is set only
-    ///     on success, so an explicit <see cref="DisposeAsync"/> still retries it. The message
-    ///     therefore says the release was <em>attempted</em> rather than achieved: it is thrown on
-    ///     the path where the attempt may have failed, and on the <see cref="CreateAsync"/> path the
-    ///     caller is handed no session to retry it with, so a claim that the provider had been
-    ///     released would be untrue in exactly the case it was reporting.
+    ///     being abandoned mid-life. A failure to release is swallowed rather than allowed to
+    ///     replace the configuration error, which is the one the caller can act on; the release flag
+    ///     is set only on success, and it lives on the provider, so an explicit
+    ///     <see cref="DisposeAsync"/> still retries it. The message states the release's actual
+    ///     outcome rather than claiming one, and says what to do about a failed release — which
+    ///     differs by path. A caller that holds this session disposes it again. A caller on the
+    ///     <see cref="CreateAsync"/> path receives no session at all, so the failure is an
+    ///     <see cref="AgentSessionCreationException"/> carrying the unreleased provider session
+    ///     itself: the retryable state is reachable rather than merely recorded.
     ///     </para>
     /// </remarks>
+    /// <param name="callerHoldsSession">
+    ///     Whether the caller holds this session and can therefore retry the release by disposing
+    ///     it. False only on the <see cref="CreateAsync"/> path, where the instance is discarded.
+    /// </param>
     /// <returns>A task that completes when the window has been accepted.</returns>
     /// <exception cref="InvalidOperationException">
-    ///     The provider reports a context window this session could not converge in.
+    ///     The provider reports a context window this session could not converge in. An
+    ///     <see cref="AgentSessionCreationException"/> when the caller holds no session.
     /// </exception>
-    private async Task EnsureReportedWindowConvergesAsync()
+    private async Task EnsureReportedWindowConvergesAsync(bool callerHoldsSession)
     {
         // Only a reported window is checked. An estimate carries the configured window, which
         // AgentSessionOptions already refused if the session could not converge in it.
@@ -562,52 +580,65 @@ public sealed class CompactingAgentSession : IAgentSession
         // comparison between an estimated bound and a reported window, and is honest about being
         // approximate. What it no longer does is corrupt the reported window itself.
         //
-        // The bound carries the unreported overhead allowance as well as the tier budgets, because
-        // the figure a rotated context will be compared against carries it too. That term is the
-        // provider's own tokens, measured against an empty conversation; see the remarks above for
-        // why it is added to the bound rather than removed from the window.
+        // The bound carries the live provider's own unreported overhead allowance as well as the
+        // tier budgets, because the figure a rotated context will be compared against carries it
+        // too. That term is the provider's own tokens, measured when that provider session was
+        // created; see the remarks above for why it is added to the bound rather than removed from
+        // the window, and LiveProviderSession.Adopt for how each provider session gets its own.
+        var allowance = _live.UnreportedOverheadTokens;
         var minimumEffective = AgentSessionOptions.MinimumEffectiveWindowTokens(
-            _options.Compaction, _unreportedOverheadTokens);
+            _options.Compaction, allowance);
         var effective = Usage.WindowTokens - Usage.OverheadTokens;
         if (Usage.Origin != ContextUsageOrigin.Provider
-            || AgentSessionOptions.ConvergesAt(effective, _options.Compaction, _unreportedOverheadTokens))
+            || AgentSessionOptions.ConvergesAt(effective, _options.Compaction, allowance))
         {
             return;
         }
 
         _disposed = true;
 
-        // Released unconditionally. Every entry point holds a provider session that has not been
-        // released: CreateAsync holds a freshly created one, SendAsync has already thrown
-        // ObjectDisposedException if this session was disposed, and RotateAsync has just adopted a
-        // replacement and disposed only the session it superseded - so the release flag is false at
-        // every entry and a guard on it only asserted something already known.
-        try
-        {
-            await _provider.DisposeAsync().ConfigureAwait(false);
-            _released = true;
-        }
-        catch (Exception)
-        {
-            // Intentionally swallowed. The configuration defect below is the failure the caller
-            // can act on, and replacing it with an adapter's disposal failure would hide it.
-            // The release flag stays false, so disposing this session again retries the release -
-            // which is why the message below claims only that the release was attempted.
-        }
+        // Attempted unconditionally, and the outcome is used rather than assumed. Every entry point
+        // holds a provider session that has not been released: CreateAsync holds a freshly created
+        // one, SendAsync has already thrown ObjectDisposedException if this session was disposed,
+        // and RotateAsync has just adopted a replacement and released only the session it
+        // superseded. A failure to release is swallowed rather than allowed to replace the
+        // configuration error, which is the one the caller can act on; the release flag stays false
+        // inside the live provider, which is what keeps the release retryable.
+        var released = await _live.TryReleaseAsync().ConfigureAwait(false);
 
-        throw new InvalidOperationException(
+        // What the caller is expected to do about the provider session, stated rather than left to
+        // be inferred - and it differs by path, which is exactly the combination that was missed. A
+        // caller holding this session retries the release by disposing it again. A caller that
+        // never received one has no such handle, so the failure carries the provider session itself
+        // and says to dispose that.
+        var retry = callerHoldsSession
+            ? "disposing this session again retries the release."
+            : "dispose the provider session this failure carries "
+                + $"({nameof(AgentSessionCreationException.RetainedProviderSession)}) to retry the "
+                + "release.";
+        var outcome = released
+            ? "The live provider session was released."
+            : "Release of the live provider session was attempted and failed, so the provider still "
+                + "holds it; " + retry;
+
+        var message =
             $"The provider reports a context window of {Usage.WindowTokens} tokens, leaving "
             + $"{effective} tokens once the {Usage.OverheadTokens} tokens of overhead it reports "
             + "outside the conversation are paid for. A rotated context occupies up to "
             + $"{_options.Compaction.TotalTierBudgetTokens} tokens of tier budgets and "
             + $"{ContextLayout.SeedFramingTokens(_options.Compaction)} tokens of framing for their "
-            + $"seeded records, and is counted as carrying a further {_unreportedOverheadTokens} "
-            + "tokens of overhead this provider folds into its conversation figure rather than "
-            + "reporting separately. All of that must land below the rotation threshold, which "
-            + $"requires at least {minimumEffective} tokens. The session is abandoned rather than "
-            + "left to rotate on every turn without ever getting under its own threshold; release "
-            + "of the provider session was attempted, and if that attempt failed the provider still "
-            + "holds it and the release needs retrying.");
+            + $"seeded records, and is counted as carrying a further {allowance} "
+            + "tokens of overhead this provider charges without reporting separately. All of that "
+            + "must land below the rotation threshold, which requires at least "
+            + $"{minimumEffective} tokens. The session is abandoned rather than left to rotate on "
+            + $"every turn without ever getting under its own threshold. {outcome}";
+
+        if (callerHoldsSession)
+        {
+            throw new InvalidOperationException(message);
+        }
+
+        throw new AgentSessionCreationException(message, released ? null : _live.Session);
     }
 
     /// <summary>
@@ -706,4 +737,255 @@ public sealed class CompactingAgentSession : IAgentSession
         return AgentSessionOptions.RotationThresholdFor(
             usage.WindowTokens - usage.OverheadTokens, options.Compaction);
     }
+
+    /// <summary>
+    ///     One live provider session together with everything that belongs to that session rather
+    ///     than to the <see cref="CompactingAgentSession"/> holding it.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This type exists to make a class of defect unreachable rather than guarded.</b> The
+    ///     fold a provider charges without reporting, and whether that provider has been released,
+    ///     are facts about one provider session. Held as fields beside the provider reference they
+    ///     could be — and repeatedly were — left describing a session that had already been replaced.
+    ///     Held here they are replaced with the provider, in the same assignment, so a combination
+    ///     in which they disagree cannot be written.
+    ///     </para>
+    ///     <para>
+    ///     Immutable apart from <see cref="Released"/>, which is the one thing about a live provider
+    ///     session that legitimately changes during its life.
+    ///     </para>
+    /// </remarks>
+    private sealed class LiveProviderSession
+    {
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="LiveProviderSession"/> class.
+        /// </summary>
+        /// <remarks>
+        ///     Private because the fold is a measurement rather than an argument; see
+        ///     <see cref="Adopt"/>.
+        /// </remarks>
+        /// <param name="session">The provider session this value describes.</param>
+        /// <param name="unreportedOverheadTokens">The overhead it charges without reporting.</param>
+        private LiveProviderSession(IProviderSession session, int unreportedOverheadTokens)
+        {
+            Session = session;
+            UnreportedOverheadTokens = unreportedOverheadTokens;
+        }
+
+        /// <summary>
+        ///     Gets the provider session itself.
+        /// </summary>
+        public IProviderSession Session { get; }
+
+        /// <summary>
+        ///     Gets the fixed overhead this provider session charges for without breaking it out of
+        ///     its conversation figure, in the provider's own tokens.
+        /// </summary>
+        /// <remarks>
+        ///     Zero for a provider that reports the split, and zero for an estimated figure, whose
+        ///     split this library makes itself. So it changes nothing for either adapter shipped
+        ///     today and exists entirely for the third:
+        ///     <see cref="ContextUsage.FromProvider(int, int, int?)"/> is public and documented to
+        ///     accept totals alone, and the session that receives them has to know what it is not
+        ///     being told.
+        /// </remarks>
+        public int UnreportedOverheadTokens { get; }
+
+        /// <summary>
+        ///     Gets a value indicating whether this provider session has actually been released.
+        /// </summary>
+        /// <remarks>
+        ///     Set only once the provider's own disposal has completed, which is what keeps a failed
+        ///     release retryable rather than turning a transient provider failure into a permanent
+        ///     leak.
+        /// </remarks>
+        public bool Released { get; private set; }
+
+        /// <summary>
+        ///     Measures a freshly created provider session's fold and pairs it with the session.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     <b>Measured at the one moment it is separable, and measured per provider session.</b>
+        ///     Whatever a provider-reported figure attributes to the conversation at the instant a
+        ///     session is created, over and above this library's own count of the content that
+        ///     session was handed, is not conversation: it is the system prompt, the tool
+        ///     declarations and whatever framing of its own the provider charges for, counted in the
+        ///     provider's tokens and folded into a figure it did not split.
+        ///     </para>
+        ///     <para>
+        ///     <b>For the first provider session of a conversation the subtrahend is zero</b>,
+        ///     because it is seeded with no history at all, and the whole of what it calls
+        ///     conversation is fold. That is the case this measurement began as. A replacement is
+        ///     seeded with a rotated context, so its own count of that context has to come off
+        ///     before what is left can be called fold — and it is that subtraction, rather than a
+        ///     figure carried over from the session being replaced, which makes the measurement
+        ///     travel with the provider it describes. A fold measured once and reused was wrong in
+        ///     both directions: it refused a convergent split-reporting replacement of a totals-only
+        ///     session, and it accepted a totals-only replacement of a split-reporting session whose
+        ///     hidden overhead keeps every rotated context above the threshold.
+        ///     </para>
+        ///     <para>
+        ///     <b>The subtraction is approximate, and errs toward crediting too much.</b> The
+        ///     minuend is the provider's own count and the subtrahend is this library's estimate of
+        ///     the same entries, so a provider counting framing this library never sees has that
+        ///     difference credited as fold as well. That is the safe direction: the allowance only
+        ///     ever raises the bound the rotation threshold must exceed, so an over-credit refuses a
+        ///     window that was marginal rather than accepting one that thrashes. It is zero for both
+        ///     adapters shipped today — one reports the split and the other is estimated — and the
+        ///     in-memory session, which counts the seeded entries with this very estimator, is
+        ///     credited exactly nothing.
+        ///     </para>
+        /// </remarks>
+        /// <param name="session">The provider session just created.</param>
+        /// <param name="usageAtCreation">What it reported, or this library's estimate, at that instant.</param>
+        /// <param name="seededConversationTokens">
+        ///     This library's estimate of the history it was seeded with: zero for a session seeded
+        ///     with none.
+        /// </param>
+        /// <returns>The provider session paired with its own fold.</returns>
+        public static LiveProviderSession Adopt(
+            IProviderSession session,
+            ContextUsage usageAtCreation,
+            long seededConversationTokens)
+        {
+            // Only a provider's own figure can carry a fold. An estimate publishes the split this
+            // library made itself, so there is nothing it failed to break out.
+            var reported = usageAtCreation.Origin == ContextUsageOrigin.Provider
+                ? usageAtCreation.ConversationTokens
+                : 0;
+
+            return new LiveProviderSession(
+                session, (int)Math.Max(0L, reported - seededConversationTokens));
+        }
+
+        /// <summary>
+        ///     Releases the provider session, propagating whatever failure it reports.
+        /// </summary>
+        /// <remarks>
+        ///     Does nothing once the release has succeeded, so disposing twice is permitted. A
+        ///     release that failed leaves <see cref="Released"/> false, so a later call tries again
+        ///     rather than returning as though it had happened.
+        /// </remarks>
+        /// <returns>A task that completes when the provider session has been released.</returns>
+        public async ValueTask ReleaseAsync()
+        {
+            if (Released)
+            {
+                return;
+            }
+
+            await Session.DisposeAsync().ConfigureAwait(false);
+            Released = true;
+        }
+
+        /// <summary>
+        ///     Attempts the release and reports whether the provider session is now released.
+        /// </summary>
+        /// <remarks>
+        ///     For the two paths that must not let an adapter's disposal failure replace the failure
+        ///     they are reporting: a rotation that has already succeeded, and a session being
+        ///     abandoned over a window it could not converge in. Returning the outcome rather than
+        ///     discarding it is what lets those paths state what actually happened instead of
+        ///     claiming an attempt.
+        /// </remarks>
+        /// <returns><see langword="true"/> when the provider session has been released.</returns>
+        public async ValueTask<bool> TryReleaseAsync()
+        {
+            try
+            {
+                await ReleaseAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Intentionally swallowed; the caller reports a different failure and says what to
+                // do about this one. Released stays false, so the release remains retryable.
+            }
+
+            return Released;
+        }
+    }
+}
+
+/// <summary>
+///     Reports that <see cref="CompactingAgentSession.CreateAsync"/> could not hand back the session
+///     it created, and carries the provider session when that session could not be released.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>Why a session creation needs its own failure.</b> Creation is the one path that abandons a
+///     session the caller never receives. Everywhere else a caller holding the session can retry a
+///     failed release by disposing it again; here the only handle to a provider-side session the
+///     provider still holds would be discarded with the instance. The failure therefore carries that
+///     handle, so the retryable state is reachable rather than merely recorded.
+///     </para>
+///     <para>
+///     <b>What a caller is expected to do.</b> Treat the failure as the configuration defect it
+///     describes — a provider window the configured compaction policy cannot converge in — and fix
+///     the sizing. If <see cref="RetainedProviderSession"/> is not <see langword="null"/>, the
+///     provider still holds a session: dispose it, and expect that disposal to be able to fail
+///     again. A <see langword="null"/> value means the provider session was released and there is
+///     nothing left to clean up.
+///     </para>
+///     <para>
+///     Derives from <see cref="InvalidOperationException"/> because that is what this condition has
+///     always been reported as, and what every other road to it still reports.
+///     </para>
+/// </remarks>
+public sealed class AgentSessionCreationException : InvalidOperationException
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentSessionCreationException"/> class.
+    /// </summary>
+    public AgentSessionCreationException()
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentSessionCreationException"/> class with
+    ///     a message.
+    /// </summary>
+    /// <param name="message">What went wrong.</param>
+    public AgentSessionCreationException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentSessionCreationException"/> class with
+    ///     a message and the failure that caused it.
+    /// </summary>
+    /// <param name="message">What went wrong.</param>
+    /// <param name="innerException">The failure that caused it.</param>
+    public AgentSessionCreationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentSessionCreationException"/> class with
+    ///     a message and the provider session the failed creation still holds.
+    /// </summary>
+    /// <param name="message">What went wrong.</param>
+    /// <param name="retainedProviderSession">
+    ///     The provider session the caller must dispose, or <see langword="null"/> when it was
+    ///     released.
+    /// </param>
+    public AgentSessionCreationException(string message, IAsyncDisposable? retainedProviderSession)
+        : base(message)
+    {
+        RetainedProviderSession = retainedProviderSession;
+    }
+
+    /// <summary>
+    ///     Gets the provider session the abandoned creation still holds, or <see langword="null"/>
+    ///     when it was released.
+    /// </summary>
+    /// <remarks>
+    ///     Non-null only when the provider's own release failed. Disposing it retries that release;
+    ///     the retry may fail in turn, which is the adapter's defect and not something this library
+    ///     can repair on its behalf.
+    /// </remarks>
+    public IAsyncDisposable? RetainedProviderSession { get; }
 }

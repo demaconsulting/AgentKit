@@ -43,14 +43,22 @@ sections:
           - id: AgentKitSessions-TokenEstimator-EstimatesToolDeclarations
             title: >-
               The estimator shall estimate the fixed overhead of a set of tool declarations from each
-              tool's name, description and schema, returning zero for no tools and rejecting a null
-              tool.
+              tool's name, description and schema, returning zero for no tools, rejecting a null
+              tool, and rejecting a declaration block too large for a token count.
             justification: |
               Tool declarations are fixed overhead subtracted before any rotation percentage is
               applied, so they must be measured rather than guessed. The three pieces of text a
               provider is given are the name a model selects by, the description it selects on, and
               the schema it fills in. A null tool cannot be estimated, and skipping it would
-              understate the overhead and delay rotation; it is refused instead.
+              understate the overhead and delay rotation; it is refused instead. Each declaration
+              fits a token count on its own, because a string cannot be longer than the largest
+              representable length and the ratio only divides, but their sum need not: the total is
+              therefore accumulated in a wider type and rejected before it is narrowed. An int
+              accumulator would wrap the sum to a small or negative figure, and every site downstream
+              would treat that as a real measurement of the overhead - the effective window, the
+              rotation threshold and the published fixed overhead all describing a window nobody
+              configured. The declarations are the point at which the figure first becomes
+              computable, which is where it is rejected, so no later site has to ask again.
             tests:
               - TokenEstimator_EstimateToolDeclarationTokens_NoTools_ReturnsZero
               - TokenEstimator_EstimateToolDeclarationTokens_GrowsWithToolCount

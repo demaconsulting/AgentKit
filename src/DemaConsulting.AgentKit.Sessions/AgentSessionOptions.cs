@@ -107,9 +107,10 @@ public sealed class AgentSessionOptions
     /// <exception cref="ArgumentNullException"><paramref name="summarizer"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="providerWindowTokens"/> is not positive.</exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, or the window left after
-    ///     the system prompt and tool declarations is too small for a rotated context to land below
-    ///     the policy's rotation threshold.
+    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, the tool declarations
+    ///     are too large for a token count, or the window left after the system prompt and tool
+    ///     declarations is too small for a rotated context to land below the policy's rotation
+    ///     threshold.
     /// </exception>
     public AgentSessionOptions(
         ISummarizer summarizer,
@@ -125,21 +126,35 @@ public sealed class AgentSessionOptions
         var toolList = tools ?? [];
 
         // Measure the fixed overhead first: everything below is arithmetic on what is left after it.
-        // This also validates the tool list, because a null declaration cannot be estimated.
+        // This also validates the tool list, because a null declaration cannot be estimated, and
+        // refuses a declaration block too large for a token count at the point that figure first
+        // becomes computable.
         var systemTokens = TokenEstimator.EstimateTokens(instructions);
         var toolTokens = TokenEstimator.EstimateToolDeclarationTokens(toolList);
-        var effective = providerWindowTokens - systemTokens - toolTokens;
+
+        // Accumulated wide and rejected before it is narrowed. Each term fits a token count on its
+        // own; their sum need not. An int subtraction would wrap the difference positive, pass the
+        // guard below, and leave FixedOverheadTokens, EffectiveWindowTokens and the rotation
+        // threshold all describing a window nobody configured - the same class of defect the policy
+        // bound was already rejected for, at the point the overhead becomes computable rather than
+        // at each later site that consumes it.
+        var overhead = (long)systemTokens + toolTokens;
+        var remaining = providerWindowTokens - overhead;
 
         // Refuse a configuration that cannot converge. Both conditions are host configuration
         // defects, surfaced where the application wrote them rather than as a session that rotates
         // forever without ever getting under its own budget.
-        if (effective <= 0)
+        if (remaining <= 0)
         {
             throw new ArgumentException(
                 $"The system prompt ({systemTokens} tokens) and tool declarations ({toolTokens} tokens) "
                 + $"leave no room in a {providerWindowTokens}-token window.",
                 nameof(providerWindowTokens));
         }
+
+        // Safe to narrow: the guard above established that it is positive and no larger than the
+        // configured window.
+        var effective = (int)remaining;
 
         // The two figures below always sum within a token count: a policy is refused at construction
         // unless its budgets and the framing of its seeded records fit one together. This comparison
@@ -314,10 +329,24 @@ public sealed class AgentSessionOptions
             return int.MaxValue;
         }
 
-        // The analytic answer, floored at the one window size that is certainly required: the
-        // threshold can never exceed the effective window, so the window must at minimum exceed the
-        // conversation bound whatever the fraction is.
-        var candidate = (long)Math.Ceiling((conversationBound + 1.0) / policy.RotationThreshold);
+        // The analytic answer, range-tested in floating point before it is converted. A policy is
+        // permitted a rotation fraction as small as double.Epsilon, for which this quotient is
+        // +Infinity: converting that to an integer is undefined, lands below the clamp's lower
+        // bound, and leaves the confirmation loop below advancing one token at a time toward
+        // int.MaxValue - a constructor that never returns. A required window at or above
+        // int.MaxValue is the saturated case described above, reached by a third road, so it is
+        // answered directly rather than converted. The comparison is written negated so that a
+        // non-finite quotient saturates rather than falling through.
+        var required = (conversationBound + 1.0) / policy.RotationThreshold;
+        if (!(required < int.MaxValue))
+        {
+            return int.MaxValue;
+        }
+
+        // Floored at the one window size that is certainly required: the threshold can never exceed
+        // the effective window, so the window must at minimum exceed the conversation bound whatever
+        // the fraction is.
+        var candidate = (long)Math.Ceiling(required);
         candidate = Math.Clamp(candidate, conversationBound + 1L, int.MaxValue);
 
         // Confirm against the arithmetic the guard and the rotation decision actually use. This
@@ -385,6 +414,11 @@ public sealed class AgentSessionOptions
     ///     <see cref="RotationThresholdTokens"/>, and to account for the layout. It is never
     ///     subtracted from a figure a provider reported — that provider reports its own overhead
     ///     alongside its own totals, and mixing the two would produce a number in neither currency.
+    ///     <para>
+    ///     The sum cannot exceed a token count: a configuration whose overhead met or exceeded the
+    ///     configured window is refused at construction, where the two are added in a wider type
+    ///     before either is narrowed.
+    ///     </para>
     /// </remarks>
     public int FixedOverheadTokens => SystemTokens + ToolDeclarationTokens;
 

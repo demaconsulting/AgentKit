@@ -67,13 +67,18 @@ sections:
               proving that the rest will. The refusal states the window the configuration would have
               needed, and that figure must be computable for every policy a policy constructor
               accepts - including one whose rotated context would occupy exactly the largest
-              representable token count, where the requirement saturates rather than being reported
-              as a defect in the arithmetic that computes it.
+              representable token count, and one whose rotation fraction is so small that the window
+              it implies is not representable at all, where the requirement saturates rather than
+              being reported as a defect in the arithmetic that computes it or counted up to a token
+              at a time. The overhead the refusal is measured against is accumulated in a wider type
+              than a token count and rejected before it is narrowed, at the point it becomes
+              computable, so no later site inherits a figure that wrapped.
             tests:
               - AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws
               - AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws
               - AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused
               - AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed
+              - AgentSessionOptions_Construct_RotationFractionNoWindowSatisfies_ReportsTheSaturatedRequirement
 
           - id: AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
             title: >-

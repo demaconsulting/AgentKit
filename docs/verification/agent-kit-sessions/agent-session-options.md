@@ -71,8 +71,8 @@ did not choose.
 **Tests**: `AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws`,
 `AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws`,
 `AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused`,
-`AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed`
-
+`AgentSessionOptions_Construct_PolicyBoundAtTheLargestTokenCount_ReportsTheWindowItWouldNeed`,
+`AgentSessionOptions_Construct_RotationFractionNoWindowSatisfies_ReportsTheSaturatedRequirement`
 Boundary scenarios. A 4,000-token window cannot hold the default policy's 4,800 tokens of tier
 budgets and is refused, with the message asserted so the diagnosis reaches the author; a prompt
 larger than its window is refused; and a window exactly equal to the bound — the tier budgets plus
@@ -93,6 +93,26 @@ reported a defect inside the helper instead of the non-convergent window the aut
 configured. The scenario builds two budgets summing with their framing to exactly the maximum,
 asserts the minimum window saturates at that maximum rather than throwing, and asserts the
 constructor refuses the configuration naming the `compaction` parameter and the convergence reason.
+
+The fifth is the same saturation reached by a different road, and it is a scenario about **time**
+rather than about a value. `CompactionPolicy` accepts any rotation fraction above zero, including
+`double.Epsilon`. The window such a fraction implies is `+Infinity`, and on .NET 8 and 9 a
+floating-point value out of an integer's range converts by wrapping rather than saturating, so the
+helper's search floor landed at the conversation bound and the confirmation loop advanced toward the
+largest representable token count a single token at a time — a construction that does not return.
+Measured at the commit this scenario was added to, the helper ran for over two minutes without
+returning under .NET 8 and the same call returned in about a millisecond under .NET 10, where the
+conversion saturates instead; relying on which of the two a runtime does is the defect the range
+test removes. The scenario asserts the requirement saturates at the largest representable token
+count and that the constructor refuses the configuration quoting it, and it is run on every targeted
+runtime, so a regression re-appears as a test run that never completes rather than as a wrong value.
+
+Neither of the two overflow guards this requirement also covers — the fixed overhead accumulated
+wide before it is narrowed, and the tool-declaration estimator's equivalent — is exercised by a test,
+and that is stated rather than papered over. Reaching either needs several gigabytes of instruction
+or schema text in one process, which no build here will allocate. They are the same class of defect
+as the policy bound above, which *is* reachable because a policy's budgets are plain integers, and
+they are placed at the point each figure first becomes computable for the same reason.
 
 #### AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration: Invalid Arguments Are Refused
 

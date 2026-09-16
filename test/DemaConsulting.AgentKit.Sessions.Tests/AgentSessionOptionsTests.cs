@@ -239,4 +239,36 @@ public class AgentSessionOptionsTests
         Assert.Equal("compaction", exception.ParamName);
         Assert.Contains("cannot converge with this policy", exception.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    ///     Proves a rotation fraction so small that no representable window satisfies it reports the
+    ///     saturated requirement, rather than leaving the constructor counting toward it one token
+    ///     at a time.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A constructor that effectively never returned.</b> <c>CompactionPolicy</c> accepts any
+    ///     rotation fraction above zero, including <c>double.Epsilon</c>. Dividing the conversation
+    ///     bound by it gives <c>+Infinity</c>, and converting that to an integer is undefined: it
+    ///     landed below the clamp's lower bound, so the confirmation loop started at the bound and
+    ///     incremented a single token at a time toward <c>int.MaxValue</c>. The requirement is
+    ///     range-tested in floating point now, before any conversion, and a window at or above
+    ///     <c>int.MaxValue</c> is the saturated case answered directly. The construction below
+    ///     completes in microseconds; before the fix it ran for hours.
+    /// </remarks>
+    [Fact]
+    public void AgentSessionOptions_Construct_RotationFractionNoWindowSatisfies_ReportsTheSaturatedRequirement()
+    {
+        // Arrange: a valid policy whose rotation fraction no representable window can satisfy
+        var policy = new CompactionPolicy([200, 100], rotationThreshold: double.Epsilon);
+
+        // Act / Assert: the requirement saturates rather than being counted up to
+        Assert.Equal(int.MaxValue, AgentSessionOptions.MinimumEffectiveWindowTokens(policy));
+
+        // Act / Assert: and the configuration is refused for the reason the host can act on
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new AgentSessionOptions(new FakeSummarizer(), compaction: policy));
+
+        Assert.Equal("compaction", exception.ParamName);
+        Assert.Contains($"{int.MaxValue}", exception.Message, StringComparison.Ordinal);
+    }
 }

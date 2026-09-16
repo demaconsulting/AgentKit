@@ -141,7 +141,8 @@ public static class TokenEstimator
     /// </param>
     /// <returns>The estimated fixed declaration overhead in tokens, never negative.</returns>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> contains a <see langword="null"/> entry.
+    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, or the declarations sum
+    ///     to more tokens than a token count can represent.
     /// </exception>
     public static int EstimateToolDeclarationTokens(IReadOnlyList<AIFunction>? tools)
     {
@@ -154,7 +155,15 @@ public static class TokenEstimator
         // Charge each declaration for the three pieces of text a provider is given - the name a
         // model selects by, the description it selects on, and the schema it fills in - plus the
         // structure wrapped around them.
-        var total = 0;
+        //
+        // Accumulated in a wider type than a token count, and range-tested before it is narrowed.
+        // Each declaration fits an int on its own, because a string cannot be longer than
+        // int.MaxValue characters and the ratio only divides; their sum need not, and an int
+        // accumulator would wrap it to a small or negative figure that every caller downstream
+        // would then treat as a real measurement of the overhead. The declarations are the point at
+        // which this figure first becomes computable, so it is rejected here and no later site has
+        // to ask again.
+        long total = 0;
         foreach (var tool in tools)
         {
             if (tool is null)
@@ -168,6 +177,14 @@ public static class TokenEstimator
                 + PerToolOverheadTokens;
         }
 
-        return total;
+        if (total > int.MaxValue)
+        {
+            throw new ArgumentException(
+                $"The tool declarations come to {total} tokens, which no context window could hold "
+                + "and no token count can represent.",
+                nameof(tools));
+        }
+
+        return (int)total;
     }
 }

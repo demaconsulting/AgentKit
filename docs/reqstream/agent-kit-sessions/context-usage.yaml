@@ -50,8 +50,8 @@ sections:
               is what a consumer of this default must not do. A session also has to decide whether it
               can converge in the window at all, and there the same default makes the window look
               larger than it is rather than smaller, which admits a configuration that rotates on
-              every turn. The figure keeps this default; the session measures the fold for itself
-              against the empty conversation it starts from. See
+              every turn. The figure keeps this default; the session measures the fold for itself,
+              per provider session, at the moment each one is created. See
               AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow.
             tests:
               - ContextUsage_WithoutConversationSplit_TreatsTheWholeUsageAsConversation
