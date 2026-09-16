@@ -62,9 +62,10 @@ sections:
 
           - id: AgentKitSessions-RotationEngine-DropsUntilItFits
             title: >-
-              The unit shall escalate the compaction level until the built seed fits and, once the
-              highest level cannot make it fit, drop the oldest slot of the coarsest non-empty tier then
-              the oldest verbatim turn until it does, reporting that material was dropped.
+              The unit shall escalate the compaction level until the built seed fits and consolidates
+              something, and, once the highest level cannot make it fit, drop the oldest slot of the
+              coarsest non-empty tier then the oldest verbatim turn until it does, reporting that
+              material was dropped.
             justification: |
               This is rule five, the rule that makes termination real. Escalation is tried first because
               it preserves more history - a terser summary keeps everything, just more briefly - and
@@ -73,8 +74,21 @@ sections:
               slots are finite, the tail is finite, and the drop loop bottoms out at the newest turn
               alone, even under a summarizer that returns more than it was given or a single turn larger
               than the whole allowance.
+
+              Fitting alone is not the condition, because a rotation that consolidates nothing has made
+              no progress whatever the estimate says about its result. The trigger is the provider's own
+              occupancy, measured in tokens, while the verbatim tail is held by a count of turns: a
+              provider counting well above this library's estimate therefore reaches its threshold while
+              the tail is still shorter than its configured maximum, leaving nothing older to
+              consolidate and a candidate identical to the layout it came from. Accepting that as a
+              rotation left the session using a provider session already past its window - measured at
+              five times divergence, riding to one hundred and forty percent of it across nineteen turns
+              without rotating once, which is exactly where a provider's own compactor fires and
+              truncates history. Requiring progress makes the tail shorten until there is something to
+              age out.
             tests:
               - RotationEngine_Rotate_SeedThatDoesNotFit_Escalates
+              - RotationEngine_Rotate_TailShorterThanItsMaximum_StillMakesProgress
               - RotationEngine_Rotate_ExpandingSummarizer_DropsAndTerminates
               - RotationEngine_Rotate_SingleOversizedTurn_BottomsOutAtNewestTurn
               - RotationEngine_LevelHelpers_SaturateAtTheExtremes

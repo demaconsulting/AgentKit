@@ -115,6 +115,7 @@ verbatim.
 **Tests**:
 
 - `RotationEngine_Rotate_SeedThatDoesNotFit_Escalates`
+- `RotationEngine_Rotate_TailShorterThanItsMaximum_StillMakesProgress`
 - `RotationEngine_Rotate_ExpandingSummarizer_DropsAndTerminates`
 - `RotationEngine_Rotate_SingleOversizedTurn_BottomsOutAtNewestTurn`
 - `RotationEngine_LevelHelpers_SaturateAtTheExtremes`
@@ -123,6 +124,20 @@ verbatim.
 The requirement identifier is retained for traceability, but the redesigned evidence is compaction
 level and dropped-material reporting. These tests prove escalation, finite level changes,
 tail-shortening and the final drop path that reports `MaterialDropped` when compaction buys no room.
+
+The progress test covers the condition that fitting alone does not catch. Rule 2 triggers on the
+provider's occupancy, measured in tokens, while the verbatim tail is held by a count of turns, so a
+provider counting well above this library's estimate reaches its threshold while the tail is still
+shorter than its configured maximum. Nothing older is then available to consolidate, the candidate is
+identical to the layout it came from, and it passes a fit test taken in our own estimate. The test
+gives the engine a tail of four turns against a maximum of twelve and a deliberately roomy threshold
+— the shape where a fit test alone accepts a no-op — and asserts that a slot was written and the
+level escalated, because shortening the tail is how progress is made.
+
+Measured end to end before this was fixed, at five times divergence, a session rode to one hundred
+and forty percent of the provider's window across nineteen turns without rotating once. That is the
+state the package exists to prevent, because it is where the provider's own compactor fires and
+truncates history blindly.
 
 #### AgentKitSessions-RotationEngine-Deterministic: The Same Inputs Produce the Same Output
 

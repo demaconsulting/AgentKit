@@ -190,11 +190,11 @@ public class CompactingAgentSessionTests
             one.MaxLevel < two.MaxLevel && two.MaxLevel < three.MaxLevel,
             $"Escalation level must strictly increase with divergence, but was 1x={one.MaxLevel}, 2x={two.MaxLevel}, 3x={three.MaxLevel}.");
     }
-
     /// <summary>
     ///     Proves the session relaxes its compaction level after a quiet stretch, so pressure that
     ///     has passed does not cost fidelity for the rest of the session.
     /// </summary>
+
     /// <remarks>
     ///     The relaxation branch is the only path that lowers a level, and it is guarded by three
     ///     conditions at once - a prior rotation, at least m quiet turns, and a rotation that

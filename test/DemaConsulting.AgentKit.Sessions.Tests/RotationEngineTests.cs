@@ -137,6 +137,46 @@ public class RotationEngineTests
     }
 
     /// <summary>
+    ///     Proves a rotation that consolidates nothing is not reported as a success, because a
+    ///     rotation which changes nothing leaves the session using a provider it has been told is
+    ///     full.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Rule 2 triggers on the provider's occupancy, measured in tokens, but the verbatim tail is
+    ///     held by a count of turns. A provider counting well above this library's estimate reaches
+    ///     its threshold while the tail is still shorter than the configured maximum - so there is
+    ///     nothing older to consolidate, the candidate is identical to the layout it came from, and
+    ///     it passes a fit test taken in our own estimate. Measured end to end at five times
+    ///     divergence before this was fixed, a session rode to one hundred and forty percent of the
+    ///     provider's window across nineteen turns without rotating once, which is where the
+    ///     provider's own compactor fires and truncates history.
+    ///     </para>
+    ///     <para>
+    ///     The tail here holds four turns against a maximum of twelve, so nothing ages out at the
+    ///     lowest level and the threshold is roomy enough that a fit test alone would accept it. The
+    ///     rotation must instead shorten the tail until something can be consolidated.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_Rotate_TailShorterThanItsMaximum_StillMakesProgress()
+    {
+        var summarizer = FakeSummarizer.Fixed(1);
+
+        var outcome = await RotationEngine.RotateAsync(
+            SessionTestData.LayoutOf(SessionTestData.TranscriptOf(4, tokensEach: 20)),
+            summarizer, CompactionLevel.Low, verbatimTurns: 12, Roomy, CancellationToken.None);
+
+        Assert.True(
+            outcome.ConsolidationCount > 0,
+            "A rotation that consolidated nothing leaves the session on a provider it was told is full.");
+        Assert.False(outcome.Layout.Tiers[0].IsEmpty);
+        Assert.True(
+            outcome.Level > CompactionLevel.Low,
+            $"Shortening the tail is how progress is made, so the level must have escalated, but was {outcome.Level}.");
+    }
+
+    /// <summary>
     ///     Proves a blank summarizer answer is normalized to empty: no slot is created rather than a
     ///     whitespace slot that costs framing to say nothing, and the material that slot would have
     ///     held stays verbatim rather than being discarded.

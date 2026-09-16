@@ -228,7 +228,15 @@ internal static class RotationEngine
                     .ConfigureAwait(false);
             consolidationTotal += consolidations;
 
-            if (candidate.EstimatedConversationTokens <= rotationThresholdTokens)
+            // A rotation that consolidated nothing has not made progress, whatever this library's
+            // estimate says about the result. The trigger is the provider's own occupancy and the
+            // verbatim tail is held by a count of turns, so a provider counting well above our
+            // estimate reaches its threshold while the tail is still shorter than the configured
+            // maximum - leaving nothing older to consolidate, a candidate identical to the layout
+            // it came from, and a session that goes on using a provider session already past its
+            // window. Requiring progress rather than only a fit makes the tail shorten until there
+            // is something to age out.
+            if (consolidations > 0 && candidate.EstimatedConversationTokens <= rotationThresholdTokens)
             {
                 return new RotationOutcome(candidate, consolidationTotal, level, droppedBuilding);
             }
