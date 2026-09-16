@@ -52,30 +52,36 @@ that the effective window and threshold did not account for.
 #### AgentKitSessions-AgentSessionOptions-MeasuresFixedOverhead: Overhead Is Subtracted Before the Threshold
 
 **Tests**: `AgentSessionOptions_Construct_SubtractsFixedOverheadBeforeTheThreshold`,
-`AgentSessionOptions_Construct_SubTokenThreshold_ClampsToOneToken`
+`AgentSessionOptions_Construct_SubTokenThreshold_IsRefused`
 
 Configures a prompt of exactly forty tokens and one real tool in a 20,000-token window, then asserts
 the prompt was measured exactly, the declarations were charged something, the fixed overhead is
 their sum, the effective window is the provider window less that sum, and the rotation threshold is
 the policy's fraction **of the effective window** rather than of the whole one. Applying the
 percentage to the raw window would make the rotation point drift silently with how many tools an
-application attached. The second scenario configures a threshold whose product with the effective
-window is below one token and asserts the derived threshold is still one. Truncation would otherwise
-produce zero, and a threshold of zero is satisfied by a conversation of no tokens at all — the
-session would be willing to rotate a context holding nothing.
+application attached. The second scenario configures a rotation threshold whose product with the
+effective window falls below one token and asserts the configuration is refused rather than
+adjusted. Truncation would otherwise produce zero, and a threshold of zero is satisfied by a
+conversation of no tokens at all — the session would be willing to rotate a context holding nothing.
+Refusing states the defect where the application wrote it, instead of substituting a figure the host
+did not choose.
 
-#### AgentKitSessions-AgentSessionOptions-AssertsTheBound: The Construction Bound Is Enforced From Both Sides
+#### AgentKitSessions-AgentSessionOptions-AssertsTheBound: The Convergence Point Is Enforced From Both Sides
 
 **Tests**: `AgentSessionOptions_Construct_WindowSmallerThanTierBudgets_Throws`,
 `AgentSessionOptions_Construct_OverheadConsumesTheWindow_Throws`,
-`AgentSessionOptions_Construct_WindowExactlyFitsTheBound_IsAccepted`
+`AgentSessionOptions_Construct_WindowBelowTheConvergencePoint_IsRefused`
 
 Boundary scenarios. A 4,000-token window cannot hold the default policy's 4,800 tokens of tier
 budgets and is refused, with the message asserted so the diagnosis reaches the author; a prompt
 larger than its window is refused; and a window exactly equal to the bound — the tier budgets plus
-the framing their seeded records carry — is accepted while one token less is refused, which is what
-proves the bound is a genuine boundary rather than an approximation. A session in the
-refused configuration would rotate into a context already over budget and could never converge.
+the framing their seeded records carry — is **refused**, while the smallest window that clears the
+convergence point is accepted. Merely holding the bound is what makes a rotated context fit; landing
+below the rotation threshold is what makes the session converge. A window between the two satisfies
+the first and fails the second, so the session would rotate on nearly every turn without ever
+getting under its own threshold, raising no saturation signal while doing it. The figures compared
+are this library's estimates, so the refusal excludes the arrangements that cannot work rather than
+proving the rest will.
 
 #### AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration: Invalid Arguments Are Refused
 
