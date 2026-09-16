@@ -381,7 +381,7 @@ public sealed class CompactingAgentSession : IAgentSession
         {
             if (level == CompactionLevel.High)
             {
-                var (dropped, reduced) = DropOldestSlot(layout);
+                var (dropped, reduced) = DropOldest(layout);
                 layout = reduced;
                 droppedForPressure = dropped;
             }
@@ -453,19 +453,34 @@ public sealed class CompactingAgentSession : IAgentSession
     }
 
     /// <summary>
-    ///     Drops the oldest slot of the coarsest tier that holds one.
+    ///     Drops the oldest thing the context holds: the oldest slot of the coarsest tier that has
+    ///     one, or the oldest verbatim turn when no tier does.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The ring in rule four, brought forward. Normally the coarsest tier sheds its oldest slot
     ///     only when a new one arrives, which is roughly once every sixteen rotations; under
     ///     sustained pressure the context is filling faster than that schedule empties it, so the
     ///     same move is made on demand. The coarsest tier is chosen because its slot covers the
     ///     oldest and least detailed span of the conversation - the part the agent will miss least.
-    ///     No measurement is involved: this is a count of slots.
+    ///     </para>
+    ///     <para>
+    ///     <b>Falling through to a verbatim turn is what keeps this a bound rather than a
+    ///     preference.</b> Every tier is empty exactly when no consolidation has ever succeeded,
+    ///     which is the same condition under which a rotation cannot shrink anything: a summarizer
+    ///     that answers blank leaves the material where it is, by design, so without this the tail
+    ///     would gain a turn every turn and shed nothing, forever, while each rotation reported
+    ///     success and spent a fresh provider session. Binning the oldest page when there are no
+    ///     cards left is the only move arithmetic leaves, and it is still a count.
+    ///     </para>
+    ///     <para>
+    ///     The newest turn is never dropped: a session must be able to answer the message it was
+    ///     just given.
+    ///     </para>
     /// </remarks>
     /// <param name="layout">The layout to reduce.</param>
-    /// <returns>Whether a slot was dropped, and the layout without it.</returns>
-    private static (bool Dropped, ContextLayout Layout) DropOldestSlot(ContextLayout layout)
+    /// <returns>Whether anything was dropped, and the layout without it.</returns>
+    private static (bool Dropped, ContextLayout Layout) DropOldest(ContextLayout layout)
     {
         for (var index = ContextLayout.TierCount - 1; index >= 0; index--)
         {
@@ -477,6 +492,11 @@ public sealed class CompactingAgentSession : IAgentSession
             var tiers = layout.Tiers.ToArray();
             tiers[index] = tiers[index].DropOldest();
             return (true, layout.WithTiers(layout.Tail, tiers));
+        }
+
+        if (layout.Tail.TurnCount > 1)
+        {
+            return (true, layout.WithTail(layout.Tail.DropOldestTurn()));
         }
 
         return (false, layout);

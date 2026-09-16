@@ -438,10 +438,12 @@ internal sealed class SessionTranscript
     ///     Returns a transcript with the oldest turn removed.
     /// </summary>
     /// <remarks>
-    ///     The last resort of the drop-until-it-fits rule: when every consolidated slot has been
-    ///     dropped and a seed still does not fit, the oldest verbatim turn is discarded. The loop
-    ///     that does this bottoms out at the newest turn alone, which is why this never has to
-    ///     remove the last turn.
+    ///     The last resort under sustained pressure: when the context keeps filling and no
+    ///     consolidated slot remains to bin, the oldest verbatim turn is discarded instead. Reached
+    ///     only when consolidation is failing outright - a summarizer answering blank leaves its
+    ///     material where it is, so no slot is ever written and there is nothing else left to shed.
+    ///     The caller never drops the last turn: a session must be able to answer the message it was
+    ///     just given.
     /// </remarks>
     /// <returns>A new transcript without its oldest turn; this one is unchanged.</returns>
     /// <exception cref="InvalidOperationException">The transcript holds no turns to drop.</exception>

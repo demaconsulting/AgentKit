@@ -56,38 +56,38 @@ internal sealed class RotationOutcome
     ///     Gets how many consolidations the rotation performed.
     /// </summary>
     /// <remarks>
-    ///     Counts every summarizer call, including the extra ones an escalation makes when it
-    ///     rebuilds the context at a terser level. Summarizer calls are the dominant cost of this
-    ///     arrangement, so the true count is reported rather than the count at the settled level
-    ///     alone.
+    ///     Summarizer calls are the dominant cost of this arrangement, so the count is reported
+    ///     rather than inferred. A rotation makes one call for the material it ages into tier one,
+    ///     plus one for each tier a cascade fills, plus one per chunk where the material was too
+    ///     large for a single call.
     /// </remarks>
     public int ConsolidationCount { get; }
 
     /// <summary>
-    ///     Gets the compaction level the rotation settled at.
+    ///     Gets the compaction level the rotation was performed at.
     /// </summary>
     /// <remarks>
-    ///     A rotation escalates the level — shortening the verbatim tail and asking the summarizer
-    ///     to be terser — until the built seed fits or the highest level is reached. This is the
-    ///     level it stopped at, which the session reports and starts its next rotation from.
+    ///     The level sets how much of the tail stays verbatim and how tersely the summarizer is
+    ///     asked to write. A rotation does not choose it: the session does, from how quickly the
+    ///     window filled after the last one, and hands it in.
     /// </remarks>
     public CompactionLevel Level { get; }
 
     /// <summary>
-    ///     Gets a value indicating whether the rotation dropped material outright to make the
-    ///     context fit.
+    ///     Gets a value indicating whether the rotation discarded material outright.
     /// </summary>
     /// <remarks>
-    ///     True when the drop-until-it-fits rule had to discard a consolidated slot or a verbatim
-    ///     turn because a fully consolidated context at the highest level still exceeded the
-    ///     rotation threshold. It is the honest signal that compaction bought nothing.
+    ///     True when a full tier could not be consolidated and its oldest slot was displaced to make
+    ///     room for the arriving one. It is the honest signal that compaction bought nothing, and is
+    ///     deliberately distinct from a consolidation that simply could not be made: that leaves the
+    ///     material where it is, which is not a loss.
     /// </remarks>
     public bool MaterialDropped { get; }
 }
 
 /// <summary>
 ///     Ages a session's context by one rotation: a deterministic function from the current layout
-///     and an injected summarizer to the next layout that fits.
+///     and an injected summarizer to the next layout.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -99,22 +99,25 @@ internal sealed class RotationOutcome
 ///     <see cref="CompactingAgentSession"/>.
 ///     </para>
 ///     <para>
-///     <b>The five rules.</b> Rule 1 appends whole turns to the verbatim tail (done by the session,
-///     not here). Rule 2 consolidates everything older than the level-adjusted tail into one slot
-///     and appends it to tier one. Rule 3 consolidates a full coarse tier's slots as peers into one
-///     slot of the next tier and clears it. Rule 4 makes the coarsest tier a ring, dropping its
-///     oldest slot when it is full. Rule 5 measures the built seed and, while it still exceeds the
-///     rotation threshold, escalates the compaction level — shortening the tail and asking for a
-///     terser summary — and, once the highest level cannot make it fit, drops the oldest slot of the
-///     coarsest non-empty tier, then the oldest verbatim turn, until it fits. Rule 5 terminates
-///     unconditionally: the level ladder is finite, slots are finite, the tail is finite, and the
-///     drop loop bottoms out at the newest turn alone.
+///     <b>The rules, and which of them live here.</b> Rule 1 appends whole turns to the verbatim
+///     tail, which the session does. Rule 2 consolidates everything older than the level-adjusted
+///     tail into one slot and appends it to tier one. Rule 3 consolidates a full coarse tier's slots
+///     as peers into one slot of the next tier and clears it. Rule 4 makes the coarsest tier a ring,
+///     dropping its oldest slot when it is full. Rules 2 to 4 are here. Rule 5 - the response to a
+///     context that keeps filling - belongs to the session, because it is decided from how quickly
+///     the window refilled, which only the session knows.
 ///     </para>
 ///     <para>
-///     <b>Escalate until it fits, and drop until it fits.</b> Escalation is tried first because it
-///     preserves more history — a terser summary keeps everything, just more briefly — and dropping
-///     is the last resort, taken only when the tersest structure still does not fit and reported as
-///     material dropped.
+///     <b>Nothing here measures whether the result will fit.</b> A rotation cannot: the context it
+///     builds has not been sent, so the only figure available would be this library's own estimate,
+///     and comparing that against a provider's real capacity is the mistake this design exists to
+///     remove. A rotation moves material and reports what it did.
+///     </para>
+///     <para>
+///     <b>A rotation always moves something.</b> The tail keeps at most what the level asks for and
+///     at most one turn fewer than it holds, so a provider counting well above this library's
+///     estimate - which reaches its threshold while the tail is still short - cannot produce a
+///     rotation that consolidates nothing and leaves the session on a provider already full.
 ///     </para>
 ///     <para>
 ///     <b>A blank summarizer answer is normalized to empty where it is received.</b> An answer of
@@ -226,7 +229,7 @@ internal static class RotationEngine
     ///     Builds the layout produced by rotating at one compaction level: rule 2 into tier one,
     ///     cascading through rules 3 and 4.
     /// </summary>
-    /// <param name="layout">The layout to rotate, always the original so escalation is idempotent.</param>
+    /// <param name="layout">The layout to rotate, the layout to age.</param>
     /// <param name="summarizer">The out-of-session summarizer.</param>
     /// <param name="level">The compaction level to build at.</param>
     /// <param name="verbatimTurns">The configured maximum verbatim tail length.</param>
@@ -273,7 +276,7 @@ internal static class RotationEngine
         // the provider when the replacement session is seeded from the shortened layout.
         if (slot is null)
         {
-            return (state.BuildLayout(layout, layout.Tail), state.ConsolidationCount, true);
+            return (state.BuildLayout(layout, layout.Tail), state.ConsolidationCount, false);
         }
 
         await state.AppendSlotAsync(slot, tier: 0, cancellationToken).ConfigureAwait(false);
@@ -336,7 +339,7 @@ internal static class RotationEngine
         ///     Set when a full tier could not be consolidated because the summarizer returned a
         ///     blank record, so the arriving slot displaced the oldest rather than the tier being
         ///     cleared into a record that was never written. Reported through
-        ///     <see cref="RotationOutcome.MaterialDropped"/> alongside the drops rule 5 makes,
+        ///     <see cref="RotationOutcome.MaterialDropped"/> alongside the drop the session makes under pressure,
         ///     because a loss the session cannot see is the failure this signal exists to prevent.
         /// </remarks>
         public bool MaterialDropped { get; private set; }

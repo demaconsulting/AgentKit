@@ -204,7 +204,12 @@ public class RotationEngineTests
         Assert.True(summarizer.CallCount > 1, "The material must have been chunked for this to be the case under test.");
         Assert.True(outcome.Layout.Tiers[0].IsEmpty);
         Assert.Equal(transcript.TurnCount, outcome.Layout.Tail.TurnCount);
-        Assert.True(outcome.MaterialDropped, "A consolidation that failed must be reported, not passed off as success.");
+
+        // Nothing was dropped, and the rotation says so: the material is still there. A consolidation
+        // that could not be made is a different fact from history being discarded, and the session
+        // needs them distinguishable - it is the second that tells an application compaction bought
+        // nothing, and the first that leaves the drop under pressure to do something about it.
+        Assert.False(outcome.MaterialDropped);
     }
 
     /// <summary>

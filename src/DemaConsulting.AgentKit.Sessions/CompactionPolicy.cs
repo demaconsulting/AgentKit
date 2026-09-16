@@ -16,8 +16,9 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     <para>
 ///     <b><see cref="VerbatimTurns"/> is a maximum, not a quota.</b> The tail holds at most that
 ///     many turns, and holds fewer when the context is under pressure: the session shortens the
-///     tail as it escalates its compaction level, and drops the oldest verbatim turn outright when
-///     even a fully consolidated context still does not fit. Asking for a number of turns is
+///     tail as it escalates its compaction level, a rotation always ages out at least one turn
+///     however short the tail already is, and where consolidation is failing outright the oldest
+///     verbatim turn is discarded to stop the context growing. Asking for a number of turns is
 ///     therefore a ceiling the session respects, never a floor it guarantees.
 ///     </para>
 ///     <para>

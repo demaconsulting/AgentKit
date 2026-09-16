@@ -192,9 +192,55 @@ public class CompactingAgentSessionTests
             $"Escalation level must strictly increase with divergence, but was 1x={one.MaxLevel}, 2x={two.MaxLevel}, 3x={three.MaxLevel}.");
     }
     /// <summary>
-    ///     Proves the session relaxes its compaction level after a quiet stretch, so pressure that
-    ///     has passed does not cost fidelity for the rest of the session.
+    ///     Proves the context stops growing even when consolidation never succeeds, so a summarizer
+    ///     that answers blank cannot make a session grow without limit.
     /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     A blank answer is a contracted return value, and blankness is content-dependent and so
+    ///     sticky: material that produced one will produce it again on the next rotation, because
+    ///     the same turns are grouped with the same neighbors. A rotation then deliberately leaves
+    ///     the material where it is, which is right - but it means nothing shrinks, and the coarse
+    ///     tiers never fill because nothing ever reaches them. Under pressure there is then no slot
+    ///     to bin.
+    ///     </para>
+    ///     <para>
+    ///     Without a fall-through to the oldest verbatim turn, the tail gains a turn per message and
+    ///     sheds nothing forever, while every rotation reports success and spends a fresh provider
+    ///     session. This is the test that catches that: the earlier design was bounded by a rule
+    ///     that measured the seed, and when that rule was removed the last-resort bound went with
+    ///     it.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SummarizerAlwaysBlank_StopsGrowing()
+    {
+        var factory = new InMemoryProviderSessionFactory(
+            SessionTestData.SizedResponder(15), windowTokens: 300);
+        var options = new AgentSessionOptions(
+            FakeSummarizer.Blank(), compaction: new CompactionPolicy(verbatimTurns: 3));
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        for (var turn = 0; turn < 12; turn++)
+        {
+            await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
+        }
+
+        var settled = session.Layout.Tail.TurnCount;
+
+        for (var turn = 0; turn < 24; turn++)
+        {
+            await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(
+            session.Layout.Tail.TurnCount <= settled,
+            $"The verbatim tail grew from {settled} to {session.Layout.Tail.TurnCount} turns while "
+                + "consolidation never succeeded, so nothing bounds the context.");
+    }
+
+
 
     /// <remarks>
     ///     The relaxation branch is the only path that lowers a level, and it is guarded by three
