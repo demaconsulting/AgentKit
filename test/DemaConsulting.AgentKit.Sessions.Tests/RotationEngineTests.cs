@@ -111,10 +111,18 @@ public class RotationEngineTests
     ///     Proves a forced consolidation keeps every tool call with its result, because the whole
     ///     history travels into one consolidation rather than being cut at an estimated boundary.
     /// </summary>
+    /// <remarks>
+    ///     <b>Asserted against the material the summarizer was handed, not against what survived.</b>
+    ///     A forced consolidation retains nothing, so an assertion that the verbatim history is empty
+    ///     is true however the split behaved, and an assertion that the seed carries no tool result
+    ///     follows from it — a seed is the tier records plus that same empty history. Neither can
+    ///     fail, so neither exercises pair integrity. The material is where a broken split is
+    ///     visible: it is the one place a call separated from its result actually shows up.
+    /// </remarks>
     [Fact]
     public async Task RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_SeedsNoOrphanedResult()
     {
-        // Arrange: three interleaved runs of parallel calls, 39 tokens in all, well within tier
+        // Arrange: three interleaved runs of parallel calls, 60 tokens in all, well within tier
         // zero's hundred-token budget so the estimated split would retain every one of them
         var summarizer = new FakeSummarizer();
         var transcript = SessionTranscript.Empty;
@@ -134,11 +142,26 @@ public class RotationEngineTests
             ContextUsageOrigin.Provider,
             TestContext.Current.CancellationToken);
 
-        // Assert: nothing verbatim survived, so no result can have been left without its call
+        // Assert: the material the summarizer was handed holds every call with its own result, in
+        // the order they were recorded - which is the property a boundary cut breaks and the only
+        // place a broken cut is visible, since a forced consolidation retains nothing either way
+        var request = Assert.Single(summarizer.Requests);
+        var pairing = request.Material
+            .Split('\n')
+            .Select(line => line.Split(':')[0])
+            .ToArray();
+
+        Assert.Equal(
+            [
+                "TOOL CALL [a0]", "TOOL CALL [b0]", "TOOL RESULT [a0]", "TOOL RESULT [b0]",
+                "TOOL CALL [a1]", "TOOL CALL [b1]", "TOOL RESULT [a1]", "TOOL RESULT [b1]",
+                "TOOL CALL [a2]", "TOOL CALL [b2]", "TOOL RESULT [a2]", "TOOL RESULT [b2]",
+            ],
+            pairing);
+
+        // Assert: and nothing verbatim survived, so the other side of the split left no result
+        // behind without its call either
         Assert.Empty(outcome.Layout.Transcript.Entries);
-        Assert.DoesNotContain(
-            outcome.Layout.BuildSeed(),
-            entry => entry.Kind == TranscriptEntryKind.ToolResult);
     }
 
     /// <summary>

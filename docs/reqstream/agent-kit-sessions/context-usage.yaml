@@ -103,6 +103,22 @@ sections:
               from a real one at the point it is consumed. Keeping the capability in its own
               interface lets an adapter say "I do not know" by simply not implementing it, and lets
               an adapter that sometimes knows report nothing until it does.
+
+              The freedom to report nothing until later carries a cost the contract states rather
+              than hides, because nothing in this library can detect it. What an unsplit figure
+              folds into its conversation count is measured once, at the instant a provider session
+              is created, and credited for that provider session's whole life. An implementation
+              reporting nothing at that instant is credited a fold of zero and keeps it until the
+              next rotation creates a new provider session, where the conversation is no longer
+              empty and the fold is no more separable than it was the first time. The session then
+              verifies that its own accounting and the provider's agree, not that the fold it
+              measured was correct, and no later reading distinguishes a genuine zero from an
+              unmeasured one. A provider charging real overhead it never breaks out, and reporting
+              only after its first turn, is therefore treated as charging none, so a window it
+              cannot converge in may be accepted and the session may rotate on every turn without
+              raising a saturation signal. The implementation is the only party able to prevent
+              that, by reporting from creation or by reporting the split, which is why the contract
+              states it as an obligation an implementation carries rather than a preference.
             tests:
               - ContextUsage_Reporter_MayReportNothing
               - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull

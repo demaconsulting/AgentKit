@@ -48,14 +48,16 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. **No provider, no model and no network access is used**
 - **Mocking**: The shipped in-memory provider factory and a hand-written fake summarizer; no mocking
-  framework. Five scenarios add hand-written providers: one whose disposal fails, one that
+  framework. Six scenarios add hand-written providers: one whose disposal fails, one that
   reports its window only after answering a turn, one that reports scripted figures including
   its own conversation split — that one because the shipped in-memory session measures its reported
   overhead with the same estimator the engine uses, so a test written against it cannot distinguish
   a measurement from an estimate — one whose window is taken from a script, so successive
-  sessions of one conversation report different windows, and one that reports totals and a window
+  sessions of one conversation report different windows, one that reports totals and a window
   with no conversation split at all, over a fixed overhead it really charges for, which is the only
-  shape that can carry overhead the engine is not told about
+  shape that can carry overhead the engine is not told about, and one whose usage reading is
+  arithmetically impossible and therefore throws, which is the only way to reach the moment a
+  provider session exists and nothing owns it
 - **Isolation**: Each test constructs its own factory, summarizer, options and session; no state is
   shared
 
@@ -65,7 +67,8 @@ A unit test run passes when every scenario below passes without error or excepti
 explicitly asserted. Any turn not recorded in the transcript, any answer missing from it, any
 rotation that fails to dispose the session it replaced, any replacement seeded without the preserved
 content, any replacement adopted without being held to the same window rule the live session is held
-to, any failed release that cannot be retried, any usage figure taken from the wrong source, any
+to, any provider session created and then lost on an error path before anything owned it, any failed
+release that cannot be retried, any usage figure taken from the wrong source, any
 provider-reported window in which a rotated context could not land below the rotation threshold
 accepted rather than refused, any rotation reported for a turn that consolidated nothing, any
 diagnostic claiming a release that did not happen, or any
@@ -270,6 +273,48 @@ was *attempted* rather than claiming it happened, and that the failure is an
 `AgentSessionCreationException` carrying the very provider session the provider still holds — which
 the test then disposes, observing a second attempt actually reach the adapter. The other creation
 tests assert the complement: when the release succeeds the failure carries nothing.
+
+#### AgentKitSessions-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt: Nothing Created Is Lost
+
+**Tests**: `CompactingAgentSession_CreateAsync_ProviderUsageThrows_ReleasesTheProviderSession`,
+`CompactingAgentSession_CreateAsync_ProviderUsageThrowsAndReleaseFails_CarriesTheProviderSession`,
+`CompactingAgentSession_SendAsync_ReplacementUsageThrows_ReleasesTheReplacement`,
+`AgentSessionCreationException_Construct_WithoutARetainedSession_IsUnambiguous`
+
+All three behavioral tests drive the hand-written provider whose usage reading is arithmetically
+impossible — it reports one more conversation token than it reports as occupied in total, the one
+split `ContextUsage` refuses rather than clamps. That refusal is deliberate, so this is a condition
+the library designs for rather than an implausible one, and it is the only way to reach the window in
+which a provider session has been created and nothing yet owns it.
+
+The first makes the very first provider session defective. It asserts the adapter's own
+`ArgumentOutOfRangeException` reaches the caller unchanged — a wrapper would move the failure away
+from the code that wrote it — and that the provider session created a moment earlier was disposed
+exactly once rather than left held with no reference to it anywhere. Before the fix the instance was
+discarded, the exception carried no handle at all, and for a provider holding history server-side the
+remote session was never discarded.
+
+The second makes the same session's release fail as well, which is the only state in which something
+is still held and the creation path has no session to hand back. It asserts the failure is an
+`AgentSessionCreationException` whose inner exception is still the adapter's refusal, whose message
+says the provider still holds the session and names `RetainedProviderSession`, and whose
+`RetainedProviderSession` is the very session the provider holds — which the test then disposes,
+observing a second attempt actually reach the adapter.
+
+The third is the rotation half of the same window: a sound first session whose scripted conversation
+crosses the threshold in one turn, and a replacement whose usage cannot be read. It asserts the
+replacement was created and then released, that the rotation was **not** carried out — no rotation
+counted, the superseded session still live and undisposed — and that disposing the session afterwards
+releases exactly that session and attempts nothing further against the replacement. Leaving the
+conversation on the provider that still holds it was always the correct outcome; what it used to cost
+was the replacement.
+
+The fourth is a compile-time assertion. The creation failure declared both `(string, Exception)` and
+`(string, IAsyncDisposable?)`, and neither parameter type converts to the other, so
+`new AgentSessionCreationException(message, null)` — how an application says that nothing is
+retained — was ambiguous and did not build. The test writes exactly that call and then writes the
+retained session as an initializer alongside an inner exception, so the two axes are shown to compose;
+neither line compiles if the resolution is undone.
 
 #### AgentKitSessions-CompactingAgentSession-PrefersProviderUsage: The Better Measurement Wins
 

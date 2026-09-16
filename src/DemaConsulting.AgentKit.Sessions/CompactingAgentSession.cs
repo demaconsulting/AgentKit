@@ -98,8 +98,20 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     Initializes a new instance of the <see cref="CompactingAgentSession"/> class.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Private because creating the first provider session is asynchronous and a constructor
     ///     cannot await; <see cref="CreateAsync"/> is the entry point.
+    ///     </para>
+    ///     <para>
+    ///     <b>This constructor is a window in which <paramref name="provider"/> is owned by nothing,
+    ///     and it can throw.</b> <see cref="ReadUsage"/> evaluates adapter code, and the figure it
+    ///     builds is validated rather than clamped, so an adapter whose split is arithmetically
+    ///     impossible throws out of here — a condition
+    ///     <see cref="ContextUsage(int, int, int, ContextUsageOrigin)"/> designs for. Nothing inside
+    ///     a constructor can release the argument it was handed, so the window is closed by the
+    ///     caller: <see cref="CreateAsync"/> releases the provider itself when this throws. Keeping
+    ///     the window narrow is not enough, because the throw is by design rather than by accident.
+    ///     </para>
     /// </remarks>
     /// <param name="options">What the application configured.</param>
     /// <param name="factory">Produces the replacement provider session at every rotation.</param>
@@ -153,8 +165,31 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     Creates a session and its first provider session.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The first provider session is seeded with no history, because there is none yet — the
     ///     instructions and tools it carries are the same ones every later rotation will carry.
+    ///     </para>
+    ///     <para>
+    ///     <b>Nothing this method creates is left unowned.</b> Between the factory returning a
+    ///     provider session and this session taking ownership of it there is a window in which the
+    ///     provider session belongs to no one, and that window can throw: constructing this session
+    ///     reads the provider's usage, which is adapter code, and an adapter whose split is
+    ///     arithmetically impossible is refused rather than clamped. Left alone, the instance would
+    ///     be discarded, the exception would carry no handle, and a provider holding the
+    ///     conversation server-side would keep it forever with nothing anywhere able to name it. So
+    ///     the construction is guarded: the provider session is released, and the release is what
+    ///     decides how the failure is reported.
+    ///     </para>
+    ///     <para>
+    ///     <b>A released provider session means the original failure is reported unchanged.</b> It
+    ///     is the adapter's defect, the stack still points at the adapter that wrote it — which is
+    ///     the whole reason <see cref="ContextUsage"/> refuses rather than clamps — and there is
+    ///     nothing left for a caller to clean up, so there is nothing a wrapper could add. When the
+    ///     release itself fails there is something held and no other handle to it, and the only way
+    ///     to hand it back is an <see cref="AgentSessionCreationException"/> carrying it in
+    ///     <see cref="AgentSessionCreationException.RetainedProviderSession"/>, with the adapter's
+    ///     own failure as the inner exception.
+    ///     </para>
     /// </remarks>
     /// <param name="options">What the application configured. Must not be <see langword="null"/>.</param>
     /// <param name="providerSessionFactory">
@@ -172,6 +207,12 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     second reported as an <see cref="AgentSessionCreationException"/>, which carries the
     ///     provider session when its release failed.
     /// </exception>
+    /// <exception cref="AgentSessionCreationException">
+    ///     The created provider session could not be adopted and could not then be released, so the
+    ///     failure carries it in
+    ///     <see cref="AgentSessionCreationException.RetainedProviderSession"/> for the caller to
+    ///     dispose. Whatever prevented the adoption is the inner exception.
+    /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static async Task<CompactingAgentSession> CreateAsync(
         AgentSessionOptions options,
@@ -185,7 +226,40 @@ public sealed class CompactingAgentSession : IAgentSession
         var provider = await providerSessionFactory.CreateAsync(seed, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The provider session factory returned null.");
 
-        var session = new CompactingAgentSession(options, providerSessionFactory, provider);
+        // Construction is the window in which the provider session is owned by nothing, and it is a
+        // window that throws by design rather than by accident: the constructor reads the provider's
+        // usage, and an adapter reporting a conversation larger than its own total is refused where
+        // it wrote it. Guarded here rather than narrowed, because narrowing it would not close it.
+        CompactingAgentSession session;
+        try
+        {
+            session = new CompactingAgentSession(options, providerSessionFactory, provider);
+        }
+        catch (Exception failure)
+        {
+            // Released rather than abandoned. Nothing else holds this provider session: the instance
+            // that would have owned it does not exist, and the caller was never given one.
+            if (await TryReleaseUnownedAsync(provider).ConfigureAwait(false))
+            {
+                // Nothing is held, so there is nothing to hand back and no reason to disturb the
+                // failure the adapter reported. Rethrown rather than wrapped, so it still surfaces
+                // where the adapter wrote it.
+                throw;
+            }
+
+            // The release failed, so the provider still holds a session and this is the only handle
+            // to it in existence. Carried on the failure, because the alternative is to drop it.
+            throw new AgentSessionCreationException(
+                "The session could not be created, and the provider session it had already created "
+                + "could not be released, so the provider still holds it; dispose the provider "
+                + $"session this failure carries ({nameof(AgentSessionCreationException.RetainedProviderSession)}) "
+                + "to retry the release. See the inner exception for why the session could not be "
+                + "created.",
+                failure)
+            {
+                RetainedProviderSession = provider,
+            };
+        }
 
         // A provider that reports its window does so from the moment it exists, so a window the
         // session could not converge in is knowable before the first turn is ever spent against it.
@@ -378,6 +452,15 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     abandoned here rather than at the next turn, after the caller has been told the rotation
     ///     succeeded. See <see cref="EnsureReportedWindowConvergesAsync"/>.
     ///     </para>
+    ///     <para>
+    ///     <b>A replacement that cannot be adopted is released rather than orphaned.</b> Reading a
+    ///     replacement's usage is adapter code and may throw by design, and it happens while the
+    ///     replacement is owned by nothing: the factory has handed it over and this session has not
+    ///     yet taken it. The failure leaves this session coherent against the provider it already
+    ///     had, which is the correct outcome, but the replacement would be lost with no handle
+    ///     anywhere — for a provider holding history server-side, a remote session never discarded.
+    ///     It is therefore released before the failure travels on.
+    ///     </para>
     /// </remarks>
     /// <param name="cancellationToken">Cancels the rotation.</param>
     /// <returns>Whether a rotation was actually carried out, and any saturation it reported.</returns>
@@ -419,8 +502,30 @@ public sealed class CompactingAgentSession : IAgentSession
 
         // Read once, and read before the adoption, so the usage the session publishes and the fold
         // the replacement is credited are the same reading of the same session.
-        var replacementUsage = ReadUsage(replacement, _options, outcome.Layout);
-        var adopted = LiveProviderSession.Adopt(replacement, replacementUsage, seededConversationTokens);
+        //
+        // Guarded, because between the factory returning the replacement and the adoption below it
+        // is owned by nothing, and reading its usage runs adapter code that is entitled to throw: an
+        // adapter reporting a conversation larger than its own total is refused where it wrote it
+        // rather than clamped. Without the guard the replacement is orphaned - this session stays
+        // coherent against the provider it already had, which is correct, but the replacement is
+        // never released and no handle to it escapes.
+        ContextUsage replacementUsage;
+        LiveProviderSession adopted;
+        try
+        {
+            replacementUsage = ReadUsage(replacement, _options, outcome.Layout);
+            adopted = LiveProviderSession.Adopt(replacement, replacementUsage, seededConversationTokens);
+        }
+        catch (Exception)
+        {
+            // Released, and the outcome deliberately discarded: the caller still holds a working
+            // session against the provider this rotation did not replace, and the failure it needs
+            // is the one that stopped the rotation, not an adapter's disposal failure on top of it.
+            // Nothing is handed back because there is nowhere to hand it - unlike creation, this
+            // caller holds a session, and that session is not the one that failed.
+            await TryReleaseUnownedAsync(replacement).ConfigureAwait(false);
+            throw;
+        }
 
         // The whole state transition happens here, as one block containing no await: the provider
         // reference, the layout and the counters describe the same session at every point an
@@ -638,7 +743,49 @@ public sealed class CompactingAgentSession : IAgentSession
             throw new InvalidOperationException(message);
         }
 
-        throw new AgentSessionCreationException(message, released ? null : _live.Session);
+        throw new AgentSessionCreationException(message)
+        {
+            RetainedProviderSession = released ? null : _live.Session,
+        };
+    }
+
+    /// <summary>
+    ///     Releases a provider session nothing has taken ownership of, reporting whether the release
+    ///     succeeded and never throwing.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>For the two windows in which a provider session belongs to no one.</b> A provider
+    ///     session is created by a factory and owned by a <see cref="LiveProviderSession"/>, and
+    ///     between those two moments its usage is read — adapter code, which is entitled to throw,
+    ///     and which this library deliberately lets throw rather than clamping what it returns. A
+    ///     failure there would otherwise discard the only reference to a session the provider still
+    ///     holds.
+    ///     </para>
+    ///     <para>
+    ///     Distinct from <see cref="LiveProviderSession.TryReleaseAsync"/> because there is no live
+    ///     provider session to ask: nothing was adopted, so there is no release flag to maintain and
+    ///     nothing that could already have been released. The disposal failure is swallowed for the
+    ///     same reason it is there — the caller is reporting a different failure, and this one must
+    ///     not replace it — and reported as a return value so the caller can say which of the two
+    ///     states it is in.
+    ///     </para>
+    /// </remarks>
+    /// <param name="session">The provider session no one owns.</param>
+    /// <returns><see langword="true"/> when the provider session was released.</returns>
+    private static async ValueTask<bool> TryReleaseUnownedAsync(IProviderSession session)
+    {
+        try
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception)
+        {
+            // Intentionally swallowed; the caller reports the failure that brought it here and says
+            // what to do about this one.
+            return false;
+        }
     }
 
     /// <summary>
@@ -921,12 +1068,20 @@ public sealed class CompactingAgentSession : IAgentSession
 ///     handle, so the retryable state is reachable rather than merely recorded.
 ///     </para>
 ///     <para>
-///     <b>What a caller is expected to do.</b> Treat the failure as the configuration defect it
-///     describes — a provider window the configured compaction policy cannot converge in — and fix
-///     the sizing. If <see cref="RetainedProviderSession"/> is not <see langword="null"/>, the
-///     provider still holds a session: dispose it, and expect that disposal to be able to fail
-///     again. A <see langword="null"/> value means the provider session was released and there is
-///     nothing left to clean up.
+///     <b>What a caller is expected to do.</b> If <see cref="RetainedProviderSession"/> is not
+///     <see langword="null"/>, the provider still holds a session: dispose it, and expect that
+///     disposal to be able to fail again. A <see langword="null"/> value means the provider session
+///     was released and there is nothing left to clean up. Then treat the failure itself: a message
+///     naming a provider window the configured compaction policy cannot converge in is a
+///     configuration defect, and fixing the sizing is the repair; an inner exception means something
+///     else stopped the creation and is the failure to act on.
+///     </para>
+///     <para>
+///     <b>Not every failed creation is reported as this.</b> A creation stopped by someone else's
+///     exception — an adapter's, typically — rethrows that exception unchanged once the provider
+///     session it created has been released, because nothing is then held and a wrapper would only
+///     move the failure away from where it was written. This type appears when the release itself
+///     failed and the handle has nowhere else to go.
 ///     </para>
 ///     <para>
 ///     Derives from <see cref="InvalidOperationException"/> because that is what this condition has
@@ -958,24 +1113,9 @@ public sealed class AgentSessionCreationException : InvalidOperationException
     /// </summary>
     /// <param name="message">What went wrong.</param>
     /// <param name="innerException">The failure that caused it.</param>
-    public AgentSessionCreationException(string message, Exception innerException)
+    public AgentSessionCreationException(string message, Exception? innerException)
         : base(message, innerException)
     {
-    }
-
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="AgentSessionCreationException"/> class with
-    ///     a message and the provider session the failed creation still holds.
-    /// </summary>
-    /// <param name="message">What went wrong.</param>
-    /// <param name="retainedProviderSession">
-    ///     The provider session the caller must dispose, or <see langword="null"/> when it was
-    ///     released.
-    /// </param>
-    public AgentSessionCreationException(string message, IAsyncDisposable? retainedProviderSession)
-        : base(message)
-    {
-        RetainedProviderSession = retainedProviderSession;
     }
 
     /// <summary>
@@ -983,9 +1123,23 @@ public sealed class AgentSessionCreationException : InvalidOperationException
     ///     when it was released.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Non-null only when the provider's own release failed. Disposing it retries that release;
     ///     the retry may fail in turn, which is the adapter's defect and not something this library
     ///     can repair on its behalf.
+    ///     </para>
+    ///     <para>
+    ///     <b>Settable at construction rather than taken as a constructor parameter, because a
+    ///     constructor parameter made the ordinary construction ambiguous.</b> This type needs the
+    ///     standard exception constructors, and a <c>(string, IAsyncDisposable?)</c> overload beside
+    ///     <c>(string, Exception)</c> converts to neither, so <c>new
+    ///     AgentSessionCreationException(message, null)</c> — the natural way to say that nothing is
+    ///     retained — did not compile. The retained session is also orthogonal to the message and
+    ///     the inner exception rather than an alternative to them: the creation path that carries a
+    ///     session carries an adapter's failure with it. An initializer composes with all three
+    ///     constructors, where an overload per combination or a static factory per combination
+    ///     multiplies them.
+    ///     </para>
     /// </remarks>
-    public IAsyncDisposable? RetainedProviderSession { get; }
+    public IAsyncDisposable? RetainedProviderSession { get; init; }
 }

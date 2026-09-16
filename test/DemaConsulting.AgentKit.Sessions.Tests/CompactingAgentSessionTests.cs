@@ -1015,6 +1015,173 @@ public class CompactingAgentSessionTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
             session.SendAsync("again", TestContext.Current.CancellationToken));
     }
+
+    /// <summary>
+    ///     Proves a provider session whose usage cannot be read is released rather than left holding
+    ///     a conversation nothing can name, and that the adapter's own failure is what the caller
+    ///     receives.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The window this closes is between creation and adoption.</b> The factory hands back a
+    ///     provider session and this session reads its usage before anything owns it. That read is
+    ///     adapter code, and it is designed to be able to throw: <c>ContextUsage</c> refuses a
+    ///     conversation larger than the total occupied rather than clamping it, precisely so an
+    ///     adapter's arithmetic defect surfaces where the adapter wrote it. The instance was then
+    ///     discarded, the exception carried no handle, and the provider-side session was left with
+    ///     no reference to it anywhere in the process — for a provider holding history server-side,
+    ///     a remote session that is never discarded.
+    ///     </para>
+    ///     <para>
+    ///     Because the release succeeded there is nothing for a caller to clean up, so the adapter's
+    ///     failure travels unchanged rather than wrapped: a wrapper would only move the failure away
+    ///     from the code that produced it, which is the one thing the refusal exists to avoid.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ProviderUsageThrows_ReleasesTheProviderSession()
+    {
+        // Arrange: an adapter reporting a conversation larger than its own total, which ContextUsage
+        // refuses
+        var factory = new DefectiveUsageProviderSessionFactory(windowTokens: 4000);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act: the adapter's own refusal is what the caller receives, unwrapped
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        // Assert: the provider session created a moment earlier was released rather than leaked
+        var provider = Assert.Single(factory.Sessions);
+        Assert.Equal(1, provider.DisposeAttempts);
+        Assert.True(provider.IsDisposed);
+    }
+
+    /// <summary>
+    ///     Proves that when a provider session cannot be adopted <em>and</em> cannot then be
+    ///     released, the failure carries the provider session itself, because this is the one state
+    ///     in which something is still held and no other handle to it exists.
+    /// </summary>
+    /// <remarks>
+    ///     The creation path is the only one where the caller receives no session, so it is the only
+    ///     one where a retryable release has nothing to retry it with. Wrapping happens here and
+    ///     only here: the adapter's failure is kept as the inner exception, so nothing about why the
+    ///     creation failed is lost, and the retained session makes the retry a caller can actually
+    ///     perform reachable rather than merely described.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ProviderUsageThrowsAndReleaseFails_CarriesTheProviderSession()
+    {
+        // Arrange: the same defective adapter, whose provider-side release also fails
+        var factory = new DefectiveUsageProviderSessionFactory(windowTokens: 4000, disposeThrows: true);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act
+        var error = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        // Assert: why the creation failed is preserved rather than replaced
+        Assert.IsType<ArgumentOutOfRangeException>(error.InnerException);
+
+        // Assert: the message says the provider still holds the session and names what to dispose
+        Assert.Contains("still holds it", error.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            nameof(AgentSessionCreationException.RetainedProviderSession),
+            error.Message,
+            StringComparison.Ordinal);
+
+        // Assert: the handle is the very session the provider holds, and disposing it is a retry
+        // that actually reaches the provider
+        var provider = Assert.Single(factory.Sessions);
+        Assert.Same(provider, error.RetainedProviderSession);
+        Assert.Equal(1, provider.DisposeAttempts);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await error.RetainedProviderSession!.DisposeAsync());
+        Assert.Equal(2, provider.DisposeAttempts);
+    }
+
+    /// <summary>
+    ///     Proves a replacement whose usage cannot be read is released by the rotation that created
+    ///     it, leaving the session coherent against the provider it already had.
+    /// </summary>
+    /// <remarks>
+    ///     The rotation's sibling window to the one at creation, and the one that cannot be reported
+    ///     by carrying a handle: the caller holds a working session, and the session it holds is not
+    ///     the one that failed. So the replacement is released and the failure travels on unchanged.
+    ///     The rotation is not carried out, which is what leaves the conversation on the provider
+    ///     that still has it.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ReplacementUsageThrows_ReleasesTheReplacement()
+    {
+        // Arrange: a sound first session whose scripted conversation crosses the 2,800-token
+        // threshold in one turn, and a replacement whose usage cannot be read at all
+        var factory = new DefectiveUsageProviderSessionFactory(
+            windowTokens: 4000, conversationTokensPerTurn: 3000, defectiveFromIndex: 1);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: a message long enough to overflow tier zero, so the rotation really does create a
+        // replacement
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            session.SendAsync(new string('m', 600), TestContext.Current.CancellationToken));
+
+        // Assert: the replacement was created and then released rather than orphaned
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.True(factory.Sessions[1].IsDisposed);
+
+        // Assert: the rotation was not carried out, so the conversation stays on the provider that
+        // holds it and that session is still the live one
+        Assert.Equal(0, session.RotationCount);
+        Assert.False(factory.Sessions[0].IsDisposed);
+
+        // Assert: and disposing the session still releases exactly that provider session
+        await session.DisposeAsync();
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.Equal(1, factory.Sessions[1].DisposeAttempts);
+    }
+
+    /// <summary>
+    ///     Proves the natural way to construct the creation failure without a retained session
+    ///     compiles, which is the whole of the defect this test exists for.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A compile-time assertion, deliberately.</b> The type declared both
+    ///     <c>(string, Exception)</c> and <c>(string, IAsyncDisposable?)</c>, and neither parameter
+    ///     type converts to the other, so <c>new AgentSessionCreationException(message, null)</c> —
+    ///     which is how an application says "nothing is retained" — was ambiguous and did not
+    ///     compile. This is new public API in a package whose adapters have not shipped, so the
+    ///     ambiguity was cheap to remove now and a breaking change later. The retained session is
+    ///     carried by an initializer instead, which composes with every constructor rather than
+    ///     competing with one; the lines below would not build if that were undone.
+    /// </remarks>
+    [Fact]
+    public void AgentSessionCreationException_Construct_WithoutARetainedSession_IsUnambiguous()
+    {
+        // Act: the natural call, with no inner exception and nothing retained
+        var plain = new AgentSessionCreationException("Creation failed.", null);
+
+        // Assert
+        Assert.Null(plain.InnerException);
+        Assert.Null(plain.RetainedProviderSession);
+
+        // Act: and the two axes compose rather than exclude one another
+        var retained = new InMemoryProviderSession(
+            new ProviderSessionSeed(null, [], []),
+            message => new ProviderTurn($"Acknowledged: {message}"),
+            windowTokens: 4000);
+        var carrying = new AgentSessionCreationException("Creation failed.", new InvalidOperationException())
+        {
+            RetainedProviderSession = retained,
+        };
+
+        // Assert
+        Assert.IsType<InvalidOperationException>(carrying.InnerException);
+        Assert.Same(retained, carrying.RetainedProviderSession);
+    }
 }
 
 /// <summary>
@@ -1636,6 +1803,135 @@ internal sealed class ScriptedWindowProviderSessionFactory(
 
         var window = windowTokens[Math.Min(Sessions.Count, windowTokens.Count - 1)];
         var session = new ScriptedWindowProviderSession(window, conversationTokensPerTurn, disposeThrows);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}
+
+/// <summary>
+///     A provider session whose usage reading is arithmetically impossible, and so throws where the
+///     adapter wrote it.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>Models the defect the usage shape is designed to surface rather than hide.</b>
+///     <see cref="ContextUsage"/> refuses a conversation count larger than the total occupied
+///     instead of clamping it, so an adapter that splits its own figures wrongly throws out of
+///     <see cref="IContextUsageReporter.CurrentUsage"/>. No other fake here can do that: every one
+///     of them reports a figure that is at worst unhelpful, and a reading that fails is the only way
+///     to reach the moment a provider session exists and nothing owns it.
+///     </para>
+///     <para>
+///     The defect is switchable so one conversation can hold a sound first session and a defective
+///     replacement, which is the rotation half of the same window.
+///     </para>
+/// </remarks>
+/// <param name="windowTokens">The window this session reports.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="usageThrows">Whether reading this session's usage fails.</param>
+/// <param name="disposeThrows">Whether the provider-side release fails.</param>
+internal sealed class DefectiveUsageProviderSession(
+    int windowTokens,
+    int conversationTokensPerTurn,
+    bool usageThrows,
+    bool disposeThrows) : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The conversation tokens reported so far, grown by each answered turn.
+    /// </summary>
+    private int _conversationTokens;
+
+    /// <summary>
+    ///     Gets how many times disposal was attempted on this session.
+    /// </summary>
+    /// <remarks>
+    ///     Counted rather than flagged, because a release that threw was still attempted and a
+    ///     caller handed the session back must be shown to reach the provider when it retries.
+    /// </remarks>
+    public int DisposeAttempts { get; private set; }
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was actually released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    ///     The defective reading reports one more conversation token than it reports as occupied in
+    ///     total, which is the one split no accounting can produce and which
+    ///     <see cref="ContextUsage"/> therefore refuses.
+    /// </remarks>
+    public ContextUsage? CurrentUsage => usageThrows
+        ? ContextUsage.FromProvider(_conversationTokens, windowTokens, _conversationTokens + 1)
+        : ContextUsage.FromProvider(_conversationTokens, windowTokens, _conversationTokens);
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _conversationTokens += conversationTokensPerTurn;
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        DisposeAttempts++;
+
+        if (disposeThrows)
+        {
+            throw new InvalidOperationException("The provider session could not be released.");
+        }
+
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="DefectiveUsageProviderSession"/> instances, turning the defect on from a
+///     chosen point in the conversation, and remembers every one it made.
+/// </summary>
+/// <remarks>
+///     Remembering them is the whole point: the property under test is that a provider session
+///     created and then found unusable was released, and that can only be asserted against the
+///     session itself.
+/// </remarks>
+/// <param name="windowTokens">The window each session reports.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="defectiveFromIndex">
+///     The first session in the conversation whose usage reading fails. Zero makes the very first
+///     session defective, which is the creation case; one leaves creation sound and makes every
+///     replacement defective, which is the rotation case.
+/// </param>
+/// <param name="disposeThrows">Whether the provider-side release of each session fails.</param>
+internal sealed class DefectiveUsageProviderSessionFactory(
+    int windowTokens,
+    int conversationTokensPerTurn = 0,
+    int defectiveFromIndex = 0,
+    bool disposeThrows = false) : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<DefectiveUsageProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var session = new DefectiveUsageProviderSession(
+            windowTokens,
+            conversationTokensPerTurn,
+            Sessions.Count >= defectiveFromIndex,
+            disposeThrows);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

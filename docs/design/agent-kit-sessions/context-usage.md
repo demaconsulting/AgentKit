@@ -67,6 +67,20 @@ implementation must not contact the provider to answer: it reports what the last
 revealed, so reading it is free and cannot fail. An implementation whose provider distinguishes the
 conversation from its framing passes that split rather than leaving it to be inferred.
 
+**The obligation an implementation carries, and the limit nothing can enforce.** The fold an unsplit
+figure hides is measured once, when a provider session is created, and credited for that provider
+session's whole life. An implementation that returns `null` at that instant is credited a fold of
+zero and keeps it until the next rotation creates a new provider session — where it is measured
+again, against a conversation that is no longer empty and is therefore no more separable than it was
+the first time. What `CompactingAgentSession` then verifies is that *its accounting and the
+provider's agree*, not that the fold it measured was the right one, and no later reading can
+distinguish a genuine zero from an unmeasured one. The consequence is concrete: a provider that
+charges real overhead it never breaks out, and that begins reporting only after its first turn, is
+treated as charging none, so a window it cannot actually converge in may be accepted and the session
+may rotate on every turn without raising a saturation signal. This library cannot detect that. The
+implementation is the only party that can prevent it, and does so by reporting from creation or by
+reporting the split — which is why that is stated as an obligation rather than a preference.
+
 **Usage is permitted to exceed the window.** A provider may report that, and clamping it would hide
 exactly the condition an application most needs to see. `FreeTokens` floors at zero because a
 window that is over-full has no negative amount of room, but neither `UsedTokens` nor `UsedFraction`

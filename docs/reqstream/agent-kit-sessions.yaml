@@ -25,6 +25,7 @@ sections:
           - AgentKitSessions-CompactingAgentSession-AnswersTurns
           - AgentKitSessions-CompactingAgentSession-RejectsBlankMessage
           - AgentKitSessions-CompactingAgentSession-DisposesProviderSession
+          - AgentKitSessions-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt
           - AgentKitSessions-AgentSession-RejectsMalformedTurnReport
           - AgentKitSessions-AgentSessionOptions-CarriesConfiguration
         tests:

@@ -91,8 +91,15 @@ summarizer — so the forced path cannot manufacture an empty consolidation or a
 turn out of a session with nothing recorded.
 
 The third confirms the forced split keeps every tool call with its result, which it does by taking
-everything into one consolidation: three interleaved runs of parallel calls, 39 tokens in all and so
-comfortably inside tier zero's budget, leave no verbatim entry behind and no tool result in the seed.
+everything into one consolidation: three interleaved runs of parallel calls, 60 tokens in all and so
+comfortably inside tier zero's budget. It asserts against the **material the summarizer was handed**,
+reading back the labeled call and result lines and requiring the full interleaved sequence in
+recorded order — which is where a boundary cut separating a call from its result is visible. The
+other side of the split is asserted separately: nothing survived verbatim, so no result was left
+behind without its call either. Asserting the seed instead cannot fail: a forced consolidation
+retains nothing, a seed is the tier records plus that same empty history, and so no tool result can
+appear in it however the split behaved. Rewritten against a split that hands the summarizer two
+orphaned results with their calls dropped, the seed assertions pass and these fail.
 
 The fourth refuses an undefined origin. The origin decides whether an estimated split may abandon the
 rotation, so a cast integer is a defect in the caller and is refused as the other enum-taking members

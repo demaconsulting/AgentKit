@@ -277,6 +277,22 @@ public interface IContextUsageReporter
     ///     from is where <see cref="CompactingAgentSession"/> measures what an unsplit figure folds
     ///     in, and an implementation that says nothing until after a turn is past that moment.
     ///     </para>
+    ///     <para>
+    ///     <b>The cost of reporting late, stated plainly, because nothing detects it.</b> The fold
+    ///     is measured once, when a provider session is created, and it is then credited for the
+    ///     whole life of that provider session. An implementation that returns
+    ///     <see langword="null"/> at that instant is credited a fold of zero and keeps it until the
+    ///     next rotation creates a new provider session — where it is measured again, against a
+    ///     conversation that is no longer empty, and so is no more separable than it was the first
+    ///     time. Nothing checks this figure against the provider afterwards: this library verifies
+    ///     that its accounting and the provider's agree, not that the fold it measured was the right
+    ///     one. What follows is that a provider charging real overhead it never breaks out, and
+    ///     reporting only after its first turn, is treated as charging none — so
+    ///     <see cref="CompactingAgentSession"/> may accept a window it cannot in fact converge in,
+    ///     and rotate on every turn without raising a saturation signal. There is no way for this
+    ///     library to detect that, and an implementation reporting totals alone is the only party
+    ///     that can prevent it: report from creation, or report the split.
+    ///     </para>
     /// </remarks>
     ContextUsage? CurrentUsage { get; }
 }

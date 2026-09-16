@@ -115,3 +115,13 @@ minimal hand-written reporter and through the shipped in-memory session configur
 This is the case the separate optional interface exists for: an adapter for a provider that reveals
 nothing must be able to say so, because an invented number is indistinguishable from a real one at
 the point it is consumed.
+
+**What is deliberately not verified here, because nothing can verify it.** An implementation that
+reports nothing until after its first turn is adopted with a fold of zero and keeps that fold for the
+life of that provider session. What `CompactingAgentSession` checks afterwards is that its accounting
+and the provider's agree, not that the fold it measured was the right one, and no reading can
+distinguish a genuine zero from an unmeasured one. So a provider that charges real unreported
+overhead and reports late is treated as charging none, and no test — here or anywhere in this
+suite — can detect it. The obligation to report from creation, or to report the split, is stated in
+the contract an adapter author reads for exactly that reason, and it is the only place the condition
+can be prevented.

@@ -85,9 +85,39 @@ Handing the handle back was preferred to retrying the release internally, which 
 nothing, and to returning a broken session, which would let a turn be sent to a session that cannot
 settle.
 
+**`RetainedProviderSession` is an initializer, not a constructor parameter.** The type needs the
+standard exception constructors, and an `(string, IAsyncDisposable?)` overload beside
+`(string, Exception)` converts to neither of them, so `new AgentSessionCreationException(message,
+null)` — the natural way for an application to say that nothing is retained — was ambiguous and did
+not compile. The retained session is also orthogonal to the message and the inner exception rather
+than an alternative to them: the creation path that carries a session also carries an adapter's
+failure. An initializer composes with all three constructors, where an overload or a static factory
+per combination multiplies them. Resolved while the package's adapters have not shipped, because
+this is new public API and the same change later would be a breaking one.
+
+**Nothing this path creates is left unowned.** Between the factory returning a provider session and
+this session taking ownership of it there is a window in which the provider session belongs to no
+one, and that window throws by design rather than by accident: constructing the session reads the
+provider's usage, which is adapter code, and `ContextUsage` refuses an impossible split rather than
+clamping it — deliberately, so that an adapter's arithmetic defect surfaces where the adapter wrote
+it. Left alone, the instance was discarded, the exception carried no handle, and the provider-side
+session was left with no reference to it anywhere in the process. For a provider holding history
+server-side that is a remote session never discarded, on a condition the library designs for. The
+construction is therefore guarded and the provider session released.
+
+**What the release decides is how the failure is reported.** A released provider session means
+nothing is held and nothing needs handing back, so the adapter's own failure travels unchanged: a
+wrapper would only move it away from the code that produced it, which is the one thing the refusal
+exists to avoid. When the release itself fails there *is* something held and no other handle to it,
+and an `AgentSessionCreationException` carrying it in `RetainedProviderSession` — with the adapter's
+failure as the inner exception — is the only way to hand it back. So this type is not how every
+failed creation is reported; it is how a creation that still holds something is reported.
+
 **Throws:** `ArgumentNullException` for a null options or factory; `InvalidOperationException` when
 the factory returns null; `AgentSessionCreationException` when the created session reports a window
-the session could not converge in; `OperationCanceledException` on cancellation.
+the session could not converge in, or when the session could not be constructed and the provider
+session could not then be released; whatever stopped the construction, unchanged, when the provider
+session was released; `OperationCanceledException` on cancellation.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
@@ -348,6 +378,15 @@ the next turn appends to — and may rotate — the wrong transcript. Performing
 before that await, with nothing to suspend on in the middle, means the provider reference, the
 layout and the counters describe the same session at every point an exception could be observed.
 
+**Why a replacement that cannot be adopted is released rather than orphaned.** Reading a
+replacement's usage is the same adapter code, in the same kind of window: the factory has handed the
+session over and this session has not yet taken it. A failure there leaves this session coherent
+against the provider it already had, which is the correct outcome, and used to leave the replacement
+itself lost — never released, with no handle escaping. It is released before the failure travels on.
+Nothing is handed back on this path, unlike creation, because there is nowhere to hand it: the
+caller holds a working session, and the session it holds is not the one that failed. The rotation is
+simply not carried out, so the conversation stays on the provider that still has it.
+
 **Why a failed disposal does not fail the rotation.** By the time the superseded session is
 disposed, the rotation has already succeeded: the context was consolidated, the replacement was
 created, and this session is coherent against it. The exception is caught and not rethrown, because
@@ -404,6 +443,13 @@ sites that need a usage figure, is what keeps the two provider families on one c
 - **Release fails while refusing an unusable window** — Caught and not reported; the configuration
   error is the one the caller can act on, the release flag stays false on the provider so the release
   remains retryable, and the message says so and names what to retry it with
+- **A provider session cannot be adopted** — The provider session is released and the failure
+  propagates unchanged; at creation, where the caller receives no session, a release that also failed
+  turns the failure into an `AgentSessionCreationException` carrying the provider session with the
+  original as its inner exception
+- **Release fails for a provider session that was never adopted** — At creation the handle is carried
+  on the failure; during a rotation it is discarded, because the caller holds a working session that
+  is not the one that failed and the rotation's own failure is the one it needs
 - **Use after disposal** — `ObjectDisposedException` propagates
 - **Summarizer fails during rotation** — Propagates; the session is left intact and still able to answer
 - **Superseded provider session fails to dispose during rotation** — Caught and not reported; the

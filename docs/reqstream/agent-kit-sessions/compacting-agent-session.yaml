@@ -256,3 +256,51 @@ sections:
             tests:
               - CompactingAgentSession_DisposeAsync_ReleasesTheLiveProviderSession
               - CompactingAgentSession_DisposeAsync_FirstReleaseFails_RetriesAndReleases
+
+          - id: AgentKitSessions-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt
+            title: >-
+              The session shall release a provider session it created but did not adopt, and where
+              it can hand back no session shall carry the unreleased provider session on the
+              failure.
+            justification: |
+              A provider session is created by a factory and then measured before anything takes
+              ownership of it, and that measurement is entitled to fail: it evaluates adapter code,
+              and a usage figure whose split is arithmetically impossible is refused rather than
+              clamped, precisely so an adapter's defect surfaces where the adapter wrote it. A
+              condition the library designs for therefore ran through a window in which the provider
+              session belonged to nobody. The instance that would have owned it was discarded, the
+              failure carried no handle, and the provider-side session was left with no reference to
+              it anywhere - for a provider holding history server-side, a remote session never
+              discarded, once per affected creation or rotation.
+
+              Ownership is therefore taken before the measurement is trusted: both the creation of
+              the first provider session and the creation of a rotation's replacement release the
+              provider session when it cannot be adopted. A rotation that cannot adopt its
+              replacement leaves the conversation on the provider that still holds it and is simply
+              not carried out, which is the outcome that was already correct and is now no longer
+              paid for with a leak.
+
+              How the failure is reported depends on what is still held, because that is the only
+              thing a caller can act on. A released provider session leaves nothing to hand back, so
+              the failure travels unchanged and still names the adapter that produced it; wrapping
+              it would move the failure away from the code that wrote it, which is the one thing the
+              refusal exists to prevent. A release that itself failed leaves something held, and at
+              creation there is no other handle to it in existence, so the failure becomes the
+              creation failure carrying that provider session with the original as its inner
+              exception. A rotation carries nothing back because there is nowhere to carry it: the
+              caller holds a working session, and it is not the one that failed.
+
+              The retained provider session is settled at construction rather than taken as a
+              constructor parameter. Declaring it as a parameter beside the standard message-and-
+              inner-exception constructor made the ordinary construction ambiguous, because neither
+              parameter type converts to the other and the natural way to say that nothing is
+              retained names neither overload. It is also orthogonal to the message and the inner
+              exception rather than an alternative to them, since the creation path that carries a
+              session carries an adapter's failure with it. Resolved while the package's adapters
+              have not shipped, because this is new public API and the same correction later would
+              be a breaking change.
+            tests:
+              - CompactingAgentSession_CreateAsync_ProviderUsageThrows_ReleasesTheProviderSession
+              - CompactingAgentSession_CreateAsync_ProviderUsageThrowsAndReleaseFails_CarriesTheProviderSession
+              - CompactingAgentSession_SendAsync_ReplacementUsageThrows_ReleasesTheReplacement
+              - AgentSessionCreationException_Construct_WithoutARetainedSession_IsUnambiguous
