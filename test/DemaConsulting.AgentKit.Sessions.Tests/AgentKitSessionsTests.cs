@@ -198,12 +198,22 @@ public class AgentKitSessionsTests
     [Fact]
     public async Task AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext()
     {
-        // Arrange: a summarizer that keeps everything it is given, so what survives is decided by
-        // the tier arrangement rather than by a model's discretion
+        // Arrange: a summarizer that does what summarizing is for - drops the routine and collapses
+        // repetition, keeping each distinct thing once. A summarizer that never reduces is a
+        // different scenario entirely, and is exercised in the bound test below rather than here:
+        // with budgets enforced, material that holds no redundancy is dropped by design, so
+        // asserting unbounded retention against it would be asserting a promise no finite window
+        // can keep.
         var summarizer = new FakeSummarizer(request =>
-            string.IsNullOrEmpty(request.PreviousRecord)
-                ? request.Material
-                : request.PreviousRecord + "\n" + request.Material);
+        {
+            var kept = (request.PreviousRecord + "\n" + request.Material)
+                .Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrEmpty(line))
+                .Where(line => !line.Contains("Routine step", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal);
+            return string.Join("\n", kept);
+        });
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn("noted"),
             windowTokens: SessionTestData.ConvergentWindowTokens);
@@ -213,7 +223,7 @@ public class AgentKitSessionsTests
 
         // Act: state a distinctive fact first, then bury it under many later turns
         await session.SendAsync("The deployment key lives at /etc/secrets/deploy.key", TestContext.Current.CancellationToken);
-        for (var turn = 0; turn < 30; turn++)
+        for (var turn = 0; turn < 45; turn++)
         {
             await session.SendAsync($"Routine step {turn} with some padding "
                 + new string('p', 30 * TokenEstimator.CharactersPerToken),
@@ -221,13 +231,90 @@ public class AgentKitSessionsTests
         }
 
         // Assert: the session rotated repeatedly, and the early detail is still in what it sends.
-        // No upper bound here: this summarizer deliberately never reduces, so the session is
-        // genuinely saturated and rotating often is the correct response to material that holds no
-        // redundancy. Convergence is asserted where it is a fair claim - against a summarizer that
-        // stays within its budgets - in the construction-bound test above.
+        // No upper bound on rotations here: the claim under test is retention across many
+        // rotations, not how few of them there are. Convergence is asserted where it is a fair
+        // claim - against a summarizer that stays within its budgets - in the construction-bound
+        // test above.
         Assert.True(session.RotationCount >= 5, $"Expected repeated rotation, saw {session.RotationCount}.");
         var seeded = string.Join("\n", session.Layout.BuildSeed().Select(entry => entry.Text));
-        Assert.Contains("/etc/secrets/deploy.key", seeded, StringComparison.Ordinal);
+        Assert.True(
+            seeded.Contains("/etc/secrets/deploy.key", StringComparison.Ordinal),
+            $"Early detail was not carried after {session.RotationCount} rotations. Seed was:\n{seeded}");
+    }
+
+    /// <summary>
+    ///     Proves a tier budget is a bound rather than a request: a summarizer that never reduces
+    ///     anything still cannot grow the context past the budgets the policy configures.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This is the guarantee the arrangement rests on, and it cannot be delegated to the
+    ///     summarizer. Asking a model for a size does not produce that size — measured against live
+    ///     models, requests in the tens of thousands of tokens came back as a small fraction of
+    ///     them — so a budget that is only ever requested bounds nothing. When consolidation stops
+    ///     deduplicating, the only move arithmetic leaves is to drop the oldest material, and that
+    ///     is what the engine does.
+    ///     </para>
+    ///     <para>
+    ///     Without this, a context that merely tends to stay small is free to stop staying small,
+    ///     which is the failure the whole package exists to prevent.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitSessions_SummarizerThatNeverReduces_StillHoldsTheBound()
+    {
+        // Arrange: the adversarial summarizer - it concatenates, so every consolidation returns
+        // more than it was given and nothing is ever deduplicated
+        var summarizer = new FakeSummarizer(request =>
+            string.IsNullOrEmpty(request.PreviousRecord)
+                ? request.Material
+                : request.PreviousRecord + "\n" + request.Material);
+        var factory = new InMemoryProviderSessionFactory(
+            _ => new ProviderTurn("noted"),
+            windowTokens: SessionTestData.ConvergentWindowTokens);
+        var options = new AgentSessionOptions(
+            summarizer,
+            providerWindowTokens: SessionTestData.ConvergentWindowTokens,
+            compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: enough turns to rotate many times over, checking the bound at each rotation. The
+        // bound describes a rotated context, so immediately after a rotation is the only moment it
+        // is a fair question - tier zero is append-only and grows past its budget between them.
+        var rotations = 0;
+        for (var turn = 0; turn < 40; turn++)
+        {
+            var response = await session.SendAsync(
+                $"Step {turn} " + new string('p', 30 * TokenEstimator.CharactersPerToken),
+                TestContext.Current.CancellationToken);
+
+            if (!response.RotationOccurred)
+            {
+                continue;
+            }
+
+            rotations++;
+
+            // Assert: every tier is within the budget its policy configured, which is what makes
+            // the total a property of the configuration rather than of the summarizer's cooperation
+            foreach (var tier in session.Layout.CoarseTiers)
+            {
+                Assert.True(
+                    tier.EstimatedTokens <= tier.BudgetTokens,
+                    $"After rotation {rotations}, tier {tier.Index} holds {tier.EstimatedTokens} "
+                        + $"tokens against a budget of {tier.BudgetTokens}.");
+            }
+
+            // Assert: and the layout agrees it is within the bound it states for itself
+            Assert.True(
+                session.Layout.IsWithinBound,
+                $"After rotation {rotations}, layout holds {session.Layout.TotalEstimatedTokens} "
+                    + $"tokens against a bound of {session.Layout.MaximumBoundTokens}.");
+        }
+
+        // Assert: it really did rotate repeatedly, so the bound was under continuous pressure
+        Assert.True(rotations >= 5, $"Expected repeated rotation, saw {rotations}.");
     }
 
     /// <summary>

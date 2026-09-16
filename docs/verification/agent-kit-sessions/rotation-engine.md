@@ -179,7 +179,10 @@ Checking only the merge left that rotation reporting an unqualified success.
 
 The third uses a
 two-tier policy with a small coarse tier and asserts a `TierOverBudget` signal, which is the case
-where there is nothing coarser left to degrade into. Without detection both failures are invisible:
+where there is nothing coarser left to degrade into. The signal reports what the consolidation
+returned, and the record it produced is then cut to the budget rather than stored over it — the
+signal says the material could not be reduced, and the cut is what keeps that from also making the
+context unbounded. Without detection both failures are invisible:
 every rotation appears to succeed while buying no room. The fourth refuses a null signal in an
 outcome, following the rule the session response already applies: an outcome holding one reports
 itself saturated while the consumer that goes to read the signal cannot.

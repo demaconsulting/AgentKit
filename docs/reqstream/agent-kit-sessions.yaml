@@ -108,6 +108,23 @@ sections:
           What the library does not do is subtract an estimate from a measurement: the conversation
           figure every threshold comparison uses is supplied by whoever supplied the totals.
 
+          Enforcement is what makes this a bound rather than a request, and it cannot be delegated to
+          the summarizer. A budget is stated in the consolidation prompt, but a model cannot be made
+          to meet it: measured against live models, requests in the tens of thousands of tokens came
+          back as a small fraction of them. So a tier that overflows has its previous record aged out
+          rather than kept - into the next coarser tier where there is one, and at the coarsest tier
+          into nothing at all. Dropping the oldest material is the only move arithmetic leaves once
+          consolidation stops deduplicating, because no finite window holds an unbounded history.
+          Where even the re-recorded material exceeds its tier, the record is cut to the budget,
+          keeping the newest text, so the ceiling holds whatever a summarizer returns.
+
+          The discard is deliberately one large, infrequent block rather than a continuous trim of
+          the oldest characters. Tier records are seeded coarsest-first and so sit at the front of
+          everything the provider receives; shaving the front on every rotation would move the cached
+          prefix every time and forfeit the prompt caching the append-only transcript exists to
+          preserve. Discarding the record outright leaves the tier to refill gradually, so the prefix
+          stays stable across many rotations.
+
           Fitting the window and settling in it are different conditions, and the requirement is the
           second. A rotated context that merely fits still sits above the rotation threshold whenever
           the window is smaller than the bound divided by the rotation fraction, so the next turn
@@ -132,6 +149,7 @@ sections:
         tests:
           - AgentKitSessions_LongConversation_StaysWithinItsConstructionBound
           - AgentKitSessions_SummarizerFillsEveryTier_StillConvergesBetweenRotations
+          - AgentKitSessions_SummarizerThatNeverReduces_StillHoldsTheBound
 
       - id: AgentKitSessions-Compaction-OutOfSessionSummarizer
         title: >-

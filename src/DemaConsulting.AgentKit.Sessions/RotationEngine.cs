@@ -490,11 +490,8 @@ public static class RotationEngine
                 return;
             }
 
-            // The combined record does not fit. Cascade only when there is an older record to move
-            // down and somewhere coarser to move it to.
-            //
-            // "An older record" means a record holding something, not merely a string of non-zero
-            // length. ConsolidateAsync now normalizes a blank summarizer answer to an empty string
+            // "A previous record" means one holding something, not merely a string of non-zero
+            // length. ConsolidateAsync normalizes a blank summarizer answer to an empty string
             // before it is ever stored, so a record reaching here cannot be whitespace by that
             // route. The blank test is kept because a layout may also be composed by a host through
             // ContextTier's public constructor: a whitespace previous record treated as material to
@@ -504,18 +501,41 @@ public static class RotationEngine
             // rotation fails the same way. It is asked of the tier rather than of the string, so
             // this decision, the tier's estimate and ConsolidationRequest.IsDegradation are reading
             // one definition rather than three copies of it.
-            var canCascade = !tier.IsEmpty && tierIndex + 1 < policy.TierCount;
-            if (!canCascade)
+            //
+            // A tier holding nothing has no previous record to age out, so the merge it just made
+            // is already the material recorded alone. Re-recording it would spend a second
+            // summarizer call to ask the identical question, and would report its redundancy twice.
+            // Cutting it to the budget is the only step left.
+            if (tier.IsEmpty)
             {
-                Tiers[slot] = tier.WithContent(merged);
+                Tiers[slot] = tier.WithContent(TruncateToBudget(merged, budget));
                 Saturations.Add(new SaturationSignal(
                     tierIndex, inputTokens, mergedTokens, SaturationReason.TierOverBudget));
                 return;
             }
 
-            // Age the older record one tier coarser - the deliberate degradation the design allows -
-            // then re-record this tier holding only the new material.
-            await AgeAsync(tierIndex + 1, previous, cancellationToken).ConfigureAwait(false);
+            // The combined record does not fit, so the previous record ages out of this tier. Where
+            // there is a coarser tier it ages into that one; at the coarsest tier it ages into
+            // nothing and is discarded. That is the same rule either way - the oldest material
+            // leaves the tier - and it is what makes the bound a property of the configuration
+            // rather than a hope about what a summarizer returns. A summarizer cannot be made to
+            // hit a budget: asked for figures in the tens of thousands of tokens, real models
+            // returned a small fraction of them, so a budget that is merely requested is not a
+            // bound at all.
+            //
+            // The discard is deliberately one large, infrequent block rather than a continuous trim
+            // of the oldest characters. Tier records are seeded coarsest-first, so they sit at the
+            // front of everything the provider receives; shaving a little from that front on every
+            // rotation would change the cached prefix every time and forfeit the prompt caching
+            // this package's append-only transcript exists to preserve. Discarding the record
+            // outright leaves the tier empty to refill gradually, so the prefix stays stable across
+            // many rotations instead of moving under every one.
+            if (tierIndex + 1 < policy.TierCount)
+            {
+                // Age the older record one tier coarser - the deliberate degradation the design
+                // allows - rather than discarding it.
+                await AgeAsync(tierIndex + 1, previous, cancellationToken).ConfigureAwait(false);
+            }
 
             var alone = await ConsolidateAsync(tierIndex, string.Empty, material, budget, cancellationToken)
                 .ConfigureAwait(false);
@@ -538,12 +558,66 @@ public static class RotationEngine
 
             if (aloneTokens > budget)
             {
+                // Last resort, and the step that makes the budget a bound rather than a request.
+                // Everything above asks a summarizer for a size; nothing can make it comply, and a
+                // tier left holding more than its budget is how a context that merely tends to stay
+                // small stops staying small. The record is cut to the budget here, keeping the
+                // newest text and dropping the oldest, so the ceiling holds whatever the summarizer
+                // returns.
+                alone = TruncateToBudget(alone, budget);
+                Tiers[slot] = tier.WithContent(alone);
+
                 Saturations.Add(new SaturationSignal(
                     tierIndex,
                     aloneInputTokens,
                     aloneTokens,
                     SaturationReason.TierOverBudget));
             }
+        }
+
+        /// <summary>
+        ///     Cuts a tier record down to a token budget, keeping the newest text.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     Reached only when a summarizer has returned more than the budget it was given for
+        ///     material it was handed alone, which is the point at which there is nothing left to
+        ///     consolidate away. Dropping the oldest text is then the only move arithmetic leaves:
+        ///     a finite window cannot hold an unbounded history, and a budget that is only ever
+        ///     requested is not a bound.
+        ///     </para>
+        ///     <para>
+        ///     The cut is taken from the front, so what survives is the newest — and least distant —
+        ///     part of the record, and it is snapped forward to a line boundary so the record does
+        ///     not begin mid-sentence. If snapping would leave nothing, the raw cut is kept, because
+        ///     holding the bound matters more than a tidy first line.
+        ///     </para>
+        /// </remarks>
+        /// <param name="text">The record to cut. Must not be <see langword="null"/>.</param>
+        /// <param name="budgetTokens">The tier budget to bring it within. Positive.</param>
+        /// <returns>A record whose estimate is at most <paramref name="budgetTokens"/>.</returns>
+        private static string TruncateToBudget(string text, int budgetTokens)
+        {
+            // The estimator counts four characters to the token, so this is the widest text that
+            // can estimate within the budget. Taken as the inverse of the estimator rather than a
+            // second rule of thumb, so the two cannot disagree.
+            var keep = budgetTokens * TokenEstimator.CharactersPerToken;
+            if (text.Length <= keep)
+            {
+                return text;
+            }
+
+            var cut = text.Length - keep;
+
+            // Snap forward to just past the next line break, so the surviving record starts at the
+            // beginning of a line rather than inside one.
+            var snapped = text.IndexOf('\n', cut);
+            if (snapped >= 0 && snapped + 1 < text.Length)
+            {
+                return text[(snapped + 1)..];
+            }
+
+            return text[cut..];
         }
 
         /// <summary>

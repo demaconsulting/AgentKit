@@ -79,12 +79,39 @@ violation detectable.
 
 **Test**: `AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext`
 
-States a distinctive fact — a specific file path — in the first turn, buries it under thirty later
-turns, and asserts that after at least five rotations the path is still present in the context the
-session would send. The summarizer used here keeps everything it is given, so what survives is
-decided by the tier arrangement and the ratchet rather than by a model's discretion. This is the
-property the tiered scheme exists for, asserted rather than assumed: a flat rolling summary
-re-summarizes its own summary and loses old material entirely.
+States a distinctive fact — a specific file path — in the first turn, buries it under forty-five
+later turns, and asserts that after at least five rotations the path is still present in the context
+the session would send. The summarizer used here behaves as a summarizer does: it drops the routine
+padding and collapses repetition, keeping each distinct thing once, so what survives is decided by
+the tier arrangement and the ratchet rather than by a model's discretion. It deliberately does not
+keep everything it is given — budgets are enforced rather than requested, so a summarizer that never
+reduces has its oldest material dropped, and this test would then be measuring that instead of
+retention. That case is asserted separately below. This is the property the tiered scheme exists for,
+asserted rather than assumed: a flat rolling summary re-summarizes its own summary and loses old
+material entirely.
+
+### Enforcement: A Summarizer That Never Reduces Still Holds the Bound
+
+**Test**: `AgentKitSessions_SummarizerThatNeverReduces_StillHoldsTheBound`
+
+Runs forty turns against a deliberately adversarial summarizer — one that concatenates its inputs, so
+every consolidation returns more than it was given and nothing is ever deduplicated — and asserts, at
+the moment of every rotation, that each tier is within the budget its policy configured and that the
+layout agrees it is within the bound it states for itself.
+
+This is what makes a budget a bound rather than a request, and it cannot be delegated to the
+summarizer. A budget is stated in the consolidation prompt, but no prompt makes a model comply:
+measured against live models, requests in the tens of thousands of tokens came back as a small
+fraction of them. A tier permitted to hold more than its budget makes the construction bound a
+tendency rather than a property, and an arrangement that merely tends to stay small is one that
+eventually does not. Once consolidation stops deduplicating there is nothing left to compress, and
+dropping the oldest material is the only move arithmetic leaves — no finite window holds an unbounded
+history.
+
+The adversarial summarizer is the point of the test. Every other scenario here uses a summarizer that
+cooperates to some degree, and a cooperating summarizer keeps the budgets satisfied on its own, which
+is precisely how an unenforced budget goes unnoticed: the bound held in every test while nothing in
+the engine was holding it.
 
 ### Saturation: A Context That Cannot Be Reduced Says So
 

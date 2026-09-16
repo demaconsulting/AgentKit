@@ -435,15 +435,32 @@ public class CompactingAgentSessionTests
     ///     agent's own output is missing from the history every later turn is seeded from — and an
     ///     agent that uses tools on nearly every turn would lose nearly all of it.
     /// </summary>
+    /// <remarks>
+    ///     The claim is about what a rotation carries into a replacement, so it is asserted against
+    ///     the replacement that rotation created. It deliberately does not assert that the
+    ///     conclusion survives every later rotation as well: the summarizer here keeps everything it
+    ///     is given, and a tier budget is enforced rather than requested, so material that is never
+    ///     reduced is eventually dropped by design. That is asserted directly in
+    ///     <c>AgentKitSessions_SummarizerThatNeverReduces_StillHoldsTheBound</c>.
+    /// </remarks>
     [Fact]
     public async Task CompactingAgentSession_SendAsync_ToolUsingTurnRotates_SeedsTheAnswerIntoTheReplacement()
     {
-        // Arrange: a summarizer that keeps everything it is given, so what survives is decided by
-        // the tier arrangement rather than by a model's discretion
+        // Arrange: a summarizer that behaves like one - it drops the routine padding and collapses
+        // repetition, so what survives is decided by the tier arrangement rather than by a model's
+        // discretion. It deliberately does not simply keep everything: budgets are enforced, so a
+        // summarizer that never reduces has its oldest material dropped, and this test would then
+        // be measuring that rather than whether the answer was recorded at all.
         var summarizer = new FakeSummarizer(request =>
-            string.IsNullOrEmpty(request.PreviousRecord)
-                ? request.Material
-                : request.PreviousRecord + "\n" + request.Material);
+        {
+            var kept = (request.PreviousRecord + "\n" + request.Material)
+                .Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrEmpty(line))
+                .Where(line => !line.Contains("routine step", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal);
+            return string.Join("\n", kept);
+        });
 
         // Arrange: a provider that calls a tool on every turn and states its conclusion only in the
         // answer, which is exactly how a real tool-using adapter reports a turn
@@ -469,9 +486,9 @@ public class CompactingAgentSessionTests
         Assert.True(session.RotationCount >= 1, $"Expected a rotation, saw {session.RotationCount}.");
         Assert.True(factory.Sessions.Count >= 2);
 
-        // Assert: the conclusion the agent reached on that first turn is in what the replacement was
-        // seeded with, not just the tool traffic that led to it
-        var seeded = string.Join("\n", factory.Sessions[^1].Seed.History.Select(entry => entry.Text));
+        // Assert: the conclusion the agent reached on that first turn is in what the rotation seeded
+        // its replacement with, not just the tool traffic that led to it
+        var seeded = string.Join("\n", factory.Sessions[1].Seed.History.Select(entry => entry.Text));
         Assert.Contains("Concluded: where does the deployment key live", seeded, StringComparison.Ordinal);
     }
 

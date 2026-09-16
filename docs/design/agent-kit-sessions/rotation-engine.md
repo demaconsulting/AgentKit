@@ -46,8 +46,8 @@ function from the caller's point of view.
 
 - **`NoRedundancy`** — The consolidation returned output nearly as large as its input, so there is nothing left to
   remove
-- **`TierOverBudget`** — The consolidated record still exceeds its tier's budget, and there was no coarser tier
-  left to age the older record into
+- **`TierOverBudget`** — The consolidated record exceeded its tier's budget, so material was dropped to hold the
+  bound: the older record aged out of the tier, and where the record still did not fit it was cut to the budget
 
 A `SaturationSignal` refuses an undefined `SaturationReason`, checked with `Enum.IsDefined` as
 `TranscriptEntry` and `ContextUsage` check their own enum parameters. The signal exists for an
@@ -145,13 +145,33 @@ two cannot fit together.
 2. If the result is at least the policy's saturation ratio of the combined input, report
    `NoRedundancy`.
 3. If the result fits the tier's budget, store it and stop. This is the common case.
-4. If there is no previous record to age down — where a record of pure whitespace counts as none —
-   or no coarser tier to age it into, store the result anyway and report `TierOverBudget`.
-5. Otherwise age the **previous** record one tier coarser — the deliberate degradation the design
-   allows — then re-consolidate the new material at this tier alone and store that. Apply the same
-   redundancy test to that re-recording, reporting `NoRedundancy` when it is at least the policy's
-   saturation ratio of the material it was given, and report `TierOverBudget` as well if even that
-   exceeds the budget.
+4. If there is no previous record to age out — where a record of pure whitespace counts as none —
+   the merge just made is already the material recorded alone, so cut it to the budget, store it and
+   report `TierOverBudget`. Re-consolidating here would spend a second summarizer call asking the
+   identical question and would report its redundancy twice.
+5. Otherwise age the **previous** record out of this tier: one tier coarser where there is one — the
+   deliberate degradation the design allows — and at the coarsest tier into nothing, discarded. Then
+   re-consolidate the new material at this tier alone and store that. Apply the same redundancy test
+   to that re-recording, reporting `NoRedundancy` when it is at least the policy's saturation ratio
+   of the material it was given. If even that exceeds the budget, cut it to the budget and report
+   `TierOverBudget`.
+
+**Why the budget is enforced rather than requested.** A budget is stated in the consolidation prompt,
+but no prompt makes a model comply: measured against live models, requests in the tens of thousands
+of tokens came back as a small fraction of them. A tier permitted to hold more than its budget makes
+the construction bound a tendency rather than a property, and an arrangement that merely tends to
+stay small is one that eventually does not. Once consolidation stops deduplicating there is nothing
+left to compress, and dropping the oldest material is the only move arithmetic leaves — no finite
+window holds an unbounded history. Aging the previous record out is that drop; cutting an
+over-budget record to its budget, keeping the newest text, is the backstop that holds the ceiling
+whatever a summarizer returns.
+
+**Why the drop is one large block rather than a continuous trim.** Tier records are seeded
+coarsest-first, so they sit at the front of everything the provider receives. Shaving the oldest
+characters off that front at every rotation would move the cached prefix every time and forfeit the
+prompt caching the append-only transcript exists to preserve. Discarding the record outright leaves
+the tier to refill gradually, so the prefix stays stable across many rotations instead of moving
+under every one.
 
 **Why both recordings a cascade performs are tested for redundancy.** A re-recording that returns
 nearly as much as it was given has saturated whether or not it happened to fit the tier. Testing
