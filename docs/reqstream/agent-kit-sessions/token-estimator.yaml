@@ -1,0 +1,86 @@
+---
+# Software Unit Requirements for TokenEstimator
+#
+# These requirements describe the design-level behavior of the TokenEstimator unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: TokenEstimator Requirements
+        requirements:
+          - id: AgentKitSessions-TokenEstimator-DeterministicEstimate
+            title: >-
+              The estimator shall estimate the tokens a run of text occupies from a fixed character
+              ratio, rounding up so that present content is never free and absent content costs
+              nothing.
+            justification: |
+              A real tokenizer is provider- and model-specific and changes with model releases, which
+              would make this library's behavior vary across upgrades and would make the rotation
+              engine impossible to unit-test without a model. Every number the engine computes feeds
+              a threshold decision taken at roughly 70 percent of the effective window, which leaves
+              generous headroom for a cheap estimate to be wrong in. Rounding up matters because a
+              budget that treated short content as free would let an unbounded number of short
+              entries accumulate inside it.
+
+              The rounding addition is int arithmetic and stays there, because the length it is
+              applied to is bounded well below what could wrap one. A string is a single object and
+              the runtime caps one object at two gigabytes - the very-large-object setting raises
+              that for arrays and not for strings - so at two bytes per character the longest string
+              that can exist holds a little under 2^30 characters; measured on this repository's own
+              targets, the largest allocatable length is 1,073,741,791 and one character more throws
+              an out-of-memory failure. The length plus the rounding term therefore reaches at most
+              1,073,741,794, short of half the largest representable count, and a single estimate
+              reaches at most 268,435,448 tokens. That cap is recorded here and in the estimator
+              itself because it is the invariant every other estimate in this package inherits: two
+              or three estimates may be added in plain token arithmetic without wrapping, which is
+              what makes the entry framing allowance and the saturation input sound. It has been
+              raised as an overflow twice and refuted twice, so the reason is written down rather
+              than re-derived in each review.
+            tests:
+              - TokenEstimator_EstimateTokens_AbsentText_ReturnsZero
+              - TokenEstimator_EstimateTokens_WholeMultiple_AppliesCharacterRatio
+              - TokenEstimator_EstimateTokens_PartialToken_RoundsUp
+
+          - id: AgentKitSessions-TokenEstimator-ChargesEntryFraming
+            title: >-
+              The estimator shall charge each transcript entry a flat allowance for its framing in
+              addition to the characters it carries.
+            justification: |
+              Every entry a provider receives is framed - a role marker, message delimiters, and for
+              a tool call or result an identifier tying the pair together - and that framing is
+              charged to the window even when the entry's own text is short. An estimator counting
+              only characters would systematically under-count a long run of small entries, which is
+              exactly the shape a tool-using agent produces.
+            tests:
+              - TokenEstimator_EstimateEntryTokens_AddsFramingAllowance
+              - TokenEstimator_EstimateEntryTokens_NullEntry_Throws
+
+          - id: AgentKitSessions-TokenEstimator-EstimatesToolDeclarations
+            title: >-
+              The estimator shall estimate the fixed overhead of a set of tool declarations from each
+              tool's name, description and schema, returning zero for no tools, rejecting a null
+              tool, and rejecting a declaration block too large for a token count.
+            justification: |
+              Tool declarations are fixed overhead subtracted before any rotation percentage is
+              applied, so they must be measured rather than guessed. The three pieces of text a
+              provider is given are the name a model selects by, the description it selects on, and
+              the schema it fills in. A null tool cannot be estimated, and skipping it would
+              understate the overhead and delay rotation; it is refused instead. Each declaration
+              fits a token count on its own, because a string cannot be longer than the runtime's
+              object cap allows and the ratio only divides, but their sum need not: the total is
+              therefore accumulated in a wider type and rejected before it is narrowed. Each addend
+              is widened before any of them are added rather than after, so the wide accumulator
+              does not depend on a second invariant - that one declaration's three estimates cannot
+              themselves wrap - to be sound. They cannot, because the string cap holds every
+              estimate below 2^28 and three of them below 2^30; the widening is there so that an
+              accumulator existing to catch an overflow is not reached through arithmetic that could
+              have one. An int
+              accumulator would wrap the sum to a small or negative figure, and every site downstream
+              would treat that as a real measurement of the overhead - the effective window, the
+              rotation threshold and the published fixed overhead all describing a window nobody
+              configured. The declarations are the point at which the figure first becomes
+              computable, which is where it is rejected, so no later site has to ask again.
+            tests:
+              - TokenEstimator_EstimateToolDeclarationTokens_NoTools_ReturnsZero
+              - TokenEstimator_EstimateToolDeclarationTokens_GrowsWithToolCount
+              - TokenEstimator_EstimateToolDeclarationTokens_NullTool_Throws

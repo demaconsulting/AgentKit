@@ -1,0 +1,212 @@
+---
+# Software Unit Requirements for RotationEngine
+#
+# These requirements describe the design-level behavior of the RotationEngine unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: RotationEngine Requirements
+        requirements:
+          - id: AgentKitSessions-RotationEngine-Deterministic
+            title: >-
+              The engine shall be a deterministic function of the layout it is given and the
+              summarizer it is injected with, producing identical output for identical input.
+            justification: |
+              Every decision the engine makes - where the tier boundary falls, whether it snaps,
+              which tiers overflow, whether a result saturated - is arithmetic over the layout it was
+              handed. Isolating the one non-deterministic collaborator behind an injected interface
+              means the whole engine can be exercised against a fake, which is the only way the
+              cascade ordering, the ratchet and the boundary snap can be asserted exactly rather than
+              approximately. Determinism is not a convenience here; it is what makes the heart of the
+              system verifiable at all.
+            tests:
+              - RotationEngine_RotateAsync_SameInputs_ProduceIdenticalOutput
+              - RotationEngine_RotateAsync_NullLayout_Throws
+              - RotationEngine_RotateAsync_NullSummarizer_Throws
+
+          - id: AgentKitSessions-RotationEngine-AgesOnlyOverflowingTiers
+            title: >-
+              The engine shall consolidate only where a tier has overflowed, making no summarizer
+              call and changing no tier when the verbatim history already fits and the crossing that
+              triggered the rotation was measured in the same currency as the split.
+            justification: |
+              Summarizer calls are the dominant cost of this arrangement, and consolidating only the
+              tiers that actually overflowed is where the tiered scheme's measured cost advantage
+              over a flat rolling summary comes from - 381,440 against 461,173 summarizer tokens over
+              50 rotations (n = 50 rotations, one run per arrangement, recorded in the compaction
+              spike that preceded this package). A rotation whose recent history already fits is a
+              pure re-seed and should cost nothing. The qualification matters: the split is measured
+              in estimated tokens, so it answers for a crossing measured the same way and for no
+              other - see AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency.
+            tests:
+              - RotationEngine_RotateAsync_NothingOverflows_ConsolidatesNothing
+              - RotationEngine_RotateAsync_Overflow_FoldsIntoTierOneOnly
+
+          - id: AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency
+            title: >-
+              The engine shall be told the currency of the crossing that triggered the rotation,
+              refusing an undefined one, and shall consolidate the whole verbatim history where the
+              crossing was provider-reported and the split finds no overflow, consolidating nothing
+              only where there is no verbatim history at all.
+            justification: |
+              The threshold comparison that triggers a rotation is made in whichever currency the
+              usage figure carries, while the split is measured in this library's estimated tokens
+              throughout. Where the two disagree the trigger has fired on evidence the split cannot
+              see: a provider reporting 500 conversation tokens in a 600-token window crosses a
+              threshold of 420 for a turn whose local estimate is a few dozen tokens against a
+              tier-zero budget of 100. An engine that let the split answer for the trigger would hand
+              the layout back unchanged, create no replacement, and leave the provider to run on into
+              its own compactor - the one outcome this package exists to prevent, and it would be
+              reached with the trigger and the split each behaving exactly as documented in its own
+              currency. Requiring a provider-reported crossing to consolidate the whole verbatim
+              history is what stops it.
+              The two roles are genuinely different and neither can be given up: a provider knows
+              whether the context is too large because it counts its own tokens, and the estimate is
+              all there is for deciding what to consolidate, because no provider can be asked to
+              measure a candidate split. Stating the trigger's currency at the call is what stops the
+              second answering for the first, and an undefined currency is refused for the same
+              reason the other enum-taking members of this package refuse one - a cast integer names
+              nothing to decide from.
+              A forced consolidation takes the whole verbatim history rather than a portion, because
+              nothing here can size a portion in the currency that raised the alarm and a portion
+              chosen in the other may not reduce anything the provider is counting: a turn appends at
+              least a message and an answer, so a rotation shaving an entry or two ages out less than
+              the next turn adds. Consolidating everything reduces the conversation to the tier
+              records alone, is reached through the same split at a budget of zero - which retains
+              nothing, so the whole history travels into one consolidation in the order it was
+              recorded and no pair can be divided because no division is made - and terminates: an
+              empty transcript consolidates nothing and is reported as the non-rotation it is. The
+              boundary snap that keeps a tool call with its result is not exercised on this path and
+              is verified where it decides something, under
+              AgentKitSessions-SessionTranscript-SnapsToolBoundary.
+            tests:
+              - RotationEngine_RotateAsync_ProviderReportedTrigger_ConsolidatesEvenWithoutEstimatedOverflow
+              - RotationEngine_RotateAsync_ProviderReportedTriggerWithEmptyTranscript_ConsolidatesNothing
+              - RotationEngine_RotateAsync_ProviderReportedTriggerWithToolPairs_ConsolidatesTheWholeHistoryInOrder
+              - RotationEngine_RotateAsync_UndefinedTriggerOrigin_Throws
+              - CompactingAgentSession_SendAsync_ProviderReportsACrossingTheEstimateCannotSee_ConsolidatesAnyway
+
+          - id: AgentKitSessions-RotationEngine-FoldsOverflowIntoTiers
+            title: >-
+              The engine shall fold the verbatim history that overflows tier zero into tier one,
+              carrying tier one's existing record forward as an input to the consolidation.
+            justification: |
+              Carrying the previous record in as an input is the ratchet. Without it each
+              consolidation re-summarizes the previous summary, which is a downward ratchet that
+              loses detail repeatedly rather than once - the mechanism by which a flat rolling
+              summary's recall collapses to nothing beyond roughly fifteen rotations. With it, detail
+              an earlier consolidation decided to keep survives unless it is deliberately degraded to
+              a coarser tier.
+            tests:
+              - RotationEngine_RotateAsync_SecondRotation_CarriesThePreviousRecordForward
+              - RotationEngine_RotateAsync_AfterRotation_ContextIsWithinItsConstructionBound
+
+          - id: AgentKitSessions-RotationEngine-CascadesDegradation
+            title: >-
+              Where a tier's consolidated record exceeds its budget, the engine shall degrade that
+              tier's previous record into the next coarser tier and then record the new material at
+              the tier alone, cascading as far as the tiers allow.
+            justification: |
+              The record that ages down is the older one, which is what keeps the hierarchy monotonic
+              in age: coarser always means older. The overflow test is made after consolidating
+              rather than before, because a consolidation compresses - summing the previous record
+              and the new material first would cascade on material that would in fact have fitted
+              once combined, degrading detail that did not need to degrade. The cascade is bounded by
+              the tier count, so the worst case is one degradation per tier.
+            tests:
+              - RotationEngine_RotateAsync_TierOneOverflows_DegradesTheOlderRecordIntoTierTwo
+
+          - id: AgentKitSessions-RotationEngine-ReportsSaturation
+            title: >-
+              The engine shall report any consolidation whose output is at least the policy's
+              saturation ratio of its input, including the re-recording a cascade performs, and a
+              record that still exceeds its tier's budget with no coarser tier to degrade into,
+              naming the tier and the token figures, and an outcome shall refuse a null signal.
+            justification: |
+              Consolidation works by removing redundancy; output nearly as large as its input means
+              there is none left to remove, and further rotations will spend summarizer tokens for no
+              reduction while every rotation continues to appear to succeed. That is as true of the
+              re-recording a cascade performs as of the merge that overflowed, so both are tested:
+              checking only the merge let a cascade whose re-recording had saturated, but which still
+              fitted its tier, report a plain success and lose the signal entirely. Reporting rather
+              than acting on it is deliberate: what to do about a saturated agent depends on what the
+              application is for. Naming the tier and the figures is what makes the report actionable
+              rather than merely alarming, and a null signal is refused for the same reason the
+              session response refuses one - an outcome holding one reports itself saturated while
+              the consumer that goes to read the signal cannot. An undefined saturation reason is
+              refused for the same reason a transcript entry's kind and a usage figure's origin are:
+              the signal exists for an application to decide on, and a cast integer matches no branch
+              it could write.
+            tests:
+              - RotationEngine_RotateAsync_ConsolidationDoesNotReduce_ReportsNoRedundancy
+              - RotationEngine_RotateAsync_CascadeReRecordingDoesNotReduce_ReportsNoRedundancy
+              - RotationEngine_RotateAsync_CoarsestTierCannotFit_ReportsTierOverBudget
+              - SaturationSignal_Construct_InvalidFigures_Throws
+              - SaturationSignal_Construct_UndefinedReason_Throws
+              - RotationOutcome_Construct_NullLayout_Throws
+              - RotationOutcome_Construct_NullSaturationEntry_Throws
+
+          - id: AgentKitSessions-RotationEngine-RejectsMalformedConsolidation
+            title: >-
+              The engine shall reject a summarizer that returns nothing at all, and shall honor
+              cancellation on every path, including the path where the transcript already fits and
+              there is no work to do and the path where the rotation performs a single consolidation.
+            justification: |
+              A null record would be stored and would surface as a missing tier at a later rotation,
+              far from the implementation that caused it; an implementation with nothing to say
+              returns an empty string instead. Cancellation is honored so that a host shutting down
+              is not held open by a summarizer round trip. It is checked once after argument
+              validation rather than only between consolidations, because the no-work path returns
+              before any consolidation is reached: a check placed only there would hand a caller a
+              successful rotation result for a rotation it had already canceled, whenever the
+              transcript happened to fit. Argument validation still comes first, because a malformed
+              call is a defect in the caller and is worth reporting as such even on a canceled
+              token.
+
+              It is also checked immediately after each consolidation returns, before the result is
+              inspected at all. The summarizer contract says only that an implementation MAY honor
+              the token, so one that ignores it answers normally across a cancellation requested
+              while it was running; where a cascade follows, the check before the next consolidation
+              catches that, and where the rotation performs a single consolidation nothing catches it
+              at all. The result was then sized, compared against its tier budget, stored and returned
+              inside a successful outcome that the session seeded a replacement provider session from,
+              on a token the caller had canceled.
+            tests:
+              - RotationEngine_RotateAsync_SummarizerReturnsNull_Throws
+              - RotationEngine_RotateAsync_Canceled_Throws
+              - RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws
+              - RotationEngine_RotateAsync_CanceledDuringTheOnlyConsolidation_DoesNotAcceptTheResult
+
+          - id: AgentKitSessions-RotationEngine-NormalizesBlankRecords
+            title: >-
+              The engine shall normalize a blank summarizer answer to an empty record where it
+              receives it, before the answer is sized, cascaded on or stored, so that a tier recorded
+              from one costs no tokens, raises no saturation and is not seeded.
+            justification: |
+              The summarizer contract forbids only a null answer, so an answer of pure whitespace is
+              one an implementation is entitled to give - and every consumer downstream then had to
+              decide for itself what whitespace meant. Reconciling those consumers one at a time
+              settled what they call such a record and left the value itself intact, so the engine
+              went on measuring it: a blank answer larger than its tier's budget was sized as content,
+              stored as an over-budget record, and reported as tier-over-budget saturation, while the
+              seed omitted the very same record. The session was told its context had saturated on
+              material no provider would ever receive, and the estimating path's usage disagreed with
+              the provider-reported path about the same session. Normalizing at the single boundary
+              a summarizer's answer crosses closes that by removing the value rather than by asking
+              each consumer to read it the same way, so the tier record, the estimated conversation
+              and the seed describe one thing by construction. The blank tests in the layout and the
+              consolidation request are kept as well, because a host composing a layout through the
+              public tier constructor can still supply a blank record by a route no summarizer takes
+              - and every consumer that measures, charges or compares a tier record reaches the same
+              answer about one, because the tier's own cached estimate is zero for a blank record and
+              that estimate is what they all read. The saturation input and the cascade decision ask
+              the tier rather than re-reading its text for exactly that reason: re-estimating it
+              charged whitespace into the ratio that the cascade beside it treated as absent, which
+              suppressed a redundancy signal a consolidation had genuinely earned.
+            tests:
+              - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty
+              - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation
+              - RotationEngine_RotateAsync_BlankPreviousRecord_ChargesItNothingIntoTheSaturationRatio
+              - ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed
+              - ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget

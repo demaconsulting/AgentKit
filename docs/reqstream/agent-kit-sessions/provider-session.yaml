@@ -1,0 +1,67 @@
+---
+# Software Unit Requirements for ProviderSession
+#
+# These requirements describe the design-level behavior of the ProviderSession unit.
+
+sections:
+  - title: AgentKitSessions Requirements
+    sections:
+      - title: ProviderSession Requirements
+        requirements:
+          - id: AgentKitSessions-ProviderSession-AdapterInterface
+            title: >-
+              The provider session contract shall consist of sending a message and asynchronous
+              disposal, with a separate factory creating a session from a seed carrying the
+              instructions, the tools and the history.
+            justification: |
+              This is the whole interface between the compaction engine and a provider adapter, and
+              it is deliberately minimal: the engine sends a message, records what came back, and
+              eventually disposes the session once a fresh one has replaced it. Everything else -
+              streaming, tool invocation, retries, provider configuration - is the adapter's
+              business, and putting it here would tie the engine to a provider shape. The factory is
+              separate from the session because rotation must create a replacement while the engine
+              holds no reference to a provider's API itself. Disposal is in the contract because it
+              is the mechanism that discards server-side history.
+            tests:
+              - ProviderSessionSeed_Construct_CarriesInstructionsToolsAndHistorySeparately
+              - ProviderSessionSeed_Construct_CopiesTheSuppliedLists
+              - InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes
+
+          - id: AgentKitSessions-ProviderSession-RecordsWhatATurnProduced
+            title: >-
+              A provider turn shall carry the answer and the history entries the turn produced, with
+              the entries always ending in an assistant message carrying the answer, recorded exactly
+              once.
+            justification: |
+              The answer and the history entries answer different questions: the answer is what the
+              application shows or acts on, while the entries are what every consumer records - the
+              compaction engine's transcript, and any session keeping its own history from the turns
+              it produced. The turn appends the answer itself, on both paths, because an answer
+              appended by one consumer would be missing from the others and the two records would
+              then describe different conversations. Leaving it out of the entries altogether was
+              worse: an agent that uses tools on nearly every turn would have almost none of its own
+              output in the history a rotation seeds the replacement session from, which is the
+              material the engine exists to preserve. An adapter that already ended its entries with
+              the answer is not made to strip it - a trailing assistant entry carrying exactly the
+              answer is taken to be the answer - so either adapter style yields exactly one copy.
+            tests:
+              - ProviderTurn_Construct_NoEntries_RecordsOneAssistantMessage
+              - ProviderTurn_Construct_WithEntries_PreservesThemAndAppendsTheAnswer
+              - ProviderTurn_Construct_EntriesAlreadyEndingWithTheAnswer_RecordItOnce
+              - ProviderTurn_Construct_TrailingAssistantEntryWithDifferentText_AppendsTheAnswer
+
+          - id: AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn
+            title: >-
+              A seed shall reject a missing tool list, a missing history, and a null entry in either;
+              a turn shall reject a missing answer and a null entry.
+            justification: |
+              Each of these would otherwise be discovered by an adapter mid-construction or by the
+              engine at a later rotation, where the failure would be attributed to the provider
+              rather than to the composition that caused it. Refusing them at construction puts the
+              failure where it can be diagnosed.
+            tests:
+              - ProviderSessionSeed_Construct_NullTools_Throws
+              - ProviderSessionSeed_Construct_NullHistory_Throws
+              - ProviderSessionSeed_Construct_NullHistoryEntry_Throws
+              - ProviderTurn_Construct_NullResponseText_Throws
+              - ProviderTurn_Construct_NullEntry_Throws

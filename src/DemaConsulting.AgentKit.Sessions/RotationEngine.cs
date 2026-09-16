@@ -1,0 +1,707 @@
+namespace DemaConsulting.AgentKit.Sessions;
+
+/// <summary>
+///     Why a consolidation was reported as saturated.
+/// </summary>
+public enum SaturationReason
+{
+    /// <summary>
+    ///     The consolidation returned output nearly as large as its input, so there is no
+    ///     redundancy left in the material to remove.
+    /// </summary>
+    NoRedundancy,
+
+    /// <summary>
+    ///     The consolidated record still exceeds its tier's budget, and there was no coarser tier
+    ///     left to age the older record into.
+    /// </summary>
+    TierOverBudget,
+}
+
+/// <summary>
+///     A report that a rotation could not reduce what it was asked to reduce.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>Surfaced rather than acted upon, deliberately.</b> An agent whose context has saturated
+///     will keep triggering rotations that spend summarizer tokens and buy nothing. Detecting that
+///     is this library's job; deciding what to do about it — warn, stop, split the task, start
+///     fresh — depends on what the application is for, so the signal is handed back rather than
+///     turned into a policy here. Without detection the failure is invisible: every rotation
+///     appears to succeed.
+///     </para>
+///     <para>
+///     Instances are immutable after construction and safe for concurrent use.
+///     </para>
+/// </remarks>
+public sealed class SaturationSignal
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="SaturationSignal"/> class.
+    /// </summary>
+    /// <param name="tierIndex">The tier whose consolidation saturated. Must be one or greater.</param>
+    /// <param name="inputTokens">The estimated tokens handed to the consolidation. Must not be negative.</param>
+    /// <param name="outputTokens">The estimated tokens it returned. Must not be negative.</param>
+    /// <param name="reason">
+    ///     Why the result was treated as saturated. Must be a defined
+    ///     <see cref="SaturationReason"/> member.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="tierIndex"/> is less than one, a token count is negative, or
+    ///     <paramref name="reason"/> is not a defined <see cref="SaturationReason"/> member.
+    /// </exception>
+    public SaturationSignal(int tierIndex, int inputTokens, int outputTokens, SaturationReason reason)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tierIndex, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(inputTokens);
+        ArgumentOutOfRangeException.ThrowIfNegative(outputTokens);
+
+        // A saturation signal is handed to the application to decide on - warn, stop, split the
+        // task, start fresh - and an undefined reason gives it nothing to decide from while
+        // matching no branch it could write. Refused for the same reason the other enum-carrying
+        // constructors in this package refuse one, so the rule is the same everywhere.
+        if (!Enum.IsDefined(reason))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(reason),
+                reason,
+                "The saturation reason must be a defined SaturationReason member.");
+        }
+
+        TierIndex = tierIndex;
+        InputTokens = inputTokens;
+        OutputTokens = outputTokens;
+        Reason = reason;
+    }
+
+    /// <summary>
+    ///     Gets the tier whose consolidation saturated.
+    /// </summary>
+    public int TierIndex { get; }
+
+    /// <summary>
+    ///     Gets the estimated tokens handed to the consolidation.
+    /// </summary>
+    public int InputTokens { get; }
+
+    /// <summary>
+    ///     Gets the estimated tokens the consolidation returned.
+    /// </summary>
+    public int OutputTokens { get; }
+
+    /// <summary>
+    ///     Gets why the result was treated as saturated.
+    /// </summary>
+    public SaturationReason Reason { get; }
+}
+
+/// <summary>
+///     What one rotation produced: the new layout, any saturation reported, and how much
+///     summarizer work it cost.
+/// </summary>
+/// <remarks>
+///     Instances are immutable after construction and safe for concurrent use.
+/// </remarks>
+public sealed class RotationOutcome
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="RotationOutcome"/> class.
+    /// </summary>
+    /// <param name="layout">The layout after rotation. Must not be <see langword="null"/>.</param>
+    /// <param name="saturations">
+    ///     The saturation reports, if any. Must not be <see langword="null"/> and must contain no
+    ///     <see langword="null"/> entry; an empty list means the rotation reduced what it was asked
+    ///     to reduce.
+    /// </param>
+    /// <param name="consolidationCount">
+    ///     How many consolidations the rotation performed. Must not be negative.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="layout"/> or <paramref name="saturations"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="saturations"/> contains a <see langword="null"/> entry.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="consolidationCount"/> is negative.</exception>
+    public RotationOutcome(
+        ContextLayout layout,
+        IReadOnlyList<SaturationSignal> saturations,
+        int consolidationCount)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(saturations);
+        ArgumentOutOfRangeException.ThrowIfNegative(consolidationCount);
+
+        // Reject a null signal before anything is copied, exactly as AgentSessionResponse does: an
+        // outcome holding one would report IsSaturated true while the consumer that went to look at
+        // the signal could not read it, which is worse than reporting nothing at all.
+        if (saturations.Any(signal => signal is null))
+        {
+            throw new ArgumentException("A saturation signal in the list is null.", nameof(saturations));
+        }
+
+        Layout = layout;
+
+        // Copy the signals into storage this outcome owns, exposed only as a read-only view: the
+        // rotation hands over its own mutable working list, and an outcome documented as immutable
+        // must not remain a window onto it.
+        Saturations = Array.AsReadOnly<SaturationSignal>([.. saturations]);
+        ConsolidationCount = consolidationCount;
+    }
+
+    /// <summary>
+    ///     Gets the layout after rotation.
+    /// </summary>
+    /// <remarks>
+    ///     This is what a fresh provider session is seeded from, through
+    ///     <see cref="ContextLayout.BuildSeed"/>.
+    /// </remarks>
+    public ContextLayout Layout { get; }
+
+    /// <summary>
+    ///     Gets the saturation reports, empty when the rotation reduced normally.
+    /// </summary>
+    public IReadOnlyList<SaturationSignal> Saturations { get; }
+
+    /// <summary>
+    ///     Gets how many consolidations the rotation performed.
+    /// </summary>
+    /// <remarks>
+    ///     Exposed because summarizer calls are the dominant cost of this arrangement, and because
+    ///     a test asserting that only the overflowing tiers were consolidated needs to count them.
+    /// </remarks>
+    public int ConsolidationCount { get; }
+
+    /// <summary>
+    ///     Gets a value indicating whether any consolidation in this rotation saturated.
+    /// </summary>
+    public bool IsSaturated => Saturations.Count > 0;
+}
+
+/// <summary>
+///     Ages a session's context by one rotation: a deterministic function from the current layout
+///     and an injected summarizer to the next layout.
+/// </summary>
+/// <remarks>
+///     <para>
+///     <b>Rotation, not in-place reduction.</b> When the context fills, older history is
+///     consolidated and a fresh provider session is created seeded with the preserved content,
+///     after which the session it replaces is disposed. This is the only reduction mechanism both
+///     provider shapes support: one re-sends the whole history on every turn and would accept an
+///     edit, the other keeps history server-side and would not. Rotating is what makes the two
+///     behave identically. This class performs the consolidation half alone: it is a pure function
+///     over a layout and owns no provider session, so creating the replacement and disposing the
+///     one it supersedes belong to <see cref="CompactingAgentSession"/>.
+///     </para>
+///     <para>
+///     <b>Aging happens only here, and in one batch.</b> Between rotations the context is strictly
+///     append-only — nothing already sent is rewritten — which is what preserves a provider's
+///     prompt cache. At rotation every overflowing tier consolidates at once, cascading into
+///     coarser tiers where it must. Batching costs nothing extra, because a rotation invalidates
+///     the cache anyway.
+///     </para>
+///     <para>
+///     <b>The trigger's currency is an input, not an assumption.</b> Whether the context is too
+///     large is a question only the provider can answer when it counts its own tokens; what to
+///     consolidate can only be decided from this library's estimate, because no provider can be
+///     asked to measure a candidate split. The two are different currencies, so the caller states
+///     which one crossed the threshold and the engine refuses to let an estimated split abandon a
+///     rotation a provider-reported crossing asked for. See <see cref="RotateAsync"/>.
+///     </para>
+///     <para>
+///     <b>Deterministic and pure apart from the summarizer.</b> Every decision this class makes —
+///     where the tier boundary falls, whether it snaps, which tiers overflow, whether a result
+///     saturated — is arithmetic over the layout it was handed. Supply a deterministic fake
+///     summarizer and the whole engine is a pure function, which is how it is tested without a
+///     model.
+///     </para>
+///     <para>
+///     This class is static, holds no state, and is safe for concurrent use.
+///     </para>
+/// </remarks>
+public static class RotationEngine
+{
+    /// <summary>
+    ///     Performs one rotation, returning the aged layout and any saturation it detected.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The algorithm, in order:
+    ///     </para>
+    ///     <para>
+    ///     1. Split the verbatim history at tier zero's budget, newest first, snapping the boundary
+    ///     so a tool call is never separated from its result. The retained suffix stays verbatim.
+    ///     </para>
+    ///     <para>
+    ///     2. If nothing overflowed and the trigger was measured in this library's own tokens, no
+    ///     aging is required: the layout is returned unchanged, no summarizer call is made, and the
+    ///     reported consolidation count is zero. That is the correct outcome for a session whose
+    ///     recent history already fits, and it costs this engine nothing. It is <em>not</em> free to
+    ///     a caller that would act on it by replacing a provider session, so the zero consolidation
+    ///     count is the signal to do no such thing; <see cref="CompactingAgentSession"/> treats it
+    ///     as a turn that did not rotate.
+    ///     </para>
+    ///     <para>
+    ///     2a. If nothing overflowed and the trigger was <see cref="ContextUsageOrigin.Provider"/>,
+    ///     the whole verbatim history is consolidated instead — see
+    ///     <paramref name="triggerOrigin"/>. The estimator's opinion that tier zero still has room
+    ///     is not evidence about the provider's own count and must not veto the provider's.
+    ///     </para>
+    ///     <para>
+    ///     3. Otherwise fold the overflow into tier one, cascading: a consolidation whose result
+    ///     still exceeds its tier's budget first ages that tier's <em>previous</em> record down into
+    ///     the next coarser tier — the deliberate degradation the design allows — and then records
+    ///     the new material at this tier alone.
+    ///     </para>
+    ///     <para>
+    ///     Recursion is bounded by the tier count, so the worst case is one cascade per tier.
+    ///     </para>
+    ///     <para>
+    ///     <b>A blank answer is normalized to an empty record where it is received.</b>
+    ///     <see cref="ISummarizer"/> forbids only <see langword="null"/>, so an answer of pure
+    ///     whitespace is permitted; this engine turns one into <see cref="string.Empty"/> before it
+    ///     is sized, cascaded on or stored. A tier recorded from such an answer is therefore empty,
+    ///     costs no tokens, raises no saturation, and is not seeded — the same account the layout
+    ///     and the seed give of it.
+    ///     </para>
+    /// </remarks>
+    /// <param name="layout">The layout to rotate. Must not be <see langword="null"/>.</param>
+    /// <param name="summarizer">
+    ///     The out-of-session summarizer performing each consolidation. Must not be
+    ///     <see langword="null"/>, and must not return <see langword="null"/>.
+    /// </param>
+    /// <param name="triggerOrigin">
+    ///     <para>
+    ///     The currency the decision to rotate was made in. Must be a defined
+    ///     <see cref="ContextUsageOrigin"/> member.
+    ///     </para>
+    ///     <para>
+    ///     <b>Stated by the caller rather than assumed, because the two currencies decide different
+    ///     things.</b> A provider knows <em>whether</em> the context is too large — it counts its
+    ///     own tokens — while this engine's estimate is all there is for deciding <em>what</em> to
+    ///     consolidate, because no provider can be asked to measure a candidate split.
+    ///     <see cref="ContextUsageOrigin.Estimated"/> says the crossing and the split were measured
+    ///     the same way, so the split may also decide there was nothing to do.
+    ///     <see cref="ContextUsageOrigin.Provider"/> says they were not: a split measured in
+    ///     estimated tokens that finds tier zero has room contradicts nothing the provider reported,
+    ///     and a rotation abandoned on that basis leaves the session running into the provider's own
+    ///     compactor, which is the one outcome this package exists to prevent. A provider-reported
+    ///     crossing therefore forces a real consolidation.
+    ///     </para>
+    /// </param>
+    /// <param name="cancellationToken">
+    ///     Cancels the rotation. Checked once after argument validation, so an already-canceled
+    ///     rotation is refused even when the transcript fits and there is no work to do; again
+    ///     before each consolidation, so a cascade already under way stops at the next tier instead
+    ///     of running to completion; and again after each consolidation returns, so a result the
+    ///     summarizer produced across a cancellation requested while it ran is refused rather than
+    ///     sized, stored and returned as a successful rotation. The checks are made by this engine
+    ///     rather than left to the summarizer, because <see cref="ISummarizer"/> only documents that
+    ///     an implementation may honor the token.
+    /// </param>
+    /// <returns>The aged layout, the saturation reports, and the consolidation count.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="layout"/> or <paramref name="summarizer"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="triggerOrigin"/> is not a defined <see cref="ContextUsageOrigin"/> member.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     <paramref name="summarizer"/> returned <see langword="null"/> from a consolidation.
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static async Task<RotationOutcome> RotateAsync(
+        ContextLayout layout,
+        ISummarizer summarizer,
+        ContextUsageOrigin triggerOrigin,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(summarizer);
+
+        // An undefined origin names no currency, and this rotation's decision about whether an
+        // estimated split may abandon it depends entirely on which currency the trigger was in.
+        // Refused rather than defaulted, for the same reason the other enum-taking members of this
+        // package refuse one: a cast integer is a defect in the caller, and guessing at it here
+        // would guess at the very thing the parameter exists to state.
+        if (!Enum.IsDefined(triggerOrigin))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(triggerOrigin),
+                triggerOrigin,
+                "The rotation trigger origin must be a defined ContextUsageOrigin member.");
+        }
+
+        // Honor cancellation before any work is decided on, not merely between consolidations. The
+        // no-work path below returns without ever reaching a consolidation, so a check placed only
+        // there would hand a caller a successful rotation result for a rotation it had already
+        // canceled, whenever the transcript happened to fit. Argument validation comes first,
+        // because a malformed call is a defect in the caller and is worth reporting as such even on
+        // a canceled token.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var policy = layout.Policy;
+
+        // Step 1: decide what stays verbatim. The split snaps the boundary so a tool result never
+        // survives without the call that produced it.
+        var (retained, overflow) = layout.Transcript.SplitAtBudget(policy.TierBudgetTokens[0]);
+
+        // Step 2a: the provider said the context is too large, and this split - measured in
+        // estimated tokens - says tier zero still has room. Those are two different currencies and
+        // the estimated one is not evidence about the reported one, so it does not get to veto it.
+        // A rotation abandoned here would leave the layout unchanged, create no replacement, and
+        // let the provider run on into its own compactor.
+        //
+        // Everything verbatim is consolidated, rather than some smaller portion, because nothing
+        // here can size a portion in the currency that raised the alarm. Shaving the oldest entry
+        // or two would be the gentler answer and is not an answer at all: a turn appends at least a
+        // message and an answer, so a rotation removing fewer entries than the next turn adds never
+        // reduces anything the provider is counting, and the provider's compactor fires anyway
+        // several turns later. Consolidating the whole history reduces the conversation to the tier
+        // records alone, which is the largest reduction this engine can make and the one that is
+        // certain to be a reduction.
+        //
+        // The split is asked for rather than assumed: a budget of zero retains nothing, so every
+        // call and every result travels together into the same consolidation and no pair can be
+        // separated. This cannot recurse or repeat - it replaces the split once, before any
+        // consolidation - and it terminates at an empty transcript, which consolidates nothing and
+        // is reported as the non-rotation it is.
+        if (overflow.Count == 0
+            && triggerOrigin == ContextUsageOrigin.Provider
+            && layout.Transcript.Entries.Count > 0)
+        {
+            (retained, overflow) = layout.Transcript.SplitAtBudget(0);
+        }
+
+        // Step 2b: nothing aged out, so no aging is required and no summarizer call is made. The zero
+        // consolidation count is what tells a caller this produced no new context to seed from.
+        if (overflow.Count == 0)
+        {
+            return new RotationOutcome(layout, [], 0);
+        }
+
+        // Step 3: fold the overflow into tier one, cascading into coarser tiers where required.
+        var state = new RotationState(policy, summarizer, [.. layout.CoarseTiers]);
+        await state.AgeAsync(1, SessionTranscript.Render(overflow), cancellationToken).ConfigureAwait(false);
+
+        return new RotationOutcome(
+            layout.WithTiers(retained, state.Tiers),
+            state.Saturations,
+            state.ConsolidationCount);
+    }
+
+    /// <summary>
+    ///     The mutable working set of one rotation: the tiers being aged, the summarizer performing
+    ///     the consolidations, and what the rotation has observed so far.
+    /// </summary>
+    /// <remarks>
+    ///     Exists so the cascading recursion can carry its accumulating state without a long
+    ///     parameter list or a closure per call. It is created inside
+    ///     <see cref="RotateAsync"/> and never escapes it, so a rotation remains a pure function
+    ///     from the caller's point of view even though this type is mutable.
+    /// </remarks>
+    /// <param name="policy">The policy whose budgets and saturation ratio govern the rotation.</param>
+    /// <param name="summarizer">The out-of-session summarizer performing each consolidation.</param>
+    /// <param name="tiers">The coarse tiers being aged, tier one first. Mutated in place.</param>
+    private sealed class RotationState(CompactionPolicy policy, ISummarizer summarizer, ContextTier[] tiers)
+    {
+        /// <summary>
+        ///     Gets the coarse tiers being aged, tier one first.
+        /// </summary>
+        public ContextTier[] Tiers { get; } = tiers;
+
+        /// <summary>
+        ///     Gets the saturation reports accumulated so far.
+        /// </summary>
+        public List<SaturationSignal> Saturations { get; } = [];
+
+        /// <summary>
+        ///     Gets the number of consolidations performed so far.
+        /// </summary>
+        public int ConsolidationCount { get; private set; }
+
+        /// <summary>
+        ///     Folds material into one tier, aging that tier's existing record into the next coarser
+        ///     tier when the two cannot fit together.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     The overflow test is made <em>after</em> consolidating rather than before, because a
+        ///     consolidation compresses: summing the previous record and the new material first
+        ///     would cascade on material that would in fact have fitted once combined, degrading
+        ///     detail that did not need to degrade.
+        ///     </para>
+        ///     <para>
+        ///     When a cascade is required, the record that ages down is the <em>previous</em> one —
+        ///     the older material — and the tier is then re-recorded holding the new material alone.
+        ///     That ordering is what keeps the hierarchy monotonic in age: coarser always means
+        ///     older.
+        ///     </para>
+        ///     <para>
+        ///     A tier with no previous record cannot cascade, because there is nothing older to move
+        ///     down; if its single consolidation still overflows, that is reported as
+        ///     <see cref="SaturationReason.TierOverBudget"/> rather than papered over.
+        ///     </para>
+        ///     <para>
+        ///     Both recordings a cascade performs — the merge that overflowed and the re-recording
+        ///     of the new material alone — are tested for redundancy. A re-recording that returns
+        ///     nearly as much as it was given has saturated whether or not it happened to fit the
+        ///     tier, and checking only the merge let that rotation report an unqualified success.
+        ///     </para>
+        /// </remarks>
+        /// <param name="tierIndex">The tier to fold into. One or greater, at most the coarsest tier.</param>
+        /// <param name="material">The material to fold in, rendered as labeled text.</param>
+        /// <param name="cancellationToken">Cancels the consolidation.</param>
+        /// <returns>A task completing when the tier, and any coarser tier it cascaded into, is settled.</returns>
+        /// <exception cref="InvalidOperationException">The summarizer returned <see langword="null"/>.</exception>
+        public async Task AgeAsync(int tierIndex, string material, CancellationToken cancellationToken)
+        {
+            var slot = tierIndex - 1;
+            var tier = Tiers[slot];
+            var previous = tier.Content;
+            var budget = policy.TierBudgetTokens[tierIndex];
+
+            // Consolidate the previous record together with the new material. The previous record
+            // is an input rather than context: this is the ratchet that keeps detail an earlier
+            // consolidation decided to keep.
+            var merged = await ConsolidateAsync(tierIndex, previous, material, budget, cancellationToken)
+                .ConfigureAwait(false);
+            var mergedTokens = TokenEstimator.EstimateTokens(merged);
+
+            // The previous record is charged through the tier's own cached estimate rather than
+            // re-estimated from its text, because that estimate is where this package's single
+            // definition of empty is applied: a blank record is an empty one and costs nothing.
+            // Estimating the text directly charged a whitespace record its characters into the
+            // saturation input, so the ratio was taken against material the cascade test below
+            // treats as absent and the seed never carries - the same string read two ways within
+            // one method.
+            var inputTokens = tier.EstimatedTokens + TokenEstimator.EstimateTokens(material);
+
+            // A result nearly as large as its input means the material holds no redundancy left to
+            // remove; rotating again would spend summarizer tokens for no reduction.
+            if (inputTokens > 0 && mergedTokens >= policy.SaturationRatio * inputTokens)
+            {
+                Saturations.Add(new SaturationSignal(
+                    tierIndex, inputTokens, mergedTokens, SaturationReason.NoRedundancy));
+            }
+
+            // The common case: the combined record fits, and nothing needs to degrade.
+            if (mergedTokens <= budget)
+            {
+                Tiers[slot] = tier.WithContent(merged);
+                return;
+            }
+
+            // "A previous record" means one holding something, not merely a string of non-zero
+            // length. ConsolidateAsync normalizes a blank summarizer answer to an empty string
+            // before it is ever stored, so a record reaching here cannot be whitespace by that
+            // route. The blank test is kept because a layout may also be composed by a host through
+            // ContextTier's public constructor: a whitespace previous record treated as material to
+            // cascade is handed to a ConsolidationRequest, which refuses blank material, throwing an
+            // ArgumentException out of this method that RotateAsync does not document and SendAsync
+            // does not expect - and the whitespace record is permanent state by then, so every later
+            // rotation fails the same way. It is asked of the tier rather than of the string, so
+            // this decision, the tier's estimate and ConsolidationRequest.IsDegradation are reading
+            // one definition rather than three copies of it.
+            //
+            // A tier holding nothing has no previous record to age out, so the merge it just made
+            // is already the material recorded alone. Re-recording it would spend a second
+            // summarizer call to ask the identical question, and would report its redundancy twice.
+            // Cutting it to the budget is the only step left.
+            if (tier.IsEmpty)
+            {
+                Tiers[slot] = tier.WithContent(TruncateToBudget(merged, budget));
+                Saturations.Add(new SaturationSignal(
+                    tierIndex, inputTokens, mergedTokens, SaturationReason.TierOverBudget));
+                return;
+            }
+
+            // The combined record does not fit, so the previous record ages out of this tier. Where
+            // there is a coarser tier it ages into that one; at the coarsest tier it ages into
+            // nothing and is discarded. That is the same rule either way - the oldest material
+            // leaves the tier - and it is what makes the bound a property of the configuration
+            // rather than a hope about what a summarizer returns. A summarizer cannot be made to
+            // hit a budget: asked for figures in the tens of thousands of tokens, real models
+            // returned a small fraction of them, so a budget that is merely requested is not a
+            // bound at all.
+            //
+            // The discard is deliberately one large, infrequent block rather than a continuous trim
+            // of the oldest characters. Tier records are seeded coarsest-first, so they sit at the
+            // front of everything the provider receives; shaving a little from that front on every
+            // rotation would change the cached prefix every time and forfeit the prompt caching
+            // this package's append-only transcript exists to preserve. Discarding the record
+            // outright leaves the tier empty to refill gradually, so the prefix stays stable across
+            // many rotations instead of moving under every one.
+            if (tierIndex + 1 < policy.TierCount)
+            {
+                // Age the older record one tier coarser - the deliberate degradation the design
+                // allows - rather than discarding it.
+                await AgeAsync(tierIndex + 1, previous, cancellationToken).ConfigureAwait(false);
+            }
+
+            var alone = await ConsolidateAsync(tierIndex, string.Empty, material, budget, cancellationToken)
+                .ConfigureAwait(false);
+            Tiers[slot] = tier.WithContent(alone);
+
+            var aloneTokens = TokenEstimator.EstimateTokens(alone);
+            var aloneInputTokens = TokenEstimator.EstimateTokens(material);
+
+            // The same redundancy test the merge above is given. A re-recording that returns nearly
+            // as much as the material it was handed says the material holds nothing left to remove,
+            // and that is just as true on the cascade path as on the common one. Omitting it here
+            // let a rotation that had in fact saturated report a plain success, because a result at
+            // or above the saturation ratio that still fits the tier passes the over-budget check
+            // below and would then have been reported as nothing at all.
+            if (aloneInputTokens > 0 && aloneTokens >= policy.SaturationRatio * aloneInputTokens)
+            {
+                Saturations.Add(new SaturationSignal(
+                    tierIndex, aloneInputTokens, aloneTokens, SaturationReason.NoRedundancy));
+            }
+
+            if (aloneTokens > budget)
+            {
+                // Last resort, and the step that makes the budget a bound rather than a request.
+                // Everything above asks a summarizer for a size; nothing can make it comply, and a
+                // tier left holding more than its budget is how a context that merely tends to stay
+                // small stops staying small. The record is cut to the budget here, keeping the
+                // newest text and dropping the oldest, so the ceiling holds whatever the summarizer
+                // returns.
+                alone = TruncateToBudget(alone, budget);
+                Tiers[slot] = tier.WithContent(alone);
+
+                Saturations.Add(new SaturationSignal(
+                    tierIndex,
+                    aloneInputTokens,
+                    aloneTokens,
+                    SaturationReason.TierOverBudget));
+            }
+        }
+
+        /// <summary>
+        ///     Cuts a tier record down to a token budget, keeping the newest text.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     Reached only when a summarizer has returned more than the budget it was given for
+        ///     material it was handed alone, which is the point at which there is nothing left to
+        ///     consolidate away. Dropping the oldest text is then the only move arithmetic leaves:
+        ///     a finite window cannot hold an unbounded history, and a budget that is only ever
+        ///     requested is not a bound.
+        ///     </para>
+        ///     <para>
+        ///     The cut is taken from the front, so what survives is the newest — and least distant —
+        ///     part of the record, and it is snapped forward to a line boundary so the record does
+        ///     not begin mid-sentence. If snapping would leave nothing, the raw cut is kept, because
+        ///     holding the bound matters more than a tidy first line.
+        ///     </para>
+        /// </remarks>
+        /// <param name="text">The record to cut. Must not be <see langword="null"/>.</param>
+        /// <param name="budgetTokens">The tier budget to bring it within. Positive.</param>
+        /// <returns>A record whose estimate is at most <paramref name="budgetTokens"/>.</returns>
+        private static string TruncateToBudget(string text, int budgetTokens)
+        {
+            // The estimator counts four characters to the token, so this is the widest text that
+            // can estimate within the budget. Taken as the inverse of the estimator rather than a
+            // second rule of thumb, so the two cannot disagree.
+            var keep = budgetTokens * TokenEstimator.CharactersPerToken;
+            if (text.Length <= keep)
+            {
+                return text;
+            }
+
+            var cut = text.Length - keep;
+
+            // Snap forward to just past the next line break, so the surviving record starts at the
+            // beginning of a line rather than inside one.
+            var snapped = text.IndexOf('\n', cut);
+            if (snapped >= 0 && snapped + 1 < text.Length)
+            {
+                return text[(snapped + 1)..];
+            }
+
+            return text[cut..];
+        }
+
+        /// <summary>
+        ///     Performs one consolidation, normalizes its result, and counts it.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///     Centralizes the null check on the summarizer's result so every call site is protected
+        ///     by it, and centralizes the count so the reported
+        ///     <see cref="RotationOutcome.ConsolidationCount"/> cannot drift from what actually
+        ///     happened.
+        ///     </para>
+        ///     <para>
+        ///     <b>This is the one boundary a summarizer's answer crosses, so it is where blank
+        ///     becomes empty.</b> <see cref="ISummarizer"/> forbids only <see langword="null"/>, so
+        ///     an answer of pure whitespace is contract-conformant — and every consumer downstream
+        ///     then had to decide for itself what whitespace meant. Reconciling those consumers one
+        ///     at a time settled what they call it and left the value intact, so the engine went on
+        ///     sizing whitespace as content: a blank answer larger than its tier's budget was
+        ///     measured over budget, stored, and reported as
+        ///     <see cref="SaturationReason.TierOverBudget"/> saturation, while
+        ///     <see cref="ContextLayout.BuildSeed"/> skipped the very same record — the session was
+        ///     told its context had saturated on material no provider would ever receive, and the
+        ///     estimating path's usage disagreed with the provider-reported one about the same
+        ///     session. Normalizing here, before any tier sizing, cascade decision or storage sees
+        ///     the value, means every consumer shares one definition of empty by construction rather
+        ///     than by agreement.
+        ///     </para>
+        /// </remarks>
+        /// <param name="tierIndex">The tier the result belongs to.</param>
+        /// <param name="previousRecord">The record to carry forward, empty when there is none.</param>
+        /// <param name="material">The material to fold in.</param>
+        /// <param name="budgetTokens">The tier's budget, passed for the summarizer's information.</param>
+        /// <param name="cancellationToken">
+        ///     Cancels the consolidation, checked before it is made and again before its result is
+        ///     accepted.
+        /// </param>
+        /// <returns>
+        ///     The consolidated record, never <see langword="null"/> and never blank: an answer of
+        ///     pure whitespace is returned as an empty string.
+        /// </returns>
+        /// <exception cref="InvalidOperationException">The summarizer returned <see langword="null"/>.</exception>
+        /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+        private async Task<string> ConsolidateAsync(
+            int tierIndex,
+            string previousRecord,
+            string material,
+            int budgetTokens,
+            CancellationToken cancellationToken)
+        {
+            var request = new ConsolidationRequest(tierIndex, previousRecord, material, budgetTokens);
+
+            // Checked before every summarizer call, not merely once at the top of the rotation. A
+            // cascade is one model call per tier, and ISummarizer only documents that an
+            // implementation MAY honor the token - so an implementation that ignores it let a whole
+            // cascade run to completion after the caller had canceled, which is precisely the cost
+            // the check exists to avoid. Placed before the count is incremented so a refused
+            // consolidation is never counted as one that happened.
+            cancellationToken.ThrowIfCancellationRequested();
+            ConsolidationCount++;
+
+            var result = await summarizer.ConsolidateAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // Checked again, on the far side of the await. The check above refuses a consolidation
+            // the caller had already canceled; this one refuses a result produced across a
+            // cancellation requested while the summarizer was running. ISummarizer only documents
+            // that an implementation MAY honor the token, so an implementation that ignores it
+            // returns a perfectly ordinary answer after the caller has given up - and where this is
+            // the last or the only consolidation, there is no later check to catch it: the result
+            // was sized, stored in its tier, and RotateAsync returned an outcome the session went on
+            // to seed a replacement provider session from, all on a canceled token. Placed before
+            // the result is inspected at all, so nothing produced after cancellation is accepted
+            // even as far as a null test.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (result is null)
+            {
+                throw new InvalidOperationException(
+                    $"The summarizer returned null for a tier {tierIndex} consolidation; "
+                    + "an implementation with nothing to say must return an empty string.");
+            }
+
+            // Blank becomes empty here and nowhere else; see the remarks above.
+            return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
+        }
+    }
+}

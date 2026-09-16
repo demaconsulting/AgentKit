@@ -1,0 +1,82 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Build Configuration -->
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Code Quality Configuration -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+  <!-- Implicit Usings -->
+  <ItemGroup>
+    <Using Include="Polyfills" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Test Framework Dependencies -->
+  <ItemGroup>
+    <!-- coverlet.MTP is coverlet's native Microsoft.Testing.Platform extension (the VSTest-only
+         coverlet.collector no longer runs under the MTP 'dotnet test' mode required by xunit.v3).
+         Child-element form configures both PrivateAssets and IncludeAssets:
+         - PrivateAssets="all" keeps this test-coverage tool out of any consuming project's dependencies.
+         - IncludeAssets lists all asset types (including 'build' and 'buildtransitive') to ensure the
+           extension's MSBuild targets are activated so coverage is collected during test runs. -->
+    <PackageReference Include="coverlet.MTP" Version="10.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Roslyn: used by the XML-documentation example verifier to compile every documented
+         example code block against the real API. Test-only; no runtime dependency is added to
+         any shipped package. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0" />
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Code Analysis Dependencies -->
+  <ItemGroup>
+    <!-- Analyzer packages use child-element form to configure both PrivateAssets and IncludeAssets:
+         - PrivateAssets="all" prevents these build-time analyzers from becoming transitive dependencies
+           in any project that references this test project.
+         - IncludeAssets lists all asset types (including 'analyzers' and 'buildtransitive') to ensure
+           Roslyn analyzers and MSBuild targets are fully activated during the build. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.401">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Shared Test Sources -->
+  <ItemGroup>
+    <!-- Linked rather than referenced: a shared project reference would publish another assembly
+         into this test project's output and change what the example verifier sees there. -->
+    <Compile Include="..\Shared\XmlDocExampleVerifier.cs" Link="XmlDocExampleVerifier.cs" />
+  </ItemGroup>
+
+  <!-- Project References -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Sessions\DemaConsulting.AgentKit.Sessions.csproj" />
+  </ItemGroup>
+
+</Project>

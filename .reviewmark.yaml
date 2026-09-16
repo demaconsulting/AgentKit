@@ -1042,6 +1042,211 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
 
+  # AgentKitSessions-Architecture Review (one per system)
+  - id: AgentKitSessions-Architecture
+    title: Review that AgentKitSessions Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-sessions.yaml"                      # system requirements
+      - "docs/design/introduction.md"                                 # design introduction
+      - "docs/design/agent-kit-sessions.md"                           # system design
+      - "docs/verification/introduction.md"                           # verification introduction
+      - "docs/verification/agent-kit-sessions.md"                     # system verification
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/AgentKitSessionsTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/FakeSummarizer.cs"  # deterministic summarizer fake
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/SessionTestData.cs"  # exact-size transcript builders
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+
+  # AgentKitSessions-Design Review (one per system)
+  - id: AgentKitSessions-Design
+    title: Review that AgentKitSessions Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                                 # design introduction
+      - "docs/design/agent-kit-sessions.md"                           # system design
+      - "docs/design/agent-kit-sessions/**/*.md"                      # all system design documents
+      - "docs/design/ots.md"                                          # OTS overview
+
+  # AgentKitSessions-Verification Review (one per system)
+  - id: AgentKitSessions-Verification
+    title: Review that AgentKitSessions Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/verification/introduction.md"                           # verification introduction
+      - "docs/verification/agent-kit-sessions.md"                     # system verification
+      - "docs/verification/agent-kit-sessions/**/*.md"                # all verification documents
+      - "docs/verification/ots.md"                                    # OTS overview
+
+  # AgentKitSessions-AllRequirements Review (one per system)
+  - id: AgentKitSessions-AllRequirements
+    title: Review that All AgentKitSessions Requirements are Complete
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/**/*.yaml"                 # all Sessions requirements files
+
+  # AgentKitSessions-AgentSession Review (one per unit)
+  - id: AgentKitSessions-AgentSession
+    title: Review that AgentKitSessions AgentSession Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/agent-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/agent-session.md"        # unit design
+      - "docs/verification/agent-kit-sessions/agent-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/AgentSession.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/AgentSessionTests.cs"  # unit tests
+
+  # AgentKitSessions-AgentSessionOptions Review (one per unit)
+  - id: AgentKitSessions-AgentSessionOptions
+    title: Review that AgentKitSessions AgentSessionOptions Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/agent-session-options.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/agent-session-options.md"        # unit design
+      - "docs/verification/agent-kit-sessions/agent-session-options.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/AgentSessionOptions.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/AgentSessionOptionsTests.cs"  # unit tests
+
+  # AgentKitSessions-CompactionPolicy Review (one per unit)
+  - id: AgentKitSessions-CompactionPolicy
+    title: Review that AgentKitSessions CompactionPolicy Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/compaction-policy.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/compaction-policy.md"        # unit design
+      - "docs/verification/agent-kit-sessions/compaction-policy.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/CompactionPolicy.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/CompactionPolicyTests.cs"  # unit tests
+
+  # AgentKitSessions-ContextUsage Review (one per unit)
+  - id: AgentKitSessions-ContextUsage
+    title: Review that AgentKitSessions ContextUsage Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/context-usage.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/context-usage.md"        # unit design
+      - "docs/verification/agent-kit-sessions/context-usage.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/ContextUsage.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/ContextUsageTests.cs"  # unit tests
+
+  # AgentKitSessions-TokenEstimator Review (one per unit)
+  - id: AgentKitSessions-TokenEstimator
+    title: Review that AgentKitSessions TokenEstimator Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/token-estimator.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/token-estimator.md"        # unit design
+      - "docs/verification/agent-kit-sessions/token-estimator.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/TokenEstimator.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/TokenEstimatorTests.cs"  # unit tests
+
+  # AgentKitSessions-SessionTranscript Review (one per unit)
+  - id: AgentKitSessions-SessionTranscript
+    title: Review that AgentKitSessions SessionTranscript Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/session-transcript.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/session-transcript.md"        # unit design
+      - "docs/verification/agent-kit-sessions/session-transcript.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/SessionTranscript.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/SessionTranscriptTests.cs"  # unit tests
+
+  # AgentKitSessions-ContextLayout Review (one per unit)
+  - id: AgentKitSessions-ContextLayout
+    title: Review that AgentKitSessions ContextLayout Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/context-layout.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/context-layout.md"        # unit design
+      - "docs/verification/agent-kit-sessions/context-layout.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/ContextLayout.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/ContextLayoutTests.cs"  # unit tests
+
+  # AgentKitSessions-RotationEngine Review (one per unit)
+  - id: AgentKitSessions-RotationEngine
+    title: Review that AgentKitSessions RotationEngine Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/rotation-engine.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/rotation-engine.md"        # unit design
+      - "docs/verification/agent-kit-sessions/rotation-engine.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/RotationEngine.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/RotationEngineTests.cs"  # unit tests
+
+  # AgentKitSessions-Summarizer Review (one per unit)
+  - id: AgentKitSessions-Summarizer
+    title: Review that AgentKitSessions Summarizer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/summarizer.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/summarizer.md"        # unit design
+      - "docs/verification/agent-kit-sessions/summarizer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/Summarizer.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/SummarizerTests.cs"  # unit tests
+
+  # AgentKitSessions-ProviderSession Review (one per unit)
+  - id: AgentKitSessions-ProviderSession
+    title: Review that AgentKitSessions ProviderSession Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/provider-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/provider-session.md"        # unit design
+      - "docs/verification/agent-kit-sessions/provider-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/ProviderSession.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/ProviderSessionTests.cs"  # unit tests
+
+  # AgentKitSessions-InMemoryProviderSession Review (one per unit)
+  - id: AgentKitSessions-InMemoryProviderSession
+    title: Review that AgentKitSessions InMemoryProviderSession Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/in-memory-provider-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/in-memory-provider-session.md"        # unit design
+      - "docs/verification/agent-kit-sessions/in-memory-provider-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/InMemoryProviderSession.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/InMemoryProviderSessionTests.cs"  # unit tests
+
+  # AgentKitSessions-CompactingAgentSession Review (one per unit)
+  - id: AgentKitSessions-CompactingAgentSession
+    title: Review that AgentKitSessions CompactingAgentSession Implementation is Correct
+    context:
+      - "docs/design/agent-kit-sessions.md"
+      - "docs/reqstream/agent-kit-sessions.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-sessions/compacting-agent-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-sessions/compacting-agent-session.md"        # unit design
+      - "docs/verification/agent-kit-sessions/compacting-agent-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Sessions/CompactingAgentSession.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/CompactingAgentSessionTests.cs"  # unit tests
+
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark
     title: Review that ApiMark Provides Required Functionality

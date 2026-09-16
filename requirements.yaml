@@ -70,6 +70,20 @@ includes:
   - docs/reqstream/agent-kit-agents-copilot.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml
+  - docs/reqstream/agent-kit-sessions.yaml
+  - docs/reqstream/agent-kit-sessions/agent-session.yaml
+  - docs/reqstream/agent-kit-sessions/agent-session-options.yaml
+  - docs/reqstream/agent-kit-sessions/compaction-policy.yaml
+  - docs/reqstream/agent-kit-sessions/context-usage.yaml
+  - docs/reqstream/agent-kit-sessions/token-estimator.yaml
+  - docs/reqstream/agent-kit-sessions/session-transcript.yaml
+  - docs/reqstream/agent-kit-sessions/context-layout.yaml
+  - docs/reqstream/agent-kit-sessions/rotation-engine.yaml
+  - docs/reqstream/agent-kit-sessions/summarizer.yaml
+  - docs/reqstream/agent-kit-sessions/provider-session.yaml
+  - docs/reqstream/agent-kit-sessions/in-memory-provider-session.yaml
+  - docs/reqstream/agent-kit-sessions/compacting-agent-session.yaml
+  - docs/reqstream/agent-kit-sessions/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/apimark.yaml
   - docs/reqstream/ots/reqstream.yaml
