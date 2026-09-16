@@ -144,11 +144,6 @@ public sealed class AgentSessionOptions
     public IReadOnlyList<AIFunction> Tools { get; }
 
     /// <summary>
-    ///     Gets the provider's context window in tokens.
-    /// </summary>
-    public int ProviderWindowTokens { get; }
-
-    /// <summary>
     ///     Gets the compaction controls.
     /// </summary>
     public CompactionPolicy Compaction { get; }
@@ -177,33 +172,10 @@ public sealed class AgentSessionOptions
     ///     Gets the fixed overhead present on every turn: the system prompt plus the tool declarations.
     /// </summary>
     /// <remarks>
-    ///     An estimate, and used only where an estimate is the only figure available: against the
-    ///     configured window, to derive <see cref="EffectiveWindowTokens"/> and
-    ///     <see cref="RotationThresholdTokens"/>. It is never subtracted from a figure a provider
-    ///     reported — that provider reports its own overhead alongside its own totals, and mixing
-    ///     the two would produce a number in neither currency.
+    ///     An estimate, published so an application can see what its instructions and tool set cost
+    ///     before a session starts. The engine does not compare it against anything a provider
+    ///     reports: a provider reports its own overhead alongside its own totals, and mixing the two
+    ///     would produce a number in neither currency.
     /// </remarks>
     public int FixedOverheadTokens => SystemTokens + ToolDeclarationTokens;
-
-    /// <summary>
-    ///     Gets the window left for conversation once the fixed overhead is paid for.
-    /// </summary>
-    /// <remarks>
-    ///     Always positive: a configuration whose overhead consumed the whole window is refused at
-    ///     construction.
-    /// </remarks>
-    public int EffectiveWindowTokens { get; }
-
-    /// <summary>
-    ///     Gets the conversation size at which the session rotates when the provider reports no
-    ///     window of its own.
-    /// </summary>
-    /// <remarks>
-    ///     The effective window multiplied by the internal rotation fraction, truncated, and never
-    ///     below one token. Compared against the estimated conversation size, so both sides of that
-    ///     comparison are estimates and neither is corrupted by the other's currency. A provider
-    ///     that reports its own window is measured against that window instead, by the same
-    ///     arithmetic and with that provider's own reported overhead removed from it.
-    /// </remarks>
-    public int RotationThresholdTokens { get; }
 }

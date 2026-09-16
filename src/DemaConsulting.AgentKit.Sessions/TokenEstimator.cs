@@ -144,10 +144,10 @@ internal static class TokenEstimator
     /// <remarks>
     ///     <para>
     ///     Tool declarations are sent with every request and are not conversation: they are
-    ///     <em>fixed overhead</em>, which is why this figure is subtracted from the provider window
-    ///     before any rotation percentage is applied — see
-    ///     <see cref="AgentSessionOptions.EffectiveWindowTokens"/>. Treating them as conversation
-    ///     would make the rotation threshold drift with how many tools an application attached.
+    ///     <em>fixed overhead</em>, which is why a provider reporting its own figures breaks them
+    ///     out — see <see cref="AgentSessionOptions.FixedOverheadTokens"/> for this library's own
+    ///     estimate of the same thing. Treating them as conversation would make the rotation
+    ///     threshold drift with how many tools an application attached.
     ///     </para>
     ///     <para>
     ///     A representative figure: the compaction spike that preceded this package measured a
