@@ -67,11 +67,22 @@ the silent-provider path.
 **Tests**:
 
 - `CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates`
+- `CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher`
+- `CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot`
 - `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
 The divergent-tokenizer theory runs at 1x, 2x and 3x divergence and asserts every turn receives a
-response. The tight-window test uses a divergent provider and asserts at least one response reports
-`CompactionLevel.High` and at least one reports `MaterialDropped`.
+response: a liveness property proving the session keeps answering and terminates rather than churning
+silently or throwing. Divergence is then exercised as a difference: at a provider window equal to the
+configured window, a 2x and 3x provider rotates strictly more often and escalates to a strictly higher
+compaction level than a 1x provider — Rule 2 reading the provider's own count against its own window;
+and when the application configures a budget tighter than the provider's real window, a 2x provider
+reaches `CompactionLevel.High` and reports `MaterialDropped` where a 1x provider does neither, because
+divergence-driven early rotation yields a seed the estimate-currency Rule 5 threshold rejects. Each
+divergence test collapses and fails if the multiplier is reverted to 1x. The tight-window test is a
+session-level Rule 5 test: with a window too small to hold a full structure it uses a non-divergent
+provider and asserts at least one response reports `CompactionLevel.High` and at least one reports
+`MaterialDropped`.
 
 #### AgentKitSessions-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt: Nothing Created Is Lost
 

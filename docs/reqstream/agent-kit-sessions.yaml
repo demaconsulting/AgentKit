@@ -114,6 +114,8 @@ sections:
           - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
           - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
           - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
+          - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
+          - CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot
 
       - id: AgentKitSessions-Compaction-OutOfSessionSummarizer
         title: >-

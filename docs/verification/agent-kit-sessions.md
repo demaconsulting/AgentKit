@@ -82,12 +82,18 @@ round-robin retention structure rather than model memory.
 
 - `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
 - `CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates`
+- `CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher`
+- `CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot`
 - `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
-These tests cover the redesigned fitting strategy. A normal long conversation keeps answering, a
-provider fake at 1x, 2x and 3x tokenizer divergence completes every turn, and a tight divergent
-window escalates to `CompactionLevel.High` and reports `MaterialDropped`. Together they verify
-escalate-until-it-fits and drop-until-it-fits without predicting in mixed currencies.
+These tests cover the redesigned fitting strategy. A normal long conversation keeps answering, and a
+provider fake at 1x, 2x and 3x tokenizer divergence completes every turn. Divergence is then verified
+as a difference rather than asserted away: a 2x and 3x provider rotates strictly more often and
+escalates to a strictly higher level than a 1x one, and under a configured budget tighter than the
+provider window a 2x provider reaches `CompactionLevel.High` and reports `MaterialDropped` where a 1x
+provider does neither — each collapsing and failing if reverted to 1x. Separately, a window too small
+to hold a full structure escalates to `CompactionLevel.High` and reports `MaterialDropped`. Together
+they verify escalate-until-it-fits and drop-until-it-fits without predicting in mixed currencies.
 
 ### Out-of-Session Summarizer: Consolidation Is Deterministic
 
@@ -109,7 +115,8 @@ together.
 
 **Test**: `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
-Drives a window small enough that compaction must become aggressive and then discard history. The
+Drives a window too small to hold a full structure, so compaction must become aggressive and then
+discard history, using a non-divergent provider that counts with this library's own estimator. The
 response stream is asserted to include `CompactionLevel.High` and `MaterialDropped`, which are the
 application-visible signals that compaction pressure is high and history was discarded.
 

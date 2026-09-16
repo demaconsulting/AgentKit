@@ -112,9 +112,11 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves a session survives a provider whose tokenizer diverges from this library's
-    ///     estimate: at one, two and three times divergence it keeps answering and terminates rather
-    ///     than churning silently — the exact condition the old design failed on.
+    ///     A liveness property: a session survives a provider whose tokenizer diverges from this
+    ///     library's estimate. At one, two and three times divergence it keeps answering and
+    ///     terminates rather than churning silently or throwing — the exact condition the old design
+    ///     failed on. The divergence-dependent behavior (rotating more often, escalating higher, and
+    ///     dropping material under a tighter budget) is asserted by the two tests above.
     /// </summary>
     /// <param name="multiplier">The provider's tokenizer multiplier relative to the estimate.</param>
     [Theory]
@@ -140,14 +142,16 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves that under a window too small to hold a full structure, the drop-until-it-fits rule
-    ///     escalates to the highest level and reports material dropped — the honest signal that
-    ///     compaction bought nothing — exercised with a provider whose count diverges from ours.
+    ///     Proves that when the window is too small to hold a full structure, the drop-until-it-fits
+    ///     rule escalates to the highest level and reports material dropped — the honest signal that
+    ///     compaction bought nothing. This is a session-level Rule-5 test: a genuinely undersized
+    ///     window forces the drop, so it uses a non-divergent provider that counts with this
+    ///     library's own estimator. Divergence is proven separately, by the two tests below.
     /// </summary>
     [Fact]
     public async Task CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial()
     {
-        var factory = new DivergentTokenizerProviderSessionFactory(multiplier: 2.0, windowTokens: 100, SessionTestData.SizedResponder(15));
+        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), reportsUsage: true, windowTokens: 100);
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.5), providerWindowTokens: 100, compaction: new CompactionPolicy(verbatimTurns: 8));
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
@@ -160,6 +164,101 @@ public class CompactingAgentSessionTests
 
         Assert.Contains(responses, response => response.Level == CompactionLevel.High);
         Assert.Contains(responses, response => response.MaterialDropped);
+    }
+
+    /// <summary>
+    ///     Proves divergence is handled by Rule 2 in the provider's own currency: a provider whose
+    ///     tokenizer reports more tokens for the same history crosses the rotation threshold sooner,
+    ///     so at two and three times divergence the session rotates strictly more often and escalates
+    ///     strictly higher than at one times, where nothing forces a rotation at all. This is the
+    ///     divergence-dependent observable; reverting every run to one times collapses all three rows
+    ///     to zero rotations at the relaxed level and fails both strict chains.
+    /// </summary>
+    [Fact]
+    public async Task CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher()
+    {
+        var one = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
+        var two = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
+        var three = await RunDivergentAsync(multiplier: 3.0, providerWindow: 2000, configuredWindow: 2000, TestContext.Current.CancellationToken);
+
+        // Rule 2 reads the provider's own count against its own window, so a larger multiplier crosses
+        // the threshold sooner: strictly more rotations and a strictly higher escalation level.
+        Assert.True(
+            one.Rotations < two.Rotations && two.Rotations < three.Rotations,
+            $"Rotations must strictly increase with divergence, but were 1x={one.Rotations}, 2x={two.Rotations}, 3x={three.Rotations}.");
+        Assert.True(
+            one.MaxLevel < two.MaxLevel && two.MaxLevel < three.MaxLevel,
+            $"Escalation level must strictly increase with divergence, but was 1x={one.MaxLevel}, 2x={two.MaxLevel}, 3x={three.MaxLevel}.");
+    }
+
+    /// <summary>
+    ///     Proves that when an application configures a budget tighter than the provider's real
+    ///     window, divergence-driven early rotation forces a Rule-5 drop where a convergent provider
+    ///     drops nothing. At one times the session stays below the highest level and drops no
+    ///     material; at two times it reaches the highest level and drops material. Reverting the
+    ///     divergent run to one times collapses it onto the convergent row and fails both assertions.
+    /// </summary>
+    /// <remarks>
+    ///     No currency is mixed. MaterialDropped is decided entirely inside the engine's Rule 5, which
+    ///     sizes the seed in this library's estimate currency against the estimate-currency threshold
+    ///     from the configured window. It is therefore multiplier-independent at a fixed configured
+    ///     window; it appears here only because the configured budget (400) is tighter than the
+    ///     provider window (2000), so divergence-driven early rotation yields a seed the estimate
+    ///     threshold rejects. The test sets provider versus configured window and reads results; no
+    ///     test-side arithmetic crosses currencies.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot()
+    {
+        var convergent = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, configuredWindow: 400, TestContext.Current.CancellationToken);
+        var divergent = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, configuredWindow: 400, TestContext.Current.CancellationToken);
+
+        Assert.True(convergent.MaxLevel < CompactionLevel.High, $"A convergent provider must not reach High, but reached {convergent.MaxLevel}.");
+        Assert.False(convergent.AnyDropped, "A convergent provider must not drop material at this window.");
+
+        Assert.Equal(CompactionLevel.High, divergent.MaxLevel);
+        Assert.True(divergent.AnyDropped, "A divergent provider must drop material where the convergent one does not.");
+    }
+
+    /// <summary>
+    ///     Drives a <see cref="CompactingAgentSession"/> over a fixed run of equally sized turns
+    ///     against a divergent-tokenizer provider and reports the divergence-dependent observables:
+    ///     how many times it rotated, the highest compaction level it reached, and whether any turn
+    ///     reported material dropped.
+    /// </summary>
+    /// <param name="multiplier">The provider's tokenizer multiplier relative to this library's estimate.</param>
+    /// <param name="providerWindow">The window the provider reports as its own.</param>
+    /// <param name="configuredWindow">The window the application configures, sizing Rule 5's estimate threshold.</param>
+    /// <param name="cancellationToken">A token to observe for cancellation.</param>
+    /// <returns>The rotation count, the highest level seen, and whether any turn dropped material.</returns>
+    private static async Task<(int Rotations, CompactionLevel MaxLevel, bool AnyDropped)> RunDivergentAsync(
+        double multiplier,
+        int providerWindow,
+        int configuredWindow,
+        CancellationToken cancellationToken)
+    {
+        var factory = new DivergentTokenizerProviderSessionFactory(multiplier, providerWindow, SessionTestData.SizedResponder(15));
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(0.2), providerWindowTokens: configuredWindow, compaction: new CompactionPolicy(verbatimTurns: 8));
+        await using var session = await CompactingAgentSession.CreateAsync(options, factory, cancellationToken);
+
+        var maxLevel = CompactionLevel.Low;
+        var anyDropped = false;
+        for (var turn = 0; turn < 40; turn++)
+        {
+            var response = await session.SendAsync(Msg(15), cancellationToken);
+            if (response.Level > maxLevel)
+            {
+                maxLevel = response.Level;
+            }
+
+            if (response.MaterialDropped)
+            {
+                anyDropped = true;
+            }
+        }
+
+        return (session.RotationCount, maxLevel, anyDropped);
     }
 
     /// <summary>

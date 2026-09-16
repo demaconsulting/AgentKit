@@ -86,23 +86,25 @@ constituent software items, specifically:
   conversation that keeps its own transcript out of session and compacts a full context by
   rotating into a fresh provider session seeded with tiered, consolidated history
 - **AgentSession (Unit)** — The session contract an application programs against, and what one turn
-  reports back about the answer, the usage, the rotation and any saturation
+  reports back about the answer, the usage, the rotation, the compaction level, and any dropped
+  material
 - **AgentSessionOptions (Unit)** — What an application configures about one session, and the fixed
   overhead, effective window and rotation threshold derived from it
-- **CompactionPolicy (Unit)** — The validated per-tier token budgets, rotation threshold and
-  saturation ratio
+- **CompactionPolicy (Unit)** — The one setting an application controls: the maximum number of
+  most-recent turns kept verbatim
 - **ContextUsage (Unit)** — The one usage shape both provider families are reduced to, and the
   optional contract a provider session implements when it can account for its own window
-- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic every budget comparison
-  rests on
-- **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, and the
-  tier-zero boundary split that never separates a tool call from its result
-- **ContextLayout (Unit)** — The whole context as this system accounts for it: the coarse tiers, the
-  construction bound, and the most-stable-first seed
-- **RotationEngine (Unit)** — The deterministic aging function: fold the overflow into tier one,
-  cascade where a tier cannot hold old and new together, and report a failure to reduce
+- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic the fallback usage figure
+  and the drop-until-it-fits seed sizing rest on
+- **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, grouped into
+  whole turns so a tool call is never separated from its result
+- **ContextLayout (Unit)** — The whole context as this system accounts for it: the verbatim tail, the
+  rings of consolidated slots, and the coarsest-first seed
+- **RotationEngine (Unit)** — The deterministic aging function: consolidate older turns into a
+  tier-one slot, cascade a full tier into the next, drop until the seed fits, and report dropped
+  material
 - **Summarizer (Unit)** — The injected out-of-session consolidation contract, the request that
-  expresses the ratchet, and the documented default prompt
+  carries the consolidation instruction, and the documented default prompt
 - **ProviderSession (Unit)** — The whole interface between the compaction engine and a provider
   adapter: the seed, the turn, the session and the factory
 - **InMemoryProviderSession (Unit)** — A provider session that contacts nothing, so the engine can

@@ -50,6 +50,8 @@ sections:
             tests:
               - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
               - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
+              - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
+              - CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
             title: >-
