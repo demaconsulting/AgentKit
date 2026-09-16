@@ -48,12 +48,14 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with the fake summarizer 
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. **No provider, no model and no network access is used**
 - **Mocking**: The shipped in-memory provider factory and a hand-written fake summarizer; no mocking
-  framework. Four scenarios add hand-written providers: one whose disposal fails, one that
+  framework. Five scenarios add hand-written providers: one whose disposal fails, one that
   reports its window only after answering a turn, one that reports scripted figures including
   its own conversation split — that one because the shipped in-memory session measures its reported
   overhead with the same estimator the engine uses, so a test written against it cannot distinguish
-  a measurement from an estimate — and one whose window is taken from a script, so successive
-  sessions of one conversation report different windows
+  a measurement from an estimate — one whose window is taken from a script, so successive
+  sessions of one conversation report different windows, and one that reports totals and a window
+  with no conversation split at all, over a fixed overhead it really charges for, which is the only
+  shape that can carry overhead the engine is not told about
 - **Isolation**: Each test constructs its own factory, summarizer, options and session; no state is
   shared
 
@@ -156,7 +158,9 @@ successful rotation failed.
 This is the regression test for the second half of the currency defect, and it is the end-to-end
 form of the engine scenarios in *RotationEngine Unit Verification Design*. The trigger was already
 measured in the provider's tokens; the split the engine performs is measured in this library's
-estimated tokens. Where the two disagree the trigger fired and the split did nothing.
+estimated tokens. Where the two disagree the trigger has fired on evidence the split cannot see, and
+the engine consolidates the whole verbatim history rather than letting the split abandon the
+rotation.
 
 The scenario is the disagreement stated exactly: a scripted provider reports 500 conversation tokens
 in a 600-token window, crossing a threshold of 420 on the very first turn, for a 20-token message
@@ -177,6 +181,8 @@ figures are computed with the very estimator the split uses.
 
 **Tests**: `CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows`,
 `CompactingAgentSession_CreateAsync_ProviderWindowHoldsTheBoundButCannotConverge_ReleasesAndThrows`,
+`CompactingAgentSession_CreateAsync_ProviderReportsTotalsOverUnreportedOverhead_ReleasesAndThrows`,
+`CompactingAgentSession_SendAsync_ProviderReportsTotalsInAConvergentWindow_RotatesAndSettles`,
 `CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows`,
 `CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows`,
 `CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease`
@@ -188,7 +194,7 @@ effective tokens to converge. Allowed through, the reported window would set a r
 rotated context sits above, so every turn would cross the threshold, rotate, and cross it again: a
 summarizer call and a provider session spent per turn, forever, with the context never converging
 and no saturation signal raised, because each individual consolidation reduces perfectly normally.
-Every test therefore asserts an `InvalidOperationException` and that the provider session was
+Every refusal test therefore asserts an `InvalidOperationException` and that the provider session was
 released, because the session is being abandoned mid-life and the caller is left with no handle to
 dispose. The first asserts the message names both figures, so a host can see which to change.
 
@@ -196,14 +202,32 @@ The tests differ in **when the window first becomes knowable, and which session 
 first two use the shipped in-memory session, which reports from the moment it exists, so the refusal
 happens at creation and no turn is ever spent; the second of those reports a window that comfortably
 holds the 311-token rotated context but leaves it above the rotation threshold, which is the band
-the guard used to admit. The third uses a hand-written provider that reports nothing until it has
+the guard used to admit.
+
+The third and fourth are the pair about **overhead a provider charges for and never breaks out**.
+Their provider reports totals and a window with no conversation split at all — a shape
+`ContextUsage.FromProvider` documents as supported and which no other fake here produces, since the
+split-reporting fake reports the split, the scripted-window fake reports a conversation equal to its
+total and so hides nothing, and the shipped in-memory session reports a split measured with the
+engine's own estimator. The third states the defect exactly: a 500-token window, a rotated bound of
+311 and a threshold of 350, over 100 tokens the provider folds into its conversation figure. Run
+against the guard as it previously stood the session is **accepted**, because the unsplit figure
+reports zero overhead and the guard read the whole window as effective; the context the first
+rotation then produces is reported at 411 against that same 350, and the session rotates on every
+turn from then on. The test asserts the refusal names the 100 tokens that were folded in and quotes
+589 rather than 446 as the requirement, so the figure being credited is visible rather than inferred
+from a bare refusal. The fourth is its complement, and without it the third would be satisfied by a
+guard that simply rejected every unsplit provider: the same provider in a 900-token window is
+accepted, reads the provider's own figures, rotates, and does not rotate on every turn.
+
+The fifth uses a hand-written provider that reports nothing until it has
 answered something — a shape the shipped session cannot express, and precisely the shape that
 motivated making usage reporting optional — so the refusal happens on the first turn instead. It
 further asserts the abandoned session refuses later turns with `ObjectDisposedException` and that
 disposing it again releases nothing a second time. A check placed only at creation would pass the
 first tests and fail that one.
 
-The fourth covers the session a **rotation** adopts. Its factory is scripted to hand out a first
+The sixth covers the session a **rotation** adopts. Its factory is scripted to hand out a first
 session reporting a window that converges comfortably and a replacement reporting one that cannot,
 which is a shape no single-window fake can produce and which nothing in the provider contract
 forbids: a routed deployment, a changed model or a downgraded tier all report a smaller window than
@@ -214,7 +238,7 @@ accepts no further turn. Without the check the turn is answered normally and the
 replacement surfaces only on the turn after, by which point the caller has been told the rotation
 succeeded and has already sent a message into a session that cannot settle.
 
-The fifth is about **what the failure says rather than what it does**. Its provider reports an
+The seventh is about **what the failure says rather than what it does**. Its provider reports an
 unusable window and then fails the release the refusal attempts, which is the one case where the
 claim and the outcome came apart: the catch deliberately leaves the release flag false so a later
 call can retry, and the message nonetheless said the session had been released. On the creation path

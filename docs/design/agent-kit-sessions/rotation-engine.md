@@ -105,12 +105,14 @@ read the signal cannot, which is worse than reporting nothing at all.
 made in whichever currency the usage figure carries — a provider's own count when it reports one,
 this library's estimate otherwise — while the split in step 2 is measured in
 `TranscriptEntry.EstimatedTokens` throughout. Those are the same currency only in the estimated
-case. Where they differ, the trigger fired and the split did nothing: a provider reporting 500
-conversation tokens in a 600-token window crosses a threshold of 420 for a turn whose local estimate
-is a few dozen tokens against a tier-zero budget of 100, so the engine returned the layout
-unchanged, created no replacement, and left the provider to run into its own compactor — the one
-outcome this package exists to prevent, reached with the trigger and the split each behaving exactly
-as documented in its own currency. The two roles are genuinely different and neither can be given
+case. Where they differ the trigger has fired on evidence the split cannot see: a provider reporting
+500 conversation tokens in a 600-token window crosses a threshold of 420 for a turn whose local
+estimate is a few dozen tokens against a tier-zero budget of 100. An engine that let the split
+answer for the trigger would hand the layout back unchanged, create no replacement, and leave the
+provider to run into its own compactor — the one outcome this package exists to prevent, and it
+would be reached with the trigger and the split each behaving exactly as documented in its own
+currency. Step 4 is what stops it: a provider-reported crossing forces a real consolidation whatever
+the estimated split thinks. The two roles are genuinely different and neither can be given
 up: the provider knows *whether* the context is too large, because it counts its own tokens, and the
 estimate is all there is for deciding *what* to consolidate, because no provider can be asked to
 measure a candidate split. Stating the trigger's currency at the call is what keeps the second from
@@ -198,12 +200,22 @@ cascade decision or storage sees the value — means every consumer shares one d
 construction rather than by agreement. A tier recorded from a blank answer therefore costs no
 tokens, raises no saturation, and is not seeded.
 
-**The cancellation token is checked here, before every consolidation.** A cascade is one summarizer
+**The cancellation token is checked here, before every consolidation and again after each one
+returns.** A cascade is one summarizer
 call per tier — several model calls in production — and `ISummarizer` documents only that an
 implementation *may* honor the token, so an implementation that ignores it let a whole cascade run
 to completion after the caller had already canceled. The engine therefore does not delegate the
 check. It is placed before the count is incremented, so a consolidation that was refused is never
 counted as one that happened.
+
+The check on the far side of the await answers a different failure. The one before a consolidation
+catches a token canceled earlier, and where a cascade follows it also catches a token canceled during
+the previous call. Where the rotation performs a **single** consolidation — an overflow that fits
+tier one, which is the ordinary case — there is no later check at all: an implementation that ignores
+the token returns a perfectly ordinary answer, and that answer was then sized, compared against the
+tier budget, stored and returned inside a successful outcome, on a token the caller had canceled while
+the call was in flight. `CompactingAgentSession` went on to seed a replacement provider session from
+it. Checking immediately after the await, before the result is inspected at all, refuses it instead.
 
 ### Error Handling
 
@@ -213,7 +225,8 @@ counted as one that happened.
 - **Invalid saturation figures or an undefined saturation reason** — `ArgumentOutOfRangeException` propagates
 - **Summarizer returns null** — `InvalidOperationException` propagates, naming the tier
 - **Cancellation** — `OperationCanceledException` propagates, from the check after argument
-  validation, from the check before each consolidation, or from the summarizer call itself
+  validation, from the check before each consolidation, from the check after each consolidation
+  returns, or from the summarizer call itself
 - **Consolidation cannot reduce** — Reported as a `SaturationSignal`; not an exception
 - **Record exceeds its tier with nowhere coarser to go** — Reported as a `SaturationSignal`; not an exception
 

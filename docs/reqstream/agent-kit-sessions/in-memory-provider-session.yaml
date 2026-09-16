@@ -11,8 +11,8 @@ sections:
           - id: AgentKitSessions-InMemoryProviderSession-ContactsNothing
             title: >-
               The in-memory provider session shall hold its seeded history, answer from a supplied
-              responder, record nothing when the responder fails or returns nothing, and contact no
-              provider and no network.
+              responder, record nothing when the responder fails, returns nothing, or completes after
+              cancellation was requested, and contact no provider and no network.
             justification: |
               The system's promise is only believable if it can be exercised end to end without a
               live model, and a demonstration needing one is neither deterministic nor repeatable in
@@ -24,11 +24,20 @@ sections:
               it has produced a turn, so a responder that throws or returns nothing leaves no user
               message behind that no turn ever answered. A fake whose history diverges from the
               engine's transcript under failure is worse than no fake.
+
+              Cancellation is checked on both sides of the responder for the same reason. The
+              provider-session contract says a canceled turn leaves the session as it was, and a
+              check made only beforehand honors that for a token canceled earlier and not for one
+              canceled while the responder was running - a responder may cancel the token itself, and
+              an adapter for a real provider awaits a call a cancellation can overtake. The message,
+              the answer and the turn count were then all recorded for a turn whose caller had been
+              told it was canceled, which is the contract this session exists to model faithfully.
             tests:
               - InMemoryProviderSession_Construct_StartsHoldingTheSeededHistory
               - InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn
               - InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry
               - InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry
+              - InMemoryProviderSession_SendAsync_CanceledWhileResponding_RecordsNoGhostEntry
               - InMemoryProviderSessionFactory_DefaultResponder_Answers
 
           - id: AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes

@@ -63,7 +63,10 @@ from. `ToolResult.Denied` in AgentKit Core sets the precedent, and the same
 Return a new transcript with the entry or entries at the end; this one is unchanged. The sequence
 overload exists because one turn of a tool-using agent produces a run of entries — an assistant
 message, then call and result pairs — and appending them one at a time would allocate a new array
-for each. An empty sequence returns the same instance.
+for each. An empty sequence returns the same instance. `CompactingAgentSession` records a whole
+turn — the outgoing message and everything the turn produced — through that one overload for the
+same reason: an append copies the whole backing array, so a caller making two appends per turn pays
+twice the copying over a window that is filling.
 
 Immutability is what makes the rotation engine a pure function of its inputs and lets a test hold a
 before-and-after pair.

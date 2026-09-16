@@ -101,6 +101,12 @@ Copilot adapter uses, mapping `currentTokens`, `tokenLimit` and `conversationTok
 with no arithmetic. An adapter that receives only totals omits it, and the whole of the usage is
 treated as conversation: that credits the session with no overhead allowance, which rotates strictly
 earlier than a correct split would and so cannot let the session run past the provider's compactor.
+That is a claim about the rotation trigger alone. The convergence check a session makes before
+accepting a window cannot inherit it — crediting no overhead makes a window look *larger* than it is
+— so `CompactingAgentSession` measures what an unsplit figure folds in, against the empty
+conversation its first provider session starts from, and credits that instead. An adapter reporting
+totals alone should therefore report them from the moment the session exists rather than only after
+its first turn, so the measurement can be taken; see *CompactingAgentSession Unit Design*.
 
 #### FromEstimate(int usedTokens, int windowTokens, int? conversationTokens = null)
 

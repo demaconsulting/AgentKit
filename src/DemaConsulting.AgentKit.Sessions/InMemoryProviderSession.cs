@@ -174,6 +174,14 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     ///     <see cref="CompactingAgentSession"/> applies to its own transcript. A fake whose history
     ///     diverged from the engine's transcript under failure would make the engine's own guarantee
     ///     untestable.
+    ///     <para>
+    ///     Cancellation is honored on both sides of the responder, for the same reason. A token
+    ///     canceled before the call refuses the turn outright; a token canceled <em>while</em> the
+    ///     responder ran refuses it too, so a canceled turn leaves no history whichever moment the
+    ///     cancellation arrived in. Checking only beforehand recorded the message and the answer of
+    ///     a turn the caller had been told was canceled, which is precisely the contract this
+    ///     session is here to model faithfully.
+    ///     </para>
     /// </remarks>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
     {
@@ -186,6 +194,15 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
         // rejects a turn holds nothing either.
         var turn = _responder(message)
             ?? throw new InvalidOperationException("The responder returned null; it must return a turn.");
+
+        // Checked again, on the far side of the responder. The check above refuses a turn the
+        // caller had already given up on; this one refuses a turn whose responder completed after
+        // the caller gave up while it was running - a responder is free to cancel the token itself,
+        // and an adapter for a real provider awaits a call that a cancellation can overtake. The
+        // documented contract is that a canceled turn leaves this session exactly as it was, and
+        // recording here would break it in the one direction that matters: the history would hold a
+        // message and an answer for a turn the caller was told had been canceled.
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Both halves of the turn are appended together, so the history a caller can observe never
         // holds a message without the turn that answered it.

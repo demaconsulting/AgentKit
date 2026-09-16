@@ -224,14 +224,35 @@ public sealed class AgentSessionOptions
     ///     invariant it stands for. The minimum is for telling a host what to do about it; this is
     ///     for deciding.
     ///     </para>
+    ///     <para>
+    ///     <b><paramref name="unreportedOverheadTokens"/> adds to the bound rather than subtracting
+    ///     from the window, and the difference is the whole point of it.</b> The figure the rotation
+    ///     threshold is compared against is whatever the usage reading calls the conversation, and a
+    ///     provider that reports totals without a split calls its own fixed overhead part of the
+    ///     conversation. That overhead is therefore present in the figure a rotated context will
+    ///     report, so it belongs on the same side of the comparison as the tier budgets. Subtracting
+    ///     it from the window instead would be a different and weaker claim, because the threshold
+    ///     is only a fraction of the window: it would discount the overhead by that fraction while
+    ///     the comparison pays for all of it.
+    ///     </para>
     /// </remarks>
-    /// <param name="effectiveWindowTokens">The window left once the fixed overhead is paid for.</param>
+    /// <param name="effectiveWindowTokens">The window left once the reported fixed overhead is paid for.</param>
     /// <param name="policy">The policy whose budgets, framing and rotation fraction are measured.</param>
+    /// <param name="unreportedOverheadTokens">
+    ///     Fixed overhead the usage figures do not break out of the conversation, and which a
+    ///     rotated context will therefore still be counted as carrying. Zero when the split is
+    ///     reported, which is the case for every figure this library estimates itself.
+    /// </param>
     /// <returns><see langword="true"/> when a rotated context lands below the rotation threshold.</returns>
-    internal static bool ConvergesAt(int effectiveWindowTokens, CompactionPolicy policy) =>
+    internal static bool ConvergesAt(
+        int effectiveWindowTokens,
+        CompactionPolicy policy,
+        int unreportedOverheadTokens = 0) =>
         effectiveWindowTokens > 0
         && RotationThresholdFor(effectiveWindowTokens, policy)
-            > policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy);
+            > (long)policy.TotalTierBudgetTokens
+                + ContextLayout.SeedFramingTokens(policy)
+                + unreportedOverheadTokens;
 
     /// <summary>
     ///     Computes the smallest effective window at which a session using a policy converges.
@@ -239,7 +260,8 @@ public sealed class AgentSessionOptions
     /// <remarks>
     ///     <para>
     ///     <b>This is the invariant, expressed as a number.</b> A rotation leaves the conversation
-    ///     holding at most the policy's tier budgets plus the framing their seeded records carry.
+    ///     holding at most the policy's tier budgets plus the framing their seeded records carry,
+    ///     plus any fixed overhead the figures being compared do not break out of the conversation.
     ///     For the session to settle rather than rotate again on the very next turn, that figure
     ///     must be strictly below the rotation threshold — so this returns the smallest effective
     ///     window for which <see cref="RotationThresholdFor"/> exceeds it.
@@ -255,16 +277,29 @@ public sealed class AgentSessionOptions
     ///     representable window converges, and for a policy whose bound is itself
     ///     <see cref="int.MaxValue"/> — the largest a token count can represent, which
     ///     <see cref="CompactionPolicy"/> accepts. Both are policies no window can rescue, and
-    ///     reporting the largest representable requirement states exactly that.
+    ///     reporting the largest representable requirement states exactly that. An unreported
+    ///     overhead allowance large enough to carry the bound to or past that figure saturates for
+    ///     the same reason.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The policy whose budgets, framing and rotation fraction are measured.</param>
+    /// <param name="unreportedOverheadTokens">
+    ///     Fixed overhead the usage figures do not break out of the conversation, added to the bound
+    ///     the threshold must exceed. See <see cref="ConvergesAt"/> for why it is added there rather
+    ///     than removed from the window.
+    /// </param>
     /// <returns>The smallest effective window in tokens at which the session converges.</returns>
-    internal static int MinimumEffectiveWindowTokens(CompactionPolicy policy)
+    internal static int MinimumEffectiveWindowTokens(CompactionPolicy policy, int unreportedOverheadTokens = 0)
     {
-        // The most a rotated conversation can occupy. The fixed overhead is excluded because the
-        // threshold is compared against conversation tokens, which exclude it too.
-        var conversationBound = policy.TotalTierBudgetTokens + ContextLayout.SeedFramingTokens(policy);
+        // The most a rotated conversation can be counted as occupying: the tier budgets, the framing
+        // of their seeded records, and any fixed overhead the figures fold into the conversation
+        // rather than break out. This library's own estimate breaks it out, so the allowance is zero
+        // there; a provider reporting totals alone does not, and a rotated context it counts still
+        // carries it.
+        var conversationBound =
+            (long)policy.TotalTierBudgetTokens
+            + ContextLayout.SeedFramingTokens(policy)
+            + unreportedOverheadTokens;
 
         // A policy is permitted a bound of exactly int.MaxValue - the largest bound a token count
         // can represent, which CompactionPolicy accepts and only refuses beyond. No representable
@@ -272,8 +307,9 @@ public sealed class AgentSessionOptions
         // that directly is also what keeps the clamp below well-formed: its lower bound would be
         // int.MaxValue + 1, above its upper bound, and Math.Clamp throws an argument error on that
         // rather than saturating. A valid policy then reported a defect in this helper instead of
-        // the non-convergent window the caller had actually asked about.
-        if (conversationBound == int.MaxValue)
+        // the non-convergent window the caller had actually asked about. An overhead allowance that
+        // carries the bound to or past that figure is the same condition reached by another road.
+        if (conversationBound >= int.MaxValue)
         {
             return int.MaxValue;
         }
@@ -287,7 +323,7 @@ public sealed class AgentSessionOptions
         // Confirm against the arithmetic the guard and the rotation decision actually use. This
         // advances by at most a token or two in practice; it stops at int.MaxValue for a fraction
         // no representable window can satisfy, which ConvergesAt refuses outright.
-        while (candidate < int.MaxValue && !ConvergesAt((int)candidate, policy))
+        while (candidate < int.MaxValue && !ConvergesAt((int)candidate, policy, unreportedOverheadTokens))
         {
             candidate++;
         }

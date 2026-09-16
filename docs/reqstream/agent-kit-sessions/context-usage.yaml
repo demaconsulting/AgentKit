@@ -45,6 +45,14 @@ sections:
               rotates strictly earlier than a correct split would. Erring early is the safe
               direction, because the guarantee this package delivers is that the provider's own
               compactor never fires.
+
+              That reasoning covers the rotation trigger and nothing else, and reading it more widely
+              is what a consumer of this default must not do. A session also has to decide whether it
+              can converge in the window at all, and there the same default makes the window look
+              larger than it is rather than smaller, which admits a configuration that rotates on
+              every turn. The figure keeps this default; the session measures the fold for itself
+              against the empty conversation it starts from. See
+              AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow.
             tests:
               - ContextUsage_WithoutConversationSplit_TreatsTheWholeUsageAsConversation
 

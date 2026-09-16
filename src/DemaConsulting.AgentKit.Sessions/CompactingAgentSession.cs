@@ -70,6 +70,30 @@ public sealed class CompactingAgentSession : IAgentSession
     private readonly IProviderSessionFactory _factory;
 
     /// <summary>
+    ///     Fixed overhead the first provider session folded into its own conversation count instead
+    ///     of breaking out, measured at the one moment it is directly observable.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Measured, not assumed.</b> The first provider session is seeded with no history at
+    ///     all, so whatever a provider-reported figure attributes to the conversation at that
+    ///     instant is not conversation: it is the system prompt, the tool declarations and whatever
+    ///     framing of its own the provider charges for, counted in the provider's tokens and folded
+    ///     into a figure it did not split. That is the only moment the fold is visible, and it is
+    ///     visible exactly.
+    ///     </para>
+    ///     <para>
+    ///     Zero for a provider that reports the split — its empty conversation is zero — and zero
+    ///     for an estimated figure, whose split this library makes itself. So this changes nothing
+    ///     for either adapter shipped today and exists entirely for the third:
+    ///     <see cref="ContextUsage.FromProvider(int, int, int?)"/> is public and documented to
+    ///     accept totals alone, and the session that receives them has to know what it is not being
+    ///     told. See <see cref="EnsureReportedWindowConvergesAsync"/>.
+    ///     </para>
+    /// </remarks>
+    private readonly int _unreportedOverheadTokens;
+
+    /// <summary>
     ///     The live provider session, replaced at every rotation.
     /// </summary>
     private IProviderSession _provider;
@@ -111,6 +135,13 @@ public sealed class CompactingAgentSession : IAgentSession
 
         Layout = ContextLayout.Create(options.Compaction, options.SystemTokens, options.ToolDeclarationTokens);
         Usage = ReadUsage(provider, options, Layout);
+
+        // The layout above carries no history, and the provider session was seeded with none, so
+        // this reading is taken against an empty conversation. Anything a provider-reported figure
+        // calls conversation here is therefore fixed overhead it did not break out, measured in its
+        // own tokens. See the field's remarks.
+        _unreportedOverheadTokens =
+            Usage.Origin == ContextUsageOrigin.Provider ? Usage.ConversationTokens : 0;
     }
 
     /// <summary>
@@ -233,8 +264,17 @@ public sealed class CompactingAgentSession : IAgentSession
         // recording them records the whole turn - message, any tool work, and what the agent
         // concluded. That last part is what a later turn, seeded after a rotation from this very
         // transcript, needs in order to see what it already decided.
+        //
+        // Recorded in one append rather than two. A transcript is immutable and copies its whole
+        // backing array on every append, so appending the message and then the turn's entries
+        // copied a filling window twice per turn: a long conversation - the entire case this
+        // package exists for - paid quadratic copying with double the constant. Collecting both
+        // halves into one sequence leaves the observable order identical and halves the copying,
+        // and it keeps the property a deliberate earlier change established: nothing at all is
+        // appended until SendAsync has returned, so a provider that refused the turn leaves behind
+        // no ghost message.
         Layout = Layout.WithTranscript(
-            Layout.Transcript.Append(TranscriptEntry.User(message)).Append(turn.Entries));
+            Layout.Transcript.Append([TranscriptEntry.User(message), .. turn.Entries]));
 
         Usage = ReadUsage(_provider, _options, Layout);
 
@@ -440,6 +480,39 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     signal raised because each individual consolidation reduces perfectly normally.
     ///     </para>
     ///     <para>
+    ///     <b>Overhead a provider does not break out is part of that figure, and is credited
+    ///     here.</b> <see cref="ContextUsage.FromProvider(int, int, int?)"/> lets an adapter report
+    ///     totals without a split, in which case <see cref="ContextUsage.OverheadTokens"/> is zero
+    ///     and the reported conversation is the whole of the usage. For the rotation
+    ///     <em>trigger</em> that default is safe, because it compares an inflated conversation
+    ///     against a threshold taken from the whole window and so fires early. For this check it is
+    ///     not, and the same default being safe in one place and unsafe in the other is exactly how
+    ///     this was missed: crediting no overhead here makes the window look larger than it is,
+    ///     while the figure a rotated context will actually report still carries the fold. A window
+    ///     of 500 tokens with a rotated bound of 311 passes a threshold of 350 while the provider
+    ///     quietly charges 100 tokens it never broke out — and the replacement, reported at 411
+    ///     against that same 350, rotates on every following turn. So
+    ///     <see cref="_unreportedOverheadTokens"/> is added to the bound the threshold must exceed,
+    ///     which is where it belongs: it is on the side of the comparison the reported conversation
+    ///     figure is on. The trigger is deliberately left alone, and the two are then exactly
+    ///     consistent — a rotated context reports at most the bound plus the fold, and this check
+    ///     has established that the threshold exceeds it.
+    ///     </para>
+    ///     <para>
+    ///     <b>What an adapter that genuinely cannot split its counts should do: nothing.</b> It
+    ///     keeps reporting totals alone. Requiring a split, or making the adapter invent one, was
+    ///     rejected: an invented split is indistinguishable from a measured one at the point it is
+    ///     consumed, which is the very thing <see cref="ContextUsage"/> exists to prevent, and
+    ///     refusing an unsplit provider outright would send an otherwise perfectly good adapter down
+    ///     the estimating path, where this library's character ratio decides when a real provider
+    ///     rotates. Measuring the fold against the empty conversation the session starts from costs
+    ///     the adapter nothing, is exact rather than estimated, and is in the provider's own tokens.
+    ///     The one thing such an adapter must do is report from the moment the session exists rather
+    ///     than only after the first turn, because the empty conversation is the only moment the
+    ///     fold is separable; an adapter that begins reporting later is credited only what it breaks
+    ///     out, as it was before.
+    ///     </para>
+    ///     <para>
     ///     <b>Failing rather than adapting, deliberately.</b> Requiring merely that the window
     ///     <em>hold</em> the construction bound is the necessary condition, not the sufficient one,
     ///     and asserting it was the defect: it admitted every window between the bound and the
@@ -488,10 +561,16 @@ public sealed class CompactingAgentSession : IAgentSession
         // them in and the currency the layout enforces them in; this check therefore remains a
         // comparison between an estimated bound and a reported window, and is honest about being
         // approximate. What it no longer does is corrupt the reported window itself.
-        var minimumEffective = AgentSessionOptions.MinimumEffectiveWindowTokens(_options.Compaction);
+        //
+        // The bound carries the unreported overhead allowance as well as the tier budgets, because
+        // the figure a rotated context will be compared against carries it too. That term is the
+        // provider's own tokens, measured against an empty conversation; see the remarks above for
+        // why it is added to the bound rather than removed from the window.
+        var minimumEffective = AgentSessionOptions.MinimumEffectiveWindowTokens(
+            _options.Compaction, _unreportedOverheadTokens);
         var effective = Usage.WindowTokens - Usage.OverheadTokens;
         if (Usage.Origin != ContextUsageOrigin.Provider
-            || AgentSessionOptions.ConvergesAt(effective, _options.Compaction))
+            || AgentSessionOptions.ConvergesAt(effective, _options.Compaction, _unreportedOverheadTokens))
         {
             return;
         }
@@ -522,11 +601,13 @@ public sealed class CompactingAgentSession : IAgentSession
             + "outside the conversation are paid for. A rotated context occupies up to "
             + $"{_options.Compaction.TotalTierBudgetTokens} tokens of tier budgets and "
             + $"{ContextLayout.SeedFramingTokens(_options.Compaction)} tokens of framing for their "
-            + "seeded records, and must land below the rotation threshold, which requires at least "
-            + $"{minimumEffective} tokens. The session is abandoned rather than left to rotate on "
-            + "every turn without ever getting under its own threshold; release of the provider "
-            + "session was attempted, and if that attempt failed the provider still holds it and "
-            + "the release needs retrying.");
+            + $"seeded records, and is counted as carrying a further {_unreportedOverheadTokens} "
+            + "tokens of overhead this provider folds into its conversation figure rather than "
+            + "reporting separately. All of that must land below the rotation threshold, which "
+            + $"requires at least {minimumEffective} tokens. The session is abandoned rather than "
+            + "left to rotate on every turn without ever getting under its own threshold; release "
+            + "of the provider session was attempted, and if that attempt failed the provider still "
+            + "holds it and the release needs retrying.");
     }
 
     /// <summary>
@@ -586,7 +667,10 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     would put the threshold in no currency at all, and tool declarations — nested JSON
     ///     schemas — are exactly the material that ratio serves worst. A provider that reports no
     ///     split is credited no overhead at all, which rotates earlier rather than later and so
-    ///     errs on the side the guarantee needs.
+    ///     errs on the side the guarantee needs. That is true <em>here</em> and is not true of the
+    ///     convergence check, which is why
+    ///     <see cref="EnsureReportedWindowConvergesAsync"/> credits the fold it measures instead of
+    ///     inheriting this default.
     ///     </para>
     ///     <para>
     ///     When the figure is the library's own estimate it was taken against the configured window,

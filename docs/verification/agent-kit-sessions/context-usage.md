@@ -64,6 +64,13 @@ fraction of the whole window and the conversation the whole usage, which rotates
 than a correct split would. Early is the safe direction, because the guarantee at stake is that the
 provider's own compactor never fires.
 
+That is asserted of the rotation trigger and of nothing else. The convergence check
+`CompactingAgentSession` makes against a reported window is the comparison for which the same default
+errs the _other_ way, and it is verified separately against a provider carrying real unreported
+overhead; see
+_AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow_ in
+_CompactingAgentSession Unit Verification Design_.
+
 #### AgentKitSessions-ContextUsage-ReportsOverFullHonestly: An Over-Full Window Is Not Hidden
 
 **Test**: `ContextUsage_OverFullWindow_ReportsNoFreeTokensButKeepsTheCounts`

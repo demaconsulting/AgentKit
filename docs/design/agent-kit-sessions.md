@@ -137,7 +137,12 @@ raising no saturation signal, because each individual consolidation reduces perf
 tier budgets merely make a rotated context *fit* the window; landing below the threshold is what
 makes the session *settle*, and the two conditions are separated by a factor of the rotation
 fraction. `AgentSessionOptions` refuses any configuration that fails the invariant, and
-`CompactingAgentSession` refuses any provider-reported window that fails it.
+`CompactingAgentSession` refuses any provider-reported window that fails it — crediting, in the
+reported case, any fixed overhead the provider charges for and does not break out of its conversation
+figure, because a rotated context will still be counted as carrying it. That overhead is measured
+against the empty conversation the session starts from rather than estimated; the rotation trigger's
+zero-overhead default for an unsplit figure is safe only for the trigger, where it fires early,
+and errs the opposite way here.
 
 How much headroom there is beyond the one guaranteed turn depends on how generously the window was
 sized against the tier budgets. With the tiers sized in the low thousands of tokens against a window

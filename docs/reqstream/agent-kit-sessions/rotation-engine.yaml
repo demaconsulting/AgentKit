@@ -52,12 +52,15 @@ sections:
             justification: |
               The threshold comparison that triggers a rotation is made in whichever currency the
               usage figure carries, while the split is measured in this library's estimated tokens
-              throughout. Where the two disagree the trigger fired and the split did nothing: a
-              provider reporting 500 conversation tokens in a 600-token window crosses a threshold of
-              420 for a turn whose local estimate is a few dozen tokens against a tier-zero budget of
-              100, so the layout came back unchanged, no replacement was created, and the provider
-              ran on into its own compactor - the one outcome this package exists to prevent, reached
-              with the trigger and the split each behaving exactly as documented in its own currency.
+              throughout. Where the two disagree the trigger has fired on evidence the split cannot
+              see: a provider reporting 500 conversation tokens in a 600-token window crosses a
+              threshold of 420 for a turn whose local estimate is a few dozen tokens against a
+              tier-zero budget of 100. An engine that let the split answer for the trigger would hand
+              the layout back unchanged, create no replacement, and leave the provider to run on into
+              its own compactor - the one outcome this package exists to prevent, and it would be
+              reached with the trigger and the split each behaving exactly as documented in its own
+              currency. Requiring a provider-reported crossing to consolidate the whole verbatim
+              history is what stops it.
               The two roles are genuinely different and neither can be given up: a provider knows
               whether the context is too large because it counts its own tokens, and the estimate is
               all there is for deciding what to consolidate, because no provider can be asked to
@@ -144,7 +147,7 @@ sections:
             title: >-
               The engine shall reject a summarizer that returns nothing at all, and shall honor
               cancellation on every path, including the path where the transcript already fits and
-              there is no work to do.
+              there is no work to do and the path where the rotation performs a single consolidation.
             justification: |
               A null record would be stored and would surface as a missing tier at a later rotation,
               far from the implementation that caused it; an implementation with nothing to say
@@ -156,10 +159,20 @@ sections:
               transcript happened to fit. Argument validation still comes first, because a malformed
               call is a defect in the caller and is worth reporting as such even on a canceled
               token.
+
+              It is also checked immediately after each consolidation returns, before the result is
+              inspected at all. The summarizer contract says only that an implementation MAY honor
+              the token, so one that ignores it answers normally across a cancellation requested
+              while it was running; where a cascade follows, the check before the next consolidation
+              catches that, and where the rotation performs a single consolidation nothing catches it
+              at all. The result was then sized, compared against its tier budget, stored and returned
+              inside a successful outcome that the session seeded a replacement provider session from,
+              on a token the caller had canceled.
             tests:
               - RotationEngine_RotateAsync_SummarizerReturnsNull_Throws
               - RotationEngine_RotateAsync_Canceled_Throws
               - RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws
+              - RotationEngine_RotateAsync_CanceledDuringTheOnlyConsolidation_DoesNotAcceptTheResult
 
           - id: AgentKitSessions-RotationEngine-NormalizesBlankRecords
             title: >-

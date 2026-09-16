@@ -32,8 +32,10 @@ Public properties:
 - **`ConsolidationCount`** (`int`) — The total consolidations every rotation of this session has performed
 
 Private state: the options, the provider-session factory, the live provider session (replaced at
-every rotation), a disposal flag, and a release flag recording whether the live provider session has
-actually been released.
+every rotation), a disposal flag, a release flag recording whether the live provider session has
+actually been released, and the fixed overhead the first provider session folded into its own
+conversation count instead of breaking out, measured once at creation against the empty conversation
+the session starts from.
 
 `ConsolidationCount` is exposed because summarizer calls are the dominant cost of this arrangement,
 and the tiered scheme's advantage over a flat rolling summary is partly that it makes fewer of them.
@@ -51,7 +53,10 @@ history, because there is none yet; the instructions and tools it carries are th
 later rotation will carry.
 
 A static asynchronous factory rather than a constructor, because creating the first provider session
-is asynchronous and a constructor cannot await. A provider that reports its window from the outset
+is asynchronous and a constructor cannot await. It is also the one moment the conversation is
+**empty by construction**, so whatever a provider-reported usage figure attributes to the
+conversation here is fixed overhead it did not break out; that figure is measured once and credited
+to the convergence bound thereafter. A provider that reports its window from the outset
 is checked here, and a session whose provider reports a window it could not converge in is refused
 with the provider's release attempted; see *SendAsync* below for why.
 
@@ -66,7 +71,7 @@ the factory returns null or the created session reports a window the session cou
 1. Reject use after disposal, and reject a blank message.
 2. Take the turn against the live provider session.
 3. **Once the provider has accepted it**, append the outgoing message and everything the turn
-   produced to the transcript, in that order.
+   produced to the transcript, in that order and in a single append.
 4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
    layout against the configured window.
 5. Refuse a reported window in which a rotated context could not land below the rotation threshold,
@@ -106,14 +111,23 @@ they remove from it. The reported path removes `ContextUsage.OverheadTokens`, wh
 total less the reported conversation and so is in the provider's own tokens; the estimate path keeps
 the configured threshold, in which the estimated overhead was removed from the configured window the
 estimate was measured against. A provider that reports totals but no split is credited no overhead
-at all, which rotates earlier rather than later and so errs on the side the guarantee needs.
+at all, which rotates earlier rather than later and so errs on the side the guarantee needs — a
+statement about *this* comparison and no other; the convergence check below cannot inherit it.
 
 **Why nothing is recorded until the provider accepts the turn.** A provider is entitled to honor
 cancellation or fail before taking the turn — the in-memory provider does exactly that for a token
-that was already canceled. A message recorded ahead of that would be a turn no provider ever saw,
+that was already canceled, and for one canceled while its responder was running. A message recorded
+ahead of that would be a turn no provider ever saw,
 which would survive in the transcript, be consolidated at the next rotation, and be seeded into the
 replacement session as though it had happened. Recording after the call means a refused turn leaves
 the session exactly as it was.
+
+**Why the turn is recorded in one append rather than two.** A `SessionTranscript` is immutable and
+copies its whole backing array on each append, so appending the message and then the turn's entries
+copied a filling window twice per turn. That is quadratic in the number of entries between rotations
+with double the constant, and a long conversation is the entire case this package exists for.
+Collecting both halves into one sequence leaves the observable order identical, halves the copying,
+and preserves the rule above: nothing at all is appended until the provider has returned.
 
 **Why compaction happens after the answer.** The turn is served by the session that was live when it
 arrived, and the replacement is prepared for the turn after. A caller therefore never waits on a
@@ -143,6 +157,35 @@ false so an explicit `DisposeAsync` still retries it. The release is uncondition
 holds a provider session that has not been released — `CreateAsync` a freshly created one,
 `SendAsync` one already checked against disposal, and `RotateAsync` a replacement it has just
 adopted — so a guard on the release flag asserted something already known.
+
+**Why overhead a provider does not break out is credited to that bound.** `FromProvider` accepts
+totals without a conversation split, and the figure it produces then reports zero overhead and calls
+the whole of its usage conversation. That default is safe for the rotation trigger, which is a
+comparison of an inflated conversation against a threshold taken from the whole window and so fires
+early. It is not safe here, and *the same default being safe in one place and unsafe in the other is
+how this was missed*: crediting no overhead makes the window look larger than it is, while the figure
+a rotated context will actually report still carries the fold. A 500-token window with a 311-token
+rotated bound passes a threshold of 350, and the replacement it then produces is reported at 411
+against that same 350 and rotates on every turn thereafter. The fold is therefore **measured, not
+assumed**. The first provider session is seeded with no history at all, so whatever a
+provider-reported figure calls conversation at that instant is not conversation — it is the system
+prompt, the tool declarations and whatever framing the provider charges for, in the provider's own
+tokens — and the session records it once, at creation. It is added to the **bound**, which is the
+side of the comparison the reported conversation figure sits on, rather than subtracted from the
+window; subtracting it would discount it by the rotation fraction while the comparison pays for all
+of it. The trigger is left exactly as it was, and the two are then consistent by construction: a
+rotated context reports at most the bound plus the fold, and this check has established that the
+threshold exceeds that sum. For a provider reporting the split the fold is zero and nothing changes,
+and for an estimated figure the check does not run at all.
+
+**What an adapter that genuinely cannot split its counts should do: nothing.** It keeps reporting
+totals alone. Requiring a split would either force it to fabricate one — indistinguishable from a
+measurement at the point it is consumed, which is the defect `ContextUsage` exists to remove — or
+push an otherwise sound adapter onto the estimating path, where this library's character ratio would
+decide when a real provider rotates. The one obligation such an adapter carries is to report from the
+moment the session exists rather than only once it has answered something, because an empty
+conversation is the only moment the fold is separable; an adapter that begins reporting later is
+credited only what it breaks out, exactly as before.
 
 **Why the failure says the release was *attempted*.** The catch above deliberately leaves the
 release flag false so a later call can retry, and the message nonetheless claimed the session "has

@@ -25,6 +25,13 @@ sections:
               before taking it, and a message recorded ahead of that would be a turn no provider ever
               saw - one that would nonetheless survive in the transcript, be consolidated at the next
               rotation, and be seeded into the replacement session as though it had happened.
+
+              Both halves are recorded in one append. A session transcript is immutable and copies
+              its whole backing array on each append, so appending the message and then the turn's
+              entries copied a filling window twice per turn - quadratic in the entries held between
+              rotations, with double the constant, for the long conversation this package exists to
+              serve. One append leaves the observable order identical and preserves the rule above,
+              because nothing is appended until the provider has returned either way.
             tests:
               - CompactingAgentSession_CreateAsync_SeedsOneEmptyProviderSession
               - CompactingAgentSession_SendAsync_BelowThreshold_AnswersWithoutRotating
@@ -49,7 +56,10 @@ sections:
               reports its own conversation count supplies it directly; one that reports only totals
               is credited no overhead allowance at all, which rotates earlier rather than later and
               so cannot breach the guarantee; the estimated path derives it from the layout, which
-              is estimated throughout. The window the threshold comes from is
+              is estimated throughout. Crediting no overhead is safe for this comparison and is not
+              safe everywhere: the convergence check credits the fold it measures instead, and
+              AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow says why.
+              The window the threshold comes from is
               chosen the same way and for the same reason: the guarantee rotation exists to deliver
               is that the provider's own compactor never fires, and that is a claim about the window
               the provider actually has, with that provider's own reported overhead - not an
@@ -81,10 +91,11 @@ sections:
           - id: AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow
             title: >-
               The session shall refuse a provider-reported context window in which a rotated context
-              would not land below the rotation threshold, releasing the live provider session before
-              reporting the failure, when the session is created, after every turn, and against a
-              replacement provider session a rotation has adopted, and shall report that the release
-              was attempted rather than that it succeeded.
+              would not land below the rotation threshold, crediting any fixed overhead the provider
+              folds into its conversation figure rather than reports separately, releasing the live
+              provider session before reporting the failure, when the session is created, after every
+              turn, and against a replacement provider session a rotation has adopted, and shall
+              report that the release was attempted rather than that it succeeded.
             justification: |
               The construction bound is the most a layout can ever occupy: the fixed overhead, every
               tier budget, and the framing each seeded tier record carries. A reported window below
@@ -96,6 +107,34 @@ sections:
               spending a summarizer call and a provider session per turn without ever converging, and
               raising no saturation signal while doing it, because each individual consolidation
               reduces perfectly normally.
+
+              The bound has to include overhead a provider charges for and does not break out, for
+              the same reason. A usage figure reporting totals alone treats the whole of its occupied
+              tokens as conversation, so its reported overhead is zero. That default rotates early
+              and is safe for the rotation trigger; it is unsafe here, and the same default being
+              safe in one place and unsafe in the other is exactly how this was missed. Crediting no
+              overhead makes the window look larger than it is while the figure a rotated context
+              reports still carries the fold, so a window of 500 tokens holding a rotated bound of
+              311 passes a threshold of 350, and the replacement it then produces is reported at 411
+              against that same 350 and rotates on every turn thereafter. The fold is therefore
+              measured rather than assumed: the first provider session of a session is seeded with no
+              history, so whatever a provider-reported figure calls conversation at that instant is
+              fixed overhead in the provider's own tokens, and it is added to the bound the threshold
+              must exceed - the side of the comparison the reported conversation figure is on -
+              rather than removed from the window, which would discount it by the rotation fraction
+              while the comparison pays for all of it.
+
+              An adapter that genuinely cannot split its counts is supported rather than turned away:
+              it keeps reporting totals alone and the session measures the fold for it, so nothing is
+              invented and no figure leaves the provider's currency. Requiring a split would either
+              force such an adapter to fabricate one - indistinguishable from a measurement at the
+              point it is consumed, which is the defect the usage shape exists to remove - or push an
+              otherwise sound adapter onto the estimating path, where this library's character ratio
+              would decide when a real provider rotates. The one obligation it does carry is to
+              report from the moment the session exists rather than only after a turn, because an
+              empty conversation is the only moment the fold is separable; an adapter that begins
+              reporting later is credited only what it breaks out.
+
               Failing is preferred to adapting. Shrinking the tier budgets to fit would silently
               discard the compaction policy the host configured and would have to re-consolidate
               records already written against larger budgets, which an immutable layout exists to
@@ -128,6 +167,8 @@ sections:
             tests:
               - CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows
               - CompactingAgentSession_CreateAsync_ProviderWindowHoldsTheBoundButCannotConverge_ReleasesAndThrows
+              - CompactingAgentSession_CreateAsync_ProviderReportsTotalsOverUnreportedOverhead_ReleasesAndThrows
+              - CompactingAgentSession_SendAsync_ProviderReportsTotalsInAConvergentWindow_RotatesAndSettles
               - CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows
               - CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows
               - CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease

@@ -725,4 +725,52 @@ public class RotationEngineTests
         // which the summarizer itself would never have done.
         Assert.Equal(1, summarizer.CallCount);
     }
+
+    /// <summary>
+    ///     Proves a rotation whose only consolidation is canceled while the summarizer is running is
+    ///     abandoned rather than completed, so the result is never sized, stored or returned.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The cascade scenario above cannot reach this, which is how the gap survived it.</b>
+    ///     There, a second consolidation follows the one that cancels, and the check made before it
+    ///     catches the cancellation. Where the rotation performs a single consolidation — the
+    ///     ordinary case, an overflow that fits tier one — there is no later check at all: the
+    ///     summarizer's answer was estimated, compared against the tier budget, stored in the tier
+    ///     and returned inside a successful <c>RotationOutcome</c>, on a token the caller had
+    ///     canceled while the call was in flight. <c>CompactingAgentSession</c> then seeded a
+    ///     replacement provider session from it. <c>ISummarizer</c> permits an implementation to
+    ///     ignore the token entirely, so nothing but the engine can refuse the result; the engine
+    ///     therefore checks on the far side of the await as well as the near side.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_CanceledDuringTheOnlyConsolidation_DoesNotAcceptTheResult()
+    {
+        // Arrange: a summarizer that cancels while it is answering and then ignores the token, and
+        // whose answer fits tier one comfortably - so the rotation performs exactly one
+        // consolidation and never reaches another check
+        using var source = new CancellationTokenSource();
+        var summarizer = new InattentiveSummarizer(request =>
+        {
+            source.Cancel();
+            return new string('x', 10 * TokenEstimator.CharactersPerToken);
+        });
+
+        // Arrange: 200 tokens of history against a hundred-token verbatim tier, so the overflow ages
+        // into tier one and stops there
+        var layout = SessionTestData.LayoutOf(
+            SessionTestData.SmallPolicy, SessionTestData.TranscriptOf(10, 20));
+
+        // Act / Assert: the rotation is abandoned, rather than returning an outcome built from an
+        // answer that arrived after the caller gave up
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            RotationEngine.RotateAsync(layout, summarizer, ContextUsageOrigin.Estimated, source.Token));
+
+        // Assert: the one consolidation really did run and really did answer, so the refusal is the
+        // engine's own and not the summarizer's
+        Assert.Equal(1, summarizer.CallCount);
+
+        // Assert: nothing was stored. The layout handed in is immutable, so a rotation that had
+        // accepted the result would have produced a different one rather than mutating this.
+        Assert.All(layout.CoarseTiers, tier => Assert.True(tier.IsEmpty));
+    }
 }

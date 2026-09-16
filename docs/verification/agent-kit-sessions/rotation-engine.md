@@ -187,7 +187,8 @@ latter because a session that silently never compacted would fail much later and
 
 **Tests**: `RotationEngine_RotateAsync_SummarizerReturnsNull_Throws`,
 `RotationEngine_RotateAsync_Canceled_Throws`,
-`RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws`
+`RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws`,
+`RotationEngine_RotateAsync_CanceledDuringTheOnlyConsolidation_DoesNotAcceptTheResult`
 
 A summarizer returning null is refused with `InvalidOperationException` rather than stored, because
 a null record would surface as a missing tier at a later rotation, far from the implementation that
@@ -199,6 +200,17 @@ token before the call and rotates a transcript of 60 tokens against a tier-zero 
 nothing overflows and the rotation would otherwise return a successful result without ever reaching
 a consolidation. Cancellation is asserted there too, because a contract honored only where work
 happens to be required is not a contract a caller can rely on.
+
+The fourth covers the cancellation that arrives **while a consolidation is running**, in the case
+where nothing later can catch it. Its summarizer cancels the token as it answers and then ignores the
+token entirely, which `ISummarizer` permits, and its answer fits tier one — so the rotation performs
+exactly one consolidation and reaches no further check. Run against the engine as it previously
+stood the rotation **succeeds**: the answer is sized, stored in tier one and returned inside a
+`RotationOutcome` that `CompactingAgentSession` seeds a replacement provider session from, on a token
+the caller had canceled. The mid-cascade scenario cannot reach this, because there a second
+consolidation follows and the check made before it catches the cancellation. The test asserts the
+rotation throws, that the one consolidation really did run and answer — so the refusal is the
+engine's own and not the summarizer's — and that the layout handed in still holds no tier records.
 
 #### AgentKitSessions-RotationEngine-NormalizesBlankRecords: A Blank Answer Becomes an Empty Record
 

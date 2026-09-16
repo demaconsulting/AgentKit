@@ -48,6 +48,7 @@ a failure.
 `InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn`,
 `InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry`,
 `InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry`,
+`InMemoryProviderSession_SendAsync_CanceledWhileResponding_RecordsNoGhostEntry`,
 `InMemoryProviderSessionFactory_DefaultResponder_Answers`
 
 The first asserts a session created from a seed carrying a consolidated record and one verbatim turn
@@ -65,6 +66,15 @@ refuses a turn — so the shipped fake's history diverged from the engine's tran
 the condition the engine's own rule exists for. This fake is shipped and adapter authors read it as
 the reference implementation, so a divergence here is a defect in published guidance, not merely in
 a test double.
+
+The fifth is the same rule for a turn the caller gives up on **while the responder is running**. Its
+responder cancels the token as it answers and then answers anyway, exactly as an adapter awaiting a
+provider call that a cancellation overtakes would; the test asserts the turn throws and that the
+history and the turn count are untouched. The check made before the responder cannot reach this,
+which is why it was missed: the responder returned a perfectly ordinary turn and it was recorded, for
+a turn whose caller had been told it was canceled. `IProviderSession` documents that a canceled turn
+leaves the session exactly as it was, so this is the shipped reference contradicting the contract it
+is read as demonstrating.
 
 The last asserts the default responder answers and names the message, so a scenario about the
 session lifecycle is not obliged to also invent what a model says.

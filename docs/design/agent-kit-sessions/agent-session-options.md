@@ -35,7 +35,12 @@ default rotation fraction leaves unspent.
 performs the threshold arithmetic. All three are shared with `CompactingAgentSession`, which applies
 the identical test to a provider-reported window — the guard that refuses a window and the
 comparison that decides when to rotate must be the same arithmetic, or the guard admits a window the
-comparison then thrashes on.
+comparison then thrashes on. The first two take an optional allowance for fixed overhead the figures
+being compared do not break out of the conversation, which these options never need — every term in
+their own test is broken out — and which `CompactingAgentSession` supplies for a provider reporting
+totals alone. It is **added to the bound the threshold must exceed** rather than subtracted from the
+window, because it is present in the conversation figure the comparison is made against; subtracting
+it would discount it by the rotation fraction while the comparison pays for all of it.
 
 `MinimumEffectiveWindowTokens` reports what a host would need rather than deciding anything, so it
 saturates at the largest representable token count in the two cases no window can rescue: a rotation
@@ -44,7 +49,9 @@ fraction too small for any window to satisfy, and a policy whose rotated context
 The second is handled before the saturating arithmetic rather than inside it: the analytic answer is
 floored at the bound plus one, which for such a policy is not a representable token count at all, and
 a clamp given that floor reports a defect in this helper instead of the non-convergent window the
-caller asked about. `ConvergesAt` is the predicate used for deciding, precisely because a window
+caller asked about. An overhead allowance that carries the bound to or past `int.MaxValue` is the
+same condition reached by another road and saturates identically. `ConvergesAt` is the predicate used
+for deciding, precisely because a window
 equal to a saturated minimum would pass a comparison while failing the invariant it stands for.
 
 ### Data Model

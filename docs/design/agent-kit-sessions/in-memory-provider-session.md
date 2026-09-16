@@ -85,6 +85,15 @@ shipped, and adapter authors read it as the reference implementation; a fake who
 from the contract under failure is worse than no fake. Both halves of the turn are appended
 together, so an observer of `History` never sees a message without the turn that answered it.
 
+**Why cancellation is checked on both sides of the responder.** `IProviderSession` documents that a
+canceled turn leaves the session as it was, and a check made only before the responder honors that
+for a token canceled earlier and not for one canceled while the responder was running — a responder
+may cancel the token itself, and an adapter for a real provider awaits a call a cancellation can
+overtake. The responder then completed normally, the message and the answer were recorded, and
+`TurnCount` was incremented, for a turn whose caller had been told it was canceled. Checking again
+before the result is accepted makes a canceled turn leave no history whichever moment the
+cancellation arrived in.
+
 **Throws:** `ArgumentNullException` for a null message; `ObjectDisposedException` once disposed;
 `OperationCanceledException` on cancellation; `InvalidOperationException` when the responder returns
 null.

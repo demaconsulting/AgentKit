@@ -768,6 +768,98 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves a provider reporting totals alone, over a real overhead it never breaks out, is
+    ///     refused when the window it reports cannot in fact converge — the case the zero-overhead
+    ///     default made invisible.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The default is safe for the trigger and unsafe for this check, which is how it was
+    ///     missed.</b> <c>ContextUsage.FromProvider</c> with no conversation split treats the whole
+    ///     of the usage as conversation, so <c>OverheadTokens</c> is zero. For the rotation trigger
+    ///     that is the safe direction: an inflated conversation crosses a threshold taken from the
+    ///     whole window early. For the convergence check it is the unsafe one, because it makes the
+    ///     window look larger than it is while the figure a rotated context reports still carries
+    ///     the fold.
+    ///     </para>
+    ///     <para>
+    ///     The arithmetic, exactly: the small policy's rotated context bounds at 311 tokens, a
+    ///     500-token window gives a threshold of 350, and 311 is below it — so the old guard
+    ///     accepted the session. The provider charges 100 tokens it never broke out, so the context a
+    ///     rotation actually produces is reported at 411 against that same 350, and the session
+    ///     rotates on every turn from then on, raising no saturation signal because each individual
+    ///     consolidation reduces perfectly well. Neither shipped adapter reaches it — Copilot reports
+    ///     the split and the <c>IChatClient</c> path is estimated — but the factory method is public
+    ///     and documented to accept totals alone.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ProviderReportsTotalsOverUnreportedOverhead_ReleasesAndThrows()
+    {
+        // Arrange: a provider reporting totals only, over 100 tokens of overhead it never breaks
+        // out, in a window that looks convergent only while that overhead is credited as nothing
+        var factory = new UnsplitReportingProviderSessionFactory(
+            windowTokens: 500, unreportedOverheadTokens: 100, conversationTokensPerTurn: 0);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act: refused before a single turn is spent against it
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        // Assert: the overhead the provider folded in was measured against the empty conversation
+        // the session starts from, and is named in the refusal
+        Assert.Contains("100", error.Message, StringComparison.Ordinal);
+
+        // Assert: and the requirement quoted is the one that credits it - 589 tokens, not the 446
+        // the same policy needs when the provider breaks its overhead out
+        Assert.Contains("589", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("446", error.Message, StringComparison.Ordinal);
+
+        // Assert: the provider session was released rather than left held by a session the caller
+        // never receives
+        Assert.True(Assert.Single(factory.Sessions).IsDisposed);
+    }
+
+    /// <summary>
+    ///     Proves the same provider shape is accepted, and settles, in a window large enough to
+    ///     converge once its unreported overhead is credited — so the guard refuses the
+    ///     configurations that thrash rather than the reporting shape itself.
+    /// </summary>
+    /// <remarks>
+    ///     An adapter that genuinely cannot split its counts is supported rather than turned away:
+    ///     it keeps reporting totals alone, the session measures the fold for it against the empty
+    ///     conversation, and everything downstream stays in the provider's own tokens. Without this
+    ///     scenario the refusal above would be satisfied by a guard that simply rejected every
+    ///     unsplit provider.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ProviderReportsTotalsInAConvergentWindow_RotatesAndSettles()
+    {
+        // Arrange: the same unreported 100 tokens of overhead, in a 900-token window - above the 589
+        // that crediting it requires - with each turn adding 200 reported conversation tokens
+        var factory = new UnsplitReportingProviderSessionFactory(
+            windowTokens: 900, unreportedOverheadTokens: 100, conversationTokensPerTurn: 200);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Assert: the session was accepted, and the provider's own figures are what it reads
+        Assert.Equal(ContextUsageOrigin.Provider, session.Usage.Origin);
+
+        // Act: four turns, which crosses the 630-token threshold and rotates
+        for (var turn = 0; turn < 4; turn++)
+        {
+            await session.SendAsync($"message {turn}", TestContext.Current.CancellationToken);
+        }
+
+        // Assert: it rotated rather than running on, and did not rotate on every turn
+        Assert.True(session.RotationCount >= 1);
+        Assert.True(session.RotationCount < 4);
+    }
+
+    /// <summary>
     ///     Proves a missing configuration or provider factory is refused where the host wrote it,
     ///     rather than at the first conversation.
     /// </summary>
@@ -1069,6 +1161,106 @@ internal sealed class SplitReportingProviderSessionFactory(
 
         var session = new SplitReportingProviderSession(
             windowTokens, overheadTokens, conversationTokensPerTurn);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}
+
+/// <summary>
+///     A provider session that reports totals and a window but never a conversation split, over a
+///     real fixed overhead it charges for and never breaks out.
+/// </summary>
+/// <remarks>
+///     Models the third adapter shape: one whose provider hands it a single occupied-token figure
+///     and a limit, with no account of what within them is conversation.
+///     <see cref="ContextUsage.FromProvider"/> is public and documents that shape as supported, and
+///     no other fake here produces it — <see cref="SplitReportingProviderSession"/> reports the
+///     split, <see cref="ScriptedWindowProviderSession"/> reports a conversation equal to its total
+///     and so carries no hidden overhead at all, and
+///     <see cref="InMemoryProviderSession"/> reports the split it measures with the engine's own
+///     estimator. The overhead here is genuinely charged and genuinely invisible in the split, which
+///     is the whole condition under test.
+/// </remarks>
+/// <param name="windowTokens">The window the session reports.</param>
+/// <param name="unreportedOverheadTokens">
+///     The fixed overhead the session charges for on every reading, folded into its total and never
+///     reported separately.
+/// </param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+internal sealed class UnsplitReportingProviderSession(
+    int windowTokens,
+    int unreportedOverheadTokens,
+    int conversationTokensPerTurn) : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The conversation tokens charged so far, grown by each answered turn.
+    /// </summary>
+    private int _conversationTokens;
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    ///     Totals only: the overhead is inside <c>usedTokens</c> and nowhere else, so the engine
+    ///     sees an <c>OverheadTokens</c> of zero and a conversation figure that silently carries it.
+    /// </remarks>
+    public ContextUsage? CurrentUsage =>
+        ContextUsage.FromProvider(unreportedOverheadTokens + _conversationTokens, windowTokens);
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _conversationTokens += conversationTokensPerTurn;
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="UnsplitReportingProviderSession"/> instances and remembers every one it
+///     made.
+/// </summary>
+/// <remarks>
+///     Every session it makes reports the same window and the same unreported overhead, because the
+///     overhead is the instructions and tool declarations a rotation carries forward unchanged: a
+///     replacement charges exactly what the session it replaced charged.
+/// </remarks>
+/// <param name="windowTokens">The window each created session reports.</param>
+/// <param name="unreportedOverheadTokens">The overhead each created session folds into its total.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+internal sealed class UnsplitReportingProviderSessionFactory(
+    int windowTokens,
+    int unreportedOverheadTokens,
+    int conversationTokensPerTurn) : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<UnsplitReportingProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var session = new UnsplitReportingProviderSession(
+            windowTokens, unreportedOverheadTokens, conversationTokensPerTurn);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

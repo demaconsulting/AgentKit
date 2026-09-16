@@ -193,6 +193,16 @@ public sealed class ContextUsage
     ///     let the session run past the provider's own compactor. Estimating the split here instead
     ///     would mix this library's character ratio into a provider's measurement, which is the one
     ///     thing this shape exists to prevent.
+    ///     <para>
+    ///     <b>Read the previous paragraph as being about the rotation trigger alone.</b> Rotating
+    ///     earlier is the safe direction for the trigger and is not the safe direction everywhere: a
+    ///     session also has to decide whether it can converge in the window at all, and crediting no
+    ///     overhead makes that window look larger than it is. <see cref="CompactingAgentSession"/>
+    ///     therefore measures what an unsplit figure folds in — against the empty conversation its
+    ///     first provider session starts from, where the fold is exactly visible — rather than
+    ///     taking this default at face value. An adapter reporting totals alone should simply report
+    ///     them from the moment the session exists, so that measurement can be taken.
+    ///     </para>
     /// </remarks>
     /// <param name="usedTokens">The tokens the provider says are occupied. Must not be negative.</param>
     /// <param name="windowTokens">The limit the provider reports. Must be positive.</param>
@@ -262,7 +272,10 @@ public interface IContextUsageReporter
     ///     and the tool declarations should pass that split to
     ///     <see cref="ContextUsage.FromProvider"/> rather than leave it to be inferred, because it
     ///     is the only figure in the provider's own tokens this library could otherwise only guess
-    ///     at.
+    ///     at. An implementation that cannot should still report from the moment the session exists
+    ///     rather than only once it has answered something: the empty conversation a session starts
+    ///     from is where <see cref="CompactingAgentSession"/> measures what an unsplit figure folds
+    ///     in, and an implementation that says nothing until after a turn is past that moment.
     ///     </para>
     /// </remarks>
     ContextUsage? CurrentUsage { get; }

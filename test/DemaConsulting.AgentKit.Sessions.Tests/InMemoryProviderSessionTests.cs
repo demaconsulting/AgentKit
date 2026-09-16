@@ -105,6 +105,44 @@ public class InMemoryProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a turn canceled while the responder is running leaves no history, so a canceled
+    ///     turn is indistinguishable from one never taken whichever moment the cancellation arrived
+    ///     in.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The check made before the responder cannot see this.</b> A responder that runs to
+    ///     completion after cancellation was requested returns a perfectly ordinary turn, and the
+    ///     session recorded it: the message, the answer and the turn count, for a turn whose caller
+    ///     had been told it was canceled. This session is shipped as the reference an adapter author
+    ///     reads, and <see cref="IProviderSession"/> documents that a canceled turn leaves the
+    ///     session as it was, so a fake contradicting that teaches the wrong contract while making
+    ///     the engine's own equivalent guarantee untestable through it.
+    /// </remarks>
+    [Fact]
+    public async Task InMemoryProviderSession_SendAsync_CanceledWhileResponding_RecordsNoGhostEntry()
+    {
+        // Arrange: a responder that cancels while it is answering and then answers anyway, exactly
+        // as an adapter awaiting a call a cancellation overtakes would
+        using var source = new CancellationTokenSource();
+        await using var session = new InMemoryProviderSession(
+            new ProviderSessionSeed(null, [], []),
+            _ =>
+            {
+                source.Cancel();
+                return new ProviderTurn("answered after the caller gave up");
+            },
+            1000);
+
+        // Act
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            session.SendAsync("please read", source.Token));
+
+        // Assert: nothing was recorded and no turn was counted
+        Assert.Empty(session.History);
+        Assert.Equal(0, session.TurnCount);
+    }
+
+    /// <summary>
     ///     Proves usage is reported as provider-supplied and grows with the conversation, which is
     ///     what lets a test exercise the branch where the engine prefers a provider's own figures.
     /// </summary>

@@ -289,11 +289,13 @@ public static class RotationEngine
     /// </param>
     /// <param name="cancellationToken">
     ///     Cancels the rotation. Checked once after argument validation, so an already-canceled
-    ///     rotation is refused even when the transcript fits and there is no work to do, and again
+    ///     rotation is refused even when the transcript fits and there is no work to do; again
     ///     before each consolidation, so a cascade already under way stops at the next tier instead
-    ///     of running to completion. The check is made by this engine rather than left to the
-    ///     summarizer, because <see cref="ISummarizer"/> only documents that an implementation may
-    ///     honor the token.
+    ///     of running to completion; and again after each consolidation returns, so a result the
+    ///     summarizer produced across a cancellation requested while it ran is refused rather than
+    ///     sized, stored and returned as a successful rotation. The checks are made by this engine
+    ///     rather than left to the summarizer, because <see cref="ISummarizer"/> only documents that
+    ///     an implementation may honor the token.
     /// </param>
     /// <returns>The aged layout, the saturation reports, and the consolidation count.</returns>
     /// <exception cref="ArgumentNullException">
@@ -566,7 +568,10 @@ public static class RotationEngine
         /// <param name="previousRecord">The record to carry forward, empty when there is none.</param>
         /// <param name="material">The material to fold in.</param>
         /// <param name="budgetTokens">The tier's budget, passed for the summarizer's information.</param>
-        /// <param name="cancellationToken">Cancels the consolidation, checked before it is made.</param>
+        /// <param name="cancellationToken">
+        ///     Cancels the consolidation, checked before it is made and again before its result is
+        ///     accepted.
+        /// </param>
         /// <returns>
         ///     The consolidated record, never <see langword="null"/> and never blank: an answer of
         ///     pure whitespace is returned as an empty string.
@@ -592,6 +597,19 @@ public static class RotationEngine
             ConsolidationCount++;
 
             var result = await summarizer.ConsolidateAsync(request, cancellationToken).ConfigureAwait(false);
+
+            // Checked again, on the far side of the await. The check above refuses a consolidation
+            // the caller had already canceled; this one refuses a result produced across a
+            // cancellation requested while the summarizer was running. ISummarizer only documents
+            // that an implementation MAY honor the token, so an implementation that ignores it
+            // returns a perfectly ordinary answer after the caller has given up - and where this is
+            // the last or the only consolidation, there is no later check to catch it: the result
+            // was sized, stored in its tier, and RotateAsync returned an outcome the session went on
+            // to seed a replacement provider session from, all on a canceled token. Placed before
+            // the result is inspected at all, so nothing produced after cancellation is accepted
+            // even as far as a null test.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (result is null)
             {
                 throw new InvalidOperationException(
