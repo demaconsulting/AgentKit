@@ -192,6 +192,7 @@ figures are computed with the very estimator the split uses.
 `CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement`,
 `CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen`,
 `CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles`,
+`CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold`,
 `CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease`
 
 The scenario the reported-window override made reachable. The tests configure a 4,000-token window
@@ -280,7 +281,23 @@ window is accepted, rotates at least once across four turns and fewer than four 
 provider's own figures on a further turn. Refusing the reporting transition outright was the
 alternative resolution, and it is this scenario that rules it out.
 
-The eleventh is about **what the failure says, and what it hands back**. Its provider reports an
+The eleventh is the fourth direction, and the one deferring the measurement created: **a fold
+measured where there was never one to find**. Its provider is silent until it has answered, and then
+reports a conversation split — 100 tokens of overhead broken out, over a conversation it counts at
+600 while this library's character ratio makes the same short turn a handful. At adoption that
+difference could not appear, because an empty conversation drives the subtraction to zero on its own;
+deferring the measurement to the first reported turn is what let a non-empty conversation reach it.
+Run against the measurement as it previously stood, 587 tokens of pure tokenizer disagreement are
+credited as overhead the provider is hiding, the requirement rises to 1,285 tokens against the 1,100
+the window actually leaves, and the session is abandoned on the caller's first turn over a
+configuration that would have run indefinitely. The test asserts the turn is answered, that the
+session reads the provider's own figures with the 100 tokens of overhead it genuinely reported, that
+no rotation was provoked, and that the original provider session is still live. The guard it fixes is
+a condition rather than a moment: a provider that breaks its overhead out has no fold by definition,
+whenever it is asked. That also closes the same hole at adoption, where a replacement seeded with
+tier records is no more an empty conversation than a first report is.
+
+The twelfth is about **what the failure says, and what it hands back**. Its provider reports an
 unusable window and then fails the release the refusal attempts, which is the one case where the
 claim and the outcome came apart: the catch deliberately leaves the release flag false so a later
 call can retry, and the message nonetheless said the session had been released. Worse, on the

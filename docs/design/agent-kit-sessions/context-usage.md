@@ -125,7 +125,9 @@ accepting a window cannot inherit it — crediting no overhead makes a window lo
 the first instant that provider session reports anything, and credits that instead. An adapter
 reporting totals alone should therefore prefer to report them from the moment a session exists
 rather than only after its first turn, because that is the one moment the measurement is exact; one
-that begins reporting later has it taken approximately, and in the safe direction. See
+that begins reporting later has it taken approximately. The measurement is only ever taken for an
+unsplit figure: an adapter reporting a split has already stated its overhead and is credited no fold,
+because the difference between its tokenizer and this library's ratio is not overhead. See
 *CompactingAgentSession Unit Design*.
 
 #### FromEstimate(int usedTokens, int windowTokens, int? conversationTokens = null)

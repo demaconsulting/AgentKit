@@ -111,9 +111,12 @@ sections:
               is exactly the seeded history and the subtraction is exact, and the first turn it does
               report on otherwise, where the subtrahend is this library's own estimate of the
               conversation by then and a turn's worth of estimating error sits inside the result.
-              That error is credited as fold, and the fold only ever raises the bound a rotation
-              threshold must exceed, so an over-credit refuses a marginal window rather than
-              accepting one that cannot settle.
+              That error is credited as fold only where the provider reports no split at all, which
+              is the one case in which no better reading of its conversation figure exists. An
+              implementation that reports a split has already stated its overhead and is credited no
+              fold, because the difference between its tokenizer and this library's character ratio
+              is two counts of the same text disagreeing rather than overhead anybody is hiding, and
+              crediting it would raise the bound and refuse a window the session would have run in.
 
               Deferring the measurement rather than refusing the transition is deliberate. This
               contract invites an implementation that sometimes knows to report nothing until it
@@ -132,3 +135,4 @@ sections:
               - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull
               - CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen
               - CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles
+              - CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold

@@ -941,6 +941,56 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves a provider that begins reporting only after its first turn, but reports a
+    ///     conversation split when it does, is credited no fold at all.
+    /// </summary>
+    /// <remarks>
+    ///     The fold is the overhead a provider charges without breaking out. An adapter reporting a
+    ///     split has broken it out, and the convergence check already subtracts it from the reported
+    ///     window — so there is nothing left hidden to find. Measuring one anyway takes the
+    ///     difference between the provider's own count of the conversation and this library's
+    ///     four-characters-to-the-token estimate of the same text, which is two tokenizers
+    ///     disagreeing, and credits it as fixed overhead. That inflates the bound the rotation
+    ///     threshold must clear and refuses a window the session would have run in perfectly well.
+    ///     Deferring the measurement to the first reported turn is what exposed this: at adoption an
+    ///     empty conversation makes the subtraction come out at zero on its own, so the missing
+    ///     condition never showed.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold()
+    {
+        // Arrange: silent until it has answered, then reporting a 100-token overhead broken out and
+        // a conversation of 600 tokens - far above this library's estimate of the same short turn,
+        // which is the difference that used to be credited as overhead
+        var factory = new SplitReportingProviderSessionFactory(
+            windowTokens: 1200,
+            overheadTokens: 100,
+            conversationTokensPerTurn: 600,
+            silentUntilFirstTurn: true);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act: creation falls back to an estimate, so the fold measurement is deferred to the turn
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+        Assert.Equal(ContextUsageOrigin.Estimated, session.Usage.Origin);
+
+        // Act: the turn the provider first speaks on - which used to throw, because a fold of about
+        // 600 tokens was credited against the 1,100 effective tokens this window actually leaves
+        var response = await session.SendAsync("m", TestContext.Current.CancellationToken);
+
+        // Assert: the window was accepted and the session is live on the provider's own figures
+        Assert.Contains("Acknowledged", response.Text, StringComparison.Ordinal);
+        Assert.Equal(ContextUsageOrigin.Provider, session.Usage.Origin);
+        Assert.Equal(100, session.Usage.OverheadTokens);
+
+        // Assert: the provider session it was created with is still the one in use, so no rotation
+        // was provoked by an overstated bound
+        Assert.False(response.RotationOccurred);
+        Assert.False(Assert.Single(factory.Sessions).IsDisposed);
+    }
+
+    /// <summary>
     ///     Proves a late-reporting provider in a window large enough to converge once its fold is
     ///     credited is accepted and settles, so the measurement above refuses the configurations
     ///     that thrash rather than the reporting shape itself.
@@ -1633,10 +1683,18 @@ internal sealed class LateReportingProviderSessionFactory(int reportedWindowToke
 /// <param name="windowTokens">The window the session reports.</param>
 /// <param name="overheadTokens">The tokens the session reports outside the conversation.</param>
 /// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="silentUntilFirstTurn">
+///     Whether the session reports nothing until it has answered a turn, which
+///     <see cref="IContextUsageReporter"/> explicitly permits. Combined with a reported split this
+///     is the shape whose fold used to be computed by subtracting this library's character-ratio
+///     estimate from the provider's own conversation count — two tokenizers disagreeing, credited
+///     as though it were overhead somebody was hiding.
+/// </param>
 internal sealed class SplitReportingProviderSession(
     int windowTokens,
     int overheadTokens,
-    int conversationTokensPerTurn) : IProviderSession, IContextUsageReporter
+    int conversationTokensPerTurn,
+    bool silentUntilFirstTurn = false) : IProviderSession, IContextUsageReporter
 {
     /// <summary>
     ///     The conversation tokens reported so far, grown by each answered turn.
@@ -1644,13 +1702,21 @@ internal sealed class SplitReportingProviderSession(
     private int _conversationTokens;
 
     /// <summary>
+    ///     The turns answered so far, which decides whether a silent session has begun reporting.
+    /// </summary>
+    private int _turnCount;
+
+    /// <summary>
     ///     Gets a value indicating whether this session was released.
     /// </summary>
     public bool IsDisposed { get; private set; }
 
     /// <inheritdoc/>
-    public ContextUsage? CurrentUsage => ContextUsage.FromProvider(
-        overheadTokens + _conversationTokens, windowTokens, _conversationTokens);
+    public ContextUsage? CurrentUsage =>
+        silentUntilFirstTurn && _turnCount == 0
+            ? null
+            : ContextUsage.FromProvider(
+                overheadTokens + _conversationTokens, windowTokens, _conversationTokens);
 
     /// <inheritdoc/>
     public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
@@ -1659,6 +1725,7 @@ internal sealed class SplitReportingProviderSession(
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
+        _turnCount++;
         _conversationTokens += conversationTokensPerTurn;
         return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
     }
@@ -1678,10 +1745,12 @@ internal sealed class SplitReportingProviderSession(
 /// <param name="windowTokens">The window each created session reports.</param>
 /// <param name="overheadTokens">The tokens each created session reports outside the conversation.</param>
 /// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="silentUntilFirstTurn">Whether each created session reports nothing until it has answered a turn.</param>
 internal sealed class SplitReportingProviderSessionFactory(
     int windowTokens,
     int overheadTokens,
-    int conversationTokensPerTurn) : IProviderSessionFactory
+    int conversationTokensPerTurn,
+    bool silentUntilFirstTurn = false) : IProviderSessionFactory
 {
     /// <summary>
     ///     Gets every session created so far, oldest first.
@@ -1697,7 +1766,7 @@ internal sealed class SplitReportingProviderSessionFactory(
         cancellationToken.ThrowIfCancellationRequested();
 
         var session = new SplitReportingProviderSession(
-            windowTokens, overheadTokens, conversationTokensPerTurn);
+            windowTokens, overheadTokens, conversationTokensPerTurn, silentUntilFirstTurn);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

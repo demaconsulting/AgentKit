@@ -276,11 +276,18 @@ door the reporting contract holds open.
 The subtraction is between a provider's own count and this library's estimate of the same entries, so
 it is as approximate as every other figure this check compares, and it **errs toward crediting too
 much**: a provider counting framing this library never sees has that difference credited as fold as
-well. That is the safe direction, because the allowance only ever raises the bound the threshold must
-exceed, so an over-credit refuses a window that was marginal rather than accepting one that thrashes.
-It is exactly zero for both adapters shipped today — one reports the split, the other is estimated —
-and the in-memory session, which counts the seeded entries with this very estimator, is credited
-exactly nothing.
+well. Over-crediting is **not** harmless — raising the bound refuses a window the session would have
+run in perfectly well, which fails a working configuration outright — so the subtraction is confined
+to the one case where no better reading exists: a provider reporting **no split at all**. An adapter
+that reports a split has already stated its overhead, that overhead is subtracted from the window
+directly, and the fold is credited as zero without any subtraction being attempted. Crediting one
+there would take the difference between the provider's tokenizer and a four-characters-to-the-token
+estimate of the same text — nested JSON and code tokenize far worse than that ratio — and call it
+overhead somebody was hiding. This condition, and not the moment of measurement, is what makes the
+fold separable: a replacement provider session seeded with tier records is no more an empty
+conversation than a first report is. The fold is therefore exactly zero for both adapters shipped
+today — one reports the split, the other is estimated — and the in-memory session, which counts the
+seeded entries with this very estimator, is credited exactly nothing.
 
 The fold is added to the **bound**, which is the side of the comparison the reported conversation
 figure sits on, rather than subtracted from the window; subtracting it would discount it by the
@@ -295,9 +302,10 @@ totals alone. Requiring a split would either force it to fabricate one — indis
 measurement at the point it is consumed, which is the defect `ContextUsage` exists to remove — or
 push an otherwise sound adapter onto the estimating path, where this library's character ratio would
 decide when a real provider rotates. Such an adapter should *prefer* to report from the moment a
-session exists rather than only once it has answered something, because a session's creation is the
-only moment its fold is exactly separable; an adapter that begins reporting later has it measured at
-its first report instead, approximately and in the safe direction.
+session exists rather than only once it has answered something, because an empty conversation is the
+one case in which its fold is measured exactly; an adapter that begins reporting later, and reporting
+totals alone, has it measured at its first report instead and so approximately. An adapter that
+reports a split is unaffected either way, being credited no fold whenever it is measured.
 
 **Why the failure states the release's outcome, and what to do about it.** The catch around the
 release deliberately leaves the release flag false so a retry is possible, and the message

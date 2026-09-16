@@ -147,9 +147,13 @@ sections:
               travels with the provider session it describes, and adopting a replacement replaces it
               along with the provider reference and the release flag, in one step. The subtraction is
               between a provider's count and this library's estimate of the same entries, so it is as
-              approximate as everything else this check compares and errs toward crediting too much,
-              which only ever raises the bound and so refuses a marginal window rather than accepting
-              a thrashing one.
+              approximate as everything else this check compares. Over-crediting is not harmless -
+              raising the bound refuses a window the session would have run in perfectly well - so
+              the subtraction is confined to a provider reporting no split at all, where no better
+              reading of its conversation figure exists. An adapter reporting a split has already
+              stated its overhead, that figure is subtracted from the window directly, and the fold
+              is credited as zero rather than computed from the difference between the provider's
+              tokenizer and this library's character ratio.
 
               An adapter that genuinely cannot split its counts is supported rather than turned away:
               it keeps reporting totals alone and the session measures the fold for it, so nothing is
@@ -158,10 +162,11 @@ sections:
               point it is consumed, which is the defect the usage shape exists to remove - or push an
               otherwise sound adapter onto the estimating path, where this library's character ratio
               would decide when a real provider rotates. It should prefer to
-              report from the moment a session exists rather than only after a turn, because a
-              session's creation is the only moment its fold is exactly separable; an adapter that
-              begins reporting later has it measured at its first report instead, approximately and
-              in the safe direction.
+              report from the moment a session exists rather than only after a turn, because an empty
+              conversation is the one case in which its fold is measured exactly; an adapter that
+              begins reporting later, and reporting totals alone, has it measured at its first report
+              instead and so approximately. An adapter reporting a split is credited no fold whenever
+              it is measured, so the moment does not matter to it.
 
               Failing is preferred to adapting. Shrinking the tier budgets to fit would silently
               discard the compaction policy the host configured and would have to re-consolidate
@@ -205,6 +210,7 @@ sections:
               - CompactingAgentSession_SendAsync_SplitReportingReplacedByTotalsOnly_RefusesTheReplacement
               - CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen
               - CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles
+              - CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold
               - CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage

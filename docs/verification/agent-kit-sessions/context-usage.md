@@ -110,7 +110,8 @@ check entirely. A value that names nothing would have selected a materially diff
 **Tests**: `ContextUsage_Reporter_MayReportNothing`,
 `InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull`,
 `CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen`,
-`CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles`
+`CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles`,
+`CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold`
 
 Asserts that an implementation can report nothing rather than fabricating a figure, both through a
 minimal hand-written reporter and through the shipped in-memory session configured not to report.
@@ -134,3 +135,15 @@ simply refused every late reporter. The same shape in a 1,200-token window is ac
 settles — rotating at least once and fewer than four times across four turns — and a further turn
 reads the provider's own figures. Abandoning a conformant adapter after a real message has been
 spent was the alternative resolution, and it was rejected for exactly this reason.
+
+The fifth is the cost this freedom carries in the other direction, and it only became reachable once
+the measurement was deferred. A provider may be silent at creation and then report a full
+conversation split, which is a conformant combination the contract permits and nothing else here
+produces. Measuring a fold from that figure subtracts this library's character-ratio estimate from
+the provider's own count of the same text — 587 tokens of disagreement, on a provider that had
+already broken its real 100 tokens of overhead out — and credits it as overhead being hidden, taking
+the requirement to 1,285 tokens against the 1,100 the window leaves and abandoning the session on the
+caller's first turn. The test asserts the turn is answered, that the reported overhead is the 100
+tokens the provider actually declared, that no rotation was provoked and that the original provider
+session is still live. What closes it is a condition rather than a moment: a provider that breaks its
+overhead out has no fold to find, whenever the question is asked.
