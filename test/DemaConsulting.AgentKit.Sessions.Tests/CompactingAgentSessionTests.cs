@@ -192,32 +192,62 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves that when an application configures a budget tighter than the provider's real
-    ///     window, divergence-driven early rotation forces a Rule-5 drop where a convergent provider
-    ///     drops nothing. At one times the session stays below the highest level and drops no
-    ///     material; at two times it reaches the highest level and drops material. Reverting the
-    ///     divergent run to one times collapses it onto the convergent row and fails both assertions.
+    ///     Proves the session relaxes its compaction level after a quiet stretch, so pressure that
+    ///     has passed does not cost fidelity for the rest of the session.
     /// </summary>
     /// <remarks>
-    ///     No currency is mixed. MaterialDropped is decided entirely inside the engine's Rule 5, which
-    ///     sizes the seed in this library's estimate currency against the estimate-currency threshold
-    ///     from the configured window. It is therefore multiplier-independent at a fixed configured
-    ///     window; it appears here only because the configured budget (400) is tighter than the
-    ///     provider window (2000), so divergence-driven early rotation yields a seed the estimate
-    ///     threshold rejects. The test sets provider versus configured window and reads results; no
-    ///     test-side arithmetic crosses currencies.
+    ///     The relaxation branch is the only path that lowers a level, and it is guarded by three
+    ///     conditions at once - a prior rotation, at least m quiet turns, and a rotation that
+    ///     escalated nothing. Every other session test rotates far more often than m turns apart, so
+    ///     none of them reaches it: the branch could be deleted and they would all still pass. The
+    ///     answer size is switched between phases rather than the message size, because the answer
+    ///     is what dominates a turn here.
     /// </remarks>
     [Fact]
-    public async Task CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot()
+    public async Task CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel()
     {
-        var convergent = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, configuredWindow: 400, TestContext.Current.CancellationToken);
-        var divergent = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, configuredWindow: 400, TestContext.Current.CancellationToken);
+        var answerTokens = 700;
+        var factory = new InMemoryProviderSessionFactory(
+            _ => new ProviderTurn(SessionTestData.AssistantOfTokens(answerTokens, "r").Text),
+            reportsUsage: true,
+            windowTokens: 2000);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(0.05),
+            providerWindowTokens: 2000,
+            compaction: new CompactionPolicy(verbatimTurns: 2));
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
 
-        Assert.True(convergent.MaxLevel < CompactionLevel.High, $"A convergent provider must not reach High, but reached {convergent.MaxLevel}.");
-        Assert.False(convergent.AnyDropped, "A convergent provider must not drop material at this window.");
+        // Phase one: turns heavy enough to refill the window within k turns of each rotation, which
+        // is the condition that escalates.
+        var peak = CompactionLevel.Low;
+        for (var turn = 0; turn < 40; turn++)
+        {
+            var response = await session.SendAsync(Msg(700), TestContext.Current.CancellationToken);
+            if (response.Level > peak)
+            {
+                peak = response.Level;
+            }
+        }
 
-        Assert.Equal(CompactionLevel.High, divergent.MaxLevel);
-        Assert.True(divergent.AnyDropped, "A divergent provider must drop material where the convergent one does not.");
+        Assert.True(peak > CompactionLevel.Low, "The session never escalated, so there is nothing to relax from.");
+
+        // Phase two: a long quiet stretch of light turns. The summarizer compresses hard, so the
+        // slots the session is carrying leave real slack, and the window then takes far more than m
+        // turns to fill - which is the condition that relaxes.
+        answerTokens = 1;
+        var settled = peak;
+        for (var turn = 0; turn < 600; turn++)
+        {
+            var response = await session.SendAsync("ok", TestContext.Current.CancellationToken);
+            settled = response.Level;
+            if (settled == CompactionLevel.Low)
+            {
+                break;
+            }
+        }
+
+        Assert.True(settled < peak, $"The level must come down after a quiet stretch, but stayed at {settled}.");
     }
 
     /// <summary>
@@ -228,7 +258,7 @@ public class CompactingAgentSessionTests
     /// </summary>
     /// <param name="multiplier">The provider's tokenizer multiplier relative to this library's estimate.</param>
     /// <param name="providerWindow">The window the provider reports as its own.</param>
-    /// <param name="configuredWindow">The window the application configures, sizing Rule 5's estimate threshold.</param>
+    /// <param name="configuredWindow">The window the application configures.</param>
     /// <param name="cancellationToken">A token to observe for cancellation.</param>
     /// <returns>The rotation count, the highest level seen, and whether any turn dropped material.</returns>
     private static async Task<(int Rotations, CompactionLevel MaxLevel, bool AnyDropped)> RunDivergentAsync(
@@ -348,3 +378,4 @@ public class CompactingAgentSessionTests
             CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken));
     }
 }
+

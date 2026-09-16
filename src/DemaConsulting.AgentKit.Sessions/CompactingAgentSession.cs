@@ -368,9 +368,22 @@ public sealed class CompactingAgentSession : IAgentSession
         // the next rotation one level terser.
         var startLevel = hadPriorRotation && sinceRotation <= K ? RotationEngine.Escalate(originalLevel) : originalLevel;
 
+        // Rule 5 sizes the seed it built against the same capacity rule 2 triggered on, so a
+        // provider that reports its own window governs both. Taking the configured window here
+        // instead left rule 5 inert wherever the two disagreed: an application using a reporting
+        // adapter has no reason to set a window, so the default sat far above anything a real
+        // rotation produces, every candidate passed on the first attempt, and neither the escalation
+        // ladder nor the drop loop could ever run.
+        //
+        // The seed is measured in this library's estimate and the capacity is the provider's own, so
+        // this asks whether an estimated size fits a real limit. That is an approximation, but not
+        // the currency error this design exists to remove: it compares a size against a capacity
+        // rather than subtracting an estimate from a measurement, and it is self-correcting, because
+        // an estimate that lets an oversized seed through is contradicted by the provider's own
+        // figure on the very next turn, which rotates again from a shorter tail.
         var outcome = await RotationEngine
             .RotateAsync(Layout, _options.Summarizer, startLevel, _options.VerbatimTurns,
-                _options.RotationThresholdTokens, cancellationToken)
+                RotationThreshold(Usage, _options), cancellationToken)
             .ConfigureAwait(false);
 
         // Decide the level this turn reports and the next rotation starts from. The engine's settled

@@ -73,9 +73,19 @@ aggressiveness instruction.
 
 **Test**: `RotationEngine_ManyRotations_ConsolidatesOncePerTier`
 
-Drives enough rotations for material to reach all three tiers and asserts consolidation requests
-occur at tier one, tier two and tier three. This proves a turn's material is consolidated once per
-tier, three times over its life, instead of being repeatedly reworked on every rotation.
+Drives twenty-one rotations, enough for material to cascade from tier one to tier three, and asserts
+**how many** consolidation requests each tier receives rather than merely that it receives any.
+
+The count is the discriminating observable, and presence is not. The design this replaced
+re-consolidated each tier's standing record on every rotation — a flat ratchet, and the reason a flat
+scheme's recall collapses as rotations accumulate — and that implementation would produce requests at
+all three tiers exactly as this one does. What it could not produce is twenty-one requests at tier
+one, four at tier two and one at tier three: batch-then-clear consolidates a tier only when it fills,
+so each tier sees a request once per `SlotsPerTier` requests of the tier below it. A ratchet would put
+all three counts near twenty-one.
+
+That ratio is what makes a turn's material pass through exactly three consolidations in its whole
+life, which is the property the recall of the whole arrangement rests on.
 
 #### AgentKitSessions-RotationEngine-ConsolidatesIntoTierOne: Rule Five Fits the Seed
 
@@ -134,7 +144,20 @@ be stored as a slot, and a canceled rotation cannot continue to produce a seed.
 
 #### AgentKitSessions-RotationEngine-NormalizesBlankRecords: A Blank Answer Becomes Empty
 
-**Test**: `RotationEngine_Rotate_BlankAnswer_ProducesNoSlot`
+**Test**: `RotationEngine_Rotate_BlankAnswer_ProducesNoSlotAndKeepsTheMaterial`
 
-Normalizes a blank summarizer answer to empty and creates no slot. This prevents a whitespace-only
+Normalizes a blank summarizer answer to empty and creates no slot, which prevents a whitespace-only
 record from occupying a ring slot while carrying no material.
+
+Producing no slot is only half the behavior, and the test asserts both halves. The material the slot
+would have held stays verbatim: retaining only the shortened tail alongside an absent slot would
+discard every older turn while recording nothing in their place — a silent loss, reported as an
+ordinary success, and committed to the provider as soon as the replacement session is seeded from the
+shortened layout. Asserting the tier is empty does not catch that; the turn count does. The context is
+then no smaller than it was, which is exactly the condition Rule 5 measures, so a session whose
+summarizer goes blank escalates and, failing that, drops material and says so.
+
+The same reasoning governs a blank answer at a cascade. A full tier cannot be cleared on the strength
+of a record that was never written, so the tier stands and the arriving slot displaces its oldest —
+the bounded move the coarsest tier already makes — losing one slot rather than the tier's whole
+complement, and reporting it as dropped material rather than silently.

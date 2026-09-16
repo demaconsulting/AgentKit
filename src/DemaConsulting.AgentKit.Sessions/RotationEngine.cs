@@ -223,14 +223,14 @@ internal static class RotationEngine
         // current level, so the terser tail is applied cleanly rather than layered on the last try.
         while (true)
         {
-            var (candidate, consolidations) =
+            var (candidate, consolidations, droppedBuilding) =
                 await BuildAtLevelAsync(layout, summarizer, level, verbatimTurns, cancellationToken)
                     .ConfigureAwait(false);
             consolidationTotal += consolidations;
 
             if (candidate.EstimatedConversationTokens <= rotationThresholdTokens)
             {
-                return new RotationOutcome(candidate, consolidationTotal, level, materialDropped: false);
+                return new RotationOutcome(candidate, consolidationTotal, level, droppedBuilding);
             }
 
             if (level != CompactionLevel.High)
@@ -241,7 +241,8 @@ internal static class RotationEngine
 
             // At the highest level and the tersest structure still does not fit: drop until it does.
             var (dropped, droppedLayout) = DropUntilFits(candidate, rotationThresholdTokens);
-            return new RotationOutcome(droppedLayout, consolidationTotal, level, dropped);
+            return new RotationOutcome(
+                droppedLayout, consolidationTotal, level, dropped || droppedBuilding);
         }
     }
 
@@ -255,7 +256,7 @@ internal static class RotationEngine
     /// <param name="verbatimTurns">The configured maximum verbatim tail length.</param>
     /// <param name="cancellationToken">Cancels the consolidation.</param>
     /// <returns>The rotated layout at this level, and how many consolidations it cost.</returns>
-    private static async Task<(ContextLayout Layout, int Consolidations)> BuildAtLevelAsync(
+    private static async Task<(ContextLayout Layout, int Consolidations, bool Dropped)> BuildAtLevelAsync(
         ContextLayout layout,
         ISummarizer summarizer,
         CompactionLevel level,
@@ -266,18 +267,29 @@ internal static class RotationEngine
 
         var keep = VerbatimTurnsFor(level, verbatimTurns);
         var (older, retained) = layout.Tail.SplitAtTail(keep);
-        if (older.Count > 0)
+        if (older.Count == 0)
         {
-            var items = older.Select(entry => entry.ToTranscriptLine()).ToList();
-            var slot = await state.ConsolidateItemsAsync(items, tierIndex: 1, cancellationToken)
-                .ConfigureAwait(false);
-            if (slot is not null)
-            {
-                await state.AppendSlotAsync(slot, tier: 0, cancellationToken).ConfigureAwait(false);
-            }
+            return (state.BuildLayout(layout, retained), state.ConsolidationCount, state.MaterialDropped);
         }
 
-        return (state.BuildLayout(layout, retained), state.ConsolidationCount);
+        var items = older.Select(entry => entry.ToTranscriptLine()).ToList();
+        var slot = await state.ConsolidateItemsAsync(items, tierIndex: 1, cancellationToken)
+            .ConfigureAwait(false);
+
+        // A blank answer produces no slot, and the material it was asked to consolidate must then
+        // stay where it is. Retaining only the tail here would discard those turns while recording
+        // nothing in their place - a silent loss, reported as an ordinary success, and committed to
+        // the provider when the replacement session is seeded from the shortened layout. Keeping
+        // them verbatim leaves the context no smaller, which is precisely the condition rule 5
+        // measures: it escalates, and failing that drops material and says so.
+        if (slot is null)
+        {
+            return (state.BuildLayout(layout, layout.Tail), state.ConsolidationCount, state.MaterialDropped);
+        }
+
+        await state.AppendSlotAsync(slot, tier: 0, cancellationToken).ConfigureAwait(false);
+
+        return (state.BuildLayout(layout, retained), state.ConsolidationCount, state.MaterialDropped);
     }
 
     /// <summary>
@@ -381,6 +393,18 @@ internal static class RotationEngine
         public int ConsolidationCount { get; private set; }
 
         /// <summary>
+        ///     Gets a value indicating whether building this layout discarded material.
+        /// </summary>
+        /// <remarks>
+        ///     Set when a full tier could not be consolidated because the summarizer returned a
+        ///     blank record, so the arriving slot displaced the oldest rather than the tier being
+        ///     cleared into a record that was never written. Reported through
+        ///     <see cref="RotationOutcome.MaterialDropped"/> alongside the drops rule 5 makes,
+        ///     because a loss the session cannot see is the failure this signal exists to prevent.
+        /// </remarks>
+        public bool MaterialDropped { get; private set; }
+
+        /// <summary>
         ///     Appends a slot to a tier, cascading through rules 3 and 4 when the tier is full.
         /// </summary>
         /// <param name="slot">The slot to append.</param>
@@ -411,11 +435,23 @@ internal static class RotationEngine
             var items = slots.Select(existing => existing.Content).ToList();
             var consolidated = await ConsolidateItemsAsync(items, tier + 2, cancellationToken)
                 .ConfigureAwait(false);
-            slots.Clear();
-            if (consolidated is not null)
+
+            // A blank answer means the consolidation did not happen, so this tier cannot be cleared:
+            // clearing it on the strength of a record that was never written would discard its whole
+            // complement - up to a tier's worth of history - and append nothing in its place. The
+            // arriving slot still needs a home and the tier is full, so it displaces the oldest, the
+            // same bounded move the coarsest tier makes. One slot is lost rather than all of them,
+            // and it is reported rather than silent.
+            if (consolidated is null)
             {
-                await AppendSlotAsync(consolidated, tier + 1, cancellationToken).ConfigureAwait(false);
+                slots.RemoveAt(0);
+                slots.Add(slot);
+                MaterialDropped = true;
+                return;
             }
+
+            slots.Clear();
+            await AppendSlotAsync(consolidated, tier + 1, cancellationToken).ConfigureAwait(false);
 
             _tiers[tier].Add(slot);
         }

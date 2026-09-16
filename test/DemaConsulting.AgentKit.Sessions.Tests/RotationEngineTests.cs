@@ -75,6 +75,15 @@ public class RotationEngineTests
     ///     Proves a turn is consolidated once per tier — three times in its whole life — by driving
     ///     enough rotations for a slot to cascade from tier one to tier three.
     /// </summary>
+    /// <remarks>
+    ///     The discriminating observable is how many consolidations each tier receives, not whether
+    ///     it receives any. The design this replaced re-consolidated each tier's standing record on
+    ///     every rotation — a flat ratchet, and the reason a flat scheme's recall collapses — and
+    ///     that implementation would produce requests at all three tiers just as this one does.
+    ///     What it could not produce is four of them at tier two and one at tier three: batch-then-
+    ///     clear consolidates a tier only when it is full, so with four slots to a tier, twenty-one
+    ///     rotations give tier one twenty-one, tier two four, and tier three one.
+    /// </remarks>
     [Fact]
     public async Task RotationEngine_ManyRotations_ConsolidatesOncePerTier()
     {
@@ -89,11 +98,18 @@ public class RotationEngineTests
             layout = outcome.Layout;
         }
 
-        // A tier-3 consolidation request proves a slot reached the coarsest tier, which happens only
-        // after it was consolidated at tier one, then tier two, then tier three.
-        Assert.Contains(summarizer.Requests, request => request.TierIndex == 1);
-        Assert.Contains(summarizer.Requests, request => request.TierIndex == 2);
-        Assert.Contains(summarizer.Requests, request => request.TierIndex == 3);
+        var tierOne = summarizer.Requests.Count(request => request.TierIndex == 1);
+        var tierTwo = summarizer.Requests.Count(request => request.TierIndex == 2);
+        var tierThree = summarizer.Requests.Count(request => request.TierIndex == 3);
+
+        // One consolidation into tier one per rotation - that is rule 2, and it is the only tier
+        // that sees every rotation.
+        Assert.Equal(21, tierOne);
+
+        // Tier two is consolidated only when tier one fills, which is once every SlotsPerTier
+        // rotations, and tier three only when tier two fills. A ratchet would put both near 21.
+        Assert.Equal(21 / ContextLayout.SlotsPerTier, tierTwo);
+        Assert.Equal(21 / (ContextLayout.SlotsPerTier * ContextLayout.SlotsPerTier), tierThree);
     }
 
     /// <summary>
@@ -122,16 +138,27 @@ public class RotationEngineTests
 
     /// <summary>
     ///     Proves a blank summarizer answer is normalized to empty: no slot is created rather than a
-    ///     whitespace slot that costs framing to say nothing.
+    ///     whitespace slot that costs framing to say nothing, and the material that slot would have
+    ///     held stays verbatim rather than being discarded.
     /// </summary>
+    /// <remarks>
+    ///     Producing no slot is only half the behavior. Retaining just the tail alongside it would
+    ///     discard every older turn while recording nothing in their place - a silent loss reported
+    ///     as an ordinary success, and committed to the provider as soon as the replacement session
+    ///     is seeded from the shortened layout. Asserting the tier is empty does not catch that; the
+    ///     turn count does.
+    /// </remarks>
     [Fact]
-    public async Task RotationEngine_Rotate_BlankAnswer_ProducesNoSlot()
+    public async Task RotationEngine_Rotate_BlankAnswer_ProducesNoSlotAndKeepsTheMaterial()
     {
+        var transcript = SessionTestData.TranscriptOf(4, tokensEach: 40);
+
         var outcome = await RotationEngine.RotateAsync(
-            SessionTestData.LayoutOf(SessionTestData.TranscriptOf(4, tokensEach: 40)),
+            SessionTestData.LayoutOf(transcript),
             FakeSummarizer.Blank(), CompactionLevel.Low, verbatimTurns: 2, Roomy, CancellationToken.None);
 
         Assert.True(outcome.Layout.Tiers[0].IsEmpty);
+        Assert.Equal(transcript.TurnCount, outcome.Layout.Tail.TurnCount);
     }
 
     /// <summary>

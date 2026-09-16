@@ -83,17 +83,18 @@ round-robin retention structure rather than model memory.
 - `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
 - `CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates`
 - `CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher`
-- `CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot`
+- `CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel`
 - `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
 These tests cover the redesigned fitting strategy. A normal long conversation keeps answering, and a
 provider fake at 1x, 2x and 3x tokenizer divergence completes every turn. Divergence is then verified
 as a difference rather than asserted away: a 2x and 3x provider rotates strictly more often and
-escalates to a strictly higher level than a 1x one, and under a configured budget tighter than the
-provider window a 2x provider reaches `CompactionLevel.High` and reports `MaterialDropped` where a 1x
-provider does neither — each collapsing and failing if reverted to 1x. Separately, a window too small
-to hold a full structure escalates to `CompactionLevel.High` and reports `MaterialDropped`. Together
-they verify escalate-until-it-fits and drop-until-it-fits without predicting in mixed currencies.
+escalates to a strictly higher level than a 1x one, each collapsing and failing if reverted to 1x.
+Adapting is verified in both directions — the level comes back down after a quiet stretch, so a
+session that met one busy period does not pay for it in fidelity thereafter. Separately, a window too
+small to hold a full structure escalates to `CompactionLevel.High` and reports `MaterialDropped`.
+Together they verify escalate-until-it-fits and drop-until-it-fits without predicting in mixed
+currencies.
 
 ### Out-of-Session Summarizer: Consolidation Is Deterministic
 

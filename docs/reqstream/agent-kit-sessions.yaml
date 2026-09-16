@@ -115,7 +115,7 @@ sections:
           - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
           - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
           - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
-          - CompactingAgentSession_DivergentTokenizer_UnderTighterConfiguredBudget_DropsMaterialWhereConvergentDoesNot
+          - CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel
 
       - id: AgentKitSessions-Compaction-OutOfSessionSummarizer
         title: >-

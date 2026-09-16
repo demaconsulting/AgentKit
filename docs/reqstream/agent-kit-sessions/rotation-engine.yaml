@@ -104,7 +104,7 @@ sections:
               than a slot that silently erases a span of history while still costing framing, and no
               downstream consumer has to decide what whitespace means.
             tests:
-              - RotationEngine_Rotate_BlankAnswer_ProducesNoSlot
+              - RotationEngine_Rotate_BlankAnswer_ProducesNoSlotAndKeepsTheMaterial
 
           - id: AgentKitSessions-RotationEngine-Deterministic
             title: >-
