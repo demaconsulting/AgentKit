@@ -131,19 +131,35 @@ recent and old material at the same level, and no later consolidation could unta
 summarizer returning `"   "` is contract-conformant. Treated as a record, it was material to cascade
 and was handed to a `ConsolidationRequest`, which refuses blank material — throwing an
 `ArgumentException` out of `RotateAsync`, which documents no such exception, and out of `SendAsync`.
-The record was permanent state by then, so every later rotation failed the same way. `ContextTier`,
-this cascade test and `ConsolidationRequest` therefore share one definition: blank is empty. A
-whitespace tier is consequently not seeded either, rather than costing a label and per-entry framing
-to say nothing.
+The record was permanent state by then, so every later rotation failed the same way. That is now
+closed at the boundary instead: `ConsolidateAsync` normalizes a blank answer to an empty string
+before this method sees it, so no record reaching a cascade can be whitespace by that route. The
+blank test here is kept for the route that remains — a layout a host composed through `ContextTier`'s
+public constructor — and `ContextTier`, this cascade test and `ConsolidationRequest` share one
+definition: blank is empty. A whitespace tier is consequently not seeded either, rather than costing
+a label and per-entry framing to say nothing.
 
 **Recursion is bounded by the tier count**, so the worst case is one degradation per tier and one
 extra consolidation at each tier that cascaded.
 
 #### RotationState.ConsolidateAsync(...)
 
-Performs one consolidation and counts it. Centralizing the null check on the summarizer's result
-protects every call site, and centralizing the count means the reported `ConsolidationCount` cannot
-drift from what actually happened.
+Performs one consolidation, normalizes its result, and counts it. Centralizing the null check on the
+summarizer's result protects every call site, and centralizing the count means the reported
+`ConsolidationCount` cannot drift from what actually happened.
+
+**This is the one boundary a summarizer's answer crosses, so it is where blank becomes empty.**
+`ISummarizer` forbids only null, so an answer of pure whitespace is one an implementation is
+entitled to give — and every consumer downstream then had to decide for itself what whitespace
+meant. Reconciling those consumers settled what they *call* such a record and left the value intact,
+so the engine went on sizing it: a blank answer larger than its tier's budget was measured over
+budget, stored as an over-budget record, and reported as `TierOverBudget` saturation, while
+`BuildSeed` omitted the very same record. The session was told its context had saturated on material
+no provider would ever receive, and the estimated conversation the rotation threshold is compared
+against disagreed with what would actually be sent. Normalizing here — before any tier sizing,
+cascade decision or storage sees the value — means every consumer shares one definition of empty by
+construction rather than by agreement. A tier recorded from a blank answer therefore costs no
+tokens, raises no saturation, and is not seeded.
 
 **The cancellation token is checked here, before every consolidation.** A cascade is one summarizer
 call per tier — several model calls in production — and `ISummarizer` documents only that an

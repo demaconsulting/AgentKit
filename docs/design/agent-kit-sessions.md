@@ -291,10 +291,15 @@ application message
   `CompactingAgentSession` treats that as a turn that did not rotate. Replacing a provider session
   to arrive at the context the session already had costs a session per turn and is invisible,
   because nothing consolidated and so nothing could saturate.
-- **One definition of empty.** A tier record, a cascade's older record, and a consolidation's
-  material are all judged blank by the same rule. `ISummarizer` forbids only null, so a whitespace
-  answer is contract-conformant and must not be seeded as content, cascaded as material, or
-  presented as a previous record to carry forward.
+- **One definition of empty, established at the boundary.** `ISummarizer` forbids only null, so a
+  whitespace answer is contract-conformant. `RotationEngine` normalizes a blank answer to an empty
+  string where it receives it, before the value is sized, cascaded on or stored, so a tier record, a
+  cascade's older record and a consolidation's material are one thing rather than three readings of
+  the same string. The blank tests those consumers carry remain for the one route a summarizer does
+  not take: a layout a host composed through `ContextTier`'s public constructor.
+- **A diagnostic states facts.** A message reports what was attempted and what is known, never what
+  was hoped for. The refusal of an unusable reported window says the provider's release was
+  attempted, because the release it makes can fail and the flag it leaves behind says so.
 - **Multi-platform and multi-runtime.** Windows, Linux and macOS; .NET 8, 9 and 10, matching the
   rest of the repository.
 

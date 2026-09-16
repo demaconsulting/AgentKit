@@ -111,6 +111,44 @@ public class ContextLayoutTests
     }
 
     /// <summary>
+    ///     Proves a blank tier record is charged nothing, so the estimated conversation describes
+    ///     what would actually be sent rather than what happens to be stored.
+    /// </summary>
+    /// <remarks>
+    ///     <b>Belt and braces for the normalization at the summarizer boundary.</b> A blank record
+    ///     can no longer arrive from a consolidation, but this type's constructor is public and a
+    ///     host composing a layout of its own can still hand one in. The loop used to add every
+    ///     tier's estimate before asking whether the tier was empty, so a blank record was counted
+    ///     in the estimated conversation while <c>BuildSeed</c> skipped it — the threshold was
+    ///     compared against tokens no provider would ever receive, and the estimating path
+    ///     disagreed with the provider-reported one about the same session. Counting the content
+    ///     only inside the non-empty branch puts both accounts in step with the seed.
+    /// </remarks>
+    [Fact]
+    public void ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed()
+    {
+        // Arrange: a layout whose tier one carries forty tokens of pure whitespace, a record no
+        // seed would ever emit, alongside sixty tokens of verbatim history
+        var policy = SessionTestData.SmallPolicy;
+        var blank = new string(' ', 40 * TokenEstimator.CharactersPerToken);
+        var layout = ContextLayout.Create(policy, 0, 0).WithTiers(
+            SessionTestData.TranscriptOf(3, 20),
+            [
+                new ContextTier(1, policy.TierBudgetTokens[1], blank),
+                ContextTier.Empty(2, policy.TierBudgetTokens[2]),
+                ContextTier.Empty(3, policy.TierBudgetTokens[3]),
+            ]);
+
+        // Act / Assert: the blank record is charged nothing, neither content nor framing
+        Assert.Equal(60, layout.ConversationTokens);
+
+        // Assert: which is exactly what the seed does with it - nothing at all
+        Assert.DoesNotContain(
+            layout.BuildSeed(),
+            entry => entry.Kind == TranscriptEntryKind.ContextRecord);
+    }
+
+    /// <summary>
     ///     Proves replacing the transcript produces a new layout and leaves the original untouched,
     ///     which is what lets a test hold a before-and-after pair across a rotation.
     /// </summary>

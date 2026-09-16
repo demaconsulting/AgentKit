@@ -120,3 +120,28 @@ sections:
               - RotationEngine_RotateAsync_SummarizerReturnsNull_Throws
               - RotationEngine_RotateAsync_Canceled_Throws
               - RotationEngine_RotateAsync_CanceledWithNothingToRotate_Throws
+
+          - id: AgentKitSessions-RotationEngine-NormalizesBlankRecords
+            title: >-
+              The engine shall normalize a blank summarizer answer to an empty record where it
+              receives it, before the answer is sized, cascaded on or stored, so that a tier recorded
+              from one costs no tokens, raises no saturation and is not seeded.
+            justification: |
+              The summarizer contract forbids only a null answer, so an answer of pure whitespace is
+              one an implementation is entitled to give - and every consumer downstream then had to
+              decide for itself what whitespace meant. Reconciling those consumers one at a time
+              settled what they call such a record and left the value itself intact, so the engine
+              went on measuring it: a blank answer larger than its tier's budget was sized as content,
+              stored as an over-budget record, and reported as tier-over-budget saturation, while the
+              seed omitted the very same record. The session was told its context had saturated on
+              material no provider would ever receive, and the estimating path's usage disagreed with
+              the provider-reported path about the same session. Normalizing at the single boundary
+              a summarizer's answer crosses closes that by removing the value rather than by asking
+              each consumer to read it the same way, so the tier record, the estimated conversation
+              and the seed describe one thing by construction. The blank tests in the layout and the
+              consolidation request are kept as well, because a host composing a layout through the
+              public tier constructor can still supply a blank record by a route no summarizer takes.
+            tests:
+              - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty
+              - RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation
+              - ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed

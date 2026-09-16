@@ -153,6 +153,7 @@ sections:
           - AgentKitSessions-SessionTranscript-RendersLabeledMaterial
           - AgentKitSessions-Summarizer-RejectsMalformedRequest
           - AgentKitSessions-RotationEngine-RejectsMalformedConsolidation
+          - AgentKitSessions-RotationEngine-NormalizesBlankRecords
         tests:
           - AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext
 

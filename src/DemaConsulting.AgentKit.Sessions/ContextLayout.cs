@@ -92,6 +92,13 @@ public sealed class ContextTier
     ///     <see cref="ArgumentException"/> out of a rotation and permanently out of every rotation
     ///     afterwards.
     ///     </para>
+    ///     <para>
+    ///     A record produced by a rotation can no longer be blank at all:
+    ///     <see cref="RotationEngine"/> normalizes a blank summarizer answer to
+    ///     <see cref="string.Empty"/> where it receives it, so the disagreement is closed by removing
+    ///     the value rather than by each consumer reading it the same way. This test remains because
+    ///     the constructor above is public and a host composing its own layout may still supply one.
+    ///     </para>
     /// </remarks>
     public bool IsEmpty => string.IsNullOrWhiteSpace(Content);
 
@@ -253,11 +260,24 @@ public sealed class ContextLayout
     ///     are seeded with, and the verbatim history.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Excludes the fixed overhead, so this is the figure the rotation threshold — expressed as
     ///     a fraction of the effective window — is compared against. A non-empty tier is charged the
     ///     framing <see cref="BuildSeed"/> wraps it in as well as its own content, because that
     ///     framing is part of what the provider is sent; an empty tier is charged nothing because it
     ///     is not seeded at all.
+    ///     </para>
+    ///     <para>
+    ///     <b>Charged strictly inside the non-empty branch, so this account cannot outrun the
+    ///     seed.</b> The content used to be added before the tier was asked whether it was empty, so
+    ///     a blank record — which <see cref="ContextTier.IsEmpty"/> reports as empty and
+    ///     <see cref="BuildSeed"/> omits — was counted here anyway. The threshold was then compared
+    ///     against tokens no provider would ever receive, and the estimating path disagreed with the
+    ///     provider-reported one about the same session. A blank record can no longer arrive from a
+    ///     consolidation, because <see cref="RotationEngine"/> normalizes a blank summarizer answer
+    ///     where it receives it; this remains correct for a layout a host composes itself through
+    ///     <see cref="ContextTier"/>'s public constructor.
+    ///     </para>
     /// </remarks>
     public int ConversationTokens
     {
@@ -266,12 +286,12 @@ public sealed class ContextLayout
             var total = Transcript.EstimatedTokens;
             foreach (var tier in _coarseTiers)
             {
-                total += tier.EstimatedTokens;
-
-                if (!tier.IsEmpty)
+                if (tier.IsEmpty)
                 {
-                    total += RecordFramingTokens(tier.Index);
+                    continue;
                 }
+
+                total += tier.EstimatedTokens + RecordFramingTokens(tier.Index);
             }
 
             return total;

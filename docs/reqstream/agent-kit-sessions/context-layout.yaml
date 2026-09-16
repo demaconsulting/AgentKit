@@ -92,7 +92,17 @@ sections:
               the list it was built in, following the same idiom as the tier list: it is handed
               straight to a provider-session factory, so a caller able to cast it back could alter
               the history a fresh session is created from.
+
+              A blank record is treated as an empty tier throughout, and the conversation figure
+              charges a tier's content only where the tier is not empty. Adding the content before
+              asking whether the tier was empty charged a blank record that the seed then omitted, so
+              the threshold was compared against tokens no provider would ever receive and the
+              estimating path disagreed with the provider-reported one about the same session. A
+              blank record can no longer arrive from a consolidation - the rotation engine normalizes
+              a blank summarizer answer where it receives it - but the tier constructor is public and
+              a host composing its own layout may still supply one.
             tests:
               - ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory
               - ContextLayout_BuildSeed_EmptyLayout_EmitsNothing
               - ContextLayout_BuildSeed_CannotBeCastAndMutated
+              - ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed

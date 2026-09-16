@@ -319,6 +319,28 @@ public class SessionTranscriptTests
     }
 
     /// <summary>
+    ///     Proves a null element is refused at the boundary rather than dereferenced, matching the
+    ///     rule the neighboring append, seed and turn APIs already apply.
+    /// </summary>
+    /// <remarks>
+    ///     A public method that dereferenced every element produced an undocumented
+    ///     <c>NullReferenceException</c> from inside a LINQ projection, which names neither the
+    ///     argument nor the position at fault. Every other public member in this package that takes
+    ///     a sequence of entries rejects a null element with an <c>ArgumentException</c> naming the
+    ///     parameter, so this one does too.
+    /// </remarks>
+    [Fact]
+    public void SessionTranscript_Render_NullEntry_Throws()
+    {
+        // Arrange: a sequence with a null among otherwise valid entries
+        TranscriptEntry[] entries = [TranscriptEntry.User("ask"), null!];
+
+        // Act / Assert: refused by argument, not by dereference
+        var error = Assert.Throws<ArgumentException>(() => SessionTranscript.Render(entries));
+        Assert.Equal("entries", error.ParamName);
+    }
+
+    /// <summary>
     ///     Proves a consolidated record renders under its own label, so material seeded from a tier
     ///     is not mistaken for something the model said.
     /// </summary>

@@ -48,7 +48,8 @@ project.
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any rotation that consolidates a tier that did not overflow, that fails to
 carry the previous record forward, that degrades the newer material instead of the older record,
-that seeds an orphaned tool result, that leaves the context outside its bound, or that fails to
+that seeds an orphaned tool result, that leaves the context outside its bound, that stores or sizes
+a blank summarizer answer as content, or that fails to
 report a consolidation which could not reduce constitutes a failure.
 
 ### Test Scenarios
@@ -156,3 +157,34 @@ token before the call and rotates a transcript of 60 tokens against a tier-zero 
 nothing overflows and the rotation would otherwise return a successful result without ever reaching
 a consolidation. Cancellation is asserted there too, because a contract honored only where work
 happens to be required is not a contract a caller can rely on.
+
+#### AgentKitSessions-RotationEngine-NormalizesBlankRecords: A Blank Answer Becomes an Empty Record
+
+**Tests**: `RotationEngine_RotateAsync_SummarizerReturnsWhitespace_TreatsTheRecordAsEmpty`,
+`RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation`,
+`ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed`
+
+A summarizer returning whitespace is behaving within its contract — `ISummarizer` forbids only
+null — so the engine has to have an answer for it, and for several rounds that answer was
+"whichever consumer is asked". The first scenario is the one that closed the *reading*: it records a
+whitespace answer, asserts the tier reports itself empty and is not seeded, then grows the history
+and rotates again, which is where the disagreement used to surface as an undocumented
+`ArgumentException` thrown out of every rotation from then on, because the record was permanent
+state by the time it was rejected.
+
+The second is the one that closes the *value*, and it fails against the reading alone. Its
+summarizer returns whitespace three times the size of the tier's budget. Read as content, that is a
+record measured over budget, stored as such, and reported as `TierOverBudget` saturation — telling
+the session its context has saturated on material the seed omits entirely — and counted in the
+estimated conversation the rotation threshold is compared against, so the estimating path and the
+provider-reported path describe the same session differently. The test asserts the stored content is
+exactly the empty string, that it estimates at zero tokens and sits within budget, that no
+saturation was reported, and that the layout's conversation figure equals its transcript alone and
+agrees with a seed carrying no record at all.
+
+The third exercises the same rule by the one route no summarizer takes. `ContextTier`'s constructor
+is public, so a host composing its own layout can still supply a blank record; the scenario builds
+one carrying 40 tokens of whitespace beside 60 tokens of verbatim history and asserts the
+conversation figure is 60 — neither the content nor its framing charged — matching a seed that emits
+no record. Charging the content before asking whether the tier was empty is what made the two
+accounts disagree.

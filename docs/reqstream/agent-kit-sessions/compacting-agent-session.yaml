@@ -80,33 +80,57 @@ sections:
 
           - id: AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow
             title: >-
-              The session shall refuse a provider-reported context window smaller than the layout's
-              construction bound, releasing the live provider session before reporting the failure,
-              both when the session is created and after every turn.
+              The session shall refuse a provider-reported context window in which a rotated context
+              would not land below the rotation threshold, releasing the live provider session before
+              reporting the failure, when the session is created, after every turn, and against a
+              replacement provider session a rotation has adopted, and shall report that the release
+              was attempted rather than that it succeeded.
             justification: |
               The construction bound is the most a layout can ever occupy: the fixed overhead, every
               tier budget, and the framing each seeded tier record carries. A reported window below
-              it cannot hold a freshly rotated context, so rotation cannot make progress. Left
-              unchecked, the threshold derived from the reported window is crossed on nearly every
-              turn while the rotation still splits tier zero at the policy's budget, so each rotation
-              hands back a layout still over the reported window and re-seeds it - a thrash loop
-              spending a summarizer call and a provider session per turn without ever converging.
+              it cannot hold a freshly rotated context, so rotation cannot make progress. Holding the
+              bound is the necessary condition and not the sufficient one: a rotated context that
+              merely fits still sits above the rotation threshold whenever the window is smaller than
+              the bound divided by the rotation fraction, so the threshold is crossed on nearly every
+              turn while the rotation still splits tier zero at the policy's budget - a thrash loop
+              spending a summarizer call and a provider session per turn without ever converging, and
+              raising no saturation signal while doing it, because each individual consolidation
+              reduces perfectly normally.
               Failing is preferred to adapting. Shrinking the tier budgets to fit would silently
               discard the compaction policy the host configured and would have to re-consolidate
               records already written against larger budgets, which an immutable layout exists to
               prevent; ignoring the reported window would reinstate the defect the reported-window
               override removes, letting the session run past the provider's own compactor. The
               configured window is already refused for exactly this condition at options
-              construction, so failing here keeps one rule - a window that cannot hold the bound is
-              refused - and differs only in when the figure becomes knowable. The check runs after
+              construction, so failing here keeps one rule - a window a session could not converge in
+              is refused - and differs only in when the figure becomes knowable. The check runs after
               every turn as well as at creation, because a provider may only begin reporting, or
-              report a smaller window, once it has answered something. The live provider is released
-              first because the session is being abandoned mid-life and the caller has no handle to
-              dispose; a failure to release is swallowed rather than allowed to replace the
-              configuration error the caller can act on.
+              report a smaller window, once it has answered something.
+
+              It runs against a replacement a rotation adopted for the same reason. Nothing obliges a
+              factory to return a session like the one it replaced - a routed deployment, a changed
+              model or a downgraded tier all report a smaller window - and the rotation reads the
+              replacement's usage while adopting it, so the window is knowable at that moment.
+              Checking it there rather than at the next turn is what keeps an unusable replacement
+              from being discovered after the caller has been told the rotation succeeded and has
+              already sent a message to a session that cannot settle. The superseded session is
+              released before the check, so abandoning the rotation does not also leak it.
+
+              The live provider is released before the failure is reported, because the session is
+              being abandoned mid-life and the caller has no handle to dispose; a failure to release
+              is swallowed rather than allowed to replace the configuration error the caller can act
+              on, and the release flag stays false so that disposing the session again retries it.
+              The message therefore states that release was attempted, not that it happened: it is
+              thrown on the path where the attempt may have failed, and at creation the caller is
+              handed no session at all, so a claim that the provider had been released would be
+              untrue in exactly the case it was reporting and would tell an operator no provider-side
+              session was left holding.
             tests:
               - CompactingAgentSession_CreateAsync_ProviderWindowBelowTheBound_ReleasesAndThrows
+              - CompactingAgentSession_CreateAsync_ProviderWindowHoldsTheBoundButCannotConverge_ReleasesAndThrows
               - CompactingAgentSession_SendAsync_ProviderReportsAWindowBelowTheBound_ReleasesAndThrows
+              - CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows
+              - CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease
 
           - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
             title: >-

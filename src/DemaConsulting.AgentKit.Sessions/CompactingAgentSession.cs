@@ -197,13 +197,16 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     <para>
     ///     A provider that reports a context window this session could not converge in abandons the
     ///     session: the live provider is released and an
-    ///     <see cref="InvalidOperationException"/> is thrown. See
+    ///     <see cref="InvalidOperationException"/> is thrown. That applies to a replacement adopted
+    ///     by a rotation as much as to the session the turn was taken against, so a rotation into an
+    ///     unusable session is reported as this turn's failure rather than the next turn's. See
     ///     <see cref="EnsureReportedWindowConvergesAsync"/> for why that is preferred to adapting.
     ///     </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     ///     The provider session factory returned <see langword="null"/> during a rotation, or the
-    ///     live provider reports a context window this session could not converge in.
+    ///     live provider — or a replacement a rotation adopted — reports a context window this
+    ///     session could not converge in.
     /// </exception>
     public async Task<AgentSessionResponse> SendAsync(
         string message,
@@ -323,10 +326,21 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     zero. It stays reachable for a layout whose tier is over budget, which is precisely the
     ///     saturated case, so the guard is kept rather than argued away.
     ///     </para>
+    ///     <para>
+    ///     <b>The replacement is validated before the rotation is reported as successful.</b> A
+    ///     factory may return a session reporting a different context window from the one it
+    ///     replaced, and a replacement this session could not converge in is unusable — so it is
+    ///     held to the same rule the live session is held to on every turn, and the session is
+    ///     abandoned here rather than at the next turn, after the caller has been told the rotation
+    ///     succeeded. See <see cref="EnsureReportedWindowConvergesAsync"/>.
+    ///     </para>
     /// </remarks>
     /// <param name="cancellationToken">Cancels the rotation.</param>
     /// <returns>Whether a rotation was actually carried out, and any saturation it reported.</returns>
-    /// <exception cref="InvalidOperationException">The provider session factory returned null.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The provider session factory returned null, or the replacement it produced reports a
+    ///     context window this session could not converge in.
+    /// </exception>
     private async Task<(bool Occurred, IReadOnlyList<SaturationSignal> Saturations)> RotateAsync(
         CancellationToken cancellationToken)
     {
@@ -382,6 +396,20 @@ public sealed class CompactingAgentSession : IAgentSession
             // the session being disposed is one this object has already given up all reference to.
         }
 
+        // The replacement is held to the same window rule the session it replaced was held to. A
+        // factory is under no obligation to return a session like the one before it - a routed
+        // deployment, a changed model or a downgraded tier all report a smaller window - and the
+        // usage read during the adoption above establishes what that window is without asking
+        // whether the session could converge in it. Checked here rather than left to the next turn,
+        // because by then the caller has been told this rotation succeeded and has sent another
+        // message to a session that cannot settle.
+        //
+        // Placed after the superseded session has been released, so abandoning the rotation over an
+        // unusable replacement does not also leak the session it replaced. The check releases the
+        // replacement itself and marks this session disposed before it throws; that release can fail
+        // like any other, which is why the message it throws claims only that release was attempted.
+        await EnsureReportedWindowConvergesAsync().ConfigureAwait(false);
+
         return (true, outcome.Saturations);
     }
 
@@ -425,7 +453,11 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     being abandoned mid-life and a caller that receives this exception has no session to
     ///     dispose. A failure to release is swallowed rather than allowed to replace the
     ///     configuration error, which is the one the caller can act on; the release flag is set only
-    ///     on success, so an explicit <see cref="DisposeAsync"/> still retries it.
+    ///     on success, so an explicit <see cref="DisposeAsync"/> still retries it. The message
+    ///     therefore says the release was <em>attempted</em> rather than achieved: it is thrown on
+    ///     the path where the attempt may have failed, and on the <see cref="CreateAsync"/> path the
+    ///     caller is handed no session to retry it with, so a claim that the provider had been
+    ///     released would be untrue in exactly the case it was reporting.
     ///     </para>
     /// </remarks>
     /// <returns>A task that completes when the window has been accepted.</returns>
@@ -454,9 +486,10 @@ public sealed class CompactingAgentSession : IAgentSession
 
         _disposed = true;
 
-        // Released unconditionally. This method is reachable only from CreateAsync, which holds a
-        // freshly created provider session, and from SendAsync, which has already thrown
-        // ObjectDisposedException if this session was disposed - so the release flag is false at
+        // Released unconditionally. Every entry point holds a provider session that has not been
+        // released: CreateAsync holds a freshly created one, SendAsync has already thrown
+        // ObjectDisposedException if this session was disposed, and RotateAsync has just adopted a
+        // replacement and disposed only the session it superseded - so the release flag is false at
         // every entry and a guard on it only asserted something already known.
         try
         {
@@ -467,7 +500,8 @@ public sealed class CompactingAgentSession : IAgentSession
         {
             // Intentionally swallowed. The configuration defect below is the failure the caller
             // can act on, and replacing it with an adapter's disposal failure would hide it.
-            // The release flag stays false, so disposing this session again retries the release.
+            // The release flag stays false, so disposing this session again retries the release -
+            // which is why the message below claims only that the release was attempted.
         }
 
         throw new InvalidOperationException(
@@ -477,8 +511,10 @@ public sealed class CompactingAgentSession : IAgentSession
             + $"{_options.Compaction.TotalTierBudgetTokens} tokens of tier budgets and "
             + $"{ContextLayout.SeedFramingTokens(_options.Compaction)} tokens of framing for their "
             + "seeded records, and must land below the rotation threshold, which requires at least "
-            + $"{minimumEffective} tokens. The session has been released rather than left to rotate "
-            + "on every turn without ever getting under its own threshold.");
+            + $"{minimumEffective} tokens. The session is abandoned rather than left to rotate on "
+            + "every turn without ever getting under its own threshold; release of the provider "
+            + "session was attempted, and if that attempt failed the provider still holds it and "
+            + "the release needs retrying.");
     }
 
     /// <summary>

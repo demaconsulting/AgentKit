@@ -615,6 +615,91 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
+    ///     Proves the refusal does not claim the provider session was released when the release it
+    ///     attempted threw.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The message was untrue in exactly the case it reports.</b> The catch around the
+    ///     release deliberately leaves the release flag false so a later call can retry, and the
+    ///     text nonetheless said the session "has been released". On this path <c>CreateAsync</c>
+    ///     returns no handle at all, so an operator reading that has no way to discover the provider
+    ///     still holds the session and no object left to retry the release on. Messages in this
+    ///     package state facts, so this one states what was attempted rather than what was achieved.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_CreateAsync_ReleaseFailsWhileRefusingTheWindow_DoesNotClaimRelease()
+    {
+        // Arrange: a provider reporting a window the small policy cannot converge in, whose release
+        // then fails - the one case where the claim and the outcome came apart
+        var factory = new ScriptedWindowProviderSessionFactory([100], disposeThrows: true);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+
+        // Act
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken));
+
+        // Assert: the configuration defect is still the failure reported, rather than the adapter's
+        // disposal failure that would hide it
+        Assert.Contains("446", error.Message, StringComparison.Ordinal);
+
+        // Assert: the release really did fail, so nothing was released
+        var session = Assert.Single(factory.Sessions);
+        Assert.Equal(1, session.DisposeAttempts);
+        Assert.False(session.IsDisposed);
+
+        // Assert: and the message says the release was attempted rather than claiming it happened
+        Assert.DoesNotContain("has been released", error.Message, StringComparison.Ordinal);
+        Assert.Contains("attempted", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a replacement provider session reporting a window this session could not converge
+    ///     in is refused during the rotation that adopted it, rather than after the next turn has
+    ///     already been accepted against it.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A factory is free to return a session unlike the one it replaced.</b> Nothing requires
+    ///     a provider to report the same window twice — a routed deployment, a changed model, or a
+    ///     tier downgrade between rotations all produce a smaller one — and the rotation read the
+    ///     replacement's usage without ever asking whether the session could converge in it. The
+    ///     turn was then answered normally and the unusable replacement surfaced only on the
+    ///     following turn, by which point the caller had been told the rotation succeeded and a
+    ///     message had already been sent to a session that cannot settle.
+    /// </remarks>
+    [Fact]
+    public async Task CompactingAgentSession_SendAsync_ReplacementReportsAWindowBelowTheBound_ReleasesAndThrows()
+    {
+        // Arrange: a first session reporting a window that converges comfortably, and a replacement
+        // reporting one hopelessly below the 446 tokens the small policy requires. The scripted
+        // conversation figure crosses the first session's 2,800-token threshold in a single turn.
+        var factory = new ScriptedWindowProviderSessionFactory(
+            [4000, 100], conversationTokensPerTurn: 3000);
+        var options = new AgentSessionOptions(
+            new FakeSummarizer(), providerWindowTokens: 4000, compaction: SessionTestData.SmallPolicy);
+        var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
+
+        // Act: a message long enough to overflow tier zero, so the rotation really consolidates and
+        // really does adopt a replacement
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync(new string('m', 600), TestContext.Current.CancellationToken));
+
+        // Assert: the replacement was created, adopted, and then found unusable
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.Contains("100", error.Message, StringComparison.Ordinal);
+        Assert.Contains("446", error.Message, StringComparison.Ordinal);
+
+        // Assert: both provider sessions were released - the superseded one by the rotation, the
+        // replacement by the refusal - so nothing is left held by a session the caller cannot reach
+        Assert.True(factory.Sessions[0].IsDisposed);
+        Assert.True(factory.Sessions[1].IsDisposed);
+
+        // Assert: the session was abandoned, so no further turn is accepted against it
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("again", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     Proves a missing configuration or provider factory is refused where the host wrote it,
     ///     rather than at the first conversation.
     /// </summary>
@@ -916,6 +1001,117 @@ internal sealed class SplitReportingProviderSessionFactory(
 
         var session = new SplitReportingProviderSession(
             windowTokens, overheadTokens, conversationTokensPerTurn);
+        Sessions.Add(session);
+        return Task.FromResult<IProviderSession>(session);
+    }
+}
+
+/// <summary>
+///     A provider session reporting a window supplied by the script that created it, whose release
+///     may be made to fail.
+/// </summary>
+/// <remarks>
+///     Models the two shapes no other fake here can produce together: a provider whose reported
+///     window differs from one session of a conversation to the next, and one whose provider-side
+///     release fails while the engine is abandoning the session over that very window. The
+///     conversation figure is scripted rather than measured, so a scenario can cross a rotation
+///     threshold in a single turn without building a transcript of thousands of tokens.
+/// </remarks>
+/// <param name="windowTokens">The window this session reports.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="disposeThrows">Whether the provider-side release fails.</param>
+internal sealed class ScriptedWindowProviderSession(
+    int windowTokens,
+    int conversationTokensPerTurn,
+    bool disposeThrows) : IProviderSession, IContextUsageReporter
+{
+    /// <summary>
+    ///     The conversation tokens reported so far, grown by each answered turn.
+    /// </summary>
+    private int _conversationTokens;
+
+    /// <summary>
+    ///     Gets the window this session reports.
+    /// </summary>
+    public int WindowTokens { get; } = windowTokens;
+
+    /// <summary>
+    ///     Gets how many times disposal was attempted on this session.
+    /// </summary>
+    /// <remarks>
+    ///     Counted separately from whether it succeeded, because a release that threw was still
+    ///     attempted - and the distinction between the two is exactly what the refusal message has
+    ///     to be honest about.
+    /// </remarks>
+    public int DisposeAttempts { get; private set; }
+
+    /// <summary>
+    ///     Gets a value indicating whether this session was actually released.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc/>
+    public ContextUsage? CurrentUsage =>
+        ContextUsage.FromProvider(_conversationTokens, WindowTokens, _conversationTokens);
+
+    /// <inheritdoc/>
+    public Task<ProviderTurn> SendAsync(string message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _conversationTokens += conversationTokensPerTurn;
+        return Task.FromResult(new ProviderTurn($"Acknowledged: {message}"));
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        DisposeAttempts++;
+
+        if (disposeThrows)
+        {
+            throw new InvalidOperationException("The provider session could not be released.");
+        }
+
+        IsDisposed = true;
+        return default;
+    }
+}
+
+/// <summary>
+///     Creates <see cref="ScriptedWindowProviderSession"/> instances, giving each the next window in
+///     a script, and remembers every one it made.
+/// </summary>
+/// <remarks>
+///     The script is what lets a scenario state that a rotation's replacement reports a different
+///     window from the session it replaced. Once the script is exhausted every further session
+///     reports the last window in it, so a scenario states only the windows it cares about.
+/// </remarks>
+/// <param name="windowTokens">The window each successive session reports. Must not be empty.</param>
+/// <param name="conversationTokensPerTurn">The conversation tokens each answered turn adds.</param>
+/// <param name="disposeThrows">Whether the provider-side release of each session fails.</param>
+internal sealed class ScriptedWindowProviderSessionFactory(
+    IReadOnlyList<int> windowTokens,
+    int conversationTokensPerTurn = 0,
+    bool disposeThrows = false) : IProviderSessionFactory
+{
+    /// <summary>
+    ///     Gets every session created so far, oldest first.
+    /// </summary>
+    public List<ScriptedWindowProviderSession> Sessions { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<IProviderSession> CreateAsync(
+        ProviderSessionSeed seed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var window = windowTokens[Math.Min(Sessions.Count, windowTokens.Count - 1)];
+        var session = new ScriptedWindowProviderSession(window, conversationTokensPerTurn, disposeThrows);
         Sessions.Add(session);
         return Task.FromResult<IProviderSession>(session);
     }

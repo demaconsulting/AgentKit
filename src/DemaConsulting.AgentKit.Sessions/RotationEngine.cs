@@ -239,6 +239,14 @@ public static class RotationEngine
     ///     <para>
     ///     Recursion is bounded by the tier count, so the worst case is one cascade per tier.
     ///     </para>
+    ///     <para>
+    ///     <b>A blank answer is normalized to an empty record where it is received.</b>
+    ///     <see cref="ISummarizer"/> forbids only <see langword="null"/>, so an answer of pure
+    ///     whitespace is permitted; this engine turns one into <see cref="string.Empty"/> before it
+    ///     is sized, cascaded on or stored. A tier recorded from such an answer is therefore empty,
+    ///     costs no tokens, raises no saturation, and is not seeded — the same account the layout
+    ///     and the seed give of it.
+    ///     </para>
     /// </remarks>
     /// <param name="layout">The layout to rotate. Must not be <see langword="null"/>.</param>
     /// <param name="summarizer">
@@ -398,13 +406,15 @@ public static class RotationEngine
             // down and somewhere coarser to move it to.
             //
             // "An older record" means a record holding something, not merely a string of non-zero
-            // length. A summarizer is permitted to return whitespace - ISummarizer forbids only null
-            // - and a whitespace previous record treated as material to cascade was handed to a
-            // ConsolidationRequest, which refuses blank material, throwing an ArgumentException out
-            // of this method that RotateAsync does not document and SendAsync does not expect. The
-            // whitespace record was permanent state by then, so every later rotation failed the same
-            // way. ContextTier.IsEmpty and ConsolidationRequest.IsDegradation use this same
-            // definition, so all three now agree about the same string.
+            // length. ConsolidateAsync now normalizes a blank summarizer answer to an empty string
+            // before it is ever stored, so a record reaching here cannot be whitespace by that
+            // route. The blank test is kept because a layout may also be composed by a host through
+            // ContextTier's public constructor: a whitespace previous record treated as material to
+            // cascade is handed to a ConsolidationRequest, which refuses blank material, throwing an
+            // ArgumentException out of this method that RotateAsync does not document and SendAsync
+            // does not expect - and the whitespace record is permanent state by then, so every later
+            // rotation fails the same way. ContextTier.IsEmpty and ConsolidationRequest.IsDegradation
+            // use this same definition, so all three agree about the same string.
             var canCascade = !string.IsNullOrWhiteSpace(previous) && tierIndex + 1 < policy.TierCount;
             if (!canCascade)
             {
@@ -448,20 +458,41 @@ public static class RotationEngine
         }
 
         /// <summary>
-        ///     Performs one consolidation and counts it.
+        ///     Performs one consolidation, normalizes its result, and counts it.
         /// </summary>
         /// <remarks>
+        ///     <para>
         ///     Centralizes the null check on the summarizer's result so every call site is protected
         ///     by it, and centralizes the count so the reported
         ///     <see cref="RotationOutcome.ConsolidationCount"/> cannot drift from what actually
         ///     happened.
+        ///     </para>
+        ///     <para>
+        ///     <b>This is the one boundary a summarizer's answer crosses, so it is where blank
+        ///     becomes empty.</b> <see cref="ISummarizer"/> forbids only <see langword="null"/>, so
+        ///     an answer of pure whitespace is contract-conformant — and every consumer downstream
+        ///     then had to decide for itself what whitespace meant. Reconciling those consumers one
+        ///     at a time settled what they call it and left the value intact, so the engine went on
+        ///     sizing whitespace as content: a blank answer larger than its tier's budget was
+        ///     measured over budget, stored, and reported as
+        ///     <see cref="SaturationReason.TierOverBudget"/> saturation, while
+        ///     <see cref="ContextLayout.BuildSeed"/> skipped the very same record — the session was
+        ///     told its context had saturated on material no provider would ever receive, and the
+        ///     estimating path's usage disagreed with the provider-reported one about the same
+        ///     session. Normalizing here, before any tier sizing, cascade decision or storage sees
+        ///     the value, means every consumer shares one definition of empty by construction rather
+        ///     than by agreement.
+        ///     </para>
         /// </remarks>
         /// <param name="tierIndex">The tier the result belongs to.</param>
         /// <param name="previousRecord">The record to carry forward, empty when there is none.</param>
         /// <param name="material">The material to fold in.</param>
         /// <param name="budgetTokens">The tier's budget, passed for the summarizer's information.</param>
         /// <param name="cancellationToken">Cancels the consolidation, checked before it is made.</param>
-        /// <returns>The consolidated record, never <see langword="null"/>.</returns>
+        /// <returns>
+        ///     The consolidated record, never <see langword="null"/> and never blank: an answer of
+        ///     pure whitespace is returned as an empty string.
+        /// </returns>
         /// <exception cref="InvalidOperationException">The summarizer returned <see langword="null"/>.</exception>
         /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
         private async Task<string> ConsolidateAsync(
@@ -483,9 +514,15 @@ public static class RotationEngine
             ConsolidationCount++;
 
             var result = await summarizer.ConsolidateAsync(request, cancellationToken).ConfigureAwait(false);
-            return result ?? throw new InvalidOperationException(
-                $"The summarizer returned null for a tier {tierIndex} consolidation; "
-                + "an implementation with nothing to say must return an empty string.");
+            if (result is null)
+            {
+                throw new InvalidOperationException(
+                    $"The summarizer returned null for a tier {tierIndex} consolidation; "
+                    + "an implementation with nothing to say must return an empty string.");
+            }
+
+            // Blank becomes empty here and nowhere else; see the remarks above.
+            return string.IsNullOrWhiteSpace(result) ? string.Empty : result;
         }
     }
 }

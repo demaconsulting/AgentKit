@@ -484,6 +484,54 @@ public class RotationEngineTests
     }
 
     /// <summary>
+    ///     Proves a blank summarizer answer is normalized where it is received, so what the engine
+    ///     sizes, cascades on and stores is an empty record rather than the whitespace it was handed.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The consumers agreeing about whitespace was not enough, because the value was still
+    ///     whitespace.</b> Reading blank as empty in <c>ContextTier.IsEmpty</c>,
+    ///     <c>ConsolidationRequest.IsDegradation</c> and the cascade test settled what those three
+    ///     call it, and left the record itself intact — so the engine went on measuring it. A
+    ///     whitespace answer larger than its tier's budget was therefore stored as over-budget
+    ///     content and reported as <c>TierOverBudget</c> saturation, while <c>BuildSeed</c> skipped
+    ///     it entirely: the session was told its context had saturated on material no provider would
+    ///     ever be sent. Normalizing at the boundary removes the disagreement by removing the value,
+    ///     so every consumer downstream shares one definition of empty by construction.
+    /// </remarks>
+    [Fact]
+    public async Task RotationEngine_RotateAsync_SummarizerReturnsWhitespace_StoresAnEmptyRecordAndReportsNoSaturation()
+    {
+        // Arrange: a contract-conformant answer of pure whitespace, three times tier one's
+        // sixty-token budget, which is the shape that used to be measured as over-budget content
+        var summarizer = new FakeSummarizer(request =>
+            new string(' ', 3 * request.BudgetTokens * TokenEstimator.CharactersPerToken));
+        var layout = SessionTestData.LayoutOf(
+            SessionTestData.SmallPolicy,
+            SessionTestData.TranscriptOf(10, 20));
+
+        // Act
+        var outcome = await RotationEngine.RotateAsync(layout, summarizer, TestContext.Current.CancellationToken);
+
+        // Assert: the record stored is empty rather than whitespace, so nothing downstream has to
+        // decide what whitespace means
+        var tier = outcome.Layout.CoarseTiers[0];
+        Assert.Equal(string.Empty, tier.Content);
+        Assert.Equal(0, tier.EstimatedTokens);
+        Assert.True(tier.IsWithinBudget);
+
+        // Assert: no saturation was manufactured out of whitespace the provider is never sent
+        Assert.Empty(outcome.Saturations);
+        Assert.False(outcome.IsSaturated);
+
+        // Assert: the estimated conversation agrees with what would actually be sent - the blank
+        // tier is charged nothing, exactly as BuildSeed emits nothing for it
+        Assert.Equal(outcome.Layout.Transcript.EstimatedTokens, outcome.Layout.ConversationTokens);
+        Assert.DoesNotContain(
+            outcome.Layout.BuildSeed(),
+            entry => entry.Kind == TranscriptEntryKind.ContextRecord);
+    }
+
+    /// <summary>
     ///     Proves a cascade already under way stops when the token is canceled, rather than running
     ///     every remaining consolidation to completion.
     /// </summary>

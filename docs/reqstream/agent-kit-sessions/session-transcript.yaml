@@ -94,13 +94,21 @@ sections:
           - id: AgentKitSessions-SessionTranscript-RendersLabeledMaterial
             title: >-
               The transcript shall render a run of entries as labeled text, one line per entry,
-              deterministically.
+              deterministically, rejecting a null entry by argument rather than dereferencing it.
             justification: |
               The summarizer is a stateless call that receives text, so the material handed to it
               must say who said what and which result answered which call. The labeling is fixed and
               mechanical rather than prose so that the same history always renders to the same
               string, which is what lets a fake summarizer in a test assert on exactly what the
-              engine asked it to consolidate.
+              engine asked it to consolidate. Rendering is public, so it is held to the same rule its
+              neighbors are: appending a run of entries, seeding a provider session and reporting a
+              provider turn all reject a null element with an argument failure naming the parameter.
+              Rendering alone dereferenced every element, producing an undocumented null reference
+              failure from inside the projection which names neither the argument nor the position at
+              fault, so a caller composing material from its own history could not tell which entry
+              was wrong.
             tests:
               - SessionTranscript_Render_LabelsEveryKind
+              - SessionTranscript_Render_NullEntry_Throws
+              - SessionTranscript_Append_NullEntry_Throws
               - TranscriptEntry_ToTranscriptLine_ContextRecord_LabelsAsRecord

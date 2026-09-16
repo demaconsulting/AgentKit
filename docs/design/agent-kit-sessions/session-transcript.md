@@ -116,6 +116,17 @@ Render entries as the labeled text a stateless summarizer is handed: `USER:`, `A
 mechanical rather than prose so that the same history always renders to the same string, which is
 what lets a fake summarizer in a test assert on exactly what the engine asked it to consolidate.
 
+**`Render` rejects a null element rather than dereferencing it.** It is public, and it was the one
+entry point here taking a sequence without checking its contents: a null among them produced a
+`NullReferenceException` from inside the projection — undocumented, and naming neither the argument
+nor the position at fault. `Append`, `ProviderSessionSeed` and `ProviderTurn` all reject a null
+element with an `ArgumentException` naming the parameter, so `Render` does the same. The sequence is
+materialized once rather than enumerated twice, because a caller may supply a lazy one and its
+generator must not be asked to produce the same run again for the validation.
+
+**Preconditions:** `entries` is not null and contains no null entry; an empty sequence renders as an
+empty string.
+
 ### Error Handling
 
 - **Null entry text** — `ArgumentNullException` propagates
@@ -124,6 +135,7 @@ what lets a fake summarizer in a test assert on exactly what the engine asked it
 - **Any other kind carrying an identifier** — `ArgumentException` propagates, naming the kind
 - **Null entry appended** — `ArgumentNullException` propagates
 - **Null entry within an appended sequence** — `ArgumentException` propagates
+- **Null entry within a rendered sequence** — `ArgumentException` propagates
 - **Negative split budget** — `ArgumentOutOfRangeException` propagates
 
 A null in the transcript would fail later, at a rotation, far from the code that put it there, so

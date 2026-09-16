@@ -145,7 +145,18 @@ forbids only null, so a summarizer returning `"   "` is contract-conformant; tre
 content seeded a full label and per-entry framing for nothing, and — because `RotationEngine`'s
 cascade test and `ConsolidationRequest` disagreed with each other about the same string — eventually
 threw an undocumented `ArgumentException` out of every later rotation. `ContextTier.IsEmpty`, that
-cascade test and `ConsolidationRequest` now share one definition of blank.
+cascade test and `ConsolidationRequest` share one definition of blank, and `RotationEngine` now
+normalizes a blank summarizer answer to an empty string where it receives it, so a record produced
+by a rotation cannot be whitespace at all. The blank test remains here for the route that stays
+open: a layout a host composed through `ContextTier`'s public constructor.
+
+**`ConversationTokens` charges a tier only inside the non-empty branch.** The content used to be
+added before the tier was asked whether it was empty, so a blank record — which `IsEmpty` reports as
+empty and `BuildSeed` omits — was counted in the estimated conversation anyway. The rotation
+threshold was then compared against tokens no provider would ever receive, and the estimating path
+disagreed with the provider-reported path about the same session. Charging the content and its
+framing together, inside the branch that decides the tier is seeded at all, keeps this account and
+the seed describing one thing.
 
 **Why the system prompt and tool declarations are not emitted.** Providers accept them through their
 own configuration rather than as history, which is exactly why they are accounted for here as fixed

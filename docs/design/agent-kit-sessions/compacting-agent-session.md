@@ -52,12 +52,12 @@ later rotation will carry.
 
 A static asynchronous factory rather than a constructor, because creating the first provider session
 is asynchronous and a constructor cannot await. A provider that reports its window from the outset
-is checked against the construction bound here, and a session whose provider cannot hold that bound
-is refused with the provider released; see *SendAsync* below for why.
+is checked here, and a session whose provider reports a window it could not converge in is refused
+with the provider's release attempted; see *SendAsync* below for why.
 
 **Throws:** `ArgumentNullException` for a null options or factory; `InvalidOperationException` when
-the factory returns null or the created session reports a window smaller than the construction
-bound; `OperationCanceledException` on cancellation.
+the factory returns null or the created session reports a window the session could not converge in;
+`OperationCanceledException` on cancellation.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
@@ -69,8 +69,8 @@ bound; `OperationCanceledException` on cancellation.
    produced to the transcript, in that order.
 4. Read usage: the live session's own account if it reports one, otherwise an estimate from the
    layout against the configured window.
-5. Refuse a reported window smaller than the layout's construction bound, releasing the live
-   provider first.
+5. Refuse a reported window in which a rotated context could not land below the rotation threshold,
+   releasing the live provider first.
 6. Compare the usage figure's own conversation tokens against the rotation threshold derived from the
    window that usage figure was measured against: the provider's reported window, less the overhead
    that provider itself reported, when the provider reported one; the configured window, less the
@@ -139,10 +139,18 @@ turn, because a provider may only begin reporting, or report a smaller window, o
 something. The live provider is released before the exception is thrown, since the session is being
 abandoned mid-life and the caller has no handle to dispose; a failure to release is swallowed rather
 than allowed to replace the configuration error the caller can act on, and the release flag stays
-false so an explicit `DisposeAsync` still retries it. The release is unconditional: this method is
-reachable only from `CreateAsync`, holding a freshly created session, and from `SendAsync`, which
-has already refused a disposed session, so a guard on the release flag asserted something already
-known.
+false so an explicit `DisposeAsync` still retries it. The release is unconditional: every entry point
+holds a provider session that has not been released — `CreateAsync` a freshly created one,
+`SendAsync` one already checked against disposal, and `RotateAsync` a replacement it has just
+adopted — so a guard on the release flag asserted something already known.
+
+**Why the failure says the release was *attempted*.** The catch above deliberately leaves the
+release flag false so a later call can retry, and the message nonetheless claimed the session "has
+been released" — untrue in exactly the case it was reporting. On the `CreateAsync` path no session
+handle is returned at all, so an operator reading that claim has nothing left to retry the release
+with and no reason to suspect the provider still holds a session. The message therefore states what
+was attempted and that a failed attempt needs retrying, which is true on every path it is thrown
+from. This package's rule is that a diagnostic states facts.
 
 The window this check measures is the reported window less the overhead the provider itself
 reported, so that subtraction is in one currency. The bound it is compared against — the tier budgets
@@ -153,8 +161,8 @@ rotation fraction's thirty percent of unspent window is for. What it no longer d
 reported window itself before making the comparison.
 
 **Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
-`InvalidOperationException` when the live provider reports a window the session could not converge
-in; `OperationCanceledException` on cancellation.
+`InvalidOperationException` when the live provider — or a replacement a rotation adopted — reports a
+window the session could not converge in; `OperationCanceledException` on cancellation.
 
 #### RotateAsync(CancellationToken cancellationToken)
 
@@ -165,7 +173,20 @@ result.
 and report that none occurred; otherwise build a seed from the new layout; create the replacement;
 adopt it — swapping the provider reference and updating the layout, the rotation count, the
 consolidation total and the usage in one step containing no `await`; dispose the one it replaced;
-return that a rotation occurred, with the saturation reports.
+validate the replacement's reported window; return that a rotation occurred, with the saturation
+reports.
+
+**Why the replacement is validated before the rotation is reported as successful.** Nothing obliges
+a factory to return a session like the one it replaced — a routed deployment, a changed model or a
+downgraded tier all report a smaller window — and the adoption reads the replacement's usage, so the
+window is knowable at that moment. It was read and not checked, so a session this library could
+never converge in was adopted, the turn was answered normally, and the caller was told the rotation
+had succeeded; the replacement was found unusable only on the turn after, once a message had
+already been sent into it. `EnsureReportedWindowConvergesAsync` is therefore run against it here,
+which releases the replacement and abandons the session rather than returning. It is placed **after**
+the superseded session has been disposed, so abandoning the rotation over an unusable replacement
+does not also leak the session it replaced. That release can itself fail, like any other, which is
+why the message it throws claims only that release was attempted.
 
 **Why a rotation that consolidated nothing is abandoned.** The engine returns the layout unchanged
 when the transcript already fits tier zero, and for a pure function over a layout that genuinely
@@ -237,8 +258,13 @@ sites that need a usage figure, is what keeps the two provider families on one c
 - **Null options or provider factory** — `ArgumentNullException` propagates
 - **Provider factory returns null** — `InvalidOperationException` propagates
 - **Blank message** — `ArgumentException` propagates
-- **Provider reports a window smaller than the construction bound** — `InvalidOperationException`
-  propagates; the live provider is released first and the session refuses further turns
+- **Provider reports a window the session could not converge in** — `InvalidOperationException`
+  propagates, stating the release was attempted; the live provider's release is attempted first and
+  the session refuses further turns. This applies to a replacement adopted by a rotation as much as
+  to the session a turn was taken against
+- **Release fails while refusing an unusable window** — Caught and not reported; the configuration
+  error is the one the caller can act on, the release flag stays false so the release remains
+  retryable, and the message claims only that release was attempted
 - **Use after disposal** — `ObjectDisposedException` propagates
 - **Summarizer fails during rotation** — Propagates; the session is left intact and still able to answer
 - **Superseded provider session fails to dispose during rotation** — Caught and not reported; the

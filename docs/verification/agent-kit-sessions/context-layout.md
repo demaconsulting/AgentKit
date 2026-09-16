@@ -102,7 +102,8 @@ update would still produce correct-looking layouts while breaking every such com
 
 **Tests**: `ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory`,
 `ContextLayout_BuildSeed_EmptyLayout_EmitsNothing`,
-`ContextLayout_BuildSeed_CannotBeCastAndMutated`
+`ContextLayout_BuildSeed_CannotBeCastAndMutated`,
+`ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed`
 
 Builds a layout with records in tiers one and two, an empty tier three and one verbatim turn, then
 asserts by position that tier two's record comes first, tier one's second, the empty tier is skipped
@@ -115,3 +116,13 @@ and that writing through it is refused. The seed goes straight to a provider-ses
 caller able to cast it back could seed a fresh session with material the layout never held — the
 same defect the tier list is already protected against, applied to the one collection that actually
 leaves the package.
+
+The fourth asserts the **conversation figure and the seed agree about the same tier**. A blank
+record counts as an empty tier, which the seed omits, and the accounting used to add the tier's
+content before asking whether the tier was empty — so a blank record was charged against a rotation
+threshold measuring tokens the provider would never receive, and the estimating path disagreed with
+the provider-reported one about one session. The scenario carries 40 tokens of whitespace in tier one
+beside 60 tokens of verbatim history and asserts a conversation of 60, neither content nor framing
+charged, against a seed emitting no record. The rotation engine now normalizes a blank summarizer
+answer where it receives it, so this arrives only by the route that remains: `ContextTier`'s public
+constructor, used by a host composing a layout of its own.

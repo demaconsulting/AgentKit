@@ -489,17 +489,39 @@ public sealed class SessionTranscript
     ///     Static and deterministic: the same entries always render to the same string, which is
     ///     what allows a fake summarizer in a test to assert on exactly what the engine asked it to
     ///     consolidate.
+    ///     <para>
+    ///     A null element is refused by argument rather than dereferenced. This method is public and
+    ///     is the one entry point here that took a sequence without checking its contents: a null
+    ///     among them produced a <see cref="NullReferenceException"/> from inside the projection,
+    ///     which this method did not document and which names neither the parameter nor the position
+    ///     at fault. <see cref="Append(IEnumerable{TranscriptEntry})"/>,
+    ///     <see cref="ProviderSessionSeed"/> and <see cref="ProviderTurn"/> all reject a null
+    ///     element with an <see cref="ArgumentException"/>, so this one does the same.
+    ///     </para>
     /// </remarks>
     /// <param name="entries">
-    ///     The entries to render, oldest first. Must not be <see langword="null"/>. An empty
-    ///     sequence renders as an empty string.
+    ///     The entries to render, oldest first. Must not be <see langword="null"/> and must contain
+    ///     no <see langword="null"/> entry. An empty sequence renders as an empty string.
     /// </param>
     /// <returns>One labeled line per entry, separated by newlines.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entries"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="entries"/> contains a <see langword="null"/> entry.</exception>
     public static string Render(IEnumerable<TranscriptEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        return string.Join("\n", entries.Select(entry => entry.ToTranscriptLine()));
+        // Materialized once rather than enumerated twice, because the sequence may be lazy and a
+        // caller's generator must not be asked to produce the same run again for the validation.
+        var rendered = entries as IReadOnlyList<TranscriptEntry> ?? [.. entries];
+        var lines = new string[rendered.Count];
+        for (var index = 0; index < rendered.Count; index++)
+        {
+            var entry = rendered[index]
+                ?? throw new ArgumentException("An entry in the sequence is null.", nameof(entries));
+
+            lines[index] = entry.ToTranscriptLine();
+        }
+
+        return string.Join("\n", lines);
     }
 }

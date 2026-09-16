@@ -118,6 +118,8 @@ consolidating the whole run together is the only split that keeps every pair int
 #### AgentKitSessions-SessionTranscript-RendersLabeledMaterial: Material Says Who Said What
 
 **Tests**: `SessionTranscript_Render_LabelsEveryKind`,
+`SessionTranscript_Render_NullEntry_Throws`,
+`SessionTranscript_Append_NullEntry_Throws`,
 `TranscriptEntry_ToTranscriptLine_ContextRecord_LabelsAsRecord`
 
 Asserts the exact rendered string for one entry of each conversational kind, with the pairing
@@ -125,3 +127,11 @@ identifier visible on both halves of a tool pair, and that a consolidated record
 own label rather than as something the model said. The rendering is asserted exactly rather than
 loosely because a fake summarizer in the engine's own tests asserts on what it was handed, and that
 is only meaningful if the rendering is fixed.
+
+The null scenarios assert that **both** public entry points refuse a null where the caller supplied
+it. Appending already did so; rendering did not, and dereferenced every element instead, so a null
+among otherwise valid entries produced a `NullReferenceException` from inside the projection —
+undocumented, and naming neither the argument nor the position at fault. Rendering is public and a
+caller may compose material from a history of its own, so it is asserted to throw an
+`ArgumentException` naming `entries`, matching the rule its neighbors in this package already
+apply.
