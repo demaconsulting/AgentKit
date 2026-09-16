@@ -30,10 +30,12 @@ sections:
               The unit shall estimate the conversation it holds - the seeded slots, their framing and
               the verbatim tail - and the total including the fixed overhead.
             justification: |
-              The estimate is the fallback used when a provider reports no usage and when the session
-              sizes a seed it has not yet sent. It counts the slots and the framing their seeded records
-              carry, because that framing is part of what the provider receives, plus the verbatim tail;
-              the total adds the fixed overhead.
+              The estimate is what the engine counts with where no provider figure applies: grouping
+              oversized material into summarizer calls, and standing in for the context's size in this
+              library's own account of it. It counts the slots and the framing their seeded records
+              carry, because that framing is part of what the provider receives, plus the verbatim
+              tail; the total adds the fixed overhead. It is never held against a figure a provider
+              reported, because a size in one currency and a capacity in another compare to nothing.
             tests:
               - ContextLayout_EstimatedTokens_CountSeedAndOverhead
 

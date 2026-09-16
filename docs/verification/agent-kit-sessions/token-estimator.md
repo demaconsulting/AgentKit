@@ -4,10 +4,11 @@ This document describes the unit-level verification strategy for `TokenEstimator
 
 ### Verification Approach
 
-`TokenEstimator` is a deterministic fallback for providers that do not report usage and for seed
-sizing before a replacement session is sent. Tests call the estimator directly for absent content,
-rounding, transcript-entry overhead and tool declarations. No model tokenizer is contacted; the
-point is to verify this library's own consistent fallback currency.
+`TokenEstimator` is the deterministic arithmetic behind every figure no provider reported: the fixed
+overhead measured from application configuration, the engine's own account of the context, and the
+grouping of oversized material into summarizer calls. Tests call the estimator directly for absent
+content, rounding, transcript-entry overhead and tool declarations. No model tokenizer is contacted;
+the point is to verify this library's own consistent currency.
 
 Unit tests reside in `TokenEstimatorTests.cs`.
 
@@ -42,8 +43,8 @@ estimates deterministic and prevents present content from becoming free.
 
 **Test**: `TokenEstimator_EstimateEntryTokens_IncludesFraming`
 
-Asserts a transcript entry costs its text estimate plus per-entry framing. Seed sizing therefore
-accounts for structure around each conversation entry.
+Asserts a transcript entry costs its text estimate plus per-entry framing. The library's account of
+a context therefore includes the structure around each conversation entry rather than its text alone.
 
 #### AgentKitSessions-TokenEstimator-EstimatesToolDeclarations: Declarations Are Measured, Never Skipped
 

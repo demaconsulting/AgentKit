@@ -36,17 +36,19 @@ sections:
 
           - id: AgentKitSessions-SessionTranscript-SplitsAtTurnBoundary
             title: >-
-              The unit shall split the history at a turn boundary, keeping the newest turns verbatim and
-              returning everything older as rendered material, and shall drop the oldest turn on demand.
+              The unit shall split the history at a turn boundary, keeping the newest turns verbatim
+              and returning everything older as whole turns.
             justification: |
-              The verbatim tail is the newest turns and everything older is what a rotation consolidates;
-              both are counted in turns, never tokens, which is what lets the compaction structure be
-              configured in counts. Dropping the oldest turn is the last resort of the
-              drop-until-it-fits rule, which bottoms out at the newest turn alone.
+              The verbatim tail is the newest turns and everything older is what a rotation
+              consolidates; both are counted in turns, never tokens, which is what lets the compaction
+              structure be configured in counts. The older material is handed back as whole turns
+              rather than as a flat run of their entries, because whatever consolidates it may have to
+              split it across several summarizer calls, and a flat run lets one turn's message, tool
+              call, tool result and answer land in different calls - the orphaning that turn-granular
+              boundaries exist to make impossible.
             tests:
               - SessionTranscript_SplitAtTail_KeepsNewestTurns
               - SessionTranscript_SplitAtTail_NothingOlder_RetainsAll
-              - SessionTranscript_DropOldestTurn_RemovesTheOldest
 
           - id: AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn
             title: >-

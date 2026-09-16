@@ -21,8 +21,10 @@ asks a factory for replacements.
 - **`Entries`** (`IReadOnlyList<TranscriptEntry>`) — History entries produced by the turn, always
   ending with the answer exactly once.
 
-`IProviderSession` is one live provider conversation and inherits `IAsyncDisposable`.
-`IProviderSessionFactory` creates a live provider session from a seed.
+`IProviderSession` is one live provider conversation and inherits `IAsyncDisposable`. It answers
+`CurrentUsage` — how much of its provider's window it occupies and out of how much —
+without contacting the provider. `IProviderSessionFactory` creates a live provider session from a
+seed.
 
 ### Key Methods
 
@@ -61,6 +63,23 @@ returned entries so the engine's transcript matches the provider conversation.
 **Postconditions:** On success, the provider session has accepted the turn and the returned
 `ProviderTurn` describes it.
 
+#### IProviderSession.CurrentUsage
+
+**Purpose:** Report how much of the provider's context window this session occupies and out of how
+much.
+
+**Algorithm:** Adapter-specific, and answered from what the last exchange already revealed rather than
+by contacting the provider, so reading it is free and cannot fail. An adapter whose provider publishes
+current and limit counts passes them through; one whose provider publishes only a context length
+counts occupancy against the window it was told at construction; one whose provider reveals nothing
+estimates and marks the reading `Estimated`. An adapter that can distinguish the conversation from the
+system prompt and tool declarations passes that split, rather than leaving it to be inferred.
+
+**Preconditions:** The session has been created and not yet disposed.
+
+**Postconditions:** The reading is the one token figure the engine consumes. Because the window, the
+overhead and the conversation all come from it, the rotation trigger is computed in a single currency.
+
 #### IProviderSessionFactory.CreateAsync(ProviderSessionSeed seed, CancellationToken cancellationToken)
 
 **Purpose:** Create a live provider session carrying the seeded instructions, tools and history.
@@ -83,14 +102,15 @@ disposed by the caller.
 
 - The factory must be safe for concurrent use.
 - A provider session serves one conversation and need not be safe for concurrent use.
-- A provider session that can report usage implements `IContextUsageReporter`; one that cannot report
-  usage simply does not implement it, or returns null until it knows.
+- Every provider session answers for its own context window, however its provider allows: reading the
+  figures from a native API, counting against a window it was told once, or estimating and owning
+  that choice.
 - The seed history is most-stable-first: coarse records first, then verbatim turns.
 
 ### Dependencies
 
 - **TranscriptEntry** — Shared history currency.
-- **ContextUsage** — Optional reporting through `IContextUsageReporter`.
+- **ContextUsage** — The shape `CurrentUsage` answers with.
 - **Microsoft.Extensions.AI.Abstractions** — Supplies `AIFunction`.
 
 ### Callers

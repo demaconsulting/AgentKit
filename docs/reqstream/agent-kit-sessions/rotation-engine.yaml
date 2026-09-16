@@ -48,49 +48,57 @@ sections:
             tests:
               - RotationEngine_ManyRotations_ConsolidatesOncePerTier
 
-          - id: AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency
+          - id: AgentKitSessions-RotationEngine-ChunksOversizedMaterial
             title: >-
               The unit shall chunk material larger than the summarizer's input bound into several
               consolidations rather than handing it over whole.
             justification: |
               A rotation can gather far more history than a summarizer's own window holds - a
-              large-window provider's first rotation especially. Oversized material is split at entry
-              boundaries into chunks each consolidated separately, and the chunk records consolidated in
-              turn, so one slot is always the output. This mechanism is internal and not optional.
+              large-window provider's first rotation especially. Oversized material is split into
+              groups each consolidated separately, and the chunk records consolidated in turn, so one
+              slot is always the output. This mechanism is internal and not optional.
             tests:
               - RotationEngine_Rotate_OversizedMaterial_IsChunked
 
-          - id: AgentKitSessions-RotationEngine-DropsUntilItFits
+          - id: AgentKitSessions-RotationEngine-KeepsTurnsIndivisible
             title: >-
-              The unit shall escalate the compaction level until the built seed fits and consolidates
-              something, and, once the highest level cannot make it fit, drop the oldest slot of the
-              coarsest non-empty tier then the oldest verbatim turn until it does, reporting that
-              material was dropped.
+              The unit shall treat a turn as the smallest piece it will chunk, so no turn's message,
+              tool call, tool result and answer are ever split across two summarizer calls.
             justification: |
-              This is rule five, the rule that makes termination real. Escalation is tried first because
-              it preserves more history - a terser summary keeps everything, just more briefly - and
-              dropping is the last resort, reported as material dropped, which is the honest signal that
-              compaction bought nothing. It terminates unconditionally: the level ladder is finite,
-              slots are finite, the tail is finite, and the drop loop bottoms out at the newest turn
-              alone, even under a summarizer that returns more than it was given or a single turn larger
-              than the whole allowance.
-
-              Fitting alone is not the condition, because a rotation that consolidates nothing has made
-              no progress whatever the estimate says about its result. The trigger is the provider's own
-              occupancy, measured in tokens, while the verbatim tail is held by a count of turns: a
-              provider counting well above this library's estimate therefore reaches its threshold while
-              the tail is still shorter than its configured maximum, leaving nothing older to
-              consolidate and a candidate identical to the layout it came from. Accepting that as a
-              rotation left the session using a provider session already past its window - measured at
-              five times divergence, riding to one hundred and forty percent of it across nineteen turns
-              without rotating once, which is exactly where a provider's own compactor fires and
-              truncates history. Requiring progress makes the tail shorten until there is something to
-              age out.
+              Turn-granular boundaries are worth nothing if they hold only at the tail. Material was
+              flattened into individual entries before it was grouped for chunking, so one turn's tool
+              call could go to one summarizer call and the result answering it to another - presenting
+              a result whose call is nowhere in the material, which is exactly the orphaning whole
+              turns exist to make impossible. Rendering each turn as one indivisible piece lets the
+              grouping place a turn in one call or another and never in both, which is what makes the
+              boundary a property of the engine rather than a claim about the tail.
             tests:
-              - RotationEngine_Rotate_SeedThatDoesNotFit_Escalates
+              - RotationEngine_Rotate_OversizedMaterial_IsChunked
+
+          - id: AgentKitSessions-RotationEngine-MovesAtLeastOneTurn
+            title: >-
+              The unit shall rotate once at the compaction level it is given, always moving at least
+              the oldest turn out of the verbatim tail, and shall report the level, the consolidations
+              it performed and whether any material was lost.
+            justification: |
+              Nothing here judges whether the result will fit, because the only figure available for a
+              context nobody has been sent is this library's own estimate, and every capacity it could
+              be held against belongs to someone else's currency. The engine moves material and reports
+              what it did; deciding how hard to compact, and whether to discard a slot outright,
+              belongs to the session, which is the only place that knows how quickly the window filled.
+
+              What the engine does guarantee is progress. The trigger is the provider's own occupancy,
+              measured in tokens, while the verbatim tail is held by a count of turns: a provider
+              counting well above this library's estimate therefore reaches its threshold while the
+              tail is still shorter than its configured maximum, leaving nothing older to consolidate
+              and a rotation identical to the layout it came from. That left the session using a
+              provider session already past its window - measured at five times divergence, riding to
+              one hundred and forty percent of it across nineteen turns without rotating once, which is
+              exactly where a provider's own compactor fires and truncates history. So the tail keeps
+              at most what the level asks for and at most one turn fewer than it holds, whichever is
+              smaller, and a rotation can never consolidate nothing.
+            tests:
               - RotationEngine_Rotate_TailShorterThanItsMaximum_StillMakesProgress
-              - RotationEngine_Rotate_ExpandingSummarizer_DropsAndTerminates
-              - RotationEngine_Rotate_SingleOversizedTurn_BottomsOutAtNewestTurn
               - RotationEngine_LevelHelpers_SaturateAtTheExtremes
               - RotationEngine_VerbatimTurnsFor_ShortensWithLevel
 
@@ -111,14 +119,26 @@ sections:
           - id: AgentKitSessions-RotationEngine-NormalizesBlankRecords
             title: >-
               The unit shall normalize a blank summarizer answer to empty at the single boundary where
-              it crosses, producing no slot rather than a whitespace slot.
+              it crosses, produce no slot rather than a whitespace slot, keep the material the answer
+              failed to consolidate, and fail the whole consolidation when any one chunk of it comes
+              back blank.
             justification: |
               The summarizer interface forbids only null, so an answer of pure whitespace is permitted.
               Normalizing it to empty where it is received means a blank answer produces no slot rather
               than a slot that silently erases a span of history while still costing framing, and no
-              downstream consumer has to decide what whitespace means.
+              downstream consumer has to decide what whitespace means. The material then stays
+              verbatim, because retaining only the shortened tail would discard those turns with
+              nothing recorded in their place, and the loss would be committed to the provider as soon
+              as the replacement session was seeded.
+
+              A chunked consolidation is the same defect one level down. A blank record from one chunk
+              used to be filtered out and the surviving chunks combined, so that chunk's span of
+              history vanished while the result looked like an ordinary success. One blank chunk now
+              fails the whole consolidation, which leaves the caller holding the material and reporting
+              that something was lost rather than passing a hole off as a summary.
             tests:
               - RotationEngine_Rotate_BlankAnswer_ProducesNoSlotAndKeepsTheMaterial
+              - RotationEngine_Rotate_OneBlankChunk_KeepsTheWholeMaterial
 
           - id: AgentKitSessions-RotationEngine-Deterministic
             title: >-

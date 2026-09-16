@@ -2,9 +2,10 @@
 
 ### Purpose
 
-`TokenEstimator` provides deterministic fallback token estimates. It is used when a provider reports
-no usage, when fixed overhead must be estimated from application configuration, and when the engine
-sizes a replacement seed before sending it.
+`TokenEstimator` provides deterministic token estimates for the work no provider figure covers: the
+fixed overhead measured from application configuration, the engine's own account of the context it
+holds, grouping oversized material into summarizer calls, and an adapter whose provider reveals
+nothing.
 
 ### Data Model
 
@@ -66,6 +67,6 @@ window when no provider report is available.
 
 ### Callers
 
-`AgentSessionOptions` estimates fixed overhead, `ContextLayout` estimates seed size,
-`SessionTranscript` and `TranscriptEntry` cache entry estimates, `InMemoryProviderSession` reports
-in-memory usage, and `CompactingAgentSession` falls back to estimates when providers report nothing.
+`AgentSessionOptions` estimates fixed overhead, `ContextLayout` estimates the context it holds,
+`SessionTranscript` and `TranscriptEntry` cache entry estimates, `RotationEngine` groups oversized
+material by estimated size, and `InMemoryProviderSession` answers for its own window with it.

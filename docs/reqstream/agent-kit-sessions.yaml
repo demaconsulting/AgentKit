@@ -84,25 +84,27 @@ sections:
 
       - id: AgentKitSessions-Compaction-BoundedByConstruction
         title: >-
-          The library shall escalate its compaction level and drop material until the context it sends
-          fits, rather than predicting in advance, in a currency it cannot measure, whether a window
-          can hold the arrangement.
+          The library shall answer a context that fills again quickly by compacting harder, and at its
+          tersest by discarding its oldest consolidated material, deciding both by counts of turns and
+          slots rather than by judging a context it has not yet sent.
         tags: [system]
         justification: |
           An arrangement configured in counts cannot be bounded in tokens in advance, because a
           summarizer's output lands at its natural length rather than a size it was asked for, and a
           provider's tokenizer diverges from this library's estimate - by a factor of two for ordinary
-          JSON and code. Predicting settlement from an estimate compared against a provider's
-          measurement was the defect: it accepted a configuration that then rotated on nearly every
-          turn while raising no signal. What replaces it is escalate-until-it-fits and
-          drop-until-it-fits: the session shortens the verbatim tail and asks for a terser summary, and
-          when even the tersest structure does not fit it drops the oldest slot then the oldest
-          verbatim turn until it does, reporting that material was dropped. Both terminate by
-          construction, and neither refuses a window before a session starts. The chunking of oversized
-          summarizer input and the sizing of a seed before it is sent are internal mechanisms that
-          support this and are not optional.
+          JSON and code. Measuring what a rotation has just built is no better: the only figure
+          available for a context nobody has been sent is this library's own character-ratio estimate,
+          and every capacity that estimate could be held against belongs to someone else's currency.
+          What the session has instead is a count it already keeps - how many turns passed before the
+          window filled again. A window that refills within k turns of a rotation is answered one
+          compaction level terser; at the tersest level there is nowhere further to go, so the oldest
+          slot of the coarsest tier holding one is discarded, which is the ring of rule four brought
+          forward because the context is filling faster than the ring's own schedule empties it; m
+          quiet turns relax the level again, with m greater than k so the two cannot both hold. A
+          token figure is read for one purpose only, noticing that the window is filling, and
+          everything structural is a count. The chunking of oversized summarizer input is an internal
+          mechanism that supports this and is not optional.
         children:
-          - AgentKitSessions-AgentSessionOptions-DerivesRotationThreshold
           - AgentKitSessions-ContextLayout-EstimatesItsSize
           - AgentKitSessions-CompactingAgentSession-AdaptsLevelUnderPressure
           - AgentKitSessions-TokenEstimator-DeterministicEstimate
@@ -136,6 +138,7 @@ sections:
           - AgentKitSessions-SessionTranscript-KeptOutOfSession
           - AgentKitSessions-SessionTranscript-RendersLabeledMaterial
           - AgentKitSessions-Summarizer-RejectsMalformedRequest
+          - AgentKitSessions-RotationEngine-ChunksOversizedMaterial
           - AgentKitSessions-RotationEngine-RejectsMalformedConsolidation
           - AgentKitSessions-RotationEngine-NormalizesBlankRecords
         tests:
@@ -151,12 +154,18 @@ sections:
           result whose call is gone. Some providers reject that outright, and a model presented with it
           cannot tell what was asked. Because the unit of the verbatim tail and of every boundary is a
           whole turn - the message, the answer and all intervening tool traffic - a call and its result
-          cannot be separated, which retires the earlier design's rule that had to snap a boundary.
+          cannot be separated, which retires the earlier design's rule that had to snap a boundary. The
+          turn is indivisible all the way down: material too large for one summarizer call is grouped
+          by whole turns, so a result cannot reach a summarizer in a different call from the call it
+          answers either. Handing that grouping a flat run of entries would have made turn-granular
+          boundaries a claim about the tail alone rather than a property of the whole engine.
         children:
           - AgentKitSessions-SessionTranscript-KeepsToolTrafficWithItsTurn
           - AgentKitSessions-SessionTranscript-PairedEntries
+          - AgentKitSessions-RotationEngine-KeepsTurnsIndivisible
         tests:
           - SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn
+          - RotationEngine_Rotate_OversizedMaterial_IsChunked
 
       - id: AgentKitSessions-Compaction-SaturationDetection
         title: >-
@@ -169,41 +178,46 @@ sections:
           spending summarizer tokens and buying nothing, and without a signal that failure is invisible.
           The compaction level is that signal: it climbs as the session shortens its verbatim tail and
           asks for a terser summary, and it is reported on every turn. Dropped material is the honest
-          signal that even the highest level bought nothing and history had to be discarded. Deciding
+          signal that history was discarded rather than reduced - because the tersest level was already
+          in force when the window filled again and the oldest slot went in the bin, or because a
+          consolidation came back with nothing and its material had to stay where it was. Deciding
           what to do about it - warn, stop, split the task, start fresh - depends on what the
           application is for and is deliberately left to the application.
         children:
-          - AgentKitSessions-RotationEngine-DropsUntilItFits
+          - AgentKitSessions-RotationEngine-MovesAtLeastOneTurn
           - AgentKitSessions-AgentSession-ReportsCompaction
         tests:
           - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
 
       - id: AgentKitSessions-ContextUsage-ProviderNeutral
         title: >-
-          The library shall take a provider's own account of its context window when the provider
-          offers one, and shall otherwise estimate usage against a configured window size, recording
-          which of the two a figure came from and never mixing the two in one comparison.
+          The library shall take how full the context is, and out of how much, from the provider
+          session itself, shall record whether the adapter measured those figures or estimated them,
+          and shall never mix a figure from one source into a comparison with another.
         tags: [system]
         justification: |
           Providers disagree about what they will reveal: a GitHub Copilot session reports current and
-          limit token counts, while a provider reached through an IChatClient reports neither and the
-          window must be configured. The compaction engine cannot have two behaviors, so both are
-          reduced to one figure. A provider's own numbers count framing this library never sees and are
-          preferred whenever offered; recording the origin is what lets an application tell a
-          measurement from a derivation. Preferring them is only half of it: a comparison that subtracts
-          this library's character-ratio estimate from a provider's measurement produces a figure in
-          neither currency, so both sides of every comparison come from the same source - the provider's
-          own tokens where it reports, and this library's estimate where it does not.
+          limit token counts, an Ollama client publishes the context length it was loaded with, and a
+          provider reached through an IChatClient reports neither. The adapter is the only place that
+          can answer honestly for its own provider, so the adapter is what answers - reading the
+          figures from a native API, holding a window it was told once where the provider was
+          configured, or estimating and owning that choice. Carrying a second copy of the window
+          beside the session gave one fact two sources and the engine a rule for choosing between
+          them, and a rule for choosing between two numbers is a rule that will one day choose the
+          wrong one. Recording the origin is what still lets an application tell a measurement from a
+          derivation. One source is also what keeps every comparison in one currency: the window, the
+          overhead credited against it and the conversation measured against the threshold all come
+          back together from the same reading, so nothing is ever subtracted from a figure counted by
+          somebody else.
         children:
           - AgentKitSessions-ContextUsage-UsageShape
           - AgentKitSessions-ContextUsage-DefaultsToAllConversation
-          - AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
-          - AgentKitSessions-RotationEngine-HonorsTheTriggerCurrency
+          - AgentKitSessions-CompactingAgentSession-TakesTheWindowFromTheProvider
+          - AgentKitSessions-ProviderSession-AnswersForItsOwnWindow
           - AgentKitSessions-ContextUsage-ReportsOverFullHonestly
           - AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
-          - AgentKitSessions-ContextUsage-OptionalReportingContract
         tests:
-          - AgentKitSessions_SameConversation_CompactsOnBothProviderShapes
+          - AgentKitSessions_WindowComesFromTheProvider_NarrowCompactsWhereWideDoesNot
 
       - id: AgentKitSessions-Verification-WithoutALiveModel
         title: >-
@@ -219,7 +233,7 @@ sections:
         children:
           - AgentKitSessions-InMemoryProviderSession-ContactsNothing
           - AgentKitSessions-InMemoryProviderSession-RecordsRotationEvidence
-          - AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes
+          - AgentKitSessions-InMemoryProviderSession-AnswersForItsOwnWindow
         tests:
           - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
 

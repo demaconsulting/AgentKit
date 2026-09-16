@@ -34,13 +34,16 @@ sections:
               - InMemoryProviderSession_Dispose_IsObservable
               - InMemoryProviderSessionFactory_Create_RecordsSessions
 
-          - id: AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes
+          - id: AgentKitSessions-InMemoryProviderSession-AnswersForItsOwnWindow
             title: >-
-              The unit shall simulate both provider shapes, reporting provider-origin usage or nothing,
-              through a switch on its factory.
+              The unit shall answer for its own window as every adapter does, reporting what its
+              history occupies out of the window it was given.
             justification: |
-              Real providers differ: one reports current and limit figures, the other reports nothing.
-              The in-memory session can be either, so both engine paths - the provider-reported one and
-              the estimated fallback - are reachable from a test.
+              A provider session is the one place that can say how full it is and out of how much, so
+              the in-memory one computes both from its seeded history and the window it was
+              constructed with and reports them as a provider's own figures, with the conversation
+              broken out as a provider that distinguishes the two does. That is the shape a real
+              adapter has, which is what makes exercising the engine against this session meaningful
+              rather than a rehearsal of a path no adapter takes.
             tests:
-              - InMemoryProviderSession_Usage_SimulatesBothShapes
+              - InMemoryProviderSession_Usage_AnswersForItsOwnWindow

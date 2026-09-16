@@ -26,9 +26,10 @@ Public and internal state:
 
 Derived hysteresis windows:
 
-- **`K`** — `VerbatimTurns`; a second rotation within this many turns escalates.
-- **`M`** — `2 * VerbatimTurns`; a quiet stretch this long allows relaxation. `M` is greater than
-  `K`, so escalation and relaxation cannot both apply to one rotation.
+- **`K`** — `VerbatimTurns`; a window that fills again within this many turns compacts one level
+  terser, or discards the oldest slot when the level is already High.
+- **`M`** — `2 * VerbatimTurns`; a quiet stretch this long relaxes the level one step. `M` is greater
+  than `K`, so escalation and relaxation cannot both apply to one rotation.
 
 `LiveProviderSession` pairs an `IProviderSession` with a `Released` flag. The flag is set only after
 the provider's own disposal completes, which keeps disposal retryable.
@@ -61,8 +62,8 @@ On failure, no provider session is silently orphaned.
 2. Send the message to the live provider session.
 3. Record the user message and provider turn entries as one whole turn.
 4. Increment the hysteresis clock.
-5. Read provider usage if available, otherwise estimate from the layout.
-6. Compare conversation occupancy with a threshold computed in the same currency.
+5. Read the live provider session's account of how full it is.
+6. Compare the reported conversation with the threshold derived from the same reading.
 7. If below threshold, return the answer with current level and no dropped material.
 8. If at or above threshold, rotate and return the answer with updated level, rotation flag and
    dropped-material flag.
@@ -76,16 +77,35 @@ prepares the replacement for the next turn; the current answer is produced befor
 
 **Purpose:** Age the layout and replace the live provider session safely.
 
-**Algorithm:** Compute the starting level from hysteresis, call `RotationEngine.RotateAsync`, relax the
-settled level after a long quiet stretch when appropriate, and skip replacement if the engine did no
-consolidation and dropped nothing. Otherwise build a seed, create a replacement, read replacement
-usage before adoption, adopt the replacement, update layout, counters, usage, level and hysteresis
-clock in one no-await block, then attempt to dispose the superseded provider session.
+**Algorithm:** Decide the pressure response from the hysteresis clock alone: a window that filled
+again within `K` turns escalates the level, or, when the level is already High, discards the oldest
+slot of the coarsest tier holding one; `M` quiet turns relax the level instead. Call
+`RotationEngine.RotateAsync` once at that level, and skip replacement if the engine consolidated
+nothing and nothing was dropped. Otherwise build a seed, create a replacement, read replacement usage
+before adoption, adopt the replacement, update layout, counters, usage, level and hysteresis clock in
+one no-await block, then attempt to dispose the superseded provider session.
 
 **Preconditions:** The current usage has reached the rotation threshold.
 
-**Postconditions:** On success, state describes the replacement session. If consolidation or
-replacement creation fails before adoption, the old provider session remains live and coherent.
+**Postconditions:** On success, state describes the replacement session, and the reported
+dropped-material flag covers both a slot discarded under pressure and a consolidation the summarizer
+failed to produce. If consolidation or replacement creation fails before adoption, the old provider
+session remains live and coherent.
+
+#### DropOldestSlot(ContextLayout layout)
+
+**Purpose:** Discard the oldest slot of the coarsest tier that holds one.
+
+**Algorithm:** Scan from the coarsest tier toward the finest, and drop the oldest slot of the first
+tier holding any. Report whether a slot was dropped and return the reduced layout.
+
+**Preconditions:** None beyond a non-null layout.
+
+**Postconditions:** At most one slot is gone. This is rule 4's ring brought forward: the coarsest tier
+normally sheds its oldest slot only when a new one arrives, and under sustained pressure the same
+move is made on demand because the context is filling faster than that schedule empties it. The
+coarsest slot covers the oldest and least detailed span of the conversation, which is the part the
+agent will miss least. No measurement is involved.
 
 #### DisposeAsync()
 
@@ -98,29 +118,31 @@ replacement creation fails before adoption, the old provider session remains liv
 **Postconditions:** When provider disposal succeeds, the live provider session is released. If
 disposal fails, the exception propagates and a later disposal call retries the same provider release.
 
-#### ReadUsage(IProviderSession provider, AgentSessionOptions options, ContextLayout layout)
+#### ReadUsage(IProviderSession provider)
 
-**Purpose:** Choose provider-reported usage when present and estimate otherwise.
+**Purpose:** Read the provider session's own account of how full it is.
 
-**Algorithm:** If the provider implements `IContextUsageReporter` and returns a non-null reading, use
-that reading. Otherwise return `ContextUsage.FromEstimate` from the layout's total and conversation
-estimates against the configured window.
+**Algorithm:** Return `IProviderSession.CurrentUsage`. There is nothing to choose between and nothing
+to reconcile: the adapter answers for its own provider and the engine believes it. The method is kept
+named because it marks the one place a token figure enters the engine.
 
-**Preconditions:** Arguments are valid session objects.
+**Preconditions:** The provider session has been created and not yet disposed.
 
-**Postconditions:** The usage origin records which path produced the reading.
+**Postconditions:** The reading's origin records whether the adapter measured the figures or estimated
+them.
 
-#### RotationThreshold(ContextUsage usage, AgentSessionOptions options)
+#### RotationThreshold(ContextUsage usage)
 
-**Purpose:** Compute the threshold in the same currency as the usage reading.
+**Purpose:** Derive the conversation size at which this turn should rotate.
 
-**Algorithm:** For estimated usage, return the threshold already computed from the configured window.
-For provider usage, subtract provider-reported overhead from the provider-reported window and apply
+**Algorithm:** Subtract the overhead the reading credits from the window it reports, and apply
 `AgentSessionOptions.RotationThresholdFor`.
 
-**Preconditions:** `usage` is valid.
+**Preconditions:** `usage` is the reading taken from the live provider session this turn.
 
-**Postconditions:** The comparison uses one currency throughout.
+**Postconditions:** The window, the overhead and the conversation compared against the threshold all
+come from one reading, so the comparison is in one currency and there is no second window to
+reconcile.
 
 ### Error Handling
 
@@ -142,11 +164,13 @@ For provider usage, subtract provider-reported overhead from the provider-report
 
 ### Dependencies
 
-- **AgentSessionOptions** — Supplies configuration, summarizer and thresholds.
+- **AgentSessionOptions** — Supplies configuration, the summarizer and the shared threshold
+  arithmetic.
 - **ContextLayout** — Holds the out-of-session context.
 - **ContextUsage** — Drives threshold decisions and response reporting.
-- **RotationEngine** — Ages layout and reports settled level and dropped material.
-- **ProviderSession** — Supplies live provider sessions and replacements.
+- **RotationEngine** — Ages the layout at the level it is given and reports the consolidations, that
+  level, and whether a consolidation failed.
+- **ProviderSession** — Supplies live provider sessions, replacements, and the usage reading.
 - **AgentSession** — Defines `IAgentSession` and `AgentSessionResponse`.
 
 ### Callers

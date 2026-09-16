@@ -50,9 +50,9 @@ and no rotation on that turn.
 - `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
 Direct construction proves a response can carry `CompactionLevel.High` and `MaterialDropped`. The
-default test proves ordinary turns report low compaction and no dropped material. The tight-window
-session test proves the live session reports high compaction and dropped material when rule five has
-to discard history.
+default test proves ordinary turns report low compaction and no dropped material. The narrow-window
+session test proves the live session reports high compaction and dropped material when sustained
+pressure forces it to discard a slot.
 
 #### AgentKitSessions-AgentSession-RejectsMalformedTurnReport: A Malformed Report Is Refused
 

@@ -10,15 +10,16 @@ sections:
         requirements:
           - id: AgentKitSessions-ContextUsage-UsageShape
             title: >-
-              The unit shall reduce both provider families to one usage shape carrying the used tokens,
-              the window, the conversation split and the origin that records whether the provider
-              reported the figure or this library estimated it.
+              The unit shall reduce every provider to one usage shape carrying the used tokens, the
+              window, the conversation split and the origin that records whether the adapter measured
+              the figures or estimated them.
             justification: |
-              Providers disagree about what they will reveal, so both shapes are reduced to one figure.
-              The origin is not decoration: a provider-reported figure counts framing this library
-              never sees and is preferred whenever offered, and recording which road a figure came down
-              is what lets an application tell a measurement from a derivation instead of treating them
-              as interchangeable.
+              Providers disagree about what they will reveal, so every adapter answers in one shape.
+              The origin is not decoration: an adapter whose provider publishes real counts reports
+              framing this library never sees, while an adapter for a provider that reveals nothing
+              estimates and says so, and recording which road a figure came down is what lets an
+              application tell a measurement from a derivation instead of treating them as
+              interchangeable.
             tests:
               - ContextUsage_FromProvider_CarriesSplitAndOrigin
               - ContextUsage_FromEstimate_MarksEstimated
@@ -58,17 +59,3 @@ sections:
               different code path. Each is refused where the adapter's arithmetic defect was written.
             tests:
               - ContextUsage_Construct_MeaninglessFigures_Throws
-
-          - id: AgentKitSessions-ContextUsage-OptionalReportingContract
-            title: >-
-              The unit shall define an optional reporting interface a provider session implements only
-              when it can report its own usage, returning nothing until it can.
-            justification: |
-              Requiring every provider session to report usage would force an adapter for a provider
-              that reports nothing to invent a number, which is indistinguishable from a real one at the
-              point it is consumed. Keeping the capability in its own interface lets an adapter say "I do
-              not know" by not implementing it, and lets the session ask once with a type test and fall
-              back to its own estimate.
-            tests:
-              - InMemoryProviderSession_Usage_SimulatesBothShapes
-              - CompactingAgentSession_Usage_PrefersProviderReport

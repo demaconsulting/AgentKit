@@ -89,24 +89,24 @@ constituent software items, specifically:
   reports back about the answer, the usage, the rotation, the compaction level, and any dropped
   material
 - **AgentSessionOptions (Unit)** — What an application configures about one session, and the fixed
-  overhead, effective window and rotation threshold derived from it
+  overhead measured from it
 - **CompactionPolicy (Unit)** — The one setting an application controls: the maximum number of
   most-recent turns kept verbatim
-- **ContextUsage (Unit)** — The one usage shape both provider families are reduced to, and the
-  optional contract a provider session implements when it can account for its own window
-- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic the fallback usage figure
-  and the drop-until-it-fits seed sizing rest on
+- **ContextUsage (Unit)** — The one usage shape every provider session answers with: how full the
+  context is, out of how much, and whether the adapter measured that or estimated it
+- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic every figure no provider
+  reported rests on
 - **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, grouped into
   whole turns so a tool call is never separated from its result
 - **ContextLayout (Unit)** — The whole context as this system accounts for it: the verbatim tail, the
   rings of consolidated slots, and the coarsest-first seed
 - **RotationEngine (Unit)** — The deterministic aging function: consolidate older turns into a
-  tier-one slot, cascade a full tier into the next, drop until the seed fits, and report dropped
-  material
+  tier-one slot, cascade a full tier into the next, and report the level, the consolidations and any
+  material a failed consolidation left unrecorded
 - **Summarizer (Unit)** — The injected out-of-session consolidation contract, the request that
   carries the consolidation instruction, and the documented default prompt
 - **ProviderSession (Unit)** — The whole interface between the compaction engine and a provider
-  adapter: the seed, the turn, the session and the factory
+  adapter: the seed, the turn, the session that answers for its own window, and the factory
 - **InMemoryProviderSession (Unit)** — A provider session that contacts nothing, so the engine can
   be exercised end to end without a live model
 - **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,

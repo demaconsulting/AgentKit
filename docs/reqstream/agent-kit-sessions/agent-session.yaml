@@ -30,9 +30,11 @@ sections:
               Compaction is reported rather than hidden. The compaction level is the fidelity signal -
               a higher level means fewer recent turns are kept verbatim and the summarizer is asked to
               be terser - and it replaces the saturation family the earlier design carried. Dropped
-              material is the honest signal that compacting bought nothing: the session escalated as
-              far as it could and a fully consolidated context still did not fit, so history had to be
-              discarded. Together they let an application tell a struggling agent from a healthy one.
+              material is the honest signal that history was discarded rather than reduced: the
+              session was already at its tersest level when the window filled again, so the oldest
+              consolidated slot went in the bin, or a consolidation came back with nothing and the
+              material it was given could not be recorded anywhere. Together they let an application
+              tell a struggling agent from a healthy one.
             tests:
               - AgentSessionResponse_Construct_CarriesTheTurnResult
               - AgentSessionResponse_Construct_DefaultsToLowAndNotDropped

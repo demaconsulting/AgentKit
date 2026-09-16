@@ -20,8 +20,10 @@ provider.
 
 `InMemoryProviderSessionFactory` internal state:
 
+- **`DefaultWindowTokens`** (`const int`) — The window created sessions pretend to have when none is
+  given: large enough that a test not about the window does not accidentally rotate, small enough
+  that one which is can reach it cheaply.
 - **`WindowTokens`** (`int`) — Window passed to created sessions.
-- **`ReportsUsage`** (`bool`) — Whether created sessions return usage or simulate a silent provider.
 - **`Sessions`** (`IReadOnlyList<InMemoryProviderSession>`) — Snapshot of created sessions, oldest
   first.
 
@@ -39,21 +41,20 @@ list. Estimate fixed overhead from seed instructions and tools.
 
 **Preconditions:** `seed` and `responder` are not null; `windowTokens` is positive.
 
-**Postconditions:** The session is ready to accept messages and can report usage when configured to do
-so.
+**Postconditions:** The session is ready to accept messages and can answer for its own window.
 
 #### CurrentUsage
 
-**Purpose:** Return provider-like usage for the in-memory history.
+**Purpose:** Answer for this session's own window, as every adapter does.
 
-**Algorithm:** If usage reporting is disabled, return null. Otherwise sum estimated entry tokens for
-the current history, add fixed overhead, cap narrowed totals at the largest token count, and return a
-`ContextUsage.FromProvider` reading with the conversation split.
+**Algorithm:** Sum estimated entry tokens for the current history, add fixed overhead, cap narrowed
+totals at the largest token count, and return a `ContextUsage.FromProvider` reading carrying the
+conversation split.
 
 **Preconditions:** None beyond construction invariants.
 
-**Postconditions:** The reading is marked provider-reported because it stands in for a provider's own
-figures from the engine's point of view.
+**Postconditions:** The reading is marked provider-reported because, from the engine's point of view,
+that is exactly what it is: a session answering for its own window in the shape a real adapter uses.
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
@@ -102,11 +103,13 @@ record under a lock, and return it as `IProviderSession`.
 ### Dependencies
 
 - **ProviderSession** — Implements `IProviderSession` and uses seeds and turns.
-- **ContextUsage** — Reports provider-style usage when enabled.
+- **ContextUsage** — The shape this session answers `CurrentUsage` with.
 - **TokenEstimator** — Estimates fixed overhead and history size.
 - **TranscriptEntry** — Stores in-memory history.
 
 ### Callers
 
 The repository's tests use the in-memory provider to verify lifecycle and rotation behavior without a
-model. The implementation is internal and is not part of the public API.
+model. It is part of the public surface rather than a test fixture, because an application author
+writing a summarizer, choosing a verbatim tail length or acting on the reported compaction level
+needs the same ability to exercise a session without a live model.

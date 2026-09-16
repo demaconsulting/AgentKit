@@ -26,7 +26,7 @@ sections:
               replacement seeded from the consolidated context and disposing the session it replaced.
             justification: |
               Rule two: when the conversation crosses the threshold - both figures taken from the same
-              usage reading, so both in the same currency and nothing subtracted - older history is
+              provider reading, so both in the same currency and nothing subtracted - older history is
               consolidated, a replacement is created and adopted, and only then is the superseded
               session disposed. That order leaves the session able to answer if a summarizer fails, and
               the adoption carries no await so the live provider, the layout and the counters never
@@ -36,33 +36,43 @@ sections:
 
           - id: AgentKitSessions-CompactingAgentSession-AdaptsLevelUnderPressure
             title: >-
-              The unit shall adapt its compaction level under pressure by hysteresis, escalating and
-              dropping until the context fits, and shall report the level and any dropped material.
+              The unit shall answer pressure measured in turns - escalating its compaction level when
+              the window fills again within k turns of a rotation, discarding the oldest consolidated
+              slot instead when it is already at the tersest level, and relaxing after m quiet turns -
+              and shall report the level and any dropped material.
             justification: |
-              The compaction level is session state, not a setting. It escalates when the window fills
-              again within k turns of a rotation and relaxes after m quiet turns, with m greater than k
-              so the two predicates cannot both hold, and both are internal constants derived from the
-              verbatim tail length. A seed that does not fit escalates and, at the highest level, drops
-              material, which is reported. This replaces the earlier design's refusal of a window it
-              predicted could not settle, in a currency it could not measure, with escalate-until-it-fits
-              and drop-until-it-fits, which terminate by construction even when a provider's tokenizer
-              diverges from this library's estimate.
+              The compaction level is session state, not a setting. The session already knows how
+              quickly the window filled after the last rotation, in turns, and that count is the whole
+              pressure signal: a refill within k turns escalates, m quiet turns relax, m is greater
+              than k so the two predicates cannot both hold, and both are internal constants derived
+              from the verbatim tail length. At the tersest level there is no terser answer left, so
+              the oldest slot of the coarsest tier holding one is discarded - the ring of rule four
+              brought forward, because the context is filling faster than the ring's own schedule
+              empties it - and that discard is reported as dropped material. Nothing here measures a
+              context that has not been sent: the response to pressure is a count of turns and a count
+              of slots, which is what makes it terminate by construction even when a provider's
+              tokenizer diverges from this library's estimate.
             tests:
               - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
               - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
               - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
               - CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel
 
-          - id: AgentKitSessions-CompactingAgentSession-PrefersProviderUsage
+          - id: AgentKitSessions-CompactingAgentSession-TakesTheWindowFromTheProvider
             title: >-
-              The unit shall prefer a provider's own usage figure when it reports one, and estimate
-              against the configured window otherwise.
+              The unit shall read how full it is, and out of how much, from the live provider session
+              after every turn, and shall derive the rotation threshold from that window alone.
             justification: |
-              A provider's own figures count framing this library never sees, so they are preferred
-              whenever offered; when a provider reports nothing the session estimates against the
-              configured window, and each path is measured entirely in its own currency.
+              There is one path and one source. The provider session answers for its own window, so
+              the window, the overhead credited against it and the conversation compared with the
+              threshold are all counted by whoever produced them, and nothing has to be reconciled. An
+              earlier arrangement let the session fall back to its own estimate against a window
+              configured separately, which meant two sources of truth for one fact, a rule for
+              deciding between them, and a figure whose provenance the session had to check before it
+              could use it.
             tests:
               - CompactingAgentSession_Usage_PrefersProviderReport
+              - CompactingAgentSession_Send_RotatesAtThreshold
 
           - id: AgentKitSessions-CompactingAgentSession-RejectsBlankMessage
             title: >-

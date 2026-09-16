@@ -92,4 +92,4 @@ the low clause only inside this internal helper, while public validation occurs 
 ### Callers
 
 Applications implement `ISummarizer`. `RotationEngine` calls it during rotation and may call it
-multiple times when material must be chunked or when seed sizing escalates the level.
+multiple times when material must be chunked or when a cascade consolidates a full tier.

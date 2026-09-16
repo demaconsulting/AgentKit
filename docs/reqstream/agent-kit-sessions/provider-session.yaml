@@ -35,6 +35,26 @@ sections:
               - ProviderTurn_Construct_NoEntries_RecordsAnswerAlone
               - ProviderTurn_Construct_RecordsAnswerExactlyOnce
 
+          - id: AgentKitSessions-ProviderSession-AnswersForItsOwnWindow
+            title: >-
+              The unit shall require every provider session to answer how much of its provider's
+              context window it occupies and out of how much, without contacting the provider to do
+              so.
+            justification: |
+              Rotation happens when the window is filling, which is the one thing this library needs a
+              token count for, and the adapter is the only place that can answer honestly for its
+              provider: some publish both figures, some report occupancy against a window the adapter
+              was told once where the provider was configured, and an adapter for a provider that
+              reveals nothing estimates and owns that choice. Making the question part of the contract
+              rather than an optional extra is what gives the engine a single path - it asks one
+              question and believes the answer, instead of testing for a capability, falling back to
+              its own estimate against a separately configured window, and checking a figure's
+              provenance before it could use it. The answer reports what the last exchange already
+              revealed, so reading it is free and cannot fail.
+            tests:
+              - InMemoryProviderSession_Usage_AnswersForItsOwnWindow
+              - CompactingAgentSession_Usage_PrefersProviderReport
+
           - id: AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn
             title: >-
               The unit shall reject a null tool or history list, a null entry within one, a null

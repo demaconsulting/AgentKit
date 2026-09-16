@@ -11,11 +11,15 @@ session receives instructions, tool declarations and seed history as separate co
 that each provider turn records the response exactly once; and that malformed seed or turn material
 is rejected before it reaches the compaction session.
 
+The window question every provider session answers is verified through implementations of it, since
+the interface member itself has no behavior of its own: the in-memory session answers for the window
+it was given, and the compacting session is shown consuming that answer.
+
 Ownership and disposal behavior is verified at the compacting-session level because that unit adopts
 and releases provider sessions.
 
-Unit tests reside in `ProviderSessionTests.cs`, with ownership evidence in
-`CompactingAgentSessionTests.cs`.
+Unit tests reside in `ProviderSessionTests.cs`, with usage and ownership evidence in
+`InMemoryProviderSessionTests.cs` and `CompactingAgentSessionTests.cs`.
 
 ### Test Environment
 
@@ -51,6 +55,18 @@ mutation cannot change the replacement session's starting context.
 Verifies a turn with no entries records the answer as the single assistant entry. A turn with
 intermediate tool or assistant entries appends the final answer, while a turn already ending with
 that answer does not duplicate it.
+
+#### AgentKitSessions-ProviderSession-AnswersForItsOwnWindow: Every Session Says How Full It Is
+
+**Tests**:
+
+- `InMemoryProviderSession_Usage_AnswersForItsOwnWindow`
+- `CompactingAgentSession_Usage_PrefersProviderReport`
+
+Asserts a provider session answers with the window it holds and what it occupies, and that the
+compacting session's own usage is exactly that answer. Together they show the one token figure the
+engine consumes has a single source, so there is no capability to test for and no provenance to check
+before the figure can be used.
 
 #### AgentKitSessions-ProviderSession-RejectsMalformedSeedOrTurn: A Malformed Seed or Turn Is Refused
 

@@ -3,8 +3,8 @@
 ### Purpose
 
 `AgentSessionOptions` captures everything an application configures for one compacting session:
-instructions, tools, provider window size, compaction policy and summarizer. It also computes fixed
-overhead and the estimated rotation threshold used when a provider reports no usage.
+instructions, tools, compaction policy and summarizer. It also measures the fixed overhead the
+context carries on every turn.
 
 ### Data Model
 
@@ -13,39 +13,34 @@ Immutable properties:
 - **`Summarizer`** (`ISummarizer`) — Required out-of-session consolidation implementation.
 - **`Instructions`** (`string?`) — System instructions, or null for none.
 - **`Tools`** (`IReadOnlyList<AIFunction>`) — Owned read-only copy of the tool declarations.
-- **`ProviderWindowTokens`** (`int`) — Configured window used by providers that report no window.
 - **`Compaction`** (`CompactionPolicy`) — Policy, defaulting to `CompactionPolicy.Default`.
 - **`VerbatimTurns`** (`int`) — Convenience access to `Compaction.VerbatimTurns`.
 - **`SystemTokens`** (`int`) — Estimated instruction size.
 - **`ToolDeclarationTokens`** (`int`) — Estimated tool declaration size.
 - **`FixedOverheadTokens`** (`int`) — Estimated system plus tool overhead.
-- **`EffectiveWindowTokens`** (`int`) — Configured window after estimated fixed overhead.
-- **`RotationThresholdTokens`** (`int`) — 0.70 of the effective window, floored at one token.
 
-The default configured provider window is an application fallback, not a claim about any specific
-provider. A provider that reports its own window overrides it for rotation-trigger comparisons.
+The provider's context window is deliberately not configured here. It is a fact about the provider,
+so it is stated where the provider is constructed and answered by the adapter thereafter; a second
+copy here would give one fact two sources and the session a rule for deciding which to believe.
 
 ### Key Methods
 
 #### The AgentSessionOptions Constructor
 
-**Purpose:** Validate application configuration and derive the estimated fixed-overhead accounting.
+**Purpose:** Validate application configuration and measure the fixed overhead the seed carries.
 
 **Algorithm:**
 
 1. Require a summarizer.
-2. Require a positive configured provider window.
-3. Select the supplied `CompactionPolicy` or the shared default.
-4. Estimate instruction and tool declaration tokens with `TokenEstimator`.
-5. Reject null tool entries or declaration totals no token count can represent.
-6. Subtract estimated fixed overhead from the configured window and reject a non-positive remainder.
-7. Copy the tool list into owned read-only storage and store all derived figures.
+2. Select the supplied `CompactionPolicy` or the shared default.
+3. Estimate instruction and tool declaration tokens with `TokenEstimator`.
+4. Reject null tool entries or declaration totals no token count can represent.
+5. Copy the tool list into owned read-only storage and store the measured figures.
 
-**Preconditions:** The summarizer is not null; the provider window is positive; the tool list contains
-no null entry.
+**Preconditions:** The summarizer is not null; the tool list contains no null entry.
 
-**Postconditions:** The instance is immutable. `EffectiveWindowTokens` is positive, and
-`RotationThresholdTokens` is the matching estimated trigger for providers that do not report usage.
+**Postconditions:** The instance is immutable, and the overhead figures describe the declarations the
+options now own rather than a list the caller can still change.
 
 #### RotationThresholdFor(int effectiveWindowTokens)
 
@@ -56,20 +51,20 @@ and return at least one token.
 
 **Preconditions:** The effective window supplied by the caller is positive.
 
-**Postconditions:** The returned threshold uses the same arithmetic for configured-window and
-provider-reported paths.
+**Postconditions:** The returned threshold is never below one token, so a fraction too small to
+survive truncation still means "rotate on every turn" rather than "rotate a conversation holding
+nothing". `CompactingAgentSession` supplies the window the provider reported, less the overhead that
+same reading credited, so the arithmetic is published once and applied in one currency.
 
 ### Error Handling
 
 - **Null summarizer** — `ArgumentNullException` propagates.
-- **Non-positive provider window** — `ArgumentOutOfRangeException` propagates.
 - **Null tool entry** — `ArgumentException` propagates from tool declaration estimation.
 - **Tool declarations too large to count** — `ArgumentException` propagates.
-- **Fixed overhead consumes the configured window** — `ArgumentException` propagates, naming the
-  configured window.
 
-The unit intentionally does not predict whether a future conversation will settle. Runtime seed
-sizing, level escalation and dropping handle that after real material exists.
+The unit intentionally does not predict whether a future conversation will settle, and it refuses no
+window because it is given none. Pressure is answered at runtime, in counts of turns and slots, once
+real material exists.
 
 ### Dependencies
 
@@ -82,4 +77,4 @@ sizing, level escalation and dropping handle that after real material exists.
 ### Callers
 
 Applications construct `AgentSessionOptions` before creating a `CompactingAgentSession`.
-`CompactingAgentSession` reads the stored values during creation, usage estimation and rotation.
+`CompactingAgentSession` reads the stored values during creation and rotation.

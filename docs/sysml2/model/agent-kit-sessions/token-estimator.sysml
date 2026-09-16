@@ -1,6 +1,6 @@
 package AgentKitSessions {
     part def TokenEstimator {
-        doc /* The deterministic character-ratio arithmetic the fallback estimate rests on: the tokens a run of text occupies, the tokens one transcript entry occupies including its framing, and the fixed overhead a set of tool declarations imposes on every turn. Used when a provider reports no usage and when the session sizes a seed it has not yet sent. Deterministic by design, so the rotation engine can be unit-tested without a model. */
+        doc /* The deterministic character-ratio arithmetic every figure no provider reported rests on: the tokens a run of text occupies, the tokens one transcript entry occupies including its framing, and the fixed overhead a set of tool declarations imposes on every turn. Used for the overhead measured from an application's configuration, the engine's own account of the context it holds, and the grouping of oversized material into summarizer calls. Deterministic by design, so the rotation engine can be unit-tested without a model. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Sessions/TokenEstimator.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Sessions.Tests/TokenEstimatorTests.cs */

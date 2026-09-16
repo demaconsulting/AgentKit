@@ -7,8 +7,8 @@ This document describes the unit-level verification strategy for `InMemoryProvid
 
 The in-memory provider is verified as a shipped deterministic provider-session implementation, not a
 network adapter. Tests send messages through a responder, inspect recorded history, observe disposal,
-exercise reporting and silent usage shapes, assert cancellation leaves no ghost turn, and verify the
-factory records sessions in creation order.
+assert the session answers for its own window, assert cancellation leaves no ghost turn, and verify
+the factory records sessions in creation order.
 
 Unit tests reside in `InMemoryProviderSessionTests.cs`.
 
@@ -40,12 +40,13 @@ Sends a message through a local responder and asserts the answer, turn count and
 canceled turn throws and records nothing, proving cancellation does not leave partial transcript
 state.
 
-#### AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes: Usage Is Reported, or Withheld
+#### AgentKitSessions-InMemoryProviderSession-AnswersForItsOwnWindow: Usage Comes From the Session Itself
 
-**Test**: `InMemoryProviderSession_Usage_SimulatesBothShapes`
+**Test**: `InMemoryProviderSession_Usage_AnswersForItsOwnWindow`
 
-Constructs reporting and silent sessions. The reporting session returns provider-origin usage; the
-silent session returns none so the compacting session can exercise its estimated path.
+Constructs a session with a known window and asserts it reports that window and marks the reading as
+a provider's own figures — the shape a real adapter answers in, which is what makes exercising the
+engine against this session meaningful.
 
 #### AgentKitSessions-InMemoryProviderSession-RecordsRotationEvidence: Disposal and Creation Are Both Observable
 

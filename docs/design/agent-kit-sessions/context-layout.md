@@ -12,7 +12,7 @@ Internal constants:
 
 - **`SlotsPerTier`** (`int`) — Four slots per tier.
 - **`TierCount`** (`int`) — Three coarse tiers.
-- **`RotationThreshold`** (`double`) — 0.70 of the effective window.
+- **`RotationThreshold`** (`double`) — 0.70 of the window left once overhead is paid for.
 - **`MaxSummarizerInputTokens`** (`int`) — Maximum estimated material sent to one summarizer call
   before chunking.
 
@@ -30,8 +30,9 @@ Derived values:
   overhead.
 - **`TotalEstimatedTokens`** — Fixed overhead plus estimated conversation tokens.
 
-These estimates are fallback accounting and seed-sizing input. Rotation does not assign a per-tier
-token allowance.
+These estimates are this library's own account of the context it holds, in its own currency. They are
+never compared against a figure a provider reported, and rotation does not assign a per-tier token
+allowance.
 
 ### Key Methods
 

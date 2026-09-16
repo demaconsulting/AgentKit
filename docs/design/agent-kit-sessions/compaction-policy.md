@@ -14,9 +14,9 @@ Immutable public members:
 - **`Default`** (`CompactionPolicy`) — Shared validated default instance.
 - **`VerbatimTurns`** (`int`) — Positive maximum number of recent turns kept word for word.
 
-`VerbatimTurns` is a maximum, not a quota. The session may keep fewer turns when the current
-`CompactionLevel` is Medium or High, and may drop older verbatim turns as a last resort while sizing a
-replacement seed.
+`VerbatimTurns` is a maximum, not a quota. The session keeps fewer turns when the current
+`CompactionLevel` is Medium or High, and a rotation keeps at most one turn fewer than the tail holds
+so that it always moves something.
 
 Internal shape constants live in `ContextLayout` and `CompactingAgentSession`: four slots per tier,
 three tiers, a 0.70 rotation threshold, and hysteresis windows based on `VerbatimTurns`.

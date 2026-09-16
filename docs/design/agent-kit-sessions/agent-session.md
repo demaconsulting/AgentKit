@@ -15,8 +15,8 @@ behind a small application-facing surface.
 - **`RotationOccurred`** (`bool`) — True when the session replaced its provider session after the
   answer was produced.
 - **`Level`** (`CompactionLevel`) — The compaction level after the turn.
-- **`MaterialDropped`** (`bool`) — True when the rotation discarded preserved material to make the
-  replacement seed fit.
+- **`MaterialDropped`** (`bool`) — True when the turn discarded preserved material rather than
+  reducing it: a slot binned under sustained pressure, or a consolidation that came back blank.
 
 `IAgentSession` properties:
 
@@ -36,8 +36,8 @@ that must be released.
 when the window requires it.
 
 **Algorithm:** The implementation sends the message to the live provider session. If the provider
-accepts the turn, the implementation records the whole exchange, reads or estimates usage, rotates
-when needed, and returns an `AgentSessionResponse` carrying the answer and compaction state.
+accepts the turn, the implementation records the whole exchange, reads the provider session's usage,
+rotates when needed, and returns an `AgentSessionResponse` carrying the answer and compaction state.
 
 **Preconditions:** `message` is not null, empty or blank; the session has not been disposed.
 

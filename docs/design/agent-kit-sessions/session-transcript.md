@@ -41,18 +41,19 @@ provider session.
 
 **Purpose:** Split the transcript at a turn boundary for rotation.
 
-**Algorithm:** Keep the newest `keepTurns` turns verbatim and return all older entries flattened in
-oldest-first order. If the transcript holds no more than `keepTurns` turns, return no older entries
-and retain the whole transcript.
+**Algorithm:** Keep the newest `keepTurns` turns verbatim and return all older turns, oldest first, as
+whole turns rather than as their flattened entries. If the transcript holds no more than `keepTurns`
+turns, return no older turns and retain the whole transcript.
 
 **Preconditions:** `keepTurns` is not negative.
 
-**Postconditions:** Boundaries are turn-granular. A tool call and its result cannot be separated
-because they are inside the same turn.
+**Postconditions:** Boundaries are turn-granular on both sides of the split. A tool call and its
+result cannot be separated, because they are inside the same turn and that turn is handed on whole —
+which is what keeps consolidation chunking from placing them in different summarizer calls.
 
 #### DropOldestTurn()
 
-**Purpose:** Remove the oldest verbatim turn as the last-resort seed-sizing step.
+**Purpose:** Return the transcript without its oldest verbatim turn.
 
 **Algorithm:** Reject an empty transcript; otherwise return a new transcript without the first turn.
 
@@ -86,9 +87,9 @@ newlines.
 
 - **TokenEstimator** — Supplies cached entry and turn estimates.
 - **ProviderSession** — Uses `TranscriptEntry` in seeds and turns; see _ProviderSession Unit Design_.
-- **RotationEngine** — Calls `SplitAtTail`, `DropOldestTurn` and `Render` during rotation.
+- **RotationEngine** — Calls `SplitAtTail` and `Render` during rotation.
 
 ### Callers
 
-`CompactingAgentSession` appends one turn after every accepted provider turn. `RotationEngine` splits,
-renders and drops transcript material while building a replacement layout.
+`CompactingAgentSession` appends one turn after every accepted provider turn. `RotationEngine` splits
+and renders transcript material while building a replacement layout.

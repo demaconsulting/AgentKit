@@ -11,58 +11,45 @@ sections:
           - id: AgentKitSessions-AgentSessionOptions-CarriesConfiguration
             title: >-
               The options shall carry what an application configured - the summarizer, the
-              instructions, the tools, the provider window and the compaction policy - and shall derive
-              the effective window and rotation threshold from it.
+              instructions, the tools and the compaction policy - and shall require only the
+              summarizer, defaulting the rest.
             justification: |
               The options are the one place an application states what its session is. Only the
               summarizer is required, because compaction cannot happen without one and defaulting it
               would give a session that silently never compacts; everything else defaults. The
-              effective window and rotation threshold are derived once so that every later comparison
-              uses the same figures.
+              provider's context window is deliberately not among them: it is a fact about the
+              provider, so it belongs where the provider is constructed, and a second copy here gave
+              one fact two sources and the session a rule for deciding which to believe.
             tests:
               - AgentSessionOptions_Construct_CarriesConfiguration
               - AgentSessionOptions_Construct_Defaults
 
           - id: AgentKitSessions-AgentSessionOptions-MeasuresFixedOverhead
             title: >-
-              The options shall measure the fixed overhead of the system prompt and tool declarations
-              and subtract it from the provider window before the rotation percentage is applied.
+              The options shall measure the fixed overhead the context carries - the system prompt and
+              the tool declarations - once, when they are constructed.
             justification: |
               The system prompt and tool declarations are present on every turn and are never
-              consolidated, so applying a percentage to the raw window would make the rotation point
-              drift with how many tools an application attached. The measurement is the character-ratio
-              estimate, applied only to the configured window and never to a figure a provider
-              reported.
+              consolidated, so the engine's own account of the context has to carry them as a standing
+              cost rather than discover them turn by turn. Measuring them once, where the tools are
+              stated, is also what makes the measurement match what a rotation seeds: the declarations
+              are copied into storage the options own, so a caller that added a tool afterwards cannot
+              change what is sent without changing what was counted. The measurement is this library's
+              character-ratio estimate and is applied only to what the application supplied, never to
+              a figure a provider reported.
             tests:
-              - AgentSessionOptions_Construct_MeasuresFixedOverhead
-
-          - id: AgentKitSessions-AgentSessionOptions-DerivesRotationThreshold
-            title: >-
-              The options shall derive the estimated rotation threshold from the effective window and
-              the internal rotation fraction, never below one token.
-            justification: |
-              When a provider reports no window of its own, the estimated conversation size is compared
-              against this threshold, so both sides of the comparison are estimates and neither is
-              corrupted by the other's currency. The floor of one token keeps a fraction too small to
-              survive truncation from meaning "rotate a conversation holding nothing". What the options
-              do not do is predict, in advance and in a currency they cannot measure, whether the
-              arrangement will settle: the round-robin structure escalates and drops until the context
-              fits, and reports how hard it is working, rather than refusing a window before a session
-              starts.
-            tests:
-              - AgentSessionOptions_Construct_CarriesConfiguration
               - AgentSessionOptions_Construct_MeasuresFixedOverhead
 
           - id: AgentKitSessions-AgentSessionOptions-RejectsMalformedConfiguration
             title: >-
-              The options shall reject a null summarizer, a non-positive provider window, a null tool
-              declaration, and an overhead that leaves no room for conversation.
+              The options shall reject a null summarizer and a null tool declaration.
             justification: |
               Each is a defect in the host's configuration code, surfaced where the application wrote
-              it. A null summarizer would give a session that never compacts; a non-positive window is
-              meaningless; a null declaration cannot be estimated; and an overhead that consumes the
-              whole window leaves nothing for the conversation.
+              it. A null summarizer would give a session that never compacts, and a null declaration
+              cannot be measured. What the options do not do is predict, in advance and in a currency
+              they cannot measure, whether an arrangement will settle: the structure answers pressure
+              with counts and reports how hard it is working, rather than refusing a configuration
+              before a session has sent anything.
             tests:
               - AgentSessionOptions_Construct_NullSummarizer_Throws
-              - AgentSessionOptions_Construct_UnworkableWindow_Throws
               - AgentSessionOptions_Construct_NullTool_Throws

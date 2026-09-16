@@ -4,13 +4,12 @@ This document describes the unit-level verification strategy for `ContextUsage`.
 
 ### Verification Approach
 
-`ContextUsage` reduces reporting and silent provider shapes to one occupancy record while preserving
-where the figure came from. The tests construct provider-origin and estimated records directly,
-assert the split between conversation and overhead, and verify derived occupancy figures are honest
-rather than clamped. Optional reporting is verified through the in-memory provider and the compacting
-session's preference for provider figures.
+`ContextUsage` is the one occupancy record every provider session answers with, and it preserves
+whether the adapter measured the figures or estimated them. The tests construct measured and
+estimated records directly, assert the split between conversation and overhead, and verify derived
+occupancy figures are honest rather than clamped.
 
-Unit tests reside in `ContextUsageTests.cs`, with optional-reporting evidence in
+Unit tests reside in `ContextUsageTests.cs`, with the shape's use in place evidenced by
 `InMemoryProviderSessionTests.cs` and `CompactingAgentSessionTests.cs`.
 
 ### Test Environment
@@ -18,14 +17,14 @@ Unit tests reside in `ContextUsageTests.cs`, with optional-reporting evidence in
 - **Framework**: xUnit running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None; no provider or model is contacted
-- **Mocking**: None required for value tests; in-memory sessions cover provider shapes
+- **Mocking**: None required for value tests; in-memory sessions cover use in place
 - **Isolation**: Each test constructs its own usage record or session
 
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any lost origin, invented split, clamped over-full figure, mixed-currency
-comparison path, or meaningless usage record accepted constitutes a failure.
+explicitly asserted. Any lost origin, invented split, clamped over-full figure, or meaningless usage
+record accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -36,9 +35,9 @@ comparison path, or meaningless usage record accepted constitutes a failure.
 - `ContextUsage_FromProvider_CarriesSplitAndOrigin`
 - `ContextUsage_FromEstimate_MarksEstimated`
 
-Asserts provider-origin and estimated records carry their origin and preserve the conversation split.
-This is the evidence that downstream occupancy comparisons know whether they are using provider
-figures or this library's estimate.
+Asserts measured and estimated records carry their origin and preserve the conversation split. This
+is the evidence that an application reading a usage figure can tell what a provider counted from what
+an adapter derived.
 
 #### AgentKitSessions-ContextUsage-DefaultsToAllConversation: An Unreported Split Is Not Invented
 
@@ -61,14 +60,3 @@ the window. The record remains an honest account of provider pressure.
 
 Rejects a conversation count larger than total usage, a non-positive window and an undefined origin.
 Those checks keep adapter arithmetic defects from entering rotation decisions.
-
-#### AgentKitSessions-ContextUsage-OptionalReportingContract: A Reporter May Say It Does Not Know
-
-**Tests**:
-
-- `InMemoryProviderSession_Usage_SimulatesBothShapes`
-- `CompactingAgentSession_Usage_PrefersProviderReport`
-
-Verifies a provider session may report usage or return none. The compacting session prefers the
-provider report when present and otherwise follows the estimated path, keeping each comparison in a
-single occupancy shape.

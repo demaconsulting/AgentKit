@@ -48,7 +48,7 @@ oldest slot and drops the oldest slot. Slot construction rejects blank records.
 **Test**: `ContextLayout_EstimatedTokens_CountSeedAndOverhead`
 
 Asserts estimated conversation tokens include seeded slots, their framing and the verbatim tail, and
-that total estimated tokens include the same accounting used for seed fitting.
+that total estimated tokens add the fixed overhead to that same accounting.
 
 #### AgentKitSessions-ContextLayout-Immutable: A Layout Is Never Modified in Place
 

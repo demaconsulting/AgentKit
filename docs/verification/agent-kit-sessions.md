@@ -13,12 +13,13 @@ into each replacement session.
 The redesigned core is verified as a rotation system: a session keeps a configurable verbatim tail,
 then retains older context in a fixed round-robin shape of three tiers with four slots per tier. The
 unit tests cover the internal rules, and the system tests cover the observable promise that a long
-conversation keeps answering, rotates on both provider shapes, and preserves important early detail.
+conversation keeps answering, takes its window from whatever provider it is on, and preserves
+important early detail.
 
 The high-pressure cases are part of system verification. `DivergentTokenizerProviderSession` reports
 usage at 1x, 2x and 3x this library's estimate so the same session behavior is exercised when a
-provider counts the seeded context differently. Those tests prove rule five terminates and reports
-pressure instead of silently churning when the provider's tokenizer diverges.
+provider counts the seeded context differently. Those tests prove the response to pressure terminates
+and is reported instead of silently churning when the provider's tokenizer diverges.
 
 Compaction pressure is reported as `CompactionLevel.Low`, `CompactionLevel.Medium` or
 `CompactionLevel.High`. The compacting session adapts that level with hysteresis: near-repeat
@@ -48,9 +49,9 @@ System tests reside in `AgentKitSessionsTests.cs`, `CompactingAgentSessionTests.
 
 A system-level test run passes when every scenario below passes without error or exception beyond
 those explicitly asserted. Any session that stops answering as the conversation grows, any rotation
-that leaks a superseded provider session, any provider-shape path that mixes usage currencies, any
-pathological compaction that fails to terminate, any missing dropped-material signal, any lost early
-detail, or any public-surface drift constitutes a failure.
+that leaks a superseded provider session, any comparison that mixes a figure one party counted with a
+figure another did, any pathological compaction that fails to terminate, any missing dropped-material
+signal, any lost early detail, or any public-surface drift constitutes a failure.
 
 ## Test Scenarios
 
@@ -89,15 +90,15 @@ round-robin retention structure rather than model memory.
 - `CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel`
 - `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
-These tests cover the redesigned fitting strategy. A normal long conversation keeps answering, and a
+These tests cover the response to pressure. A normal long conversation keeps answering, and a
 provider fake at 1x, 2x and 3x tokenizer divergence completes every turn. Divergence is then verified
 as a difference rather than asserted away: a 2x and 3x provider rotates strictly more often and
 escalates to a strictly higher level than a 1x one, each collapsing and failing if reverted to 1x.
 Adapting is verified in both directions — the level comes back down after a quiet stretch, so a
 session that met one busy period does not pay for it in fidelity thereafter. Separately, a window too
 small to hold a full structure escalates to `CompactionLevel.High` and reports `MaterialDropped`.
-Together they verify escalate-until-it-fits and drop-until-it-fits without predicting in mixed
-currencies.
+Together they verify that pressure is answered in counts of turns and slots, and that the answer
+terminates, without anything measuring a context that has not been sent.
 
 ### Out-of-Session Summarizer: Consolidation Is Deterministic
 
@@ -109,29 +110,33 @@ provider to summarize itself.
 
 ### Tool Traffic: Whole Turns Are Indivisible
 
-**Test**: `SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn`
+**Tests**:
 
-Verifies the transcript records a user message, tool traffic and assistant answer as one turn. Since
-all boundaries are turn-granular, a tool call and its result are retained, consolidated or dropped
-together.
+- `SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn`
+- `RotationEngine_Rotate_OversizedMaterial_IsChunked`
+
+Verifies the transcript records a user message, tool traffic and assistant answer as one turn, and
+that a rotation splitting oversized material across several summarizer calls still places each turn
+whole in one of them. Since all boundaries are turn-granular, a tool call and its result are retained,
+consolidated or dropped together, and a result can never reach a summarizer without its call.
 
 ### Compaction Reporting: Level and Dropped Material Are Visible
 
 **Test**: `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
-Drives a window too small to hold a full structure, so compaction must become aggressive and then
-discard history, using a non-divergent provider that counts with this library's own estimator. The
-response stream is asserted to include `CompactionLevel.High` and `MaterialDropped`, which are the
+Drives a window too small to hold a full structure, so compaction becomes aggressive and then
+discards history, using a provider whose window is narrow rather than one whose tokenizer diverges.
+The response stream is asserted to include `CompactionLevel.High` and `MaterialDropped`, which are the
 application-visible signals that compaction pressure is high and history was discarded.
 
-### Provider Neutrality: Both Provider Shapes Compact
+### Provider Neutrality: The Window Comes From the Provider
 
-**Test**: `AgentKitSessions_SameConversation_CompactsOnBothProviderShapes`
+**Test**: `AgentKitSessions_WindowComesFromTheProvider_NarrowCompactsWhereWideDoesNot`
 
-Runs the same conversation against a provider that reports usage and one that reports none. The
-first path records `ContextUsageOrigin.Provider`; the second records `ContextUsageOrigin.Estimated`.
-This verifies the engine can compact both provider shapes while keeping each occupancy comparison in
-one currency.
+Runs the same conversation against two providers differing only in the window they report. The narrow
+one must provoke compaction and the wide one must not, with nothing configured alongside the session
+to distinguish them. This verifies the window is a fact the adapter answers for, and that every
+occupancy comparison stays in the currency of the reading it came from.
 
 ### In-Memory Verification: No Live Model Is Required
 
@@ -145,10 +150,11 @@ without network access.
 
 **Tests**:
 
-- `AgentKitSessions_PublicSurface_IsExactlyEighteenTypes`
+- `AgentKitSessions_PublicSurface_IsTheDeliberateSet`
 - `AgentKitSessions_PublicSurface_ExcludesDeletedAndInternalTypes`
 
-Reflects over the built assembly and asserts the public surface is exactly eighteen types. The
+Reflects over the built assembly and asserts the public surface is exactly the deliberate list of
+exported types, so a type becoming public is a decision someone made rather than an accident. The
 companion test asserts deleted or internal compaction-core types are not exported, keeping the
 redesigned API boundary verifiable.
 

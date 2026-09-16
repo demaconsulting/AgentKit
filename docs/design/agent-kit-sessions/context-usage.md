@@ -4,14 +4,14 @@
 
 `ContextUsage` is the single shape used for context-window accounting. It records how much of the
 window is occupied, how much of that is conversation rather than fixed overhead, the window size, and
-whether the numbers came from a provider report or this library's estimate.
+whether the adapter measured those figures or estimated them.
 
 ### Data Model
 
 `ContextUsageOrigin` values:
 
-- **`Provider`** — A provider session reported the usage.
-- **`Estimated`** — The library estimated usage from its own layout.
+- **`Provider`** — The adapter reported figures its provider counted.
+- **`Estimated`** — The adapter derived the figures itself, its provider revealing none.
 
 `ContextUsage` properties:
 
@@ -25,11 +25,12 @@ whether the numbers came from a provider report or this library's estimate.
 - **`UsedFraction`** (`double`) — Fraction of the window occupied; may exceed one.
 
 The conversation count is stored rather than derived by consumers so every threshold comparison can
-use a single currency. A provider split is counted by the provider; an estimated split is counted by
-this library.
+use a single currency: whoever produced the totals produced the split.
 
-`IContextUsageReporter` is an optional provider-session capability. A provider session implements it
-only when it can return the latest usage without making another provider call.
+Every provider session answers with this shape through `IProviderSession.CurrentUsage`. There is no
+separate optional reporting interface: requiring the answer of every adapter is what gives the engine
+one path and one source, and an adapter whose provider reveals nothing answers with an estimate and
+marks it as one.
 
 ### Key Methods
 
@@ -59,7 +60,7 @@ the used total.
 
 #### FromEstimate(int usedTokens, int windowTokens, int? conversationTokens = null)
 
-**Purpose:** Create a usage reading from this library's own estimate.
+**Purpose:** Create a usage reading an adapter derived rather than measured.
 
 **Algorithm:** Use the supplied estimated conversation split when present; otherwise treat the whole
 used total as conversation.
@@ -67,7 +68,8 @@ used total as conversation.
 **Preconditions:** Estimated totals are non-negative, the window is positive, and any split is within
 the used total.
 
-**Postconditions:** The reading is marked `Estimated`.
+**Postconditions:** The reading is marked `Estimated`, so an application can tell it from a figure a
+provider counted.
 
 ### Error Handling
 
@@ -78,10 +80,11 @@ the used total.
 
 ### Dependencies
 
-N/A - `ContextUsage` is a value shape. `CompactingAgentSession` reads it after each turn, and
-provider adapters may produce it through `IContextUsageReporter`.
+N/A - `ContextUsage` is a value shape. `CompactingAgentSession` reads it after each turn, and every
+provider adapter produces it through `IProviderSession.CurrentUsage`.
 
 ### Callers
 
-`CompactingAgentSession` consumes provider-reported usage when available and otherwise constructs an
-estimated reading. Applications read `ContextUsage` from `IAgentSession` and `AgentSessionResponse`.
+`CompactingAgentSession` reads the live provider session's usage after every turn and derives the
+rotation threshold from it. Applications read `ContextUsage` from `IAgentSession` and
+`AgentSessionResponse`.
