@@ -33,6 +33,12 @@ sections:
               room, while keeping its strength: preserving specific named facts, decisions, errors and
               outstanding work. Each compaction level selects its own aggressiveness clause, and the
               clause is never a number handed to the model.
+
+              It is published rather than kept inside the package because the prompt is the mechanism
+              this library guarantees, not a setting the application governs. A summarizer is supplied
+              by the application, so hiding the prompt would leave every author to reinvent the one
+              part of compaction that decides what survives - and to reinvent it without the evidence
+              that shaped it. An author remains free to write their own; they should not be forced to.
             tests:
               - ConsolidationPrompt_Compose_HasNoPreviousRecordSection
               - ConsolidationPrompt_Instruction_LicensesCollapsingRepetition

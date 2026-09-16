@@ -152,7 +152,7 @@ public interface ISummarizer
 ///     This class is static, holds no state, and is safe for concurrent use.
 ///     </para>
 /// </remarks>
-internal static class ConsolidationPrompt
+public static class ConsolidationPrompt
 {
     /// <summary>
     ///     The base instruction given to a model performing a consolidation.

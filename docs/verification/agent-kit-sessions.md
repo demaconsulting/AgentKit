@@ -25,8 +25,11 @@ Compaction pressure is reported as `CompactionLevel.Low`, `CompactionLevel.Mediu
 rotations escalate the level, while a long quiet stretch relaxes it.
 
 The package surface is also verified mechanically. `PublicSurfaceTests.cs` asserts the assembly
-exports exactly eighteen public types and excludes deleted or internal compaction-core types, so the
-API shape is checked against the built assembly rather than maintained only by prose.
+exports exactly the deliberate list of public types, and that the compaction-core internals — the
+layout, the tiers, the transcript and the rotation engine — are not among them, so the API shape is
+checked against the built assembly rather than maintained only by prose. The list is asserted rather
+than a count: a count is a metric, and pinning one pressures whoever comes next toward the number
+instead of the design, which is how a genuinely useful type ends up hidden to keep a total down.
 
 System tests reside in `AgentKitSessionsTests.cs`, `CompactingAgentSessionTests.cs`,
 `PublicSurfaceTests.cs` and `XmlDocExampleTests.cs`, with helpers in `FakeSummarizer.cs`,

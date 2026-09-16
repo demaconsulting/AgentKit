@@ -27,7 +27,7 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     Instances are not safe for concurrent use, consistent with <see cref="IProviderSession"/>.
 ///     </para>
 /// </remarks>
-internal sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
+public sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
 {
     /// <summary>
     ///     The answer for a given message.
@@ -259,7 +259,7 @@ internal sealed class InMemoryProviderSession : IProviderSession, IContextUsageR
 ///     not themselves safe for concurrent use.
 ///     </para>
 /// </remarks>
-internal sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
+public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
 {
     /// <summary>
     ///     Guards the record of created sessions.
