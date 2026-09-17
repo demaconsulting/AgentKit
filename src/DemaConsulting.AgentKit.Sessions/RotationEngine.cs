@@ -366,6 +366,7 @@ internal static class RotationEngine
             if (tier == ContextLayout.TierCount - 1)
             {
                 slots.RemoveAt(0);
+                MaterialDropped = true;
                 slots.Add(slot);
                 return;
             }
