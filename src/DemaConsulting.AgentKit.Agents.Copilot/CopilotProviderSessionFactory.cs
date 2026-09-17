@@ -284,16 +284,13 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>The record does not go in the system message, and that is a trust decision rather than
-    ///     a formatting one.</b> Its entries are user messages, model answers and tool results — and
-    ///     a tool result may be the contents of a file the agent was pointed at, which nobody in this
-    ///     library wrote. The system message is the highest-trust channel a provider has. Putting
-    ///     text an attacker can influence there, and defending it with a fence and a sentence saying
-    ///     the block is data rather than instructions, is asking the model not to be fooled: a
-    ///     prompt-level mitigation, which is the kind of protection this library exists to avoid
-    ///     relying on. Carried instead on the first user message, the material sits in the channel
-    ///     its own contents came from, and a model that treats it as conversation is treating it
-    ///     correctly.
+    ///     <b>The record goes on the first message, not in the system message, because of how the
+    ///     window is accounted.</b> The engine reasons about the window as overhead — the system
+    ///     message and the tool declarations — against the conversation. A record placed in the
+    ///     system message is charged as overhead, so overhead grows at every rotation while the
+    ///     conversation appears small, and the engine's model of its own window drifts. Compacted
+    ///     content belongs in the region that gets compacted. It also reads with more authority than
+    ///     it has earned in the instructions channel, since some of it is tool output.
     ///     </para>
     ///     <para>
     ///     It costs no extra request. The preamble is prepended to the message the engine was
@@ -301,13 +298,9 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     holds the result for the rest of the session as it holds any other turn.
     ///     </para>
     ///     <para>
-    ///     The fence is plain, fixed punctuation rather than a generated boundary. An earlier version
-    ///     drew a random marker per record so the material could not imitate the boundary; a live run
-    ///     showed the model reading that marker back out and offering it as an answer, because a run
-    ///     of hexadecimal sitting in a conversation looks like a reference code. Imitation costs a
-    ///     misread boundary; a token that looks like content costs a wrong answer, which is worse.
-    ///     The fence's job here is only to separate the account of what happened from the question
-    ///     being asked — the material is contained by the channel it travels on, not by this.
+    ///     The two fence lines mark where the handover ends and the current message begins. They are
+    ///     fixed text: an earlier version drew a marker per record, and a live run showed the model
+    ///     reading it back out and offering it as an answer.
     ///     </para>
     ///     <para>
     ///     Each entry is rendered with Core's own <c>TranscriptEntry.ToTranscriptLine</c>, which is
