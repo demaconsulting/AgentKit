@@ -403,12 +403,12 @@ internal static class RotationEngine
         }
 
         /// <summary>
-        ///     Consolidates a list of indivisible pieces into one slot, chunking when the material is
-        ///     too large for a single summarizer call.
+        ///     Consolidates a list of pieces into one slot, in a single summarizer call.
         /// </summary>
         /// <remarks>
-        ///     A piece is never split. Callers decide what a piece is: a whole turn for rule two, a
-        ///     whole slot record for a rule three cascade.
+        ///     Callers decide what a piece is: a whole turn for rule two, a whole slot record for a
+        ///     rule three cascade. The pieces are joined and sent together, so a piece is never split
+        ///     across calls and a tool result never reaches a summarizer without the call it answers.
         /// </remarks>
         /// <param name="items">The pieces to consolidate, oldest first.</param>
         /// <param name="tierIndex">The one-based tier the result belongs to, for the request.</param>
