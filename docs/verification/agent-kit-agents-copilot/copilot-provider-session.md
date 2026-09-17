@@ -141,12 +141,21 @@ implementation would report the seed's size for and rotate on immediately.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RefusesUnreportedUsage: A Turn Reporting No Usage Is Refused
 
-**Test**: `CopilotProviderSession_Send_NoUsageReported_Throws`
+**Tests**:
 
-Error path. Scripts a runtime answering normally while reporting no usage at all, and asserts the turn
-fails with a message naming the missing fact. The message is asserted rather than only the exception
+- `CopilotProviderSession_Send_NoUsageReported_Throws`
+- `CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn`
+
+Error paths. The first scripts a runtime answering normally while reporting no usage at all, and
+asserts the turn fails with a message naming the missing fact. The message is asserted rather than only the exception
 type, because a refusal an application cannot act on is no better than the guess this class declines
 to make.
+
+The second is the one a session-wide check would miss: a first turn reports usage normally, so the
+kept reading is non-null when the second turn is judged. Only a per-turn question refuses it. Without
+that distinction a runtime that quietly stopped reporting would leave occupancy frozen at the last
+figure while its conversation kept growing — the same defect the ChatClient adapter carried and had
+fixed.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory: A Rewritten History Ends the Session
 

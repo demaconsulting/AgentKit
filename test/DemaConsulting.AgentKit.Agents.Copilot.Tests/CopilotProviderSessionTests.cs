@@ -421,6 +421,37 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a turn that answers without reporting usage is refused even when an earlier turn
+    ///     did report.
+    /// </summary>
+    /// <remarks>
+    ///     The reading is kept between turns so occupancy does not go blank, which means a check
+    ///     written against the kept figure passes on a previous turn's number. A provider that
+    ///     quietly stopped reporting would then leave occupancy frozen while its conversation kept
+    ///     growing, and the engine would rotate later and later against a figure that had stopped
+    ///     moving. The ChatClient adapter had this defect and it was fixed there; the first turn
+    ///     reporting normally is what makes this test cover the case a session-wide check misses.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn()
+    {
+        // Arrange: a first turn that reports usage, then one that answers reporting none
+        var runtime = Runtime(
+            Turn(CopilotEvents.Usage(400, 8000), CopilotEvents.Assistant("the answer")),
+            Turn(CopilotEvents.Assistant("a later answer")));
+        await using var session = await OpenAsync(runtime);
+
+        // Act: the first turn succeeds, so the kept reading is non-null when the second is judged
+        var first = await session.SendAsync("a question", TestContext.Current.CancellationToken);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("another question", TestContext.Current.CancellationToken));
+
+        // Assert: the second is refused on its own silence, not excused by the first's reading
+        Assert.Equal("the answer", first.ResponseText);
+        Assert.Contains("without reporting its token usage", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a stated ceiling lowers the window the session accounts against.
     /// </summary>
     /// <remarks>

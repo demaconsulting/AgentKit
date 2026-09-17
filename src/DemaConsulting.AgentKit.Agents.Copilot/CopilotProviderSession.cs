@@ -301,12 +301,16 @@ public sealed class CopilotProviderSession : IProviderSession
         // Knowing when the window is filling is the one thing the session engine needs a token count
         // for, and Copilot reports both figures itself - so an absent reading means something is
         // wrong that an application can see and fix, rather than a number to be estimated around.
-        if (_observer.LatestUsage is null)
+        // Asked of this turn rather than of the session: the reading is kept between turns so
+        // occupancy does not go blank, and a check against the kept figure would pass on a previous
+        // turn's number - leaving occupancy frozen while the conversation grew, which is the shape
+        // of the defect this adapter's ChatClient sibling already had.
+        if (!_observer.UsageReportedThisTurn)
         {
             throw new InvalidOperationException(
                 "The Copilot session answered without reporting its token usage, so this session "
                 + "cannot tell when its context window is filling. The runtime normally reports "
-                + "occupancy and its limit with every turn; a session that reports neither cannot "
+                + "occupancy and its limit with every turn; a session that stops reporting cannot "
                 + "be compacted.");
         }
 

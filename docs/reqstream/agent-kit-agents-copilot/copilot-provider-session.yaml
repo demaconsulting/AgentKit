@@ -92,8 +92,15 @@ sections:
               therefore means something is wrong that an application can see and fix, and saying so is
               more use than a number nobody can trust. The refusal happens before anything is
               recorded, so a refused turn leaves the session exactly as it was.
+
+              The question is asked of each turn, not of the session. The reading is kept between
+              turns so occupancy does not go blank, so a session-wide check would pass on a previous
+              turn's figure - and a runtime that quietly stopped reporting would leave occupancy
+              frozen while its conversation kept growing, with the engine rotating later and later
+              against a number that had stopped moving.
             tests:
               - CopilotProviderSession_Send_NoUsageReported_Throws
+              - CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory
             title: >-

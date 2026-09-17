@@ -70,6 +70,18 @@ internal sealed class CopilotSessionObserver
     private CopilotUsageReading? _latestUsage;
 
     /// <summary>
+    ///     Whether a usage reading arrived during the turn now in flight.
+    /// </summary>
+    /// <remarks>
+    ///     Separate from <see cref="_latestUsage"/>, which is deliberately cumulative so occupancy
+    ///     does not go blank between readings. A turn that answered without reporting usage would
+    ///     otherwise pass a check written against the cumulative field, using the figure a previous
+    ///     turn left there - so occupancy would sit frozen while the conversation kept growing, and
+    ///     the engine would rotate later and later against a number that stopped moving.
+    /// </remarks>
+    private bool _usageReportedThisTurn;
+
+    /// <summary>
     ///     Whether the runtime has compacted or truncated this session's history.
     /// </summary>
     private bool _providerRewroteHistory;
@@ -91,6 +103,20 @@ internal sealed class CopilotSessionObserver
             lock (_gate)
             {
                 return _latestUsage;
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Gets a value indicating whether the turn now in flight reported its usage.
+    /// </summary>
+    internal bool UsageReportedThisTurn
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _usageReportedThisTurn;
             }
         }
     }
@@ -162,6 +188,7 @@ internal sealed class CopilotSessionObserver
         switch (sessionEvent)
         {
             case SessionUsageInfoEvent { Data: { } usage }:
+                Record(() => _usageReportedThisTurn = true);
                 Record(() => _latestUsage = new CopilotUsageReading(
                     usage.CurrentTokens,
                     usage.TokenLimit,
@@ -218,6 +245,7 @@ internal sealed class CopilotSessionObserver
         {
             _entries.Clear();
             _lastErrorMessage = null;
+            _usageReportedThisTurn = false;
         }
     }
 
