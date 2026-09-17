@@ -34,32 +34,78 @@ The system implements no agent runtime and no compaction engine of its own; it a
 Copilot SDK into the Microsoft Agent Framework `AIAgent` abstraction and into Core's session
 contracts. It shares no code with, and takes no reference on, the ChatClient adapter.
 
-## Seeding History Into the System Message
+## Seeding History Onto the First Message
 
 A rotation produces a seed carrying instructions, tools and a rewritten history, and the adapter has
 to get that history into a fresh Copilot session. **Copilot's session configuration has no history
 or messages field of any kind** — every property of the configuration and its base was enumerated
-against the shipped assembly. So the history is rendered as a labeled record and appended to the
-session's system message, after the instructions, between two fixed delimiter lines.
+against the shipped assembly. So the history is rendered as a labeled record and carried on the
+session's **first user message**, prepended to the message the engine was already about to send. The
+session's system message carries the application's instructions and nothing else, byte for byte as
+the plain agent path configures them.
 
-That channel was chosen because it is the only one the runtime offers that exists at
-session-creation time, is carried verbatim, and has **no role vocabulary**. The last property is
-decisive. The defect that shipped to review on the stateless path was a seeded tool result rendered
-as a text-only tool-role message, a shape the OpenAI wire mapping discards without an error — and
-fifty-five green tests and a live sample run never noticed. Here that whole class of defect is
-unrepresentable: the record is text in the instructions channel, and no provider can drop part of it
-without dropping the instructions.
+**Which channel carries the record is a trust decision, not a formatting one.** The record's entries
+are user messages, model answers and tool results — and a tool result may be the contents of a file
+the agent was pointed at, which nobody in this library wrote. The system message is the highest-trust
+channel a provider has. Putting attacker-influenceable text there, and defending it with a fence and
+a sentence asking the model to read the block as data rather than as instructions, is a prompt-level
+mitigation: it asks the model not to be fooled. That is exactly the class of protection this library
+exists to avoid relying on, and this runtime had already shown what relying on a request rather
+than a mechanism buys — it silently ignores the infinite-session enablement flag. Carried on
+the first user message instead, the material sits in the channel its own contents came from, and a
+model that treats it as conversation is treating it correctly.
 
-A priming message, conversational attachments, session resumption, the session RPC's message queue
-and the runtime's own prompt-section overrides were each considered and rejected, with the evidence
-against each recorded in _CopilotProviderSessionFactory Unit Design_.
+**It costs no extra request.** The record rides the message the engine was already sending, so a
+rotation is still exactly one call, and the runtime then holds the result for the rest of the session
+as it holds any other turn.
 
-Two consequences are stated rather than hidden. The record is charged to the runtime's system-token
-count, so it appears as fixed overhead and the session rotates progressively **earlier** as records
-accumulate — the safe direction, and well-defined at the limit because Core's rotation threshold is
-never below one token. And it reaches the model through the instructions channel rather than the
-conversation, so the model may weight it differently from turns it lived through; that cannot be
-verified without a live run and is recorded as unverified rather than asserted.
+**The fence remains, and its job is now clarity rather than containment.** The record is still
+rendered between an opening and a closing line, with a marker drawn per record and chosen so that it
+cannot occur in the material, so a reader — and a model — can see where the account of what happened
+ends and the question being asked begins. What keeps injected content from being read as direction is
+the channel, not the delimiter.
+
+The rendering is still a block of labeled text lines rather than a sequence of role-bearing messages,
+and that remains decisive. The defect that shipped to review on the stateless path was a seeded tool
+result rendered as a text-only tool-role message, a shape the OpenAI wire mapping discards without an
+error — and fifty-five green tests and a live sample run never noticed. Here that whole class of
+defect is unrepresentable: a seeded tool result is a labeled line inside one message, and no
+provider's role mapping can drop part of a message without dropping the message.
+
+Conversational attachments, session resumption, the session RPC's message queue, the runtime's own
+prompt-section overrides, and a priming message sent on its own were each considered and rejected,
+with the evidence against each recorded in _CopilotProviderSessionFactory Unit Design_.
+
+Two consequences are stated rather than hidden. The record now lives in Copilot's **conversation**,
+where the runtime's own truncation could in principle drop it — which was the decisive objection to
+sending it as a separate priming message. It is admitted here because this design does not rely on
+the runtime leaving the conversation alone: every session the engine drives is created with the
+runtime's compaction threshold raised clear of the engine's rotation point, and a rewrite that
+happens anyway is announced, detected and refused rather than silently absorbed. The record is also
+charged to the conversation's own share rather than to the runtime's system-token overhead, so it is
+counted in the figure rotation is decided on and the session rotates progressively **earlier** as
+records accumulate — the safe direction, and well-defined at the limit because Core's rotation
+threshold is never below one token. And the record still arrives as one message rather than as the
+turns it describes, so the model may weight it differently from turns it lived through; that cannot
+be verified without a live run and is recorded as unverified rather than asserted.
+
+## A Session the Engine Cannot Account For Is Finished
+
+Two things can leave the runtime holding a conversation the engine's transcript does not describe:
+the runtime rewriting history itself, and a turn the runtime processed that the session could not
+record. The consequence is identical, so there is one rule and one latch.
+
+Past the send, the runtime has taken the turn. A failure after that point — no usage reported, no
+assistant message, a rewrite announced — leaves the runtime a turn ahead of the transcript; and on a
+first turn it has also consumed the seeded record, which will not be sent again. Neither is
+recoverable by retrying on that session, and retrying an `InvalidOperationException` is the ordinary
+host response, which would re-run the application's tools, with their real side effects, against a
+conversation the engine no longer describes.
+
+So the session latches unusable, naming the original failure, and refuses every later turn **before**
+sending it. The engine's answer to a session it cannot use is the one it already has: seed a
+replacement from its own transcript, which is the state known to be good. Detecting the first
+divergence is unavoidably after the fact; letting a second one happen is not.
 
 ## The Runtime's Own Compaction Is Held Clear of Rotation
 
@@ -92,7 +138,9 @@ keeping for the case where something extraordinary happens, so a rewrite remains
 impossible. The session observer watches for the runtime's own compaction and truncation events, and
 the provider session refuses the next turn if one arrives — before a turn is sent as well as after
 one returns — naming the cause. That converts a silent divergence into a diagnosable failure, which
-is the convention this library already follows wherever it cannot know something it needs.
+is the convention this library already follows wherever it cannot know something it needs. It is also
+what makes it safe to carry a rotation's record on the conversation channel; see _A Session the Engine
+Cannot Account For Is Finished_ below.
 
 **The agent path is deliberately asymmetric.** A plain Copilot agent has no AgentKit compactor behind
 it, so changing the runtime's compaction there would remove protection rather than prevent a
@@ -176,12 +224,15 @@ session over the runtime.
   agent without taking ownership of the client. It is also the **single** place a Copilot session
   configuration is built, for the agent path and for both session-engine paths.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
-  refuses a turn that reported no usage or whose history the runtime rewrote, records tool traffic
-  as identified pairs, reports the runtime's occupancy, and owns and releases its session.
-- **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: composes the instructions
-  and the rendered record, reuses the one confinement path, holds the runtime's compaction clear of
-  the engine's rotation point, registers the observer before the session is created, and guards the
-  ownership window.
+  carries the seeded record ahead of the first message it sends, refuses a turn that reported no
+  usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
+  it could not record, records tool traffic as identified pairs, reports the runtime's occupancy, and
+  owns and releases its session.
+- **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: configures the session's
+  system message with the application's instructions alone, composes the seeded history into a fenced
+  record for the first message to carry, reuses the one confinement path, holds the runtime's
+  compaction clear of the engine's rotation point, registers the observer before the session is
+  created, and guards the ownership window.
 - **CopilotSessionObserver (Unit)** — watches the runtime's event stream and holds the latest usage
   reading, the current turn's entries, and whether the runtime rewrote history.
 - **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using

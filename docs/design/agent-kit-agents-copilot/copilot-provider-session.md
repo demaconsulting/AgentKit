@@ -15,15 +15,20 @@ provider this project's continuous integration can reach.
 **It is the opposite shape to the stateless adapter, and almost everything follows from that.** A
 stateless provider is resent the whole conversation each turn, so its adapter keeps a message list
 and can count what it sent. Copilot keeps the conversation server-side: a turn sends one prompt, and
-what the session holds afterwards is the runtime's business. So this class holds no history at all.
-Seeding happens once, at creation, and is `CopilotProviderSessionFactory`'s work; releasing is
-disposing the runtime's session.
+what the session holds afterwards is the runtime's business. So this class keeps no running history.
+The one exception is the seeded record a rotation produced, which it holds only until the first
+message carries it — Copilot's configuration has no history channel, and the record is untrusted
+material that must not travel in the system one. Composing that record is
+`CopilotProviderSessionFactory`'s work; carrying it is this class's. Releasing is disposing the
+runtime's session.
 
-**There is no window parameter, deliberately.** The stateless adapter has to be told its window
-because an `IChatClient` publishes none. Copilot reports both figures — occupancy and limit — in the
-same usage event, so asking an application for a number the provider already knows would create a
-second source of truth for one fact, which is exactly what the engine's single-reading design
-retired. Nothing here is supplied and nothing is estimated.
+**There is no window parameter in the sense the stateless adapter has one.** That adapter has to be
+told its window because an `IChatClient` publishes none. Copilot reports both figures — occupancy and
+limit — in the same usage event, so asking an application for a number the provider already knows
+would create a second source of truth for one fact, which is exactly what the engine's single-reading
+design retired. Nothing here is estimated. A host may state a **ceiling**, which only ever lowers the
+window the session accounts against; the runtime's figure still governs, and a ceiling above it is
+ignored.
 
 **No image-promoting decorator**, for the reason _CopilotAgentFactory Unit Design_ records: the
 Copilot runtime already delivers a tool's binary results to the model — the SDK's tool-completion
@@ -47,6 +52,15 @@ _CopilotProviderSessionFactory Unit Design_.
 - **`_observer`** (`CopilotSessionObserver`) — Watches the runtime's event stream and holds the
   occupancy reading and the current turn's entries. Invariant: registered on `_channel`'s session
   before that session was created. See _CopilotSessionObserver Unit Design_.
+- **`_maxWindowTokens`** (`int?`) — The ceiling a host stated on the window this session accounts
+  against, or null for none. Invariant: it only ever lowers — the effective window is the smaller of
+  this and the runtime's reported limit.
+- **`_historyPreamble`** (`string?`) — The seeded conversation record, until the first message
+  carries it, and null thereafter. Invariant: consumed at most once, so a long conversation carries
+  it exactly once. Held rather than configured because the system message is the wrong channel for
+  material a tool result may have written; see _CopilotProviderSessionFactory Unit Design_.
+- **`_unusableReason`** (`string?`) — Why this session may no longer be used, or null while it may.
+  Invariant: it latches — once set, never cleared.
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
   false again.
 - **`ProvisionalWindowTokens`** (`const int`, one) — The window reported before the runtime has
@@ -54,13 +68,15 @@ _CopilotProviderSessionFactory Unit Design_.
 
 ### Key Methods
 
-#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver)
+#### The CopilotProviderSession Constructor (ICopilotTurnChannel, CopilotSessionObserver, int?, string?)
 
-**Purpose:** Take ownership of one runtime session and the observer watching it.
+**Purpose:** Take ownership of one runtime session and the observer watching it, and hold what the
+seed produced until the first turn carries it.
 
-**Algorithm:** Reject a null channel and a null observer, and record both. There is nothing else to
-do: the seeding happened when the session was created, so a constructed session is already holding
-the conversation so far.
+**Algorithm:** Reject a null channel and a null observer, and record both, along with the window
+ceiling where the host stated one and the composed history preamble where the seed carried history.
+There is nothing else to do: the confinement and the instructions were settled when the session was
+created, so a constructed session is ready to take its first turn.
 
 The constructor is internal because only the factory can supply a channel whose session was created
 with this observer already registered, and a pair that does not match is an arrangement no
@@ -79,7 +95,8 @@ a message to an application.
 `ProvisionalWindowTokens`. Otherwise take the runtime's three figures: the occupancy, the limit, and
 the conversation's share where the runtime reported one — or the whole occupancy where it did not,
 which credits the session with no overhead at all and so rotates strictly earlier than a correct
-split would.
+split would. Where the host stated a ceiling, the window reported is the smaller of that ceiling and
+the runtime's limit, so a ceiling can lower the accounted window and never raise it.
 
 Three properties of that arithmetic are deliberate and are each stated where they happen:
 
@@ -109,10 +126,13 @@ exactly what it is. Reading it contacts nothing and cannot fail.
 
 **Purpose:** Take one turn and record what it produced.
 
-**Algorithm:** Reject a null message, a released session and a canceled token. Tell the observer a
-turn is starting, which discards anything the last one left behind. Send the prompt through the
-channel and wait for the session to become idle. Then, in order, refuse three conditions; and only
-if none holds, build the turn from the runtime's answer and the entries the observer collected.
+**Algorithm:** Reject a null message, a released session, a session already found unusable, and a
+canceled token. Tell the observer a turn is starting, which discards anything the last one left
+behind. Take the text to send — the caller's message, preceded by the seeded record where one is
+still pending — and send it through the channel, waiting for the session to become idle. Everything
+after that is `CompleteTurn`: in order, refuse three conditions; and only if none holds, build the
+turn from the runtime's answer and the entries the observer collected. Any failure out of
+`CompleteTurn` is recorded as the reason this session may no longer be used, and then rethrown.
 
 The three refusals are ordered because the first invalidates the others:
 
@@ -133,15 +153,75 @@ The three refusals are ordered because the first invalidates the others:
 Every refusal happens **before** anything is recorded, and the observer's entries are drained only
 on the successful path, so a refused turn leaves no half-recorded history behind.
 
+**The send is the dividing line, and a failure past it ends the session rather than the turn.** Once
+the runtime has processed the turn it holds one the engine's transcript does not — and on a first
+turn it has also consumed the seeded record, which will not be sent again. Neither is recoverable by
+retrying on this session, and retrying an `InvalidOperationException` is the ordinary host response,
+which would re-run the application's tools, with their real side effects, against a conversation the
+engine no longer describes. So the reason is latched and every later turn is refused before it is
+sent. See _A Session the Engine Cannot Account For Is Finished_ in _AgentKitAgentsCopilot System
+Design_.
+
 The answer reaches this method twice — as an event the observer collected and as the value the wait
 returned — and is recorded once, because `ProviderTurn` takes a trailing assistant entry whose text
 is the answer to _be_ the answer.
 
-**Preconditions:** `message` is not null; the session is not released; cancellation has not been
-requested.
+**Preconditions:** `message` is not null; the session is not released and has not been found
+unusable; cancellation has not been requested.
 
 **Postconditions:** On success, a `ProviderTurn` carrying the answer and the entries that led to it,
-and an occupancy reading the engine can rotate on. On any refusal, the session is exactly as it was.
+and an occupancy reading the engine can rotate on; and the seeded record, if there was one, has been
+sent and will not be sent again. On a refusal raised before the send, the session is exactly as it
+was. On a failure raised after it, the session is finished and says why.
+
+#### CompleteTurn(AssistantMessageEvent? answer)
+
+**Purpose:** Turn what the runtime produced into a recorded turn, or refuse it.
+
+**Algorithm:** Apply the three refusals above in order, then drain the observer's entries and build
+the `ProviderTurn`.
+
+Separated from the send so that everything the runtime has already seen sits in one place and the
+caller can treat every failure in it the same way — as the end of the session rather than the end of
+a turn. A condition checked on one side of that line and a condition checked on the other are not the
+same kind of failure, and keeping them in one method would make that impossible to see.
+
+**Preconditions:** The runtime has processed the turn.
+
+**Postconditions:** The recorded turn, or an `InvalidOperationException` naming which of the three
+conditions held.
+
+#### TakeMessageToSend(string message)
+
+**Purpose:** Take the text to send, carrying the seeded record ahead of it on the first message.
+
+**Algorithm:** Where no preamble is pending, return the message unchanged. Otherwise clear the
+preamble and return it followed by a blank line and the message.
+
+The preamble is consumed rather than kept, so it rides exactly one message. Prepending it to a
+message the engine was already sending is what makes a rotation cost one request rather than two, and
+what keeps the material in the conversation channel instead of the system one.
+
+**Preconditions:** `message` is not null.
+
+**Postconditions:** The text to send; no preamble remains pending.
+
+#### ThrowIfUnusable()
+
+**Purpose:** Refuse the session if an earlier turn left it describing a conversation the runtime no
+longer holds.
+
+**Algorithm:** Refuse if the observer has seen the runtime rewrite history, and refuse if a turn the
+runtime processed could not be recorded, naming in that case the original failure.
+
+One rule for two causes, because the consequence is identical: the engine's transcript and the
+runtime's conversation have parted, and nothing this session does afterwards can bring them back
+together. The engine's answer to a session it cannot use is to seed a replacement from its own
+transcript, which is the state known to be good.
+
+**Preconditions:** None.
+
+**Postconditions:** Returns, or throws `InvalidOperationException` naming the cause.
 
 #### DisposeAsync()
 
@@ -172,22 +252,29 @@ sight that it is a clamp.
 
 ### Error Handling
 
-| Condition                                    | Handling                                 |
-|----------------------------------------------|------------------------------------------|
-| Null `channel` or `observer`                 | `ArgumentNullException` propagates       |
-| Null `message`                               | `ArgumentNullException` propagates       |
-| Turn on a released session                   | `ObjectDisposedException` propagates     |
-| Cancellation before the turn                 | `OperationCanceledException` propagates  |
-| Runtime compacted or truncated the history   | `InvalidOperationException` propagates   |
-| Session idle with no assistant message       | `InvalidOperationException` propagates   |
-| No usage reported for the turn               | `InvalidOperationException` propagates   |
-| Failure inside the turn                      | Propagates; the turn records nothing     |
+| Condition                                    | Handling                                        |
+|----------------------------------------------|-------------------------------------------------|
+| Null `channel` or `observer`                 | `ArgumentNullException` propagates              |
+| Null `message`                               | `ArgumentNullException` propagates              |
+| Turn on a released session                   | `ObjectDisposedException` propagates            |
+| Cancellation before the turn                 | `OperationCanceledException` propagates         |
+| Runtime compacted or truncated the history   | `InvalidOperationException` propagates          |
+| Session idle with no assistant message       | `InvalidOperationException` propagates          |
+| No usage reported for the turn               | `InvalidOperationException` propagates          |
+| Turn on a session finished by an earlier one | `InvalidOperationException` naming that failure |
+| Failure inside the turn                      | Propagates; the turn records nothing            |
 
-None of the last four is a programming error, and none is softened. Each names a fact the engine
+None of the last five is a programming error, and none is softened. Each names a fact the engine
 cannot proceed without, and each is something an application can see and act on. The first of them
 is the one that would otherwise be invisible: two compactors acting on one conversation produce no
 exception anywhere — the engine simply starts seeding replacements from a history the provider has
 discarded — so it is converted into a refusal that says so.
+
+The fourth of them is what the three before it become on the next attempt. Each of them is detected
+after the runtime has already processed the turn, so each leaves the runtime holding a turn the
+transcript does not; the session therefore latches unusable and names the original failure rather
+than reporting a fresh one. The failure surfaces twice — once where it happened, once on every later
+attempt — because a host that retries must be refused as clearly as the turn that failed.
 
 ### Dependencies
 

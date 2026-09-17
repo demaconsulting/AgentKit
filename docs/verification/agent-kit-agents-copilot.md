@@ -60,10 +60,10 @@ simulated.
   is sent as well as after one returns. What the tests prove is that the raised threshold is carried
   on every session and that the refusal fires; what only a live run can settle is whether the refusal
   ever needs to.
-- **Whether the model weights a seeded record carried in the instructions channel as it would weight
-  the conversation it replaces is unverified**, and unverifiable offline. The tests prove the record
-  is rendered, ordered and fenced exactly as designed, and that every entry kind a rotation produces
-  survives it.
+- **Whether the model weights a seeded record delivered as one conversation message as it would
+  weight the turns it replaces is unverified**, and unverifiable offline. The tests prove the record
+  is rendered, ordered and fenced exactly as designed, that every entry kind a rotation produces
+  survives it, and that it reaches the model on the conversation channel rather than the system one.
 - **Whether a live runtime emits its usage event before it goes idle** is unverified. The adapter
   refuses a turn that reported no usage, so a runtime that reported occupancy only after going idle
   would surface as a refusal rather than as a wrong figure — a diagnosable failure rather than a
@@ -150,11 +150,20 @@ adapter: nothing about the window is supplied by the application.
 
 The end-to-end scenario. The runtime reports an occupancy past the rotation threshold; the engine
 consolidates out of session, creates a replacement, and releases the session it replaced. The test
-asserts all four observable consequences together: the rotation happened, the summarizer was given
-the turn that preceded it, the replacement's configuration carries the instructions _and_ the fenced
-consolidated record, and the superseded session was released exactly once while the replacement was
-not. It also asserts the replacement reports nothing occupied — a replacement that inherited its
-predecessor's figure would cross the threshold again on adoption and rotate forever.
+asserts every observable consequence together: the rotation happened, the summarizer was given the
+turn that preceded it, the replacement's system message is the instructions **and nothing else**, the
+consolidated record then arrives on the replacement's first prompt ahead of the caller's own message,
+and the superseded session was released exactly once while the replacement was not. It also asserts
+the replacement reports nothing occupied — a replacement that inherited its predecessor's figure would
+cross the threshold again on adoption and rotate forever.
+
+The two assertions about the record are one scenario because they state one decision. Untrusted
+material — a record carries tool results, and a tool result may be the contents of a file the agent
+was pointed at — is kept out of the provider's highest-trust channel and delivered on the
+conversation channel instead. Asserting the system message by **equality** is what rules out a copy
+being left behind, and asserting the record arrives on the first prompt, ending with the caller's own
+message, is what proves a rotation still costs one request rather than two: the record rides the turn
+the engine was already taking rather than a priming turn of its own.
 
 ### Session: The Engine's Compaction Configuration Is Carried on Every Session
 
@@ -176,5 +185,7 @@ A system-level test run passes when every scenario above passes without error or
 those explicitly asserted. Any allow-list that diverges from the published tools, any supplied tool
 that is rejected, any unlisted or built-in request that is approved on either path, any occupancy
 figure that is not the one the runtime reported, any rotation that fails to seed the consolidated
-record, any superseded session left unreleased, or any session created with the runtime's own
-compaction left at the runtime's default threshold constitutes a failure.
+record, any part of a seeded record appearing in a session's system message, any rotation that costs
+more than the one request the engine was already making, any superseded session left unreleased, or
+any session created with the runtime's own compaction left at the runtime's default threshold
+constitutes a failure.

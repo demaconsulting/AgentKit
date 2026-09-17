@@ -7,20 +7,35 @@ class.
 
 `CopilotProviderSessionFactory` decides everything about a Copilot session at the moment it is
 created, because that is the only moment Copilot accepts configuration — the confinement, the model,
-the raised runtime compaction threshold, the registered event handler and the seeded conversation
-record. All of it is therefore verified by asserting on the `SessionConfig` the factory produced,
-which is a plain constructable object requiring no client and no credential.
+the raised runtime compaction threshold, the registered event handler and the instructions the
+session is governed by. All of it is therefore verified by asserting on the `SessionConfig` the
+factory produced, which is a plain constructable object requiring no client and no credential.
+
+**The seeded conversation record is asserted separately, because it is no longer part of that
+configuration.** It is composed by `ComposeHistoryPreamble` for the session's first message to carry,
+so the tests assert on what that composes and, on the same configuration, that the system message
+holds the application's instructions and nothing else. Asserting both halves in one test is
+deliberate: the property under test is *which channel the material travels on*, and a test that only
+looked at the record would pass against an implementation that also left a copy in the system
+message.
 
 The assertions are made through `BuildProviderSessionConfig`, an internal seam exposed for exactly
-this reason — the same reason `CopilotAgentFactory.BuildSessionConfig` is exposed. The ownership and
-lifecycle behavior is verified instead through `CreateAsync` over a scripted channel opener that
-records every configuration it was handed and every channel it opened, and counts releases.
+this reason — the same reason `CopilotAgentFactory.BuildSessionConfig` is exposed — and through
+`ComposeHistoryPreamble`, internal for the same purpose. The ownership and lifecycle behavior is
+verified instead through `CreateAsync` over a scripted channel opener that records every
+configuration it was handed and every channel it opened, and counts releases.
 
 **The seeded record is asserted as an exact string, not by substring.** A rendering that reordered
 the entries, dropped a label or lost a tool identifier would still contain every word a substring
 check looked for. Composing the expected text from Core's own transcript-line rendering is what makes
 the assertion say "this exact record, in this exact order" — and it is why Core's renderer is reused
 rather than a second one written.
+
+**The boundary marker is read out of the output rather than expected.** It is drawn per record and
+is deliberately unpredictable, so pinning a value would pin the wrong thing. What the tests pin is
+the shape around it: that the material a record fences cannot produce the closing line, asserted by
+seeding a tool result that tries to close the record and issue fresh orders and then checking the
+closing boundary occurs exactly once, at the very end.
 
 **The ownership window is exercised, not argued.** The scripted opener deliberately does *not*
 observe the cancellation token: a real create request can complete and return a session at the moment
@@ -34,9 +49,10 @@ infinite-session configuration is not left open, however: it was settled by manu
 recorded in *AgentKitAgentsCopilot System Verification Design*, which reports that the enablement flag
 is ignored and the background-compaction threshold is honored. That is why the scenario below asserts
 the threshold rather than the flag. What is proven here is that the configuration this factory hands
-to the runtime is the one the design says it should be, on every session a rotation creates. Whether
-a model reading a record in its instructions channel weights it as it would weight the conversation it
-replaces is unverifiable offline, and is stated as such rather than implied.
+to the runtime is the one the design says it should be, on every session a rotation creates, and that
+no part of a seeded record reaches it. Whether a model reading a record delivered as one conversation
+message weights it as it would weight the turns it replaces is unverifiable offline, and is stated as
+such rather than implied.
 
 Unit tests reside in `CopilotProviderSessionFactoryTests.cs`, with the scripted runtime in
 `FakeCopilotTurnChannel.cs`, both within the `DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
@@ -57,10 +73,11 @@ A unit test run passes when every scenario below passes without error or excepti
 explicitly asserted. Any allow-list that diverges from the seeded tools, any session built with the
 runtime's skills enabled or its custom instructions admitted, any session built without the
 default-safe permission handler, any session built with the runtime's own compaction left at the
-runtime's default threshold,
+runtime's default threshold, any part of a seeded record appearing in a session's system message,
 any seeded record rendered in the wrong order or with an entry lost, any record fenced around an
-empty history, any session created without the event handler registered, any session opened for a
-creation that was already canceled, or any opened session left unreleased when the creation failed
+empty history, any record whose closing boundary can be produced by the material it fences, any
+session created without the event handler registered, any session opened for a creation that was
+already canceled, or any opened session left unreleased when the creation failed
 constitutes a failure.
 
 ### Test Scenarios
@@ -98,35 +115,72 @@ the runtime honors; the enablement flag is asserted alongside it only because th
 states the intent. The corresponding assertion that *every* session of a rotating conversation carries
 this configuration is at the system level.
 
-#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-SeedsHistoryIntoTheSystemMessage: The Record, Exactly
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsAFencedRecord: The Record, Exactly
 
 **Tests**:
 
-- `CopilotProviderSessionFactory_BuildSessionConfig_SeedsHistoryAfterTheInstructions`
+- `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
 - `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord`
+- `CopilotProviderSessionFactory_BuildSessionConfig_HistoryImitatingTheFence_CannotEscapeTheRecord`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeededToolResult_IsRenderedAsALabeledRecord`
 
-The first seeds the configuration from the shape a rotation actually produces — a consolidated
-record, a user message and an answer — and asserts the **entire** system message as one exact string:
-the instructions first, a blank line, the opening fence, each entry rendered to its transcript line
-in order, and the closing fence. It also asserts the append mode, so the record is added to the
-runtime's own system prompt rather than replacing it.
+The first seeds from the shape a rotation actually produces — a consolidated record, a user message
+and an answer — and asserts the **entire** composed preamble as one exact string: the opening fence
+bearing the record's own marker, each entry rendered to its transcript line in order, and the closing
+fence bearing the same marker. The marker is read back out of the output, because it is drawn per
+record and a test that expected a value would be pinning the wrong thing.
 
-The next three are the boundaries. A seed with no history composes to its instructions unchanged, so
-the first session of a conversation is configured byte for byte as the agent path would configure it
-and no fence claims a conversation that never happened. A seed with neither instructions nor history
-carries no system message at all. A seed with history but no instructions still carries the record —
-an application that configures no instructions still rotates, and a rotation that dropped the history
-there would silently restart the conversation.
+The next three are the boundaries. A seed with no history composes no record at all, so the first
+message of such a session is sent exactly as the caller wrote it and no fence claims a conversation
+that never happened. A seed with neither instructions nor history carries no system message at all. A
+seed with history but no instructions still composes the record — an application that configures no
+instructions still rotates, and a rotation that dropped the history there would silently restart the
+conversation — while its configuration carries no system message, which is the same assertion from
+the other side.
 
-The last is the scenario this whole channel was chosen for. It seeds a tool call and its result and
+The fifth is the scenario the per-record marker exists for. It seeds a tool result carrying text that
+tries to close the record and then issue fresh orders, and asserts the hostile text survives intact
+while the closing boundary occurs exactly once, at the very end, with the marker absent from the
+material. A fixed delimiter would fail this. It matters less than it did — the record no longer
+travels in the system message, so an early close would put the text in the same conversation channel
+it was already in — but a boundary the material can imitate is confusing even when nothing is at
+stake, and the test says which of the two defenses is load-bearing.
+
+The last is the scenario the rendering was chosen for. It seeds a tool call and its result and
 asserts both survive as labeled lines carrying their shared identifier. The defect it guards against
 is the one that shipped to review on the stateless path: a seeded tool result rendered under a role a
-provider's wire mapping discards without an error. Here the shape is unrepresentable — but asserting
-the material is present and paired is what proves the rendering did not solve the problem by dropping
-it.
+provider's wire mapping discards without an error. Here the shape is unrepresentable — a labeled line
+inside one message cannot be dropped without dropping the message — but asserting the material is
+present and paired is what proves the rendering did not solve the problem by dropping it.
+
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel: Instructions Only
+
+**Tests**:
+
+- `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
+- `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
+- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
+- `CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord`
+
+The trust boundary, asserted rather than argued. The first test seeds a full rotation's history and
+asserts the configuration's system message is **equal to** the application's instructions — not that
+it contains them — and that it is still appended to the runtime's own prompt rather than replacing
+it. Equality is what makes the scenario meaningful: a containment check would pass against an
+implementation that appended the record after the instructions, which is precisely the design this
+one replaced.
+
+The remaining three close the boundaries from the other side. A seed with instructions and no history
+carries those instructions and no record opening anywhere in them. A seed with neither carries no
+system message at all. A seed with history and no instructions carries **no system message at all**
+while still composing its record, which is the sharpest statement of the rule: there is no
+arrangement of a seed under which the history reaches the configuration.
+
+What these scenarios protect is not a formatting choice. A seeded record carries tool results, and a
+tool result may be the contents of a file the agent was pointed at; the system message is the channel
+a provider treats as direction. A test that allowed the record there would allow a file to address
+the model as this library.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-CreatesSeededSessions: The Observer, Before the Session
 

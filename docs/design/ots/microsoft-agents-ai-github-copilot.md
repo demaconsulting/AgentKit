@@ -24,9 +24,10 @@ AgentKitAgentsCopilot package only, deliberately kept out of Core.
 - The permission RPC — the permission-request hierarchy (including the custom-tool request carrying
   a tool name) and the permission-decision type with its approve and reject results, in which the
   default permission handler is expressed
-- `SystemMessageConfig` — carries the supplied instructions onto the session, and — because the SDK
-  offers no history or messages field of any kind — the seeded conversation record a rotation
-  produces
+- `SystemMessageConfig` — carries the supplied instructions onto the session, and nothing else: the
+  seeded conversation record a rotation produces is deliberately kept out of it, because the SDK
+  offers no history or messages field of any kind and the record is material a tool result may have
+  written. It travels on the session's first message instead
 - **The session lifecycle** — creating a session from a configuration, sending one message and
   waiting for the session to become idle under a caller-supplied deadline, and releasing and
   deleting the session. The deadline matters as much as the operations: the SDK applies a

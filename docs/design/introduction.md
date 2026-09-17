@@ -150,10 +150,11 @@ software items, specifically:
   default-safe permission handler, and builds the agent without taking ownership of the client; the
   single place a Copilot session configuration is built
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
-  records the runtime's tool traffic, reports the runtime's own occupancy, and refuses a turn it
-  cannot account for
+  carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
+  the runtime's own occupancy, and ends the session on a turn it cannot account for
 - **CopilotProviderSessionFactory (Unit)** — Creates one seeded Copilot session per rotation,
-  rendering the seeded history into the session's system message and holding the runtime's own
+  configuring the system message with the application's instructions alone, composing the seeded
+  history into a fenced record for the first message to carry, and holding the runtime's own
   compaction clear of the engine's rotation point
 - **CopilotSessionObserver (Unit)** — Watches the runtime's event stream for the usage reading, the
   turn's tool traffic, and any sign the runtime rewrote history itself

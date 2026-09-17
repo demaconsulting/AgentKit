@@ -107,15 +107,43 @@ sections:
               has left the engine's transcript describing a conversation the provider no longer holds,
               and every occupancy figure afterwards is about that vanished conversation. Refusing
               turns a silent divergence into a diagnosable failure, which is the convention this
-              library already follows where it cannot know something it needs. The refusal is raised
-              before a turn is sent as well as after one returns: detecting the first rewrite is
-              unavoidably after the fact, but a later turn that reached the runtime would let the
-              model run the application's tools, with their side effects, against a conversation the
-              engine no longer describes - and a host retrying the failure would do it again each
-              time.
+              library already follows where it cannot know something it needs. It is also what makes
+              it safe to carry a rotation's record on the conversation channel, where the runtime
+              could in principle discard it: the discarding is announced, so it is refused rather than
+              silently absorbed.
+
+              The refusal is raised before a turn is sent as well as after one returns: detecting the
+              first rewrite is unavoidably after the fact, but a later turn that reached the runtime
+              would let the model run the application's tools, with their side effects, against a
+              conversation the engine no longer describes - and a host retrying the failure would do
+              it again each time. This is the same latch, and the same rule, as a turn the runtime
+              processed that the session could not record.
             tests:
               - CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn
               - CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
+            title: >-
+              The session shall accept no further turn, and shall send none, once a turn the Copilot
+              runtime has already processed could not be recorded, naming the original failure as the
+              reason it will not be used again.
+            justification: |
+              The send is the dividing line. Past it the runtime holds a turn the engine's transcript
+              does not, and on a first turn it has also consumed the seeded conversation record, which
+              will not be sent again. Neither is recoverable by taking another turn on that session,
+              and a host that responds to a refusal by retrying — the ordinary response to an
+              invalid-operation failure — would send a real turn against a conversation the engine no
+              longer describes, running the application's tools with their real side effects, once per
+              attempt.
+
+              Ending the session rather than only the turn is the honest consequence, and the engine
+              already has an answer for a session it cannot use: seed a replacement from its own
+              transcript, which is the state known to be good. Naming the original failure rather than
+              inventing a fresh one is what lets an application act on the cause instead of on the
+              symptom, and the rule is one rule for two causes — this and the runtime rewriting
+              history — because the consequence of each is identical.
+            tests:
+              - CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
             title: >-
@@ -128,11 +156,12 @@ sections:
               seed the next session from a turn that never happened. Naming the reported error is what
               lets an application act on the failure rather than only observe it - and the error named
               must be this turn's, since an error carried over from an earlier turn would name the
-              wrong cause in the one message whose purpose is to name the right one.
+              wrong cause in the one message whose purpose is to name the right one. Each turn
+              therefore begins by discarding the last one's reported error, and a turn that failed
+              ends the session, so no later turn can inherit either.
             tests:
               - CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError
               - CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo
-              - CopilotProviderSession_Send_ErrorFromAnEarlierTurn_IsNotNamedAsTheCause
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
             title: >-

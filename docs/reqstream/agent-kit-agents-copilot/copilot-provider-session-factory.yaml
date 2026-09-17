@@ -14,8 +14,10 @@ sections:
               on the configuration before the session is created, and shall back each session with a
               model the application names or the runtime's default when it names none.
             justification: |
-              A rotation asks for a replacement session and expects one that already holds the
-              conversation so far. The observer must be registered on the configuration rather than on
+              A rotation asks for a replacement session and expects one governed by the same
+              instructions, confined to the same tools, and holding the conversation so far ready to
+              travel on the first message it sends. The observer must be registered on the
+              configuration rather than on
               the session afterwards because the SDK installs a configuration's handler before the
               create request is issued — which is the only arrangement under which the very first
               turn's occupancy reading and tool traffic are seen at all. The model choice is the
@@ -26,30 +28,65 @@ sections:
               - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
               - CopilotProviderSessionFactory_BuildSessionConfig_ModelIsCarriedOrLeftToTheRuntime
 
-          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-SeedsHistoryIntoTheSystemMessage
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsAFencedRecord
             title: >-
-              The factory shall render a seeded history as a labeled record appended to the session's
-              system message after the instructions and fenced by fixed delimiters, shall render a
-              seeded tool call and its result as labeled lines carrying their identifier rather than
-              under any role, and shall add no record when the seed carries no history.
+              The factory shall render a seeded history as a labeled record fenced by an opening and a
+              closing line bearing a marker drawn for that record and absent from the material it
+              fences, shall render a seeded tool call and its result as labeled lines carrying their
+              identifier rather than under any role, and shall render no record when the seed carries
+              no history.
             justification: |
               Copilot's session configuration carries no history or messages field of any kind, so a
-              rotation that must seed a rewritten history has to put it somewhere else. The system
-              message is the only channel the runtime offers that exists at session-creation time, is
-              carried verbatim, and has no role vocabulary. That last property is decisive: the class
-              of defect that shipped on the stateless path was a seeded tool result rendered under a
-              role a provider's wire mapping silently discards, and here it is unrepresentable,
-              because the record is text in the instructions channel and no provider can drop part of
-              it without dropping the instructions. The instructions come first and unchanged, so a
-              session seeded with no history is configured exactly as the agent path would configure
-              it, and a record fence around nothing would tell the model a conversation had happened
-              when none had.
+              rotation that must seed a rewritten history has to render it as text and carry it on the
+              only channel that takes text — the conversation. Rendering it as a block of labeled
+              lines rather than as role-bearing messages is what makes one class of defect
+              unrepresentable: what shipped on the stateless path was a seeded tool result rendered
+              under a role a provider's wire mapping silently discards, and a labeled line inside one
+              message cannot be dropped without dropping the message.
+
+              The fence tells a reader, and a model, where the account of what already happened ends
+              and the question being asked begins. Its marker is drawn per record and checked against
+              the material because a fixed delimiter can be imitated by the text it delimits, and a
+              boundary the material can close early is confusing even where nothing is at stake.
+              Escaping the material instead would alter the transcript the model reads, and a
+              near-miss of a fixed delimiter still reads as a boundary.
+
+              A seed with no history renders nothing at all, so the first message of such a session is
+              sent exactly as the caller wrote it and a record fence around nothing never tells a
+              model that a conversation happened when none had.
             tests:
-              - CopilotProviderSessionFactory_BuildSessionConfig_SeedsHistoryAfterTheInstructions
+              - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
               - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord
+              - CopilotProviderSessionFactory_BuildSessionConfig_HistoryImitatingTheFence_CannotEscapeTheRecord
               - CopilotProviderSessionFactory_BuildSessionConfig_SeededToolResult_IsRenderedAsALabeledRecord
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
+            title: >-
+              The factory shall configure each session's system message with the application's
+              instructions alone, carrying no part of a seeded conversation record there, and shall
+              configure no system message at all when the application supplied no instructions.
+            justification: |
+              A seeded record's entries are user messages, model answers and tool results, and a tool
+              result may be the contents of a file the agent was pointed at, which nobody in this
+              library wrote. The system message is the highest-trust channel a provider offers.
+              Placing material an attacker can influence there and defending it with a fence and a
+              sentence asking the model to read the block as data is a prompt-level mitigation — it
+              asks the model not to be fooled — and this library exists so that an unsafe operation is
+              impossible to express rather than politely refused. This runtime had already shown
+              what trusting a request rather than a mechanism buys: it silently ignores the
+              infinite-session enablement flag.
+
+              Keeping the channel to the instructions alone also means a session the engine drives is
+              configured byte for byte as the plain agent path configures one, so the confinement
+              argument made about that path carries over unchanged, and an application that supplies
+              no instructions gets the session the runtime would have given it.
+            tests:
+              - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
+              - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
+              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
+              - CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
             title: >-

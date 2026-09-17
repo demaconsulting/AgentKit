@@ -92,8 +92,9 @@ engine accounts against are exactly the figures the runtime reported.
 **Scenario**: The runtime reports an occupancy past the rotation threshold, so the engine
 consolidates, creates a replacement session and releases the one it replaced.
 
-**Expected**: A second session is created carrying the consolidated record, and the superseded
-session is released exactly once.
+**Expected**: A second session is created, governed by the application's instructions alone, the
+consolidated record arrives on its first message, and the superseded session is released exactly
+once.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`.
 

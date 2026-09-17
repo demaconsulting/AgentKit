@@ -111,7 +111,8 @@ sections:
           The library shall carry an AgentKit session over the GitHub Copilot runtime, seeding a
           fresh Copilot session with the instructions, tools and history a rotation produces, sending
           each message as one turn, recording the turn's tool calls and results as identified pairs,
-          and owning and releasing each Copilot session it creates without ever disposing the client.
+          abandoning a session whose conversation it can no longer account for, and owning and
+          releasing each Copilot session it creates without ever disposing the client.
         tags: [system]
         justification: |
           The compaction engine is the reason a long-running agent behaves the same way on every
@@ -120,20 +121,25 @@ sections:
           this project's continuous integration can reach — which meant the engine's behavior against
           a provider the team can actually run was never exercised. This requirement closes that gap.
           Seeding is the hard part, because Copilot's session configuration carries no history field
-          of any kind: the history a rotation produces is rendered as a labeled record into the
-          session's system message, the only channel the runtime offers that exists at
-          session-creation time, is carried verbatim, and has no role vocabulary in which part of it
-          could be silently discarded. Ownership follows the contract the package already records:
+          of any kind: the history a rotation produces is rendered as a labeled record and carried on
+          the session's first message, prepended to the message the engine was already sending, so a
+          rotation still costs exactly one request and the record travels on the conversation channel
+          rather than the instruction channel. Which channel it travels on is a trust decision in its
+          own right, and is stated separately. Ownership follows the contract the package already
+          records:
           the host owns the client, and every session a rotation creates is AgentKit's, released on
-          every path including failure.
+          every path including failure. A session that can no longer describe the conversation the
+          runtime holds is abandoned rather than reused, because the engine's own answer to such a
+          session — seed a replacement from the transcript — is the only recovery that is sound.
         children:
           - AgentKitAgentsCopilot-CopilotProviderSession-SendsOneTurnPerMessage
           - AgentKitAgentsCopilot-CopilotProviderSession-RecordsToolTraffic
           - AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
           - AgentKitAgentsCopilot-CopilotProviderSession-ReleasesItsSessionNotTheClient
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
+          - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-CreatesSeededSessions
-          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-SeedsHistoryIntoTheSystemMessage
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsAFencedRecord
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-LeavesNothingUnowned
           - AgentKitAgentsCopilot-CopilotSessionObserver-RecordsTheTurnsWork
           - AgentKitAgentsCopilot-CopilotSessionObserver-RecordsToolOutcomes
@@ -143,6 +149,39 @@ sections:
           - AgentKitAgentsCopilot-CopilotTurnChannel-CallerGovernsTheDeadline
         tests:
           - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+          - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsCopilot-SeededHistory-CarriedOnTheConversationChannel
+        title: >-
+          The library shall carry a rotation's seeded conversation record on the conversation channel
+          of the session it seeds, placing no part of it in that session's system message, which shall
+          carry the application's instructions alone.
+        tags: [system, security]
+        justification: |
+          A seeded record is an account of what already happened: user messages, model answers and
+          tool results. A tool result may be the contents of a file the agent was pointed at, a page
+          it was asked to summarize, or anything else a tool returned — material nobody in this
+          library wrote and no application can vouch for. The system message is the highest-trust
+          channel a provider has, and text placed there is read as the direction the model is
+          operating under.
+
+          Fencing that material and telling the model the block is data rather than instructions does
+          not change which channel it arrived on; it asks the model not to be fooled. AgentKit exists
+          so that an unsafe operation is impossible to express rather than refused at call time, and a
+          prompt-level defense is the opposite of that. This runtime had already demonstrated the
+          failure mode in miniature: its infinite-session enablement flag is a request, is silently
+          ignored, and nothing in this library is allowed to depend on it.
+
+          Carried on the conversation channel the material sits where its own contents came from, and
+          a model that treats it as conversation is treating it correctly — the guarantee rests on the
+          channel rather than on the model's cooperation. It also costs nothing: the record rides the
+          message the engine was already sending, so a rotation is still exactly one request, and the
+          runtime holds the result afterwards as it holds any other turn. The fence stays, because a
+          reader and a model both need to see where the account of what happened ends and the question
+          being asked begins, but its job is clarity, not containment.
+        children:
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
+        tests:
           - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
 
       - id: AgentKitAgentsCopilot-SessionAdapter-OccupancyFromTheRuntime
@@ -203,7 +242,9 @@ sections:
           large tool result can cross that gap in a single step. It is not raised to 1.0: the
           runtime's last-resort behavior is worth keeping, and a session that sees a compaction or
           truncation announced refuses the next turn — before it is sent as well as after one
-          returns — so the outcome is diagnosable rather than silent either way.
+          returns — so the outcome is diagnosable rather than silent either way. That refusal is also
+          what makes it safe to carry a rotation's record on the conversation channel: the runtime
+          could in principle discard it, but it cannot do so quietly.
 
           The asymmetry is deliberate: a plain Copilot agent has no AgentKit compactor behind it, so
           changing the runtime's would remove protection rather than prevent a conflict.

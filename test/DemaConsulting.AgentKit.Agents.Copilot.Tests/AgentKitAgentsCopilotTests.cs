@@ -160,10 +160,21 @@ public class AgentKitAgentsCopilotTests
         Assert.Contains("first question", summarizer.Requests[0].Material, StringComparison.Ordinal);
 
         Assert.Equal(2, runtime.Configs.Count);
+
+        // The replacement's system message carries the application's instructions and nothing else.
+        // The consolidated record is untrusted material - it can contain whatever a tool read off
+        // disk - so it travels on the conversation channel rather than the system one, and it does
+        // so on the next message rather than in a request of its own.
         var seeded = runtime.Configs[1].SystemMessage!.Content!;
-        Assert.Contains("You are a research assistant.", seeded, StringComparison.Ordinal);
-        Assert.Contains(CopilotProviderSessionFactory.RecordOpening, seeded, StringComparison.Ordinal);
-        Assert.Contains(RecordingSummarizer.Record, seeded, StringComparison.Ordinal);
+        Assert.Equal("You are a research assistant.", seeded);
+        Assert.DoesNotContain("CONVERSATION RECORD", seeded, StringComparison.Ordinal);
+
+        // Sending on the replacement carries the record ahead of the caller's own message, once
+        await session.SendAsync("second question", TestContext.Current.CancellationToken);
+        var firstPrompt = runtime.Channels[1].Prompts[0];
+        Assert.Contains("=== CONVERSATION RECORD ", firstPrompt, StringComparison.Ordinal);
+        Assert.Contains(RecordingSummarizer.Record, firstPrompt, StringComparison.Ordinal);
+        Assert.EndsWith("second question", firstPrompt, StringComparison.Ordinal);
 
         // The replacement has sent nothing, so it occupies nothing — which is what stops a
         // rotation cascading. A replacement that inherited its predecessor's figure would cross the

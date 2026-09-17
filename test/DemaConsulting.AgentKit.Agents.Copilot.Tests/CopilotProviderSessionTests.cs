@@ -349,35 +349,43 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves an error reported during one turn is not named as the cause of a later turn's
-    ///     silence.
+    ///     Proves a turn the runtime processed but this session could not record ends the session,
+    ///     rather than ending only that turn.
     /// </summary>
     /// <remarks>
-    ///     The last reported error exists only to name the cause when a turn goes idle without an
-    ///     answer. Carried across turns it names the wrong cause in the one message whose entire job
-    ///     is to name the right one - and it would read as authoritative, because the message states
-    ///     the runtime reported it.
+    ///     Past the send, the runtime holds a turn the engine's transcript does not, and on a first
+    ///     turn it has also consumed the seeded record that will not be sent again. Neither is
+    ///     recoverable by retrying here, and retrying an <see cref="InvalidOperationException"/> is
+    ///     the ordinary response - it would run this application's tools, with their side effects,
+    ///     against a conversation the engine no longer describes. Asserting that the second attempt
+    ///     never reaches the runtime is what distinguishes refusing from merely reporting.
     /// </remarks>
     [Fact]
-    public async Task CopilotProviderSession_Send_ErrorFromAnEarlierTurn_IsNotNamedAsTheCause()
+    public async Task CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending()
     {
-        // Arrange: a first turn reporting an error, then a turn that goes idle reporting nothing
+        // Arrange: a first turn the runtime answers without reporting usage, then one that would
+        // otherwise succeed
         var runtime = Runtime(
+            Turn(CopilotEvents.Assistant("an answer")),
             Turn(
-                CopilotEvents.Usage(400, 8000),
-                CopilotEvents.Error("model unavailable")),
-            Turn(CopilotEvents.Usage(500, 8000)));
+                CopilotEvents.Usage(500, 8000),
+                CopilotEvents.Assistant("a later answer")));
         await using var session = await OpenAsync(runtime);
 
-        // Act: the first turn fails naming its error, then a second goes idle for its own reasons
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        // Act: the first turn is refused after the fact, then a second is attempted
+        var first = await Assert.ThrowsAsync<InvalidOperationException>(
             () => session.SendAsync("a question", TestContext.Current.CancellationToken));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var sentAfterFirstRefusal = runtime.Channels[0].Prompts.Count;
+
+        var second = await Assert.ThrowsAsync<InvalidOperationException>(
             () => session.SendAsync("another question", TestContext.Current.CancellationToken));
 
-        // Assert: the stale error is not presented as this turn's cause
-        Assert.DoesNotContain("model unavailable", error.Message, StringComparison.Ordinal);
-        Assert.Contains("reported no error", error.Message, StringComparison.Ordinal);
+        // Assert: the second never reached the runtime, and the refusal names the original failure
+        // rather than inventing a new one
+        Assert.Contains("without reporting its token usage", first.Message, StringComparison.Ordinal);
+        Assert.Equal(sentAfterFirstRefusal, runtime.Channels[0].Prompts.Count);
+        Assert.Contains("could not be recorded", second.Message, StringComparison.Ordinal);
+        Assert.Contains("without reporting its token usage", second.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

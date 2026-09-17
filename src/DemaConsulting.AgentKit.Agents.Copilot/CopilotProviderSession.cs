@@ -81,6 +81,28 @@ public sealed class CopilotProviderSession : IProviderSession
     private readonly int? _maxWindowTokens;
 
     /// <summary>
+    ///     The seeded conversation record, until the first message carries it, and
+    ///     <see langword="null"/> thereafter.
+    /// </summary>
+    /// <remarks>
+    ///     Held rather than configured. The Copilot runtime has no history channel, and the system
+    ///     message is the wrong place for material a tool result may have put there — see
+    ///     <see cref="CopilotProviderSessionFactory.ComposeHistoryPreamble"/>. Cleared once sent, so
+    ///     a long conversation carries it exactly once.
+    /// </remarks>
+    private string? _historyPreamble;
+
+    /// <summary>
+    ///     Why this session may no longer be used, or <see langword="null"/> while it may.
+    /// </summary>
+    /// <remarks>
+    ///     Set when a turn the runtime processed could not be recorded. It latches: the runtime is
+    ///     then permanently ahead of the engine's transcript, and no later turn on this session can
+    ///     close that gap.
+    /// </remarks>
+    private string? _unusableReason;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSession"/> class.
     /// </summary>
     /// <remarks>
@@ -93,13 +115,18 @@ public sealed class CopilotProviderSession : IProviderSession
     /// <param name="channel">The runtime session this instance takes ownership of.</param>
     /// <param name="observer">The observer registered on that session before it was created.</param>
     /// <param name="maxWindowTokens"></param>
+    /// <param name="historyPreamble">
+    ///     The seeded conversation record to carry ahead of the first message, or
+    ///     <see langword="null"/> when the seed held no history.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="channel"/> or <paramref name="observer"/> is <see langword="null"/>.
     /// </exception>
     internal CopilotProviderSession(
         ICopilotTurnChannel channel,
         CopilotSessionObserver observer,
-        int? maxWindowTokens = null)
+        int? maxWindowTokens = null,
+        string? historyPreamble = null)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(observer);
@@ -108,6 +135,7 @@ public sealed class CopilotProviderSession : IProviderSession
         _channel = channel;
         _observer = observer;
         _maxWindowTokens = maxWindowTokens;
+        _historyPreamble = historyPreamble;
     }
 
     /// <summary>
@@ -191,13 +219,14 @@ public sealed class CopilotProviderSession : IProviderSession
         ArgumentNullException.ThrowIfNull(message);
         ObjectDisposedException.ThrowIf(IsReleased, this);
 
-        // Refused before the turn is sent, not only after. The flag latches, so once the runtime has
-        // rewritten history every later turn is a real send against a conversation the engine no
-        // longer describes - the model would run this application's tools, with their side effects,
-        // against corrupted state, and a host that responds to the failure below by retrying would
-        // do it again on every attempt. Detecting the first rewrite is unavoidably after the fact;
-        // letting the second one happen is not.
-        ThrowIfHistoryRewritten();
+        // A session is refused before it is used again, not only after the failure that spoiled it.
+        // Once the runtime has seen a turn this session could not record, everything it holds is
+        // ahead of what the engine believes it holds - and a later turn would be a real send against
+        // that gap, running this application's tools with their side effects. A host that responds
+        // to an InvalidOperationException by retrying, which is the ordinary response, would do it
+        // again on every attempt. The first divergence can only be detected after the fact; the
+        // sends after it cannot.
+        ThrowIfUnusable();
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -205,8 +234,46 @@ public sealed class CopilotProviderSession : IProviderSession
         // so what is drained below is this turn's work and no other's.
         _observer.BeginTurn();
 
-        var answer = await _channel.SendAndWaitAsync(message, cancellationToken).ConfigureAwait(false);
+        var answer = await _channel
+            .SendAndWaitAsync(TakeMessageToSend(message), cancellationToken)
+            .ConfigureAwait(false);
 
+        // Past this line the runtime has processed the turn, so any failure leaves it holding a turn
+        // the engine's transcript does not have - and, on a first turn, having consumed the seeded
+        // record that will not be sent again. Neither is recoverable by retrying on this session, so
+        // the session is finished rather than merely this turn. The engine's answer to a session it
+        // cannot use is to seed a replacement from the transcript, which is the state known to be
+        // good.
+        try
+        {
+            return CompleteTurn(answer);
+        }
+        catch (Exception failure)
+        {
+            _unusableReason =
+                "A turn reached the Copilot runtime but could not be recorded, so the runtime holds "
+                + "a turn this session's transcript does not. The session was abandoned rather than "
+                + $"reused. The turn failed because: {failure.Message}";
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Turns what the runtime produced into a recorded turn, or refuses it.
+    /// </summary>
+    /// <remarks>
+    ///     Separated from the send so that everything after the runtime has seen the message sits in
+    ///     one place, and the caller can treat every failure in it the same way: as the end of the
+    ///     session rather than the end of a turn.
+    /// </remarks>
+    /// <param name="answer">What the runtime answered with, which may be nothing.</param>
+    /// <returns>The recorded turn.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime rewrote this session's history, went idle without answering, or answered
+    ///     without reporting its occupancy.
+    /// </exception>
+    private ProviderTurn CompleteTurn(AssistantMessageEvent? answer)
+    {
         // Checked first, because it invalidates everything else. AgentKit raises the runtime's
         // compaction threshold clear of the engine's rotation point on a session its own engine
         // drives; if it compacted or truncated anyway, the transcript the engine believes it owns
@@ -260,6 +327,50 @@ public sealed class CopilotProviderSession : IProviderSession
     {
         IsReleased = true;
         await _channel.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Takes the text to send, carrying the seeded record ahead of it on the first message.
+    /// </summary>
+    /// <remarks>
+    ///     The record is consumed rather than kept, so it rides exactly one message. Prepending it
+    ///     to a message the engine was already sending is what makes a rotation cost one request
+    ///     rather than two, and what keeps the material in the conversation channel instead of the
+    ///     system one.
+    /// </remarks>
+    /// <param name="message">The message the caller asked to send.</param>
+    /// <returns>The message, preceded by the seeded record where one is still pending.</returns>
+    private string TakeMessageToSend(string message)
+    {
+        if (_historyPreamble is not { } preamble)
+        {
+            return message;
+        }
+
+        _historyPreamble = null;
+
+        return $"{preamble}\n\n{message}";
+    }
+
+    /// <summary>
+    ///     Refuses the session if an earlier turn left it describing a conversation the runtime no
+    ///     longer holds.
+    /// </summary>
+    /// <remarks>
+    ///     One rule for two causes — the runtime rewriting history, and a turn the runtime processed
+    ///     that this session could not record — because the consequence is identical: the engine's
+    ///     transcript and the runtime's conversation have parted, and nothing this session does
+    ///     afterwards can bring them back together.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The session is no longer usable.</exception>
+    private void ThrowIfUnusable()
+    {
+        ThrowIfHistoryRewritten();
+
+        if (_unusableReason is { } reason)
+        {
+            throw new InvalidOperationException(reason);
+        }
     }
 
     /// <summary>
