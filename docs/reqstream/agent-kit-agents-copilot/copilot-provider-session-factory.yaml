@@ -58,28 +58,6 @@ sections:
               - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
               - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
 
-          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
-            title: >-
-              The factory shall configure each session's system message with the application's
-              instructions alone, carrying no part of a seeded conversation record there, and shall
-              configure no system message at all when the application supplied no instructions.
-            justification: |
-              The session engine reasons about the window as overhead — the system message and the
-              tool declarations — against the conversation. A record placed in the system message is
-              charged as overhead, so overhead grows at every rotation while the conversation appears
-              small and the engine's model of its own window drifts. Compacted content belongs in the
-              region that gets compacted, and tool output does not belong in the instructions channel.
-
-              Keeping the channel to the instructions alone also means a session the engine drives is
-              configured byte for byte as the plain agent path configures one, so the confinement
-              argument made about that path carries over unchanged, and an application that supplies
-              no instructions gets the session the runtime would have given it.
-            tests:
-              - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
-              - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
-              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
-              - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
-
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
             title: >-
               The factory shall derive each session's allow-list from the same collection it publishes

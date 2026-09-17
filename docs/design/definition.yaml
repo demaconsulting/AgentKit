@@ -5,6 +5,7 @@ resource-path:
 input-files:
   - docs/design/title.txt
   - docs/design/introduction.md
+  - docs/design/agent-kit.md
   - docs/design/agent-kit-core.md
   - docs/design/agent-kit-core/guarded-tool-factory.md
   - docs/design/agent-kit-core/image-promoting-chat-client.md

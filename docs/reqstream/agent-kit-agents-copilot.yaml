@@ -3,6 +3,11 @@
 #
 # These requirements describe the externally visible behavior of the library
 # from the perspective of its consumers, without specifying implementation details.
+#
+# They are the mechanisms of one product capability, AgentKit-Provider-GitHubCopilot
+# (docs/reqstream/agent-kit.yaml), which links every one of them as a child. They
+# therefore carry no 'system' tag: the capability is the root, and a mechanism here that
+# stops contributing to it is reported as an orphan rather than standing on its own.
 
 sections:
   - title: AgentKitAgentsCopilot Requirements
@@ -13,7 +18,7 @@ sections:
           runtime's tools by deriving the session allow-list from the same tool collection it
           publishes to the session, so the published tools and the allow-list cannot diverge, and
           closing the runtime's skill and custom-instruction channels on every session it builds.
-        tags: [system, security]
+        tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
           reading and writing, and more — and its own channels for injecting further capability and
@@ -41,7 +46,7 @@ sections:
           The library shall install, when the host supplies none, a permission handler that
           approves exactly the supplied tools by name and rejects every other request, and shall
           install a host-supplied handler verbatim when one is given.
-        tags: [system, security]
+        tags: [security]
         justification: |
           The target user is not qualified to adjudicate a security prompt, so the default must be
           safe without asking: it approves a request only when it names one of the supplied tools
@@ -64,7 +69,6 @@ sections:
           supplied tool list without taking ownership of the client, rejecting a missing client, a
           malformed tool list, and carrying the supplied instructions and the supplied choice of
           model.
-        tags: [system]
         justification: |
           The host constructs, starts, and disposes the Copilot client, so the library takes no
           ownership of it and builds the agent with client ownership left to the host — whoever
@@ -85,27 +89,6 @@ sections:
         tests:
           - CopilotAgentFactory_Create_NullClient_Throws
 
-      - id: AgentKitAgentsCopilot-BuiltOnCopilotSdk
-        title: >-
-          The library shall present the agent it builds as a Microsoft.Agents.AI AIAgent
-          constructed from a GitHub Copilot CopilotClient through the SDK's session-config
-          agent-construction path and permission RPC.
-        tags: [system]
-        justification: |
-          The library does not implement an agent runtime; it adapts the GitHub Copilot SDK's
-          CopilotClient, SessionConfig, session-config agent-construction path, and permission RPC
-          into a Microsoft Agent Framework AIAgent. The requirement records the repository's reliance
-          on that off-the-shelf SDK and links its OTS requirements to the system root; see OTS
-          Integration Design (docs/design/ots.md).
-        children:
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents
-        tests:
-          - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
-
       - id: AgentKitAgentsCopilot-SessionAdapter-CarriesACoreSession
         title: >-
           The library shall carry an AgentKit session over the GitHub Copilot runtime, seeding a
@@ -113,7 +96,6 @@ sections:
           each message as one turn, recording the turn's tool calls and results as identified pairs,
           abandoning a session whose conversation it can no longer account for, and owning and
           releasing each Copilot session it creates without ever disposing the client.
-        tags: [system]
         justification: |
           The compaction engine is the reason a long-running agent behaves the same way on every
           provider, and until now it had one adapter, for the stateless chat-client family. Copilot
@@ -150,37 +132,11 @@ sections:
           - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
           - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
 
-      - id: AgentKitAgentsCopilot-SeededHistory-CarriedOnTheConversationChannel
-        title: >-
-          The library shall carry a rotation's seeded conversation record on the conversation channel
-          of the session it seeds, placing no part of it in that session's system message, which shall
-          carry the application's instructions alone.
-        tags: [system]
-        justification: |
-          The session engine reasons about the window as overhead — the system message and the tool
-          declarations — against the conversation. A consolidated record placed in the system message
-          is charged as overhead, so overhead grows at every rotation while the conversation appears
-          small, and the engine's model of its own window drifts from the runtime's. Compacted
-          content belongs in the region that gets compacted. Secondarily, tool output in the
-          instructions channel reads with more authority than it has earned.
-
-          Nothing rests on how the record is delimited: the material was already in the model's
-          context before it was consolidated, so seeding it back grants nothing new, and this
-          library's guarantee is the tool policy rather than prompt hygiene.
-
-          It also costs nothing: the record rides the message the engine was already sending, so a
-          rotation is still exactly one request.
-        children:
-          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
-        tests:
-          - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
-
       - id: AgentKitAgentsCopilot-SessionAdapter-OccupancyFromTheRuntime
         title: >-
           The library shall take both the occupancy and the context window of a Copilot session from
           the runtime's own reporting, shall never require an application to state a window, and
           shall refuse a turn the runtime answered without reporting its usage.
-        tags: [system]
         justification: |
           Rotation happens when the window is filling, which is the one thing the session engine
           needs a token count for. Every other adapter has to be told its window because the
@@ -212,7 +168,6 @@ sections:
           runtime's compaction threshold raised clear of the engine's rotation point, shall leave the
           runtime's compaction untouched on the plain agent path, and shall refuse further turns on a
           session the runtime compacted or truncated anyway.
-        tags: [system]
         justification: |
           The Copilot runtime compacts its own sessions by default, at a threshold of the same order
           as AgentKit's rotation threshold and against the same occupancy signal. Two compactors
@@ -252,7 +207,6 @@ sections:
           The library shall consolidate session history on a separate, short-lived, tool-free Copilot
           session, using the consolidation prompt the library publishes, and shall release that
           session on every path.
-        tags: [system]
         justification: |
           Compaction cannot happen without a summarizer, so a provider AgentKit carries a session for
           but ships no summarizer for is a provider on which compaction quietly never happens. The

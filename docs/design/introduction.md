@@ -184,6 +184,11 @@ The following OTS items are also covered:
 - **WeasyPrint** — HTML-to-PDF conversion tool
 - **xUnit** — unit-testing framework
 
+The document also opens with a product-capability chapter. AgentKit's two provider capabilities —
+GitHub Copilot support and `IChatClient` support — are requirements of the product rather than of any
+one package, so they correspond to no software item and appear nowhere in the software-item tree; the
+chapter records which system delivers each and what it rests on.
+
 Version applicability: This design applies to all versions of the AgentKit.
 
 The following topics are explicitly excluded from this design documentation:

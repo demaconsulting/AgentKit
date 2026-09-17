@@ -8,6 +8,9 @@
 root-tags: [system, quality]
 includes:
   - docs/reqstream/quality.yaml
+  # Product-level capability requirements. These sit above the per-package system
+  # requirements and are what those requirements must trace up to.
+  - docs/reqstream/agent-kit.yaml
   - docs/reqstream/agent-kit-core.yaml
   - docs/reqstream/agent-kit-core/guarded-tool-factory.yaml
   - docs/reqstream/agent-kit-core/image-promoting-chat-client.yaml
