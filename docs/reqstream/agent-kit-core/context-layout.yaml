@@ -10,16 +10,24 @@ sections:
         requirements:
           - id: AgentKitCore-ContextLayout-TierModel
             title: >-
-              The unit shall model the context as a round-robin structure: a verbatim tail of whole
-              turns and a fixed number of tiers, each a ring of a fixed number of consolidated slots.
+              The unit shall provide the round-robin structure the engine keeps the context in: a
+              verbatim tail of whole turns, a fixed number of tiers each holding consolidated slots
+              oldest first, and the fixed counts that shape them.
             justification: |
               A round-robin database does not measure the size of its archives: a fixed number of fine
               samples consolidate into one coarse sample, and each archive holds a fixed number of them,
               so resolution decays with age by construction and nothing is weighed. The slots-per-tier
               and tier counts are internal constants because they are the values the recall measurement
               was taken at and an application has no basis for choosing them. A slot must hold a
-              non-blank record, and a tier is a ring that drops its oldest slot when another arrives
-              and it is already at its complement.
+              non-blank record, and a tier holds its slots oldest first, appends to the newest end and
+              can return a copy of itself without its oldest.
+
+              This unit holds the shape and publishes the counts; it does not police them. The rules
+              that keep a tier at its complement - consolidating a full tier into the next and clearing
+              it, and making the coarsest tier a ring that displaces its oldest - are required of, and
+              verified in, `RotationEngine`, which is the only writer of tiers and the only place that
+              can also produce the replacement slot. Enforcing the bound here as well would state one
+              rule in two places and let them drift.
             tests:
               - ContextLayout_Constants_AreTheRoundRobinShape
               - Tier_Append_Null_Throws
@@ -37,6 +45,7 @@ sections:
               refused so a layout can never be internally inconsistent.
             tests:
               - ContextLayout_Create_IsEmpty
+              - ContextLayout_WithTail_ReplacesTheTailAndLeavesTheOriginal
               - ContextLayout_WithTiers_Malformed_Throws
 
           - id: AgentKitCore-ContextLayout-SeedsMostStableFirst

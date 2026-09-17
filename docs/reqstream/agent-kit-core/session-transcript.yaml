@@ -42,10 +42,10 @@ sections:
               The verbatim tail is the newest turns and everything older is what a rotation
               consolidates; both are counted in turns, never tokens, which is what lets the compaction
               structure be configured in counts. The older material is handed back as whole turns
-              rather than as a flat run of their entries, because whatever consolidates it may have to
-              split it across several summarizer calls, and a flat run lets one turn's message, tool
-              call, tool result and answer land in different calls - the orphaning that turn-granular
-              boundaries exist to make impossible.
+              rather than as a flat run of their entries, because a turn is one indivisible exchange -
+              a message, its tool calls, their results and the answer - and a flat run would let a
+              boundary fall inside one, separating a result from the call it answers. Returning whole
+              turns is what makes such a boundary unrepresentable.
             tests:
               - SessionTranscript_SplitAtTail_KeepsNewestTurns
               - SessionTranscript_SplitAtTail_NothingOlder_RetainsAll

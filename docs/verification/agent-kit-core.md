@@ -254,7 +254,7 @@ the live replacement session still carries that marker in its seed history. The 
 summarizer preserves marker facts while reducing routine padding, so the test verifies the
 round-robin retention structure rather than model memory.
 
-### Fitting Strategy: Providers That Count Differently Keep Answering
+### Pressure Response: Providers That Count Differently Keep Answering
 
 **Tests**:
 

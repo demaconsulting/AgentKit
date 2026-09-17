@@ -41,8 +41,8 @@ tool-calling loop above it emits tool calls nothing answers — so it is not off
 ### Data Model
 
 - **`_client`** (`IChatClient`) — The pipeline carrying each turn: the application's client, with
-  the prompt-size recorder beneath and the tool-calling loop above. Built by the factory, never
-  disposed by this session.
+  the prompt-size recorder beneath it, the image promoter above the recorder and the tool-calling
+  loop above that. Built by the factory, never disposed by this session.
 - **`_recorder`** (`PromptSizeRecordingChatClient`) — The layer within that pipeline holding the
   prompt size of the last request the session made. Invariant: the same instance the pipeline was
   built around, so the figure read here is the figure that pipeline recorded.

@@ -442,8 +442,9 @@ sections:
       - id: AgentKitCore-Compaction-BoundedByConstruction
         title: >-
           The library shall answer a context that fills again quickly by compacting harder, and at its
-          tersest by discarding its oldest consolidated material, deciding both by counts of turns and
-          slots rather than by judging a context it has not yet sent.
+          tersest by discarding its oldest consolidated material - or its oldest verbatim turn when no
+          consolidated material remains - deciding all of it by counts of turns and slots rather than
+          by judging a context it has not yet sent.
         tags: [system]
         justification: |
           An arrangement configured in counts cannot be bounded in tokens in advance, because a
@@ -457,10 +458,14 @@ sections:
           oldest slot of the coarsest tier holding one is discarded, which is the ring of rule four
           brought forward because the context is filling faster than the ring's own schedule empties
           it; m quiet turns relax the level again, with m greater than k so the two cannot both
-          hold. A token figure is read for one purpose only, noticing that the window is filling,
-          and everything structural is a count.
+          hold. Where consolidation never succeeds at all there is no slot to discard, so the same
+          move falls through to the oldest verbatim turn - never the newest, which the session must
+          still be able to answer - and that fall-through is what makes the bound hold rather than
+          merely usually hold. A token figure is read for one purpose only, noticing that the window
+          is filling, and everything structural is a count.
         children:
           - AgentKitCore-CompactingAgentSession-AdaptsLevelUnderPressure
+          - AgentKitCore-CompactingAgentSession-BoundsTheContextWhenConsolidationNeverSucceeds
           - AgentKitCore-AgentSessionOptions-RejectsMalformedConfiguration
         tests:
           - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
@@ -578,6 +583,7 @@ sections:
           - AgentKitCore-InMemoryProviderSession-ContactsNothing
           - AgentKitCore-InMemoryProviderSession-RecordsRotationEvidence
           - AgentKitCore-InMemoryProviderSession-AnswersForItsOwnWindow
+          - AgentKitCore-InMemoryProviderSession-RefusesMalformedUse
         tests:
           - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
 

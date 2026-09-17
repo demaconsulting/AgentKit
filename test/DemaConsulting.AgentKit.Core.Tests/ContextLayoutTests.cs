@@ -12,6 +12,7 @@ public class ContextLayoutTests
     [Fact]
     public void ContextLayout_Constants_AreTheRoundRobinShape()
     {
+        // Act / Assert: the counts the design is sold on are fixed, not configurable
         Assert.Equal(4, ContextLayout.SlotsPerTier);
         Assert.Equal(3, ContextLayout.TierCount);
         Assert.Equal(0.70, ContextLayout.RotationThreshold);
@@ -24,6 +25,7 @@ public class ContextLayoutTests
     [Fact]
     public void Slot_Construct_Blank_Throws()
     {
+        // Act / Assert: a blank record is refused, and a real one is held as written
         Assert.Throws<ArgumentException>(() => new Slot("   "));
         Assert.Equal("record", new Slot("record").Content);
     }
@@ -46,7 +48,7 @@ public class ContextLayoutTests
         // Act: drop the oldest slot
         var dropped = tier.DropOldest();
 
-        // Assert: the ring order is oldest first, the drop removes that end, and the tier it was
+        // Assert: the order is oldest first, the drop removes that end, and the tier it was
         // taken from is unchanged
         Assert.Equal(ContextLayout.SlotsPerTier, tier.Count);
         Assert.Equal("s0", tier.Slots[0].Content);
@@ -101,6 +103,7 @@ public class ContextLayoutTests
     [Fact]
     public void ContextLayout_BuildSeed_IsCoarsestFirst()
     {
+        // Arrange: one slot in each tier, and one verbatim turn
         var tail = SessionTranscript.Empty.AppendTurn([TranscriptEntry.User("newest")]);
         var layout = SessionTestData.LayoutOf(
             tail,
@@ -108,8 +111,10 @@ public class ContextLayoutTests
             SessionTestData.TierOf(new Slot("tier2-slot")),
             SessionTestData.TierOf(new Slot("tier3-slot")));
 
+        // Act: build the history a fresh provider session is seeded with
         var seed = layout.BuildSeed();
 
+        // Assert: coarsest first, then each finer tier, then the tail in its own order
         Assert.Equal(4, seed.Count);
         Assert.Contains("tier3-slot", seed[0].Text, StringComparison.Ordinal);
         Assert.Contains("tier2-slot", seed[1].Text, StringComparison.Ordinal);
@@ -124,14 +129,17 @@ public class ContextLayoutTests
     [Fact]
     public void ContextLayout_BuildSeed_LabelsSlotsByTier()
     {
+        // Arrange: a fine slot and a coarse one, with the middle tier empty
         var layout = SessionTestData.LayoutOf(
             SessionTranscript.Empty,
             SessionTestData.TierOf(new Slot("fine")),
             Tier.Empty,
             SessionTestData.TierOf(new Slot("coarse")));
 
+        // Act: build the seed
         var seed = layout.BuildSeed();
 
+        // Assert: each record names the detail level it belongs to
         Assert.Contains("detail level 3", seed[0].Text, StringComparison.Ordinal);
         Assert.Contains("detail level 1", seed[1].Text, StringComparison.Ordinal);
     }

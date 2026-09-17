@@ -15,8 +15,8 @@ namespace DemaConsulting.AgentKit.Core;
 ///     <para>
 ///     <b>Terseness is an instruction, never a size.</b> Asking a model to hit a token count does
 ///     not work — it cannot count its own output — so the request carries a plain-language
-///     <see cref="Instruction"/> that says how much to keep, and the session measures the result
-///     itself rather than dictating it.
+///     <see cref="Instruction"/> that says how much to keep, and nothing downstream measures what
+///     comes back.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.
@@ -123,8 +123,10 @@ public interface ISummarizer
     /// <remarks>
     ///     The result must preserve specific named facts, decisions, errors and outstanding work,
     ///     may collapse repetition across the material, and must not interpret, speculate about, or
-    ///     comment on anything not present. The engine measures the result's size itself; an
-    ///     implementation is not asked, and must not be asked, to hit a length.
+    ///     comment on anything not present. Nothing measures the result's size: an implementation is
+    ///     not asked, and must not be asked, to hit a length. A blank record produces no slot at
+    ///     all — the material it was given stays verbatim and the session responds through its own
+    ///     hysteresis clock — so returning nothing is a refusal, not a shortcut.
     /// </remarks>
     /// <param name="request">The material to consolidate. Must not be <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the consolidation.</param>

@@ -57,14 +57,14 @@ sections:
 
           - id: AgentKitCore-ProviderSession-RejectsMalformedSeedOrTurn
             title: >-
-              The unit shall reject a null tool or history list, a null entry within one, a null
-              response text, and a malformed pairing identifier.
+              The unit shall reject a null tool or history list, a null entry within one, and a null
+              response text.
             justification: |
               Rejecting a null entry at the seam rather than leaving an adapter to discover it
               mid-construction is what keeps a failure attributed to the composition rather than the
-              provider. A tool call or result requires a non-blank identifier and any other kind of
-              entry refuses one, so a call can always be paired with its result.
+              provider. The entries a seed and a turn carry are validated by `TranscriptEntry` itself,
+              which the SessionTranscript unit owns and requires; see the Dependencies entry in the
+              ProviderSession unit design.
             tests:
               - ProviderSessionSeed_Construct_NullArguments_Throw
               - ProviderTurn_Construct_NullArguments_Throw
-              - TranscriptEntry_Construct_ValidatesPairingIdentifier

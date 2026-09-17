@@ -116,8 +116,8 @@ public sealed class CompactingAgentSession : IAgentSession
     }
 
     /// <summary>
-    ///     Gets the engine's own account of the context: the the coarse tiers of
-    ///     consolidated slots, and the verbatim recent turns.
+    ///     Gets the engine's own account of the context: the coarse tiers of consolidated slots, and
+    ///     the verbatim recent turns.
     /// </summary>
     /// <remarks>
     ///     Replaced wholesale on every turn; the instance read here is a snapshot.
@@ -267,9 +267,9 @@ public sealed class CompactingAgentSession : IAgentSession
         Usage = ReadUsage(_live.Session);
 
         // Rule 2: rotate when occupancy reaches the rotation threshold. Both figures come from the
-        // same usage reading, so both are in the same currency: a provider that reported its own
-        // conversation count is measured entirely in that provider's tokens, and an estimate is
-        // measured entirely in ours. Nothing is subtracted here.
+        // same usage reading, so both are in the same currency: whatever tokenizer the provider
+        // counted the conversation with, it counted the window and the overhead with too. Nothing
+        // is subtracted here.
         if (Usage.ConversationTokens < RotationThreshold(Usage))
         {
             return new AgentSessionResponse(
@@ -318,15 +318,17 @@ public sealed class CompactingAgentSession : IAgentSession
     ///     </para>
     ///     <para>
     ///     <b>The compaction level is chosen here, from the hysteresis clock.</b> A rotation that
-    ///     follows within <see cref="K"/> turns of the last starts one level terser, so a session
-    ///     under repeated pressure escalates. The engine may escalate further while building the
-    ///     seed — a seed that does not fit is rebuilt at a terser level until it does — and the level
-    ///     it settles at is what this session reports and starts its next rotation from. A rotation
-    ///     that follows only after <see cref="M"/> quiet turns relaxes one level.
+    ///     follows within <see cref="K"/> turns of the last is taken one level terser, so a session
+    ///     under repeated pressure escalates; at the tersest level there is nowhere terser to go, so
+    ///     the oldest card is binned instead. A rotation that follows only after <see cref="M"/>
+    ///     quiet turns relaxes one level. The level is settled before the engine is called and the
+    ///     engine rotates once at it: there is no second attempt and nothing measures what came
+    ///     back, because the context a rotation builds has not been sent and there is no figure to
+    ///     judge it by.
     ///     </para>
     ///     <para>
     ///     <b>A rotation that consolidated nothing and dropped nothing is not carried out.</b> When
-    ///     the tail already holds everything and the seed fits, there is no new context to seed a
+    ///     the engine found nothing older than the tail to age, there is no new context to seed a
     ///     replacement from, so creating one would spend a provider session to arrive at exactly the
     ///     context the session already had. The level may still have changed, and that change is
     ///     recorded, but no replacement is created and the turn is reported as one that did not

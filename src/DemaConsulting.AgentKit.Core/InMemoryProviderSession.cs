@@ -146,10 +146,10 @@ public sealed class InMemoryProviderSession : IProviderSession
 
     /// <inheritdoc/>
     /// <remarks>
-    ///     Computed from this session's own history and its fixed overhead, and marked as
-    ///     provider-reported because that is what it stands in for. The conversation is reported
-    ///     separately, as a provider that distinguishes the two does, so the shape a real reporting
-    ///     adapter uses is the shape exercised here.
+    ///     Computed from this session's own history and its fixed overhead, and reported through
+    ///     <see cref="ContextUsage.FromProvider"/> because that is what it stands in for. The
+    ///     conversation is reported separately, as a provider that distinguishes the two does, so the
+    ///     shape a real reporting adapter uses is the shape exercised here.
     /// </remarks>
     public ContextUsage CurrentUsage
     {

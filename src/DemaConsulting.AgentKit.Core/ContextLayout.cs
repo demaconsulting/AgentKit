@@ -43,15 +43,16 @@ internal sealed class Slot
 }
 
 /// <summary>
-///     One tier: an ordered ring of at most <see cref="ContextLayout.SlotsPerTier"/> slots, oldest
-///     first.
+///     One tier: an ordered list of consolidated slots, oldest first, which the rotation engine
+///     keeps to at most <see cref="ContextLayout.SlotsPerTier"/> slots.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     A tier holds a fixed number of consolidated slots. When it is full and another slot arrives,
 ///     what happens depends on which tier it is — a coarser tier consolidates its slots as peers and
-///     empties, while the coarsest tier drops its oldest slot as a ring — but the tier itself only
-///     knows how to hold slots, report whether it is full, and hand back its oldest.
+///     empties, while the coarsest tier drops its oldest slot as a ring — but those rules belong to
+///     the rotation engine. The tier itself only knows how to hold slots, say how many it holds, and
+///     return a copy of itself without its oldest.
 ///     </para>
 ///     <para>
 ///     Instances are immutable: every mutator returns a new tier.
@@ -129,8 +130,8 @@ internal sealed class Tier
 }
 
 /// <summary>
-///     The whole of a session's context as this library accounts for it: fixed overhead, the coarse
-///     tiers of consolidated slots, and the verbatim recent turns.
+///     The whole of a session's context as this library accounts for it: the coarse tiers of
+///     consolidated slots, and the verbatim recent turns.
 /// </summary>
 /// <remarks>
 ///     <para>

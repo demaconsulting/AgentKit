@@ -20,21 +20,27 @@ application selected.
 
 **It also owns the pipeline each session runs on, and that is the point of it.** An application hands
 over the client it talks to its provider with; this factory wraps that client in a
-`PromptSizeRecordingChatClient`, and wraps *that* in a `FunctionInvokingChatClient`. Both placements
-matter, and getting either wrong is silent:
+`PromptSizeRecordingChatClient`, wraps *that* in an `ImagePromotingChatClient`, and wraps *that* in a
+`FunctionInvokingChatClient`. All three placements matter, and getting any of them wrong is silent:
 
 - **The recorder must sit underneath.** A turn that calls tools makes several requests, and the
   response the tool-calling loop finally returns carries usage summed across all of them. Read as
   occupancy that figure would have a tool-using agent — which is every agent this library exists for
   — believe its window was full on its first turn. Underneath the loop each request is seen
   separately, and the last one is the conversation. See *PromptSizeRecordingChatClient Unit Design*.
+- **The image promoter must sit between the two.** Beneath the function-invocation loop, because that
+  is the only place a tool result exists for it to observe and promote; above the recorder, so a
+  message it promoted is counted in the occupancy the recorder reads. A provider whose tool-result
+  channel cannot carry an image drops one silently and the model answers anyway, and a session is as
+  exposed to that as an agent is — so the decorator is installed unconditionally, for the same reason
+  `ChatClientAgentFactory` installs it. See *ImagePromotingChatClient Unit Design*.
 - **The tool-calling loop must sit above.** A session seeds its tools into every request it sends, so
   a bare client will emit tool calls that nothing answers: the model waits for a result that never
   comes, and the transcript records a call with no result beside it.
 
 An application asked to compose that itself would sometimes compose something that looks right and
-is wrong, with no error to notice. Owning both placements here is what makes that impossible, and is
-why `ChatClientProviderSession`'s constructor is internal.
+is wrong, with no error to notice. Owning all three placements here is what makes that impossible,
+and is why `ChatClientProviderSession`'s constructor is internal.
 
 The class implements `IProviderSessionFactory` and is safe for concurrent use, as that contract
 requires: creating a session reads the client reference and the window, and builds a pipeline of the
@@ -76,11 +82,15 @@ are the only checks an application can trip.
 pipeline of its own.
 
 **Algorithm:** Reject a null seed and a canceled token. Build a `PromptSizeRecordingChatClient`
-around the held client and a `FunctionInvokingChatClient` around that, then construct a
-`ChatClientProviderSession` over the pipeline, the recorder within it, the supplied seed and the held
-window, and return it as an `IProviderSession`. The work is synchronous — a stateless provider is not
-contacted to start a session — so the result is returned as an already-completed task rather than by
-awaiting anything.
+around the held client, an `ImagePromotingChatClient` around that, and a `FunctionInvokingChatClient`
+around that, then construct a `ChatClientProviderSession` over the pipeline, the recorder within it,
+the supplied seed and the held window, and return it as an `IProviderSession`. The work is
+synchronous — a stateless provider is not contacted to start a session — so the result is returned as
+an already-completed task rather than by awaiting anything.
+
+The image promoter is installed unconditionally rather than on a capability check, because there is
+no capability to check: a provider that cannot carry an image on its tool-result channel says
+nothing, it simply drops the content.
 
 The pipeline is built per call rather than once, for the reason recorded under the data model: the
 recorded prompt size belongs to one conversation.
@@ -110,10 +120,13 @@ nothing unowned.
   `ProviderSessionSeed`; see *ProviderSession Unit Design*.
 - **ChatClientProviderSession** — the session this factory creates; see *ChatClientProviderSession
   Unit Design*.
-- **PromptSizeRecordingChatClient** — the layer this factory installs beneath the tool-calling loop;
+- **PromptSizeRecordingChatClient** — the layer this factory installs at the bottom of the pipeline;
   see *PromptSizeRecordingChatClient Unit Design*.
+- **ImagePromotingChatClient** — the layer this factory installs between the tool-calling loop and
+  the recorder; see *ImagePromotingChatClient Unit Design*.
 - **Microsoft.Agents.AI** — brings the chat-client extensions supplying `FunctionInvokingChatClient`,
-  the tool-calling loop this factory installs above the recorder; see *Microsoft.Agents.AI Design*.
+  the tool-calling loop this factory installs at the top of the pipeline; see
+  *Microsoft.Agents.AI Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`; see
   *Microsoft.Extensions.AI.Abstractions Design*.
 

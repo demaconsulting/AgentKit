@@ -1,8 +1,9 @@
 ## ProviderSession Unit Verification Design
 
 This document describes the unit-level verification strategy for the provider-session seam:
-`IProviderSession`, `IProviderSessionFactory`, `ProviderSessionSeed`, `ProviderTurn` and
-`TranscriptEntry`.
+`IProviderSession`, `IProviderSessionFactory`, `ProviderSessionSeed` and `ProviderTurn`. The
+`TranscriptEntry` values a seed and a turn carry are required and verified by the `SessionTranscript`
+unit, which defines them.
 
 ### Verification Approach
 
@@ -33,8 +34,7 @@ Unit tests reside in `ProviderSessionTests.cs`, with usage and ownership evidenc
 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any seed that aliases caller-owned collections, any turn that omits or
-duplicates its answer, any malformed seed accepted, or any invalid tool pairing accepted constitutes
-a failure.
+duplicates its answer, or any malformed seed or turn accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -74,8 +74,8 @@ before the figure can be used.
 
 - `ProviderSessionSeed_Construct_NullArguments_Throw`
 - `ProviderTurn_Construct_NullArguments_Throw`
-- `TranscriptEntry_Construct_ValidatesPairingIdentifier`
 
-Rejects null seed collections, null entries, null response text, invalid tool pairing identifiers and
-undefined entry kinds. These checks keep provider adapters from handing malformed transcript data to
-rotation.
+Rejects null seed collections, null entries within them, and a null response text. These checks keep
+provider adapters from handing malformed transcript data to rotation. The validity of an individual
+`TranscriptEntry` — its pairing identifier and its kind — is verified by the `SessionTranscript`
+unit, which owns the type.

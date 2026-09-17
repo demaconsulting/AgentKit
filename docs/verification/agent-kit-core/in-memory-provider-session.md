@@ -7,8 +7,9 @@ This document describes the unit-level verification strategy for `InMemoryProvid
 
 The in-memory provider is verified as a shipped deterministic provider-session implementation, not a
 network adapter. Tests send messages through a responder, inspect recorded history, observe disposal,
-assert the session answers for its own window, assert cancellation leaves no ghost turn, and verify
-the factory records sessions in creation order.
+assert the session answers for its own window, assert cancellation leaves no ghost turn, verify the
+factory records sessions in creation order, and exercise every documented error path of what is a
+public type.
 
 Unit tests reside in `InMemoryProviderSessionTests.cs`.
 
@@ -24,8 +25,8 @@ Unit tests reside in `InMemoryProviderSessionTests.cs`.
 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any session that contacts external services, fails to record turns, reports the
-wrong usage shape, records a canceled turn, hides disposal, or fails to retain factory evidence
-constitutes a failure.
+wrong usage shape, records a canceled turn, hides disposal, accepts a malformed construction or a
+turn it cannot answer, or fails to retain factory evidence constitutes a failure.
 
 ### Test Scenarios
 
@@ -58,3 +59,19 @@ exercising the engine against this session meaningful.
 Asserts disposal sets an observable flag and the factory records every created session oldest first.
 System and compacting-session tests use that evidence to prove replacement sessions were created and
 superseded sessions were released.
+
+#### AgentKitCore-InMemoryProviderSession-RefusesMalformedUse: Every Documented Error Path Is Exercised
+
+**Tests**:
+
+- `InMemoryProviderSession_Construct_NullArgument_Throws`
+- `InMemoryProviderSession_Construct_NonPositiveWindow_Throws`
+- `InMemoryProviderSession_Send_ResponderReturnsNull_Throws`
+- `InMemoryProviderSession_Send_AfterDispose_Throws`
+
+Covers the error paths the unit design enumerates, other than cancellation, which the
+`ContactsNothing` scenario carries. A missing seed or responder is refused at construction; a window
+of zero or below is refused by both the session and the factory; a responder answering with nothing
+is refused and leaves the history empty; and a send after disposal is refused rather than answered.
+These are the mistakes an application author can make against a type that ships on the public
+surface.

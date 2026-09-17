@@ -11,10 +11,10 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient.Tests;
 /// <remarks>
 ///     Every session here is obtained from <see cref="ChatClientProviderSessionFactory"/>, because
 ///     that is the only way an application obtains one: the factory owns the pipeline the session
-///     runs on - the prompt-size recorder directly around the caller's client, and function
-///     invocation above it - and a session constructed around a bare client would be a session no
-///     application can have. The recording client therefore sits at the bottom of that pipeline, so
-///     what it observes is what the provider would.
+///     runs on - the prompt-size recorder directly around the caller's client, the image promoter
+///     above the recorder, and function invocation above that - and a session constructed around a
+///     bare client would be a session no application can have. The recording client therefore sits
+///     at the bottom of that pipeline, so what it observes is what the provider would.
 /// </remarks>
 public class ChatClientProviderSessionTests
 {

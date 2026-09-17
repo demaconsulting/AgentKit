@@ -20,12 +20,15 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Send_AnswersTurns()
     {
+        // Arrange: a session over an echoing in-memory provider
         var factory = new InMemoryProviderSessionFactory(message => new ProviderTurn($"echo: {message}"));
         var options = new AgentSessionOptions(new FakeSummarizer());
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
+        // Act: take one turn
         var response = await session.SendAsync("hello", TestContext.Current.CancellationToken);
 
+        // Assert: the provider's answer, at the relaxed level, with no rotation on a clean turn
         Assert.Equal("echo: hello", response.Text);
         Assert.Equal(CompactionLevel.Low, response.Level);
         Assert.False(response.RotationOccurred);
@@ -37,9 +40,11 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Send_BlankMessage_Throws()
     {
+        // Arrange: a live session
         var factory = new InMemoryProviderSessionFactory();
         await using var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
 
+        // Act / Assert: a blank turn would spend context to say nothing, so it is refused
         await Assert.ThrowsAsync<ArgumentException>(() => session.SendAsync("   ", TestContext.Current.CancellationToken));
     }
 
@@ -49,10 +54,12 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Send_AfterDispose_Throws()
     {
+        // Arrange: a session that has already been disposed
         var factory = new InMemoryProviderSessionFactory();
         var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
         await session.DisposeAsync();
 
+        // Act / Assert: the turn is refused rather than sent to a released provider session
         await Assert.ThrowsAsync<ObjectDisposedException>(() => session.SendAsync("hi", TestContext.Current.CancellationToken));
     }
 
@@ -62,11 +69,14 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Dispose_ReleasesLiveProviderSession()
     {
+        // Arrange: a live session over the in-memory provider
         var factory = new InMemoryProviderSessionFactory();
         var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
 
+        // Act: dispose it
         await session.DisposeAsync();
 
+        // Assert: the provider session it held was released
         Assert.True(factory.Sessions[0].IsDisposed);
     }
 
@@ -103,21 +113,24 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Send_RotatesAtThreshold()
     {
+        // Arrange: a narrow provider window and a short verbatim tail, so turns reach the threshold
         var factory = new InMemoryProviderSessionFactory(
             SessionTestData.SizedResponder(15), windowTokens: 300);
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.2), verbatimTurns: 2);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
+        // Act: drive enough turns to cross it
         for (var turn = 0; turn < 20; turn++)
         {
             await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
         }
 
+        // Assert: it rotated, and created exactly one provider session per rotation plus the first
         Assert.True(session.RotationCount > 0);
         Assert.Equal(session.RotationCount + 1, factory.Sessions.Count);
 
-        // Every superseded session was released; only the live one remains.
+        // Assert: every superseded session was released; only the live one remains.
         for (var index = 0; index < factory.Sessions.Count - 1; index++)
         {
             Assert.True(factory.Sessions[index].IsDisposed);
@@ -138,11 +151,13 @@ public class CompactingAgentSessionTests
     [InlineData(3.0)]
     public async Task CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates(double multiplier)
     {
+        // Arrange: a provider charging a multiple of the baseline rate for the same history
         var factory = new DivergentTokenizerProviderSessionFactory(multiplier, windowTokens: 400, SessionTestData.SizedResponder(15));
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.2), verbatimTurns: 8);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
+        // Act: drive a long run of equally sized turns
         var answered = 0;
         for (var turn = 0; turn < 30; turn++)
         {
@@ -151,6 +166,7 @@ public class CompactingAgentSessionTests
             answered++;
         }
 
+        // Assert: every turn was answered, so the session terminates rather than churning
         Assert.Equal(30, answered);
     }
 
@@ -163,17 +179,20 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial()
     {
+        // Arrange: a window too small to hold a structure the session can compact into
         var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 100);
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.5), verbatimTurns: 8);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
+        // Act: drive a long run of turns under that pressure
         var responses = new List<AgentSessionResponse>();
         for (var turn = 0; turn < 40; turn++)
         {
             responses.Add(await session.SendAsync(Msg(15), TestContext.Current.CancellationToken));
         }
 
+        // Assert: it escalated to its tersest level and then honestly reported binning the oldest
         Assert.Contains(responses, response => response.Level == CompactionLevel.High);
         Assert.Contains(responses, response => response.MaterialDropped);
     }
@@ -189,12 +208,14 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher()
     {
+        // Arrange / Act: the same run against providers counting at one, two and three times
         var one = await RunDivergentAsync(multiplier: 1.0, providerWindow: 2000, TestContext.Current.CancellationToken);
         var two = await RunDivergentAsync(multiplier: 2.0, providerWindow: 2000, TestContext.Current.CancellationToken);
         var three = await RunDivergentAsync(multiplier: 3.0, providerWindow: 2000, TestContext.Current.CancellationToken);
 
-        // Rule 2 reads the provider's own count against its own window, so a larger multiplier crosses
-        // the threshold sooner: strictly more rotations and a strictly higher escalation level.
+        // Assert: rule 2 reads the provider's own count against its own window, so a larger
+        // multiplier crosses the threshold sooner: strictly more rotations and a strictly higher
+        // escalation level
         Assert.True(
             one.Rotations < two.Rotations && two.Rotations < three.Rotations,
             $"Rotations must strictly increase with divergence, but were 1x={one.Rotations}, 2x={two.Rotations}, 3x={three.Rotations}.");
@@ -226,6 +247,7 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_SummarizerAlwaysBlank_StopsGrowing()
     {
+        // Arrange: a session whose summarizer never produces a record
         var factory = new InMemoryProviderSessionFactory(
             SessionTestData.SizedResponder(15), windowTokens: 300);
         var options = new AgentSessionOptions(
@@ -233,6 +255,7 @@ public class CompactingAgentSessionTests
         await using var session = await CompactingAgentSession.CreateAsync(
             options, factory, TestContext.Current.CancellationToken);
 
+        // Act: drive it until the tail settles, then drive twice as far again
         for (var turn = 0; turn < 12; turn++)
         {
             await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
@@ -245,25 +268,30 @@ public class CompactingAgentSessionTests
             await session.SendAsync(Msg(15), TestContext.Current.CancellationToken);
         }
 
+        // Assert: the verbatim tail did not grow, so the context is bounded even though no
+        // consolidation ever succeeded
         Assert.True(
             session.Layout.Tail.TurnCount <= settled,
             $"The verbatim tail grew from {settled} to {session.Layout.Tail.TurnCount} turns while "
                 + "consolidation never succeeded, so nothing bounds the context.");
     }
 
-
-
+    /// <summary>
+    ///     Proves a session that escalated under a busy stretch comes back down after a quiet one,
+    ///     so one busy stretch is not paid for in fidelity for the rest of the session's life.
+    /// </summary>
     /// <remarks>
-    ///     The relaxation branch is the only path that lowers a level, and it is guarded by three
-    ///     conditions at once - a prior rotation, at least m quiet turns, and a rotation that
-    ///     escalated nothing. Every other session test rotates far more often than m turns apart, so
-    ///     none of them reaches it: the branch could be deleted and they would all still pass. The
-    ///     answer size is switched between phases rather than the message size, because the answer
-    ///     is what dominates a turn here.
+    ///     The relaxation branch is the only path that lowers a level, and it is guarded by two
+    ///     conditions at once - a prior rotation, and at least m quiet turns since it. Every other
+    ///     session test rotates far more often than m turns apart, so none of them reaches it: the
+    ///     branch could be deleted and they would all still pass. The answer size is switched
+    ///     between phases rather than the message size, because the answer is what dominates a turn
+    ///     here.
     /// </remarks>
     [Fact]
     public async Task CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel()
     {
+        // Arrange: a session over a provider whose answer size the test controls
         var answerTokens = 700;
         var factory = new InMemoryProviderSessionFactory(
             _ => new ProviderTurn(SessionTestData.AssistantOfTokens(answerTokens, "r").Text),
@@ -274,8 +302,8 @@ public class CompactingAgentSessionTests
         await using var session = await CompactingAgentSession.CreateAsync(
             options, factory, TestContext.Current.CancellationToken);
 
-        // Phase one: turns heavy enough to refill the window within k turns of each rotation, which
-        // is the condition that escalates.
+        // Act: phase one - turns heavy enough to refill the window within k turns of each rotation,
+        // which is the condition that escalates
         var peak = CompactionLevel.Low;
         for (var turn = 0; turn < 40; turn++)
         {
@@ -286,11 +314,12 @@ public class CompactingAgentSessionTests
             }
         }
 
+        // Assert: the session escalated, so there is something to relax from
         Assert.True(peak > CompactionLevel.Low, "The session never escalated, so there is nothing to relax from.");
 
-        // Phase two: a long quiet stretch of light turns. The summarizer compresses hard, so the
-        // slots the session is carrying leave real slack, and the window then takes far more than m
-        // turns to fill - which is the condition that relaxes.
+        // Act: phase two - a long quiet stretch of light turns. The summarizer compresses hard, so
+        // the slots the session is carrying leave real slack, and the window then takes far more
+        // than m turns to fill, which is the condition that relaxes.
         answerTokens = 1;
         var settled = peak;
         for (var turn = 0; turn < 600; turn++)
@@ -303,6 +332,7 @@ public class CompactingAgentSessionTests
             }
         }
 
+        // Assert: the level came back down
         Assert.True(settled < peak, $"The level must come down after a quiet stretch, but stayed at {settled}.");
     }
 
@@ -352,13 +382,16 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Dispose_FailedRelease_PropagatesAndRetries()
     {
+        // Arrange: a provider session whose release always fails
         var failing = new DisposeThrowingProviderSession();
         var factory = new ScriptedProviderSessionFactory(_ => failing);
         var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
 
+        // Act / Assert: the failure propagates, and a second disposal tries again
         await Assert.ThrowsAsync<IOException>(async () => await session.DisposeAsync());
         await Assert.ThrowsAsync<IOException>(async () => await session.DisposeAsync());
 
+        // Assert: the release really was retried rather than reported as already done
         Assert.Equal(2, failing.DisposeAttempts);
     }
 
@@ -412,6 +445,7 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Rotate_ReplacementUsageThrows_ReleasesReplacement()
     {
+        // Arrange: a factory whose replacement session cannot report its usage
         var bad = new UsageThrowingProviderSession(throwOnDispose: false);
         var factory = new ScriptedProviderSessionFactory(
             seed => new InMemoryProviderSession(seed, SessionTestData.SizedResponder(15), 100),
@@ -420,7 +454,7 @@ public class CompactingAgentSessionTests
             new FakeSummarizer(0.2), verbatimTurns: 2);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
-        // Drive turns until a rotation is attempted; adopting the bad replacement throws.
+        // Act: drive turns until a rotation is attempted; adopting the bad replacement throws
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
             for (var turn = 0; turn < 8; turn++)
@@ -429,6 +463,7 @@ public class CompactingAgentSessionTests
             }
         });
 
+        // Assert: the replacement was released rather than orphaned
         Assert.True(bad.IsDisposed);
     }
 
@@ -438,8 +473,10 @@ public class CompactingAgentSessionTests
     [Fact]
     public async Task CompactingAgentSession_Create_NullProviderSession_Throws()
     {
+        // Arrange: a factory that returns nothing
         var factory = new ScriptedProviderSessionFactory(_ => null!);
 
+        // Act / Assert: creation is refused rather than proceeding with no provider session
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken));
     }

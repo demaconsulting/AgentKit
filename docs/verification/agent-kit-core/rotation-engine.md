@@ -14,7 +14,7 @@ the session. Rule two consolidates everything older than the level-adjusted verb
 tier-one slot, keeping at most one turn fewer than the tail holds so that a rotation always moves
 something. Rule three consolidates a full tier's slots as peers into the next tier. Rule four keeps
 the coarsest tier as a ring. Rule five is the session's, not the engine's: nothing here measures
-whether the result will fit, and the engine rotates once at the level it is handed.
+anything, and the engine rotates once at the level it is handed.
 
 Pathological cases are first-class evidence. Tests use a blank summarizer answer, a blank answer at a
 full-tier cascade, and a tail already shorter than its configured maximum, to prove normalization,
@@ -76,7 +76,7 @@ The count is the discriminating observable, and presence is not. The design this
 re-consolidated each tier's standing record on every rotation — a flat ratchet, and the reason a flat
 scheme's recall collapses as rotations accumulate — and that implementation would produce requests at
 all three tiers exactly as this one does. What it could not produce is twenty-one requests at tier
-one, four at tier two and one at tier three: batch-then-clear consolidates a tier only when it fills,
+one, five at tier two and one at tier three: batch-then-clear consolidates a tier only when it fills,
 so each tier sees a request once per `SlotsPerTier` requests of the tier below it. A ratchet would put
 all three counts near twenty-one.
 
@@ -105,10 +105,10 @@ call it answers.
 - `RotationEngine_VerbatimTurnsFor_ShortensWithLevel`
 
 These tests verify the guarantee that replaced rule five inside the engine. The progress test covers
-the condition a fit test could not catch. Rule 2 triggers on the provider's occupancy, measured in
-tokens, while the verbatim tail is held by a count of turns, so a provider whose tokenizer runs well
-ahead of an ordinary conversation's growth reaches its threshold while the tail is still shorter than
-its configured maximum.
+a condition nothing in the engine could detect by inspecting the context it built. Rule 2 triggers on
+the provider's occupancy, measured in tokens, while the verbatim tail is held by a count of turns, so
+a provider whose tokenizer runs well ahead of an ordinary conversation's growth reaches its threshold
+while the tail is still shorter than its configured maximum.
 Nothing older is then available to consolidate and the result is identical to the layout handed in.
 The test gives the engine a tail of four turns against a maximum of twelve — the shape where keeping
 the level's figure blindly does nothing — and asserts that a slot was written and exactly three turns
@@ -149,15 +149,17 @@ be stored as a slot, and a canceled rotation cannot continue to produce a seed.
 - `RotationEngine_Rotate_FullTierBlankAnswer_DisplacesOneSlotAndReportsIt`
 
 Normalizes a blank summarizer answer to empty and creates no slot, which prevents a whitespace-only
-record from occupying a ring slot while carrying no material.
+record from occupying a tier slot while carrying no material.
 
 Producing no slot is only half the behavior, and the test asserts both halves. The material the slot
 would have held stays verbatim: retaining only the shortened tail alongside an absent slot would
 discard every older turn while recording nothing in their place — a silent loss, reported as an
 ordinary success, and committed to the provider as soon as the replacement session is seeded from the
 shortened layout. Asserting the tier is empty does not catch that; the turn count does. The context is
-then no smaller than it was, and the turn reports that material was lost, so a session whose
-summarizer goes blank compacts harder on the next turn rather than pretending the rotation succeeded.
+then no smaller than it was, and the turn reports that **nothing** was lost — the test asserts
+`MaterialDropped` is false — because a consolidation that could not be made leaves its material where
+it is, which is deliberately not the same thing as history being binned. The session answers a
+context that did not shrink through its own hysteresis clock on the next turn.
 
 The full-tier test is the same defect one level down. A full tier cannot be cleared on the strength
 of a record that was never written, so the second test makes a rule-3 cascade come back blank and

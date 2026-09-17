@@ -93,7 +93,7 @@ its length.
 **Tests**:
 
 - `ChatClientProviderSession_CurrentUsage_AfterTurn_ReportsTheProvidersInputTokens`
-- `ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsFull`
+- `ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsTheOverrun`
 - `ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum`
 
 Scripts input-token counts no estimate would arrive at, takes two turns, and asserts each reading is

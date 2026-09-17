@@ -263,16 +263,21 @@ public class ChatClientProviderSessionFactoryTests
     [Fact]
     public void ChatClientProviderSessionFactory_Constructor_NullClient_Throws()
     {
+        // Act / Assert: the omission is refused where the application configured its provider
         Assert.Throws<ArgumentNullException>(() => new ChatClientProviderSessionFactory(null!, Window));
-    }    /// <summary>    ///     Proves a window that is not positive is refused, because every session this factory makes
-         ///     would report an occupancy against it.
-         /// </summary>
-         /// <param name="windowTokens">The rejected window.</param>
+    }
+
+    /// <summary>
+    ///     Proves a window that is not positive is refused, because every session this factory makes
+    ///     would report an occupancy against it.
+    /// </summary>
+    /// <param name="windowTokens">The rejected window.</param>
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public void ChatClientProviderSessionFactory_Constructor_NonPositiveWindow_Throws(int windowTokens)
     {
+        // Act / Assert: a window of zero or below would make every session report itself full
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new ChatClientProviderSessionFactory(new RecordingChatClient(), windowTokens));
     }

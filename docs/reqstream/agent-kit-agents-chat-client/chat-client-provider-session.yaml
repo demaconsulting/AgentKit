@@ -43,8 +43,8 @@ sections:
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-ReportsProviderUsage
             title: >-
               The unit shall report the prompt size of the last request the turn made, taken against
-              the window supplied at construction, and shall report a provider that has overrun that
-              window as full.
+              the window supplied at construction, and shall carry an overrun of that window through
+              unclamped rather than flattening it to full.
             justification: |
               The tokens a provider counted for the prompt it was last sent are exactly the occupancy
               a rotation decision needs, and they are the only figure in the provider's own currency.
@@ -60,7 +60,6 @@ sections:
               exactly the condition an application most needs to see - a session reporting full tells
               its caller nothing about whether the overrun was forty tokens or forty thousand, and
               the rotation decision is the same either way.
-              that rotates.
             tests:
               - ChatClientProviderSession_CurrentUsage_AfterTurn_ReportsTheProvidersInputTokens
               - ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsTheOverrun

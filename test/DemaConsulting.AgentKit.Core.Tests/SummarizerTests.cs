@@ -14,8 +14,10 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationRequest_Construct_CarriesTierMaterialAndInstruction()
     {
+        // Act: build a request for a tier-two consolidation
         var request = new ConsolidationRequest(2, "USER: hello", "Be terse.");
 
+        // Assert: the tier, the material and the clause are carried, and nothing else is
         Assert.Equal(2, request.TierIndex);
         Assert.Equal("USER: hello", request.Material);
         Assert.Equal("Be terse.", request.Instruction);
@@ -28,6 +30,7 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationRequest_Construct_TierBelowOne_Throws()
     {
+        // Act / Assert: tier zero is the verbatim tail and is never consolidated into
         Assert.Throws<ArgumentOutOfRangeException>(() => new ConsolidationRequest(0, "material", "instruction"));
     }
 
@@ -42,6 +45,7 @@ public class SummarizerTests
     [InlineData("material", "   ")]
     public void ConsolidationRequest_Construct_Blank_Throws(string material, string instruction)
     {
+        // Act / Assert: each blank half of the request is refused
         Assert.Throws<ArgumentException>(() => new ConsolidationRequest(1, material, instruction));
     }
 
@@ -52,10 +56,13 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationPrompt_Compose_HasNoPreviousRecordSection()
     {
+        // Arrange: a tier-one request at the relaxed level
         var request = new ConsolidationRequest(1, "USER: hi", ConsolidationPrompt.LowInstruction);
 
+        // Act: compose the text a model is sent
         var composed = ConsolidationPrompt.Compose(request);
 
+        // Assert: base instruction, clause and material, and no previous-record section
         Assert.Contains(ConsolidationPrompt.Instruction, composed, StringComparison.Ordinal);
         Assert.Contains(ConsolidationPrompt.LowInstruction, composed, StringComparison.Ordinal);
         Assert.Contains("USER: hi", composed, StringComparison.Ordinal);
@@ -69,6 +76,7 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationPrompt_Instruction_LicensesCollapsingRepetition()
     {
+        // Act / Assert: the published prompt licenses the collapse and names what must survive
         Assert.Contains("Collapse repetition", ConsolidationPrompt.Instruction, StringComparison.Ordinal);
         Assert.Contains("decision", ConsolidationPrompt.Instruction, StringComparison.Ordinal);
         Assert.Contains("error", ConsolidationPrompt.Instruction, StringComparison.Ordinal);
@@ -81,6 +89,7 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationPrompt_InstructionFor_SelectsPerLevelClause()
     {
+        // Act / Assert: each level selects its own plain-language clause, and none is a number
         Assert.Equal(ConsolidationPrompt.LowInstruction, ConsolidationPrompt.InstructionFor(CompactionLevel.Low));
         Assert.Equal(ConsolidationPrompt.MediumInstruction, ConsolidationPrompt.InstructionFor(CompactionLevel.Medium));
         Assert.Equal(ConsolidationPrompt.HighInstruction, ConsolidationPrompt.InstructionFor(CompactionLevel.High));
@@ -92,6 +101,7 @@ public class SummarizerTests
     [Fact]
     public void ConsolidationPrompt_Compose_Null_Throws()
     {
+        // Act / Assert: there is no request to compose
         Assert.Throws<ArgumentNullException>(() => ConsolidationPrompt.Compose(null!));
     }
 }

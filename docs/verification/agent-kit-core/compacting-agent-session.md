@@ -13,6 +13,10 @@ Compaction-level adaptation is verified as hysteresis in turns. A rotation soon 
 compacts one level terser, or discards the oldest slot when the level is already High; a rotation
 after enough quiet turns relaxes it. The response reports the level and whether material was dropped.
 
+The termination guard is verified separately, because it is the only bound that survives a summarizer
+that never produces a record: with every tier empty, the drop under pressure falls through to the
+oldest verbatim turn, and the tail therefore stops growing.
+
 The most important pressure tests use `DivergentTokenizerProviderSession`. It reports provider usage
 at 1x, 2x and 3x the rate `InMemoryProviderSession` charges for the same history, proving the session
 keeps answering and terminates when one provider counts a conversation far more heavily than another.
@@ -35,8 +39,9 @@ Unit tests reside in `CompactingAgentSessionTests.cs`, with provider doubles in
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any session that fails to answer, accepts a blank message, rotates without
 adopting and releasing sessions in order, takes an occupancy figure from anywhere but the live
-provider session, fails to report high pressure or dropped material, orphans a provider session it
-could not adopt, or fails to retry disposal constitutes a failure.
+provider session, fails to report high pressure or dropped material, lets its context grow without
+bound while consolidation never succeeds, orphans a provider session it could not adopt, or fails to
+retry disposal constitutes a failure.
 
 ### Test Scenarios
 
@@ -95,6 +100,17 @@ window, so the condition cannot arise.
 The narrow-window test is the session-level pressure test: with a provider window too small to hold a
 full structure, the session escalates until it is at its tersest and then bins the oldest slot, and at
 least one response reports `CompactionLevel.High` while at least one reports `MaterialDropped`.
+
+#### AgentKitCore-CompactingAgentSession-BoundsTheContextWhenConsolidationNeverSucceeds: The Context Stops Growing
+
+**Test**: `CompactingAgentSession_SummarizerAlwaysBlank_StopsGrowing`
+
+Drives a session whose summarizer always answers blank, so no slot is ever written and every tier
+stays empty. The tail is allowed to settle over twelve turns, then twenty-four more are sent and the
+tail is asserted not to have grown. This is the only test that reaches the fall-through from the
+tiers to the oldest verbatim turn: every other pressure test has slots to bin, so the fall-through
+could be deleted and they would all still pass, while the tail here would grow from twelve turns to
+thirty-six.
 
 #### AgentKitCore-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt: Nothing Created Is Lost
 

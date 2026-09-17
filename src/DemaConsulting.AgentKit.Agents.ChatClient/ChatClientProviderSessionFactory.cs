@@ -43,7 +43,8 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
     ///     <para>
     ///     <b>Hand it the client that talks to the provider, not a pipeline.</b> This factory builds
     ///     the pipeline itself, one per session it creates: a recorder directly around the supplied
-    ///     client, and the function-invoking layer above that. Both placements matter.
+    ///     client, an <see cref="ImagePromotingChatClient"/> above that, and the function-invoking
+    ///     layer above that again. All three placements matter.
     ///     </para>
     ///     <para>
     ///     The recorder must sit underneath, because a turn that calls tools makes several requests
@@ -52,9 +53,14 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
     ///     Underneath, each request is seen separately and the last one is the conversation.
     ///     </para>
     ///     <para>
+    ///     The image promoter must sit between the two: beneath the function-invocation loop, so
+    ///     there is a tool result for it to promote, and above the recorder, so the occupancy read
+    ///     includes any message it promoted.
+    ///     </para>
+    ///     <para>
     ///     The function-invoking layer must sit above, because a session seeds its tools into every
-    ///     request and a bare client will happily emit tool calls that nothing answers. Owning both
-    ///     placements here is what stops a correct-looking composition being silently wrong.
+    ///     request and a bare client will happily emit tool calls that nothing answers. Owning all
+    ///     three placements here is what stops a correct-looking composition being silently wrong.
     ///     </para>
     /// </remarks>
     /// <param name="client">

@@ -30,7 +30,7 @@ accepted constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitCore-Summarizer-InjectedContract: A First Recording Is Distinguished From an Extension
+#### AgentKitCore-Summarizer-InjectedContract: A Request Carries Material and Terseness, Not a Size
 
 **Test**: `ConsolidationRequest_Construct_CarriesTierMaterialAndInstruction`
 
@@ -65,7 +65,7 @@ Asserts the base instruction allows collapsing repetition while preserving facts
 errors and outstanding work. This is how consolidation can buy room without discarding the named
 classes of useful context.
 
-#### AgentKitCore-Summarizer-ConsolidationPrompt: Composition Reads in Peer Order
+#### AgentKitCore-Summarizer-ConsolidationPrompt: Each Level Selects Its Own Terseness Clause
 
 **Test**: `ConsolidationPrompt_InstructionFor_SelectsPerLevelClause`
 

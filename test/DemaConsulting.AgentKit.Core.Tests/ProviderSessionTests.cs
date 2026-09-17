@@ -15,13 +15,17 @@ public class ProviderSessionTests
     [Fact]
     public void ProviderSessionSeed_Construct_CopiesToolsAndHistory()
     {
+        // Arrange: caller-owned lists the seed will be built from
         var tools = new List<AIFunction> { AIFunctionFactory.Create(() => 0, "probe") };
         var history = new List<TranscriptEntry> { TranscriptEntry.User("hi") };
 
+        // Act: build the seed, then empty the lists behind it
         var seed = new ProviderSessionSeed("instructions", tools, history);
         tools.Clear();
         history.Clear();
 
+        // Assert: the seed kept its own copies, so a later mutation cannot change what an adapter
+        // is created from
         Assert.Equal("instructions", seed.Instructions);
         Assert.Single(seed.Tools);
         Assert.Single(seed.History);
@@ -33,6 +37,7 @@ public class ProviderSessionTests
     [Fact]
     public void ProviderSessionSeed_Construct_NullArguments_Throw()
     {
+        // Act / Assert: each malformed seed is refused at the seam rather than by an adapter
         Assert.Throws<ArgumentNullException>(() => new ProviderSessionSeed(null, null!, []));
         Assert.Throws<ArgumentNullException>(() => new ProviderSessionSeed(null, [], null!));
         Assert.Throws<ArgumentException>(() => new ProviderSessionSeed(null, [null!], []));
@@ -45,8 +50,10 @@ public class ProviderSessionTests
     [Fact]
     public void ProviderTurn_Construct_NoEntries_RecordsAnswerAlone()
     {
+        // Act: record a turn an adapter supplied no entries for
         var turn = new ProviderTurn("the answer");
 
+        // Assert: the answer is the single assistant entry
         Assert.Single(turn.Entries);
         Assert.Equal(TranscriptEntryKind.AssistantMessage, turn.Entries[0].Kind);
         Assert.Equal("the answer", turn.Entries[0].Text);
@@ -59,15 +66,21 @@ public class ProviderSessionTests
     [Fact]
     public void ProviderTurn_Construct_RecordsAnswerExactlyOnce()
     {
+        // Act: an adapter style that supplies tool traffic and leaves the answer to be appended
         var withTool = new ProviderTurn("done", [
             TranscriptEntry.Assistant("working"),
             TranscriptEntry.ToolCall("c1", "call"),
             TranscriptEntry.ToolResult("c1", "result"),
         ]);
+
+        // Assert: the answer was appended last
         Assert.Equal(4, withTool.Entries.Count);
         Assert.Equal("done", withTool.Entries[^1].Text);
 
+        // Act: the other adapter style, which already ends with the answer
         var endingWithAnswer = new ProviderTurn("done", [TranscriptEntry.Assistant("done")]);
+
+        // Assert: it is not recorded twice
         Assert.Single(endingWithAnswer.Entries);
     }
 
@@ -77,6 +90,7 @@ public class ProviderSessionTests
     [Fact]
     public void ProviderTurn_Construct_NullArguments_Throw()
     {
+        // Act / Assert: a turn must carry an answer, and every entry it records must be real
         Assert.Throws<ArgumentNullException>(() => new ProviderTurn(null!));
         Assert.Throws<ArgumentException>(() => new ProviderTurn("answer", [null!]));
     }
@@ -88,6 +102,7 @@ public class ProviderSessionTests
     [Fact]
     public void TranscriptEntry_Construct_ValidatesPairingIdentifier()
     {
+        // Act / Assert: a call carries its identifier, and every misuse of one is refused
         Assert.Equal("c1", TranscriptEntry.ToolCall("c1", "call").ToolCallId);
         Assert.Throws<ArgumentException>(() => new TranscriptEntry(TranscriptEntryKind.ToolCall, "call", null));
         Assert.Throws<ArgumentException>(() => new TranscriptEntry(TranscriptEntryKind.UserMessage, "hi", "c1"));

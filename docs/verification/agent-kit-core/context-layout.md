@@ -5,12 +5,15 @@ This document describes the unit-level verification strategy for `Slot`, `Tier` 
 ### Verification Approach
 
 The layout is verified as the internal round-robin structure that backs compaction: three tiers,
-four slots per tier, and a turn-granular verbatim tail. Tests assert the constants, the ring behavior
-of tiers, empty layout creation, seed ordering, seeded-slot labels and malformed replacement
-rejection.
+four slots per tier, and a turn-granular verbatim tail. Tests assert the constants, the ordering and
+immutability of a tier, empty layout creation, seed ordering, seeded-slot labels and malformed
+replacement rejection.
 
-No provider or summarizer is required for these tests. Rotation behavior that fills and cascades the
-layout is verified in `RotationEngineTests.cs`.
+No provider or summarizer is required for these tests. The rules that keep a tier at its complement —
+consolidating a full tier into the next and clearing it, and making the coarsest tier a ring that
+displaces its oldest — live in `RotationEngine`, which is the only writer of tiers, and are verified
+in `RotationEngineTests.cs`. Nothing here appends past a tier's complement, because this unit applies
+no bound and asserting one would assert a rule it does not own.
 
 Unit tests reside in `ContextLayoutTests.cs`.
 
@@ -25,9 +28,9 @@ Unit tests reside in `ContextLayoutTests.cs`.
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any drift in the fixed shape, any blank slot accepted, any tier that grows
-without ring behavior, any seed emitted in the wrong order, any unlabeled slot, or any malformed tier
-replacement accepted constitutes a failure.
+explicitly asserted. Any drift in the fixed shape, any blank slot accepted, any tier that loses its
+oldest-first ordering or is modified in place, any seed emitted in the wrong order, any unlabeled
+slot, or any malformed tier replacement accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -42,9 +45,12 @@ replacement accepted constitutes a failure.
 - `Slot_Construct_Blank_Throws`
 
 Asserts `SlotsPerTier` is four, `TierCount` is three, and the internal rotation threshold is the
-published fraction. Tier tests prove the ring keeps its slots oldest first, leaves the tier it was
-appended to unchanged, drops its oldest slot, refuses a null slot and refuses to drop from an empty
-tier. Slot construction rejects blank records.
+published fraction. Tier tests prove a tier keeps its slots oldest first, appends to the newest end,
+leaves the tier it was appended to unchanged, returns a copy without its oldest slot, refuses a null
+slot and refuses to drop from an empty tier. Slot construction rejects blank records. None of these
+appends past `SlotsPerTier`, because the complement is not this unit's rule to keep — see
+`RotationEngine_Rotate_FullTier_ConsolidatesAsPeersIntoNextTier` and
+`RotationEngine_Rotate_CoarsestTier_IsARing` for the tests that hold it.
 
 #### AgentKitCore-ContextLayout-Immutable: A Layout Is Never Modified in Place
 

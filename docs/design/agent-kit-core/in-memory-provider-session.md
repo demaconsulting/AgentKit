@@ -10,7 +10,7 @@ provider.
 
 ### Data Model
 
-`InMemoryProviderSession` internal state:
+`InMemoryProviderSession` public surface:
 
 - **`Seed`** (`ProviderSessionSeed`) — The seed used to create this session.
 - **`WindowTokens`** (`int`) — Pretend provider context window.
@@ -21,7 +21,7 @@ provider.
 - **`TurnCount`** (`int`) — Number of accepted turns.
 - **`IsDisposed`** (`bool`) — Whether disposal has occurred.
 
-`InMemoryProviderSessionFactory` internal state:
+`InMemoryProviderSessionFactory` public surface:
 
 - **`DefaultWindowTokens`** (`const int`) — The window created sessions pretend to have when none is
   given: large enough that a test not about the window does not accidentally rotate, small enough

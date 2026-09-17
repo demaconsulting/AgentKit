@@ -4,8 +4,7 @@ namespace DemaConsulting.AgentKit.Core;
 
 /// <summary>
 ///     Everything an application configures about one session: what the agent is told, what it may
-///     call, how big the provider's window is, how much recent history to keep verbatim, and who
-///     does the compacting.
+///     call, how much recent history to keep verbatim, and who does the compacting.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -80,6 +79,9 @@ public sealed class AgentSessionOptions
     /// <exception cref="ArgumentNullException"><paramref name="summarizer"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> contains a <see langword="null"/> entry.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="verbatimTurns"/> is not positive.
     /// </exception>
     public AgentSessionOptions(
         ISummarizer summarizer,

@@ -139,9 +139,9 @@ public class RotationEngineTests
     ///     it receives any. The design this replaced re-consolidated each tier's standing record on
     ///     every rotation — a flat ratchet, and the reason a flat scheme's recall collapses — and
     ///     that implementation would produce requests at all three tiers just as this one does.
-    ///     What it could not produce is four of them at tier two and one at tier three: batch-then-
+    ///     What it could not produce is five of them at tier two and one at tier three: batch-then-
     ///     clear consolidates a tier only when it is full, so with four slots to a tier, twenty-one
-    ///     rotations give tier one twenty-one, tier two four, and tier three one.
+    ///     rotations give tier one twenty-one, tier two five, and tier three one.
     /// </remarks>
     [Fact]
     public async Task RotationEngine_ManyRotations_ConsolidatesOncePerTier()

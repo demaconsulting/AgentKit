@@ -4,7 +4,7 @@
 
 ### Purpose
 
-`Summarizer` defines the out-of-session consolidation contract and the internal prompt composer. The
+`Summarizer` defines the out-of-session consolidation contract and the published prompt composer. The
 rotation engine injects this collaborator so compaction can be tested deterministically and production
 applications can choose their own model-backed implementation.
 
@@ -17,7 +17,7 @@ applications can choose their own model-backed implementation.
 - **`Instruction`** (`string`) — Plain-language terseness clause selected by compaction level;
   non-blank.
 
-`ConsolidationPrompt` internal members:
+`ConsolidationPrompt` public members:
 
 - **`Instruction`** — Base prompt preserving named facts, decisions, paths, values, constraints,
   errors, resolutions and outstanding work.
@@ -71,8 +71,9 @@ instruction, and the `MATERIAL` section.
 
 **Purpose:** Select the terseness clause for a compaction level.
 
-**Algorithm:** Return the low, medium or high clause for the supplied level; unrecognized values use
-the low clause only inside this internal helper, while public validation occurs before rotation.
+**Algorithm:** Return the low, medium or high clause for the supplied level; an unrecognized value
+falls back to the low clause, which the rotation path never reaches because `RotateAsync` validates
+the level before any consolidation is requested.
 
 **Preconditions:** The rotation path supplies a defined compaction level.
 

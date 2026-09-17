@@ -29,7 +29,8 @@ Public and internal state:
 Derived hysteresis windows:
 
 - **`K`** — `VerbatimTurns`; a window that fills again within this many turns compacts one level
-  terser, or discards the oldest slot when the level is already High.
+  terser, or discards the oldest slot — or, when no slot remains, the oldest verbatim turn — when the
+  level is already High.
 - **`M`** — `2 * VerbatimTurns`; a quiet stretch this long relaxes the level one step. `M` is greater
   than `K`, so escalation and relaxation cannot both apply to one rotation.
 
@@ -82,11 +83,12 @@ prepares the replacement for the next turn; the current answer is produced befor
 
 **Algorithm:** Decide the pressure response from the hysteresis clock alone: a window that filled
 again within `K` turns escalates the level, or, when the level is already High, discards the oldest
-slot of the coarsest tier holding one; `M` quiet turns relax the level instead. Call
-`RotationEngine.RotateAsync` once at that level, and skip replacement if the engine consolidated
-nothing and nothing was dropped. Otherwise build a seed, create a replacement, read replacement usage
-before adoption, adopt the replacement, update layout, counters, usage, level and hysteresis clock in
-one no-await block, then attempt to dispose the superseded provider session.
+slot of the coarsest tier holding one — or the oldest verbatim turn when no tier holds any; `M` quiet
+turns relax the level instead. Call `RotationEngine.RotateAsync` once at that level, and skip
+replacement if the engine consolidated nothing and nothing was dropped. Otherwise build a seed,
+create a replacement, read replacement usage before adoption, adopt the replacement, update layout,
+counters, usage, level and hysteresis clock in one no-await block, then attempt to dispose the
+superseded provider session.
 
 **Preconditions:** The current usage has reached the rotation threshold.
 
@@ -95,20 +97,35 @@ dropped-material flag covers both a slot discarded under pressure and a consolid
 failed to produce. If consolidation or replacement creation fails before adoption, the old provider
 session remains live and coherent.
 
-#### DropOldestSlot(ContextLayout layout)
+#### DropOldest(ContextLayout layout)
 
-**Purpose:** Discard the oldest slot of the coarsest tier that holds one.
+**Purpose:** Discard the oldest thing the context holds: the oldest slot of the coarsest tier that
+holds one, or the oldest verbatim turn when no tier holds any.
 
 **Algorithm:** Scan from the coarsest tier toward the finest, and drop the oldest slot of the first
-tier holding any. Report whether a slot was dropped and return the reduced layout.
+tier holding any. When every tier is empty, fall through and drop the oldest verbatim turn instead,
+unless the tail holds only one turn. Report whether anything was dropped and return the reduced
+layout.
 
 **Preconditions:** None beyond a non-null layout.
 
-**Postconditions:** At most one slot is gone. This is rule 4's ring brought forward: the coarsest tier
-normally sheds its oldest slot only when a new one arrives, and under sustained pressure the same
-move is made on demand because the context is filling faster than that schedule empties it. The
-coarsest slot covers the oldest and least detailed span of the conversation, which is the part the
-agent will miss least. No measurement is involved.
+**Postconditions:** At most one slot, or at most one verbatim turn, is gone. The newest turn is never
+dropped: a session must be able to answer the message it was just given, so a tail of one turn is
+left alone and nothing is reported as dropped.
+
+The tier scan is rule 4's ring brought forward: the coarsest tier normally sheds its oldest slot only
+when a new one arrives, and under sustained pressure the same move is made on demand because the
+context is filling faster than that schedule empties it. The coarsest slot covers the oldest and
+least detailed span of the conversation, which is the part the agent will miss least. No measurement
+is involved.
+
+**The fall-through is this unit's termination guarantee, not a nicety.** Every tier is empty exactly
+when no consolidation has ever succeeded, and that is the same condition under which a rotation
+cannot shrink anything: a summarizer answering blank leaves the material where it is, by design, and
+blankness is content-dependent and therefore sticky, so the same material answers blank again on the
+next rotation. Without the fall-through the verbatim tail would gain a turn per message and shed
+nothing, forever, while every rotation reported success and spent a fresh provider session. Binning
+the oldest page when there are no cards left is the only move a count-based design leaves.
 
 #### DisposeAsync()
 

@@ -32,11 +32,34 @@ use, because the figure they hold belongs to one conversation.
 
 - **`LastPromptTokens`** (`long?`) — The prompt tokens the most recent request reported, or null
   when no request has reported any. Invariant: set only from a figure a request actually reported,
-  never estimated, and never cleared once set.
+  never estimated, and never cleared by a request that reported nothing. It is cleared only by an
+  explicit per-turn reset, `Forget()`, which the session calls before the turn begins — and the
+  session's "the provider answered without reporting token usage" refusal depends on that clearing.
 
 The class holds nothing else. It observes a conversation rather than participating in one.
 
 ### Key Methods
+
+#### Forget()
+
+**Purpose:** Discard the recorded figure, so the next reading can only come from a request made after
+this call.
+
+**Algorithm:** Set `LastPromptTokens` to null. There is nothing else to do; the class holds nothing
+else.
+
+This is what makes the session's refusal mean *this turn* rather than *ever*. Without it the recorded
+figure outlives the turn that produced it, and a provider that reports usage once and then stops
+would hold occupancy frozen at that first reading — never reaching the rotation threshold again while
+the conversation grew without limit behind it. That was a real defect, and this reset is the fix. It
+is deliberately distinct from the "keep the previous figure" rule that governs a single request
+reporting nothing: within one turn a provider may report on some requests and not others, and losing
+the figure there would make a session that had already been told the truth refuse the turn.
+
+**Preconditions:** None. The session calls it at the start of every turn, before any request is made.
+
+**Postconditions:** `LastPromptTokens` is null, so a reading taken before the turn's first reporting
+request cannot be mistaken for this turn's occupancy.
 
 #### GetResponseAsync(IEnumerable&lt;ChatMessage&gt; messages, ChatOptions? options, CancellationToken cancellationToken)
 
@@ -94,6 +117,6 @@ a failed turn is reading the last turn that succeeded.
 
 `ChatClientProviderSessionFactory` constructs one per session and hands it to the session alongside
 the pipeline built over it; see *ChatClientProviderSessionFactory Unit Design*.
-`ChatClientProviderSession` reads `LastPromptTokens` to answer for the window; see
-*ChatClientProviderSession Unit Design*. Within this system nothing else uses it, and being internal
-it is reachable from nowhere outside.
+`ChatClientProviderSession` calls `Forget()` at the start of every turn and reads `LastPromptTokens`
+afterwards to answer for the window; see *ChatClientProviderSession Unit Design*. Within this system
+nothing else uses it, and being internal it is reachable from nowhere outside.

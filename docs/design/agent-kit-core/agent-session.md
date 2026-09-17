@@ -18,7 +18,17 @@ behind a small application-facing surface.
   answer was produced.
 - **`Level`** (`CompactionLevel`) — The compaction level after the turn.
 - **`MaterialDropped`** (`bool`) — True when the turn discarded preserved material rather than
-  reducing it: a slot binned under sustained pressure, or a consolidation that came back blank.
+  reducing it: a tier that displaced its oldest slot to make room for an arriving one, or a slot —
+  or, with none left, the oldest verbatim turn — binned under sustained pressure. A consolidation
+  that simply came back blank is not a drop: the material stays where it is.
+
+`CompactionLevel` members, ordered from the gentlest to the tersest:
+
+- **`Low`** — The full verbatim tail, and the "summarize concisely" clause. The level every session
+  starts at and relaxes back to.
+- **`Medium`** — Half the verbatim tail, and the "decisions, facts and open threads only" clause.
+- **`High`** — A quarter of the verbatim tail, and the "one or two lines" clause. The tersest level;
+  a session already here answers further pressure by binning its oldest card instead of escalating.
 
 `IAgentSession` properties:
 

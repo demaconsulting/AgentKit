@@ -127,7 +127,7 @@ public sealed class ContextUsage
     ///     <see langword="null"/> when the provider reports no split. Must not be negative and must
     ///     not exceed <paramref name="usedTokens"/>.
     /// </param>
-    /// <returns>A usage figure marked as provider-reported.</returns>
+    /// <returns>A usage figure built from the provider's own counts.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     <paramref name="usedTokens"/> is negative, <paramref name="windowTokens"/> is not
     ///     positive, or <paramref name="conversationTokens"/> is negative or exceeds

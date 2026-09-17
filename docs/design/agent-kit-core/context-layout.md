@@ -19,8 +19,10 @@ Internal constants:
 Internal structures:
 
 - **`Slot`** — One non-blank consolidated record.
-- **`Tier`** — Immutable ordered ring of slots, oldest first, with `Append`, `DropOldest`, `IsEmpty`
-  and `Count`.
+- **`Tier`** — Immutable ordered list of slots, oldest first, with `Append`, `DropOldest`, `IsEmpty`
+  and `Count`. It applies no capacity bound of its own; `SlotsPerTier` is the complement
+  `RotationEngine` keeps it at, and the cascade and ring rules that do so live there — see
+  _RotationEngine Design_.
 - **`ContextLayout`** — Immutable verbatim `Tail` and `Tiers` from tier one to the coarsest tier.
 
 The layout holds no size of its own. It is a structure counted in turns and slots; the only token

@@ -51,12 +51,32 @@ sections:
               empties it - and that discard is reported as dropped material. Nothing here measures a
               context that has not been sent: the response to pressure is a count of turns and a count
               of slots, which is what makes it terminate by construction even when a provider's
-              tokenizer diverges from this library's estimate.
+              tokenizer counts a conversation far more heavily than another's.
             tests:
               - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
               - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
               - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
               - CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel
+
+          - id: AgentKitCore-CompactingAgentSession-BoundsTheContextWhenConsolidationNeverSucceeds
+            title: >-
+              The unit shall stop the context growing even when no consolidation ever succeeds, by
+              dropping the oldest verbatim turn once no consolidated slot remains to drop, and shall
+              never drop the newest turn.
+            justification: |
+              A summarizer that answers blank is exercising a contracted return value, and the engine
+              deliberately leaves the material it was given where it is rather than discarding it.
+              Blankness is content-dependent and therefore sticky: the same turns grouped with the same
+              neighbors answer blank again on the next rotation, so nothing shrinks and the coarse
+              tiers never fill because nothing ever reaches them. Under pressure there is then no slot
+              to bin. Without a fall-through to the oldest verbatim turn the tail would gain a turn per
+              message and shed nothing, forever, while every rotation reported success and spent a
+              fresh provider session - measured at twelve turns growing to thirty-six. The newest turn
+              is never dropped, because a session must be able to answer the message it was just
+              given. This is the unit's only termination guarantee, and it is a count rather than a
+              measurement, so it holds whatever a provider's tokenizer does.
+            tests:
+              - CompactingAgentSession_SummarizerAlwaysBlank_StopsGrowing
 
           - id: AgentKitCore-CompactingAgentSession-TakesTheWindowFromTheProvider
             title: >-

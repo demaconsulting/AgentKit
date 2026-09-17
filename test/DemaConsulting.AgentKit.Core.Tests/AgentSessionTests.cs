@@ -13,11 +13,14 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_CarriesTheTurnResult()
     {
+        // Arrange: a usage figure the provider reported
         var usage = ContextUsage.FromProvider(100, 1000);
 
+        // Act: build the report of a turn that rotated, compacted hard and dropped material
         var response = new AgentSessionResponse(
             "answer", usage, rotationOccurred: true, CompactionLevel.High, materialDropped: true);
 
+        // Assert: every part of the turn's result is carried through unaltered
         Assert.Equal("answer", response.Text);
         Assert.Same(usage, response.Usage);
         Assert.True(response.RotationOccurred);
@@ -32,8 +35,10 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_DefaultsToLowAndNotDropped()
     {
+        // Act: build the report of an ordinary turn, supplying neither optional argument
         var response = new AgentSessionResponse("answer", ContextUsage.FromProvider(1, 1000), rotationOccurred: false);
 
+        // Assert: the relaxed, nothing-dropped state
         Assert.Equal(CompactionLevel.Low, response.Level);
         Assert.False(response.MaterialDropped);
     }
@@ -44,6 +49,7 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_NullArgument_Throws()
     {
+        // Act / Assert: neither a null answer nor a null usage figure is stored
         Assert.Throws<ArgumentNullException>(() =>
             new AgentSessionResponse(null!, ContextUsage.FromProvider(1, 1000), false));
         Assert.Throws<ArgumentNullException>(() =>
@@ -57,6 +63,7 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_UndefinedLevel_Throws()
     {
+        // Act / Assert: a level outside the enum is refused rather than reported to an application
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new AgentSessionResponse("answer", ContextUsage.FromProvider(1, 1000), false, (CompactionLevel)99));
     }

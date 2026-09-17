@@ -15,11 +15,14 @@ public class InMemoryProviderSessionTests
     [Fact]
     public async Task InMemoryProviderSession_Send_AnswersAndRecords()
     {
+        // Arrange: a session over a responder that echoes what it is given
         var seed = new ProviderSessionSeed(null, [], []);
         await using var session = new InMemoryProviderSession(seed, message => new ProviderTurn($"echo: {message}"), windowTokens: 1000);
 
+        // Act: take one turn
         var turn = await session.SendAsync("hello", TestContext.Current.CancellationToken);
 
+        // Assert: the responder's answer came back, and both halves of the exchange were recorded
         Assert.Equal("echo: hello", turn.ResponseText);
         Assert.Equal(1, session.TurnCount);
         Assert.Equal(2, session.History.Count);
@@ -32,10 +35,13 @@ public class InMemoryProviderSessionTests
     [Fact]
     public async Task InMemoryProviderSession_Dispose_IsObservable()
     {
+        // Arrange: a live session
         var session = new InMemoryProviderSession(new ProviderSessionSeed(null, [], []), _ => new ProviderTurn("x"), 1000);
 
+        // Act: release it
         await session.DisposeAsync();
 
+        // Assert: the release is visible to a rotation test
         Assert.True(session.IsDisposed);
     }
 
@@ -75,10 +81,12 @@ public class InMemoryProviderSessionTests
     [Fact]
     public async Task InMemoryProviderSession_CanceledTurn_RecordsNothing()
     {
+        // Arrange: a session and a token the caller has already given up on
         var session = new InMemoryProviderSession(new ProviderSessionSeed(null, [], []), _ => new ProviderTurn("x"), 1000);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
+        // Act / Assert: the turn is refused, and no ghost message is left behind
         await Assert.ThrowsAsync<OperationCanceledException>(() => session.SendAsync("hi", cancellation.Token));
         Assert.Equal(0, session.TurnCount);
     }
@@ -90,11 +98,14 @@ public class InMemoryProviderSessionTests
     [Fact]
     public async Task InMemoryProviderSessionFactory_Create_RecordsSessions()
     {
+        // Arrange: a factory with nothing created yet
         var factory = new InMemoryProviderSessionFactory(windowTokens: 1000);
 
+        // Act: create two sessions
         await factory.CreateAsync(new ProviderSessionSeed(null, [], []), TestContext.Current.CancellationToken);
         await factory.CreateAsync(new ProviderSessionSeed(null, [], []), TestContext.Current.CancellationToken);
 
+        // Assert: both are remembered, which is the evidence a rotation test reads
         Assert.Equal(2, factory.Sessions.Count);
     }
 
@@ -117,5 +128,76 @@ public class InMemoryProviderSessionTests
         Assert.Equal(
             InMemoryProviderSessionFactory.DefaultWindowTokens,
             factory.Sessions[0].CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a session cannot be built without a seed or a responder, because it would have
+    ///     neither a history to start from nor a way to answer.
+    /// </summary>
+    [Fact]
+    public void InMemoryProviderSession_Construct_NullArgument_Throws()
+    {
+        // Arrange: one valid half of each pair
+        var seed = new ProviderSessionSeed(null, [], []);
+        Func<string, ProviderTurn> responder = _ => new ProviderTurn("x");
+
+        // Act / Assert: neither omission is accepted
+        Assert.Throws<ArgumentNullException>(() => new InMemoryProviderSession(null!, responder, 1000));
+        Assert.Throws<ArgumentNullException>(() => new InMemoryProviderSession(seed, null!, 1000));
+    }
+
+    /// <summary>
+    ///     Proves a window that is not positive is refused by both the session and the factory: a
+    ///     session reporting a window of zero would have the engine believe it was full before it
+    ///     had said anything.
+    /// </summary>
+    /// <param name="windowTokens">The non-positive window to attempt.</param>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void InMemoryProviderSession_Construct_NonPositiveWindow_Throws(int windowTokens)
+    {
+        // Arrange: an otherwise valid seed and responder
+        var seed = new ProviderSessionSeed(null, [], []);
+
+        // Act / Assert: refused where it is written, by the session and by the factory alike
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new InMemoryProviderSession(seed, _ => new ProviderTurn("x"), windowTokens));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new InMemoryProviderSessionFactory(windowTokens: windowTokens));
+    }
+
+    /// <summary>
+    ///     Proves a responder that returns nothing is refused rather than recorded, so a session
+    ///     never holds a message no turn ever answered.
+    /// </summary>
+    [Fact]
+    public async Task InMemoryProviderSession_Send_ResponderReturnsNull_Throws()
+    {
+        // Arrange: a responder that answers with nothing at all
+        var session = new InMemoryProviderSession(new ProviderSessionSeed(null, [], []), _ => null!, 1000);
+
+        // Act / Assert: the turn is refused
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.SendAsync("hi", TestContext.Current.CancellationToken));
+
+        // Assert: nothing was recorded, so the history holds no ghost message
+        Assert.Equal(0, session.TurnCount);
+        Assert.Empty(session.History);
+    }
+
+    /// <summary>
+    ///     Proves a disposed session refuses further turns rather than quietly reconnecting.
+    /// </summary>
+    [Fact]
+    public async Task InMemoryProviderSession_Send_AfterDispose_Throws()
+    {
+        // Arrange: a session that has been released
+        var session = new InMemoryProviderSession(new ProviderSessionSeed(null, [], []), _ => new ProviderTurn("x"), 1000);
+        await session.DisposeAsync();
+
+        // Act / Assert: the turn is refused
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            session.SendAsync("hi", TestContext.Current.CancellationToken));
     }
 }

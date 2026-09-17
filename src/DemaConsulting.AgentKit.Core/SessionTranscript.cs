@@ -359,14 +359,14 @@ internal sealed class SessionTranscript
     }
 
     /// <summary>
-    ///     Splits the transcript into the entries of every turn older than the last
-    ///     <paramref name="keepTurns"/>, and the transcript of those newest turns held verbatim.
+    ///     Splits the transcript into the turns older than the last <paramref name="keepTurns"/>,
+    ///     and the transcript of those newest turns held verbatim.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     The boundary is turn-granular: the newest <paramref name="keepTurns"/> whole turns are
-    ///     retained, and everything older is returned as rendered material for a single
-    ///     consolidation. A tool call is never separated from its result, because a turn holds both.
+    ///     retained, and everything older is returned as whole turns for a single consolidation. A
+    ///     tool call is never separated from its result, because a turn holds both.
     ///     </para>
     ///     <para>
     ///     When the transcript holds no more than <paramref name="keepTurns"/> turns there is
@@ -389,11 +389,11 @@ internal sealed class SessionTranscript
 
         var boundary = _turns.Length - keepTurns;
 
-        // Whole turns, not their flattened entries. A turn is the indivisible unit here: consolidation
-        // chunks large material into several summarizer calls, and handing that grouping a flat run of
-        // entries lets it split one turn's message, tool call, tool result and answer across separate
-        // calls - presenting a result whose call is in another chunk, which is exactly the orphaning
-        // that turn-granular boundaries exist to make impossible.
+        // Whole turns, not their flattened entries. A turn is the indivisible unit here: a message,
+        // its tool calls, their results and the answer are one exchange, and a boundary that fell
+        // inside one would hand the consolidation a tool result whose call had already been
+        // consolidated away - exactly the orphaning that turn-granular boundaries exist to make
+        // impossible. Returning whole turns is what makes such a boundary unrepresentable.
         return (_turns[..boundary], new SessionTranscript(_turns[boundary..]));
     }
 

@@ -27,8 +27,8 @@ public sealed class AgentSessionResponse
     /// <param name="rotationOccurred">Whether the session rotated during this turn.</param>
     /// <param name="level">The compaction level the session is at after the turn.</param>
     /// <param name="materialDropped">
-    ///     Whether the turn's rotation had to drop history outright because a fully consolidated
-    ///     context still did not fit.
+    ///     Whether the turn's rotation discarded a consolidated slot or a verbatim turn outright
+    ///     rather than consolidating it.
     /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="text"/> or <paramref name="usage"/> is <see langword="null"/>.
@@ -67,8 +67,7 @@ public sealed class AgentSessionResponse
     public string Text { get; }
 
     /// <summary>
-    ///     Gets the context usage after the turn, and whether the provider reported it or this
-    ///     library estimated it.
+    ///     Gets the context usage after the turn.
     /// </summary>
     public ContextUsage Usage { get; }
 
@@ -98,11 +97,12 @@ public sealed class AgentSessionResponse
     ///     Gets a value indicating whether this turn's rotation dropped history outright.
     /// </summary>
     /// <remarks>
-    ///     True when the session escalated as far as it could and a fully consolidated context still
-    ///     did not fit, so a consolidated slot or a verbatim turn had to be discarded. It is the
-    ///     honest signal that compaction bought nothing — the one thing standing between "escalated
-    ///     to High and still rotating every turn" and total silence. What to do about it is the
-    ///     application's decision.
+    ///     True when the structure had nowhere left to put arriving material and binned its oldest
+    ///     card instead: the coarsest tier displaced its oldest slot to make room, or the session —
+    ///     already at the tersest level and rotating again — dropped the oldest slot, or the oldest
+    ///     verbatim turn when no slot remained. It is the honest signal that compaction bought
+    ///     nothing — the one thing standing between "escalated to High and still rotating every
+    ///     turn" and total silence. What to do about it is the application's decision.
     /// </remarks>
     public bool MaterialDropped { get; }
 }
