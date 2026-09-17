@@ -389,6 +389,38 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a send that fails before the runtime accepts it still ends the session, so the
+    ///     seeded record cannot be silently lost.
+    /// </summary>
+    /// <remarks>
+    ///     The record is consumed as the message is handed to the runtime, and from that moment this
+    ///     session cannot tell whether it arrived. Letting the caller retry would either repeat a
+    ///     turn the runtime took or continue without the history the replacement was seeded with —
+    ///     and the second is silent, because the conversation simply carries on having forgotten
+    ///     everything before the rotation. Refusing is what turns that into something an application
+    ///     can see.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_Send_FailedSendOfASeededTurn_EndsTheSession()
+    {
+        // Arrange: a session seeded with history, whose first send fails at the channel
+        var runtime = new FakeCopilotRuntime(_ => [], beforeOpen: _ => { });
+        var seed = new ProviderSessionSeed(null, [], [TranscriptEntry.User("earlier question")]);
+        await using var session = await OpenAsync(runtime, seed);
+
+        // Act: the first send fails because nothing was scripted for it
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+
+        // Assert: the session refuses further use rather than letting a retry proceed without the
+        // seeded record it has already spent
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("a retry", TestContext.Current.CancellationToken));
+        Assert.Contains("could not be recorded", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("will not be sent again", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a stated ceiling lowers the window the session accounts against.
     /// </summary>
     /// <remarks>
@@ -495,9 +527,10 @@ public class CopilotProviderSessionTests
     ///     its own work and no ghost of the one before it.
     /// </summary>
     [Fact]
-    public async Task CopilotProviderSession_Send_ChannelFails_LeavesNoGhostEntries()
+    public async Task CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack()
     {
-        // Arrange: a first turn that produced tool traffic and then failed, and a second that works
+        // Arrange: a first turn that produced tool traffic and then failed, and a second that would
+        // have worked
         var runtime = Runtime(
             new ScriptedTurn(
                 [CopilotEvents.ToolStart("call-1", "doc_read"), CopilotEvents.Usage(400, 8000)],
@@ -505,14 +538,18 @@ public class CopilotProviderSessionTests
             Turn(CopilotEvents.Usage(500, 8000), CopilotEvents.Assistant("the answer")));
         await using var session = await OpenAsync(runtime);
 
-        // Act: the failure, then a working turn
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        // Act: the failure, then an attempt to carry on
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => session.SendAsync("first", TestContext.Current.CancellationToken));
-        var turn = await session.SendAsync("second", TestContext.Current.CancellationToken);
+        var sentAfterFailure = runtime.Channels[0].Prompts.Count;
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("second", TestContext.Current.CancellationToken));
 
-        // Assert: only the second turn's own work is recorded
-        var entry = Assert.Single(turn.Entries);
-        Assert.Equal("the answer", entry.Text);
+        // Assert: the original failure is reported, the second turn never reached the runtime, and
+        // the refusal names the cause rather than inventing one
+        Assert.Contains("dropped the connection", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(sentAfterFailure, runtime.Channels[0].Prompts.Count);
+        Assert.Contains("could not be recorded", refusal.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -234,26 +234,29 @@ public sealed class CopilotProviderSession : IProviderSession
         // so what is drained below is this turn's work and no other's.
         _observer.BeginTurn();
 
-        var answer = await _channel
-            .SendAndWaitAsync(TakeMessageToSend(message), cancellationToken)
-            .ConfigureAwait(false);
-
-        // Past this line the runtime has processed the turn, so any failure leaves it holding a turn
-        // the engine's transcript does not have - and, on a first turn, having consumed the seeded
-        // record that will not be sent again. Neither is recoverable by retrying on this session, so
-        // the session is finished rather than merely this turn. The engine's answer to a session it
-        // cannot use is to seed a replacement from the transcript, which is the state known to be
-        // good.
+        // The send is inside the guard, not before it. Once the prompt has been handed to the
+        // runtime this session cannot tell whether it arrived, so a failure here is as uncertain as
+        // one after: the runtime may hold a turn the transcript does not, and on a first turn the
+        // seeded record has already been consumed and will not be sent again. Retrying on this
+        // session would either repeat a turn the runtime took or continue without the history the
+        // replacement was seeded with, and neither is detectable from here. The engine's answer to a
+        // session it cannot account for is to seed a replacement from the transcript, which is the
+        // state known to be good.
         try
         {
+            var answer = await _channel
+                .SendAndWaitAsync(TakeMessageToSend(message), cancellationToken)
+                .ConfigureAwait(false);
+
             return CompleteTurn(answer);
         }
         catch (Exception failure)
         {
             _unusableReason =
-                "A turn reached the Copilot runtime but could not be recorded, so the runtime holds "
-                + "a turn this session's transcript does not. The session was abandoned rather than "
-                + $"reused. The turn failed because: {failure.Message}";
+                "A turn was sent to the Copilot runtime but could not be recorded, so the runtime "
+                + "may hold a turn this session's transcript does not - and where the turn carried a "
+                + "seeded record, that record has been sent and will not be sent again. The session "
+                + $"was abandoned rather than reused. The turn failed because: {failure.Message}";
             throw;
         }
     }

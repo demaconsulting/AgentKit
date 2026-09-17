@@ -167,12 +167,12 @@ public class AgentKitAgentsCopilotTests
         // so on the next message rather than in a request of its own.
         var seeded = runtime.Configs[1].SystemMessage!.Content!;
         Assert.Equal("You are a research assistant.", seeded);
-        Assert.DoesNotContain("CONVERSATION RECORD", seeded, StringComparison.Ordinal);
+        Assert.DoesNotContain(CopilotProviderSessionFactory.RecordOpening, seeded, StringComparison.Ordinal);
 
         // Sending on the replacement carries the record ahead of the caller's own message, once
         await session.SendAsync("second question", TestContext.Current.CancellationToken);
         var firstPrompt = runtime.Channels[1].Prompts[0];
-        Assert.Contains("=== CONVERSATION RECORD ", firstPrompt, StringComparison.Ordinal);
+        Assert.Contains(CopilotProviderSessionFactory.RecordOpening, firstPrompt, StringComparison.Ordinal);
         Assert.Contains(RecordingSummarizer.Record, firstPrompt, StringComparison.Ordinal);
         Assert.EndsWith("second question", firstPrompt, StringComparison.Ordinal);
 

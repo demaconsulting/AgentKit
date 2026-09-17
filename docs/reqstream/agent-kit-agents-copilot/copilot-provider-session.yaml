@@ -179,7 +179,7 @@ sections:
             tests:
               - CopilotProviderSession_Send_NullMessage_Throws
               - CopilotProviderSession_Send_Canceled_SendsNothing
-              - CopilotProviderSession_Send_ChannelFails_LeavesNoGhostEntries
+              - CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack
               - CopilotProviderSession_Dispose_Twice_IsPermittedAndRejectsLaterTurns
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-ReleasesItsSessionNotTheClient

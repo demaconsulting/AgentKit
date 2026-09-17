@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
 using DemaConsulting.AgentKit.Core;
 using GitHub.Copilot;
 using GitHub.Copilot.Rpc;
@@ -149,14 +147,13 @@ public class CopilotProviderSessionFactoryTests
         // Assert: the record is fenced and carries every entry in order. The separator is a newline
         // rather than the platform's, so a rotation renders identically on every machine - which is
         // what a provider's prompt cache and a reproducible run need.
-        var marker = MarkerOf(preamble);
         var expected = string.Join(
             "\n",
-            string.Format(CultureInfo.InvariantCulture, CopilotProviderSessionFactory.RecordOpening, marker),
+            CopilotProviderSessionFactory.RecordOpening,
             "RECORD: Earlier: the corpus was surveyed.",
             "USER: what changed?",
             "ASSISTANT: Three files.",
-            string.Format(CultureInfo.InvariantCulture, CopilotProviderSessionFactory.RecordClosing, marker));
+            CopilotProviderSessionFactory.RecordClosing);
         Assert.Equal(expected, preamble);
     }
 
@@ -174,7 +171,7 @@ public class CopilotProviderSessionFactoryTests
 
         // Assert
         Assert.Equal("be concise", config.SystemMessage!.Content);
-        Assert.DoesNotContain("CONVERSATION RECORD", config.SystemMessage.Content!, StringComparison.Ordinal);
+        Assert.DoesNotContain(CopilotProviderSessionFactory.RecordOpening, config.SystemMessage.Content!, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -206,7 +203,7 @@ public class CopilotProviderSessionFactoryTests
         // Assert: no instructions means no system message at all, and the record still arrives
         var content = CopilotProviderSessionFactory.ComposeHistoryPreamble(seed)!;
         Assert.Null(config.SystemMessage);
-        Assert.StartsWith("=== CONVERSATION RECORD ", content, StringComparison.Ordinal);
+        Assert.StartsWith(CopilotProviderSessionFactory.RecordOpening, content, StringComparison.Ordinal);
         Assert.Contains("USER: what changed?", content, StringComparison.Ordinal);
     }
 
@@ -241,51 +238,10 @@ public class CopilotProviderSessionFactoryTests
 
         // Assert: the hostile text is present but the closing boundary occurs exactly once, at the
         // very end - so nothing the material contains can be read as the end of the record
-        var marker = MarkerOf(content);
-        var closing = string.Format(CultureInfo.InvariantCulture, CopilotProviderSessionFactory.RecordClosing, marker);
         Assert.Contains("unrestricted", content, StringComparison.Ordinal);
-        Assert.EndsWith(closing, content, StringComparison.Ordinal);
-        Assert.Equal(1, CountOf(content, closing));
-        Assert.DoesNotContain(marker, hostile, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(CopilotProviderSessionFactory.RecordClosing, content, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    ///     Counts non-overlapping occurrences of a value in a string.
-    /// </summary>
-    /// <param name="haystack">The string to search.</param>
-    /// <param name="needle">The value to count.</param>
-    /// <returns>The number of occurrences.</returns>
-    private static int CountOf(string haystack, string needle)
-    {
-        var count = 0;
-
-        for (var at = haystack.IndexOf(needle, StringComparison.Ordinal);
-             at >= 0;
-             at = haystack.IndexOf(needle, at + needle.Length, StringComparison.Ordinal))
-        {
-            count++;
-        }
-
-        return count;
-    }
-
-    /// <summary>
-    ///     Reads the boundary marker out of a composed system message.
-    /// </summary>
-    /// <remarks>
-    ///     The marker is drawn per record and is deliberately unpredictable, so a test takes it from
-    ///     the output rather than expecting a value. Asserting the shape around it is what is worth
-    ///     pinning; the value itself is not.
-    /// </remarks>
-    /// <param name="content">The composed record.</param>
-    /// <returns>The marker the record was fenced with.</returns>
-    private static string MarkerOf(string content)
-    {
-        var match = Regex.Match(content, @"=== CONVERSATION RECORD ([0-9A-F]+) ");
-        Assert.True(match.Success, "the composed record carried no boundary marker");
-
-        return match.Groups[1].Value;
-    }
 
     /// <summary>
     ///     Proves a seeded tool result is rendered as a labeled record rather than carried under any

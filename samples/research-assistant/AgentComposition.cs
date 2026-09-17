@@ -762,10 +762,12 @@ public static class AgentComposition
     ///     confinement, so a compacting run is confined exactly as an agent run is.
     ///     </para>
     ///     <para>
-    ///     <b>Nothing is stated about the window here, and that is the point.</b> The Ollama path has
-    ///     to read a window and pass it in, because an <c>IChatClient</c> publishes none. Copilot
-    ///     reports its occupancy and its limit with every turn, so the provider-session factory takes
-    ///     no window and <c>--context-window</c> has nothing to apply to on this path.
+    ///     <b>No window is stated here, only a ceiling.</b> The Ollama path has to read a window and
+    ///     pass it in, because an <c>IChatClient</c> publishes none. Copilot reports its occupancy
+    ///     and its limit with every turn, so nothing needs to be told to it — but
+    ///     <c>--context-window</c> is still honored on this path as a downward-only ceiling, which
+    ///     makes the session rotate sooner than the runtime's own limit would. It cannot raise the
+    ///     window: a ceiling above what the runtime reports is ignored.
     ///     </para>
     ///     <para>
     ///     <b>The consolidation model is separate from the conversation model, deliberately</b>, for
@@ -826,11 +828,13 @@ public static class AgentComposition
                 new AgentSessionOptions(summarizer, instructions, [.. tools]),
                 providerSessions,
 
-                // Stated only when the host set a ceiling. Left null the runtime answers for its own
-                // window with every turn; given one, the banner should say so rather than claim the
-                // provider's figure is what the session is accounting against.
+                // Stated only when the host set a ceiling, and recorded as a ceiling rather than as
+                // the window. It can only lower what the session accounts against, so the runtime's
+                // own figure governs wherever it is lower - and that is not known until the first
+                // turn reports it. A banner calling this the window would state a number that may
+                // never be true.
                 Window: options.ContextWindow is { } ceiling
-                    ? new ContextWindow(ceiling, ContextWindowSource.Stated)
+                    ? new ContextWindow(ceiling, ContextWindowSource.Ceiling)
                     : null));
     }
 

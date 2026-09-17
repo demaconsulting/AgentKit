@@ -78,12 +78,13 @@ startup banner names which of the four a run used, because a session told a wind
 server enforces will not rotate until the provider has already truncated the conversation, and
 nothing downstream can detect that.
 
-**On `--provider copilot` nothing is stated, because the runtime answers for itself.** Copilot
+**On `--provider copilot` no window is stated, because the runtime answers for itself.** Copilot
 reports the tokens it currently holds, the limit it will hold them to, and how much of the total the
-conversation accounts for, with every turn. So `--context-window` does not apply on that path, and
-the banner says the window is reported by the provider rather than printing a number nobody stated.
-That is the honest difference between the two providers, and it is why the Copilot adapter takes no
-window at all.
+conversation accounts for, with every turn. So the Copilot adapter is never told a window. What
+`--context-window` does there is set a *ceiling*: it can lower the figure the session accounts
+against, making it rotate sooner, but never raise it above what the runtime reports. The banner says
+"at most N tokens" in that case, because the effective window is the lower of the two and is not
+known until the first turn reports it. That is the honest difference between the two providers.
 
 `--summary-model` sends each consolidation to a different model, on either provider. Consolidation
 is summarization rather than reasoning, so a smaller model is usually right; either way it runs
@@ -204,6 +205,7 @@ dotnet run --project samples/research-assistant -- \
 Omitting `--prompt` starts an interactive session. `--transcript <path>` appends one line per tool
 call, naming the tool and nothing else, which is how an unattended run can be checked without
 reading its prose. `--context-window <tokens>` states the window the compacting session is accounted
-against when the Ollama server cannot be asked, and applies to `--provider ollama` only — Copilot
-reports its own window. `--summary-model <name>` sends each consolidation to a smaller model, and
+against when the Ollama server cannot be asked; on `--provider copilot` it is a downward-only ceiling
+instead, lowering the window the session accounts against but never raising it above what the runtime
+reports. `--summary-model <name>` sends each consolidation to a smaller model, and
 applies to both providers.

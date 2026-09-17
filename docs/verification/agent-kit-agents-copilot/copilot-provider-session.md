@@ -222,7 +222,7 @@ one latch correct for both causes.
 
 - `CopilotProviderSession_Send_NullMessage_Throws`
 - `CopilotProviderSession_Send_Canceled_SendsNothing`
-- `CopilotProviderSession_Send_ChannelFails_LeavesNoGhostEntries`
+- `CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack`
 
 Error paths. A missing message is refused where the application wrote it. The cancellation scenario
 asserts not only the exception but that the runtime received no prompt at all, so a canceled turn
