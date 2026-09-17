@@ -3,7 +3,8 @@
 The repository ships a runnable sample under `samples/research-assistant`. Where the
 document-assistant sample shows what an agent may *touch*, this one shows how an agent *proceeds*:
 it composes the three families that let work span turns — `todo` to plan, `memory` to remember, and
-`agent` to delegate — onto a single policy, and runs unchanged against the GitHub Copilot runtime or
+`agent` to delegate — onto a single policy, carries the conversation on a session that compacts its
+own context, and runs against the GitHub Copilot runtime or
 any Ollama model. Refer to the sample's own README for the full option reference and a catalogue of
 things to try.
 
@@ -37,6 +38,55 @@ if (delegationEnabled)
 
 Delegation is gated by a host capability exactly as vision is in the document-assistant sample: with
 `--no-delegation`, `agent_run` is not refused at call time, it is never created.
+
+## A Conversation That Outlives the Window
+
+This sample is the session engine's first user, and it is the right one: an agent whose work spans
+turns runs out of context sooner than one that answers a question and stops. On `--provider ollama`
+the conversation is carried by a `CompactingAgentSession`, so it outlives the model's window.
+
+The application states three things and nothing else — a provider-session factory carrying the
+client and the window, a summarizer that runs outside the conversation, and the options:
+
+```csharp
+var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
+var summarizer = new ChatClientSummarizer(summaryClient);
+var options = new AgentSessionOptions(summarizer, instructions, tools);
+
+await using var session = await CompactingAgentSession.CreateAsync(options, providerSessions);
+
+var turn = await session.SendAsync("Review every document in the corpus.");
+Console.WriteLine(turn.Text);
+```
+
+Each turn is then acted on rather than merely printed. Occupancy is reported every turn, so a
+reader watches it climb toward the window; `RotationOccurred` is printed with the running count of
+summarizer calls beside it, because consolidation is the dominant cost of the arrangement; `Level`
+says how hard the session is compacting; and `MaterialDropped` is printed as a warning, because it
+is the one signal that compacting bought nothing and history was discarded.
+
+**The memory store is not compacted, and that separation is the point.** A rotation consolidates the
+*conversation*. The store is the application's, lives outside the session entirely, and survives
+every rotation intact — which is why the `--recall-question` turn still answers correctly after one.
+
+**The window is read from the provider rather than assumed.** An `IChatClient` publishes no context
+window, so the application has to answer for it. The sample prefers, in order: a window stated with
+`--context-window`; the **loaded** model's context length, which is what the Ollama server actually
+enforces; the model's **published** maximum, which the server may have loaded it below; and finally
+Ollama's own default, announced as an assumption. The startup banner names which of the four a run
+used, because a session told a window larger than the server enforces will not rotate until the
+provider has already truncated the conversation, and nothing downstream can detect that.
+
+`--summary-model` sends each consolidation to a different Ollama model. Consolidation is
+summarization rather than reasoning, so a smaller model is usually right; either way it runs on a
+client of its own, outside the session being compacted.
+
+**On `--provider copilot` none of this happens.** AgentKit ships no provider session for the Copilot
+runtime, so that conversation runs on the runtime's own session and is not compacted. The banner
+says so rather than leaving a reader to assume otherwise. The sample also writes two chat-client
+decorators of its own beneath the session — one recovering the occupancy figure that the
+tool-calling loop's summed usage destroys, and one surfacing the tool calls a session turn does not
+report — and its README explains both, because neither should have been the application's work.
 
 ## Supplying an Embedding Generator
 
@@ -144,4 +194,6 @@ dotnet run --project samples/research-assistant -- \
 
 Omitting `--prompt` starts an interactive session. `--transcript <path>` appends one line per tool
 call, naming the tool and nothing else, which is how an unattended run can be checked without
-reading its prose.
+reading its prose. `--context-window <tokens>` states the window the compacting session is accounted
+against when the server cannot be asked, and `--summary-model <name>` sends each consolidation to a
+smaller model; both apply to `--provider ollama` only.

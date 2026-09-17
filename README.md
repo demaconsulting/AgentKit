@@ -13,22 +13,25 @@ DEMA Consulting libraries of hardened, provider-neutral agent tools for .NET.
 
 AgentKit provides hardened, provider-neutral agent tools: an application attaches a
 permission-governed set of tools to the agent framework of its choice, bounded by a policy the
-application configures and a tool cannot omit.
+application configures and a tool cannot omit. It also gives that agent a session of its own, so a
+long conversation outlives the model's context window on every provider alike.
 
 > **Status**: Early development. The Core contract — path policy, tool limits, guarded tool
 > construction, tool results, and the tool pack contract — is implemented; seven guarded tool
 > families — text file, file, markdown, image, todo, memory and agent — are built on it in
 > `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
-> a GitHub Copilot `CopilotClient`. A provider-agnostic session engine with tiered context
-> compaction is implemented in `DemaConsulting.AgentKit.Core` alongside the contract; wiring it to
-> the two provider adapters is the next increment.
+> a GitHub Copilot `CopilotClient`. The provider-agnostic session engine with tiered context
+> compaction ships in `DemaConsulting.AgentKit.Core` alongside the contract, and
+> `DemaConsulting.AgentKit.Agents.ChatClient` supplies the provider session, session factory and
+> summarizer that run it on any `IChatClient`. The GitHub Copilot adapter does not yet carry a
+> provider session, so a Copilot conversation still runs on that runtime's own session.
 
 Three runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
 end to end: **document-assistant** demonstrates consuming the shipped tools,
-**research-assistant** demonstrates the planning, memory and delegation families working together,
-and **custom-tools** demonstrates writing your own guarded tools. See the [Samples](#samples)
-section below.
+**research-assistant** demonstrates the planning, memory and delegation families working together on
+a self-compacting session, and **custom-tools** demonstrates writing your own guarded tools. See the
+[Samples](#samples) section below.
 
 ## Capabilities
 
@@ -48,18 +51,27 @@ section below.
   each family; this README deliberately does not restate it.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
+- **A session that outlives the context window**: an AgentKit-owned session keeps its own transcript
+  out of session, and when the provider's window fills it consolidates older history into a
+  round-robin structure of tiered records, seeds a fresh provider session with them, and only then
+  disposes the one it replaced. Counts, not token budgets, decide what ages out; tokens serve one
+  purpose, which is noticing that the window is filling. Every turn reports its occupancy, whether
+  the session rotated, how hard it is compacting, and whether compacting bought nothing and history
+  had to be dropped.
 - **Provider neutrality**: tools are `AIFunction` instances, so they work with Microsoft
   Agent Framework, the GitHub Copilot SDK, and any `IChatClient` implementation. Two provider-adapter
   packages turn a provider into a tool-using agent in one call: `DemaConsulting.AgentKit.Agents.ChatClient`
-  for any `IChatClient` (installing faithful image delivery automatically), and
+  for any `IChatClient` (installing faithful image delivery automatically, and supplying the provider
+  session, session factory and summarizer the session engine runs on), and
   `DemaConsulting.AgentKit.Agents.Copilot` for the GitHub Copilot SDK (suppressing the runtime's
   built-in tools).
 
 AgentKit does not provide an agent runtime or a provider abstraction. Microsoft Agent Framework
-supplies those. It does now provide **context-window management**: the
-`DemaConsulting.AgentKit.Core` package adds an AgentKit-owned session that compacts a full
-context by rotating into a fresh provider session seeded with tiered, consolidated history, so a
-long-running agent behaves the same way on every provider.
+supplies those. It does provide **context-window management**, and treats it as core rather than
+as an extra: the `DemaConsulting.AgentKit.Core` package ships the session engine alongside the tool
+contract, so a long-running agent behaves the same way on every provider that has an AgentKit
+provider session. Today that means any `IChatClient`, through
+`DemaConsulting.AgentKit.Agents.ChatClient`.
 
 ## Packages
 
@@ -67,20 +79,24 @@ long-running agent behaves the same way on every provider.
   helpers, the tool-pack contract, and the provider-agnostic session engine: a session that
   keeps its own transcript out of session and, when the context window fills, consolidates older
   history into a round-robin structure of tiered slots, creates a fresh provider session seeded with
-  the preserved content, and only then disposes the one it replaced. The one setting an application
-  configures is how many recent turns to keep verbatim; the window comes from the provider adapter
-  itself. When the context fills again quickly the session compacts harder and, at its tersest,
-  discards its oldest consolidated slot, and it reports how hard it is working. Ships an in-memory
-  provider session so the whole lifecycle can be exercised without a live model. Provider wiring is
-  a later increment.
+  the preserved content, and only then disposes the one it replaced. The only compaction setting an
+  application configures is how many recent turns to keep verbatim; the window comes from the
+  provider session itself. When the context fills again quickly the session compacts harder and, at
+  its tersest, discards its oldest consolidated slot, and it reports how hard it is working. Ships
+  an in-memory provider session and factory so the whole lifecycle can be exercised without a live
+  model.
 - **`DemaConsulting.AgentKit.Tools`** — the ready-made guarded tool families listed under
   [Capabilities](#capabilities), each composed onto a policy through the pack contract.
 - **`DemaConsulting.AgentKit.Agents.ChatClient`** — builds a Microsoft Agent Framework agent from any
   `IChatClient`, installing the image-promoting decorator on every agent so a tool-returned image
-  reaches the model even on a provider that would otherwise drop it.
+  reaches the model even on a provider that would otherwise drop it. It also carries the session
+  engine's provider side for that whole family: a provider session over any `IChatClient`, the
+  factory that produces one at every rotation, and a summarizer that consolidates through a client
+  of the application's choosing.
 - **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools.
+  allow-list from the supplied tools. It carries no provider session yet, so a Copilot conversation
+  runs on the runtime's own session rather than on an AgentKit compacting one.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -107,6 +123,13 @@ dotnet add package DemaConsulting.AgentKit.Core
 dotnet add package DemaConsulting.AgentKit.Tools
 ```
 
+Add the adapter for the provider you target:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
+dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
+```
+
 ## API Documentation
 
 Detailed API documentation for all public types and members is distributed in the `api/` folder
@@ -118,8 +141,9 @@ AgentKit can read the one page it needs rather than the whole reference.
 
 ## Usage
 
-`DemaConsulting.AgentKit.Core` currently provides the contract that other AgentKit packages — and
-an application's own tools — are built against:
+`DemaConsulting.AgentKit.Core` provides the contract that other AgentKit packages — and
+an application's own tools — are built against, plus the session engine that keeps a long
+conversation alive:
 
 - **Path policy**: one required working directory that a relative path is anchored to (and nothing
   else — it carries no permission), plus zero or more access grants, each unrestricted or confined
@@ -136,6 +160,8 @@ an application's own tools — are built against:
   reason
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
   gated on host capability
+- **Session engine**: an agent session that compacts its own context, so a conversation outlives the
+  provider's window. See [Sessions](#sessions) below.
 
 `DemaConsulting.AgentKit.Tools` ships ready-made guarded tool families built on this contract. An
 application composes a policy, adds the packs it wants, declares what its host supports, and
@@ -187,6 +213,67 @@ response, after which the model describes a picture it never received. A host ta
 provider wraps its chat client in `ImagePromotingChatClient`, beneath the function-invocation loop,
 and the image is carried onto a user message instead.
 
+## Sessions
+
+A conversation eventually fills the provider's context window, and what happens next is the
+provider's decision unless the application takes it. AgentKit takes it. `CompactingAgentSession`
+keeps its own transcript out of session; when the conversation approaches the window it consolidates
+older history into tiered records, creates a fresh provider session seeded with them, and only then
+disposes the one it replaced.
+
+An application states three things: a summarizer, a provider-session factory, and how much recent
+history to keep word for word.
+
+```csharp
+using DemaConsulting.AgentKit.Agents.ChatClient;
+using DemaConsulting.AgentKit.Core;
+
+// The window is a fact about the provider, so the provider side answers for it. Read it from the
+// provider where you can — Ollama publishes the loaded model's context length — or state the
+// window of the model you chose.
+var providerSessions = new ChatClientProviderSessionFactory(chatClient, windowTokens: 32768);
+
+// Consolidation runs outside the conversation it compacts, on a client of its own: sending it
+// through the live session would spend the very context it exists to reclaim.
+var summarizer = new ChatClientSummarizer(summaryChatClient);
+
+var options = new AgentSessionOptions(
+    summarizer,
+    instructions: "You are a research assistant confined to the permitted locations.",
+    tools: tools);
+
+await using var session = await CompactingAgentSession.CreateAsync(options, providerSessions);
+
+var turn = await session.SendAsync("Review every document in the corpus.");
+Console.WriteLine(turn.Text);
+
+if (turn.RotationOccurred)
+{
+    Console.WriteLine($"Rotated at level {turn.Level}; {session.RotationCount} so far.");
+}
+
+if (turn.MaterialDropped)
+{
+    // Compacting bought nothing: history had to be discarded to make room.
+    Console.WriteLine("History was dropped outright.");
+}
+```
+
+The structure is a round-robin database in **counts, not tokens**: a verbatim tail of recent turns,
+behind it three tiers of at most four consolidated records each, and an oldest record binned when
+the top tier is full and another arrives. Tokens serve exactly one purpose — noticing that the
+window is filling — and the provider session answers for that, so the engine asks one question, how
+full out of how much, and believes the answer. Nothing weighs a record against a token budget.
+
+`InMemoryProviderSession` and `InMemoryProviderSessionFactory` ship in Core so the whole lifecycle
+can be exercised without a live model, which is what lets an application test its own summarizer,
+its verbatim tail length, and what it does with a reported rotation.
+
+`DemaConsulting.AgentKit.Agents.ChatClient` supplies the provider side for any `IChatClient`:
+`ChatClientProviderSession`, `ChatClientProviderSessionFactory` and `ChatClientSummarizer`. The
+GitHub Copilot adapter does not carry one yet, so a Copilot conversation runs on that runtime's own
+session.
+
 ## Documentation
 
 Generated documentation includes:
@@ -216,10 +303,16 @@ of what each demonstrates and when to read it.
   unchanged against the GitHub Copilot runtime and any Ollama model, and prints every tool call so
   the containment, capability gating, and built-in suppression are visible as they happen.
 - **[Research Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/research-assistant)**
-  — *the agent-infrastructure path.* A console application composing the `todo`, `memory`, and
+  — *the agent-infrastructure path, and the session engine's first user.* A console application
+  composing the `todo`, `memory`, and
   `agent` families onto one policy: it plans its work as a task list, files what it learns as
   searchable memories with the document each came from, and delegates the reading of a single
-  document to a child agent. Its corpus is granted read-only and contains a superseding revision, and
+  document to a child agent. On `--provider ollama` the conversation runs on a
+  `CompactingAgentSession` built from `ChatClientProviderSessionFactory` and `ChatClientSummarizer`,
+  reading the context window from the Ollama server rather than assuming one, and printing what each
+  turn occupies, whether it rotated, how hard it is compacting, and whether history had to be
+  dropped. The memory store lives outside the session, so what the agent filed survives every
+  rotation. Its corpus is granted read-only and contains a superseding revision, and
   in the eight live runs measured (`claude-sonnet-5`, `--embeddings local`) the agent noticed the
   contradiction by reading and corrected the memory in place with `memory_revise` in 5 of 5 of the
   neutral runs; the near-duplicate refusal — the backstop for a conflict the model has *not*

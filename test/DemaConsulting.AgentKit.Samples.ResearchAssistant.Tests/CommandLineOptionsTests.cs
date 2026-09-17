@@ -71,7 +71,41 @@ public class CommandLineOptionsTests
             () => Assert.Equal(EmbeddingBackend.Local, options.Embeddings),
             () => Assert.Equal(AgentProvider.Copilot, options.Provider),
             () => Assert.True(options.DelegationEnabled),
+            () => Assert.Null(options.SummaryModel),
+            () => Assert.Null(options.ContextWindow),
             () => Assert.Empty(options.Prompts));
+    }
+
+    /// <summary>
+    ///     Proves the window and the consolidation model can be stated, which is what an
+    ///     application does when the provider cannot be asked or a cheaper model should summarize.
+    /// </summary>
+    [Fact]
+    public void CommandLineOptions_Parse_SessionFlags_AreKept()
+    {
+        // Arrange / Act
+        var options = CommandLineOptions.Parse(
+            ["--corpus", "docs", "--context-window", "8192", "--summary-model", "small-model"]);
+
+        // Assert
+        Assert.Equal(8192, options.ContextWindow);
+        Assert.Equal("small-model", options.SummaryModel);
+    }
+
+    /// <summary>
+    ///     Proves a window that no session could be accounted against is refused here, where the
+    ///     user wrote it, rather than by a provider-session factory naming an argument they never
+    ///     saw.
+    /// </summary>
+    /// <param name="value">The rejected window.</param>
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("many")]
+    public void CommandLineOptions_Parse_UnusableContextWindow_ThrowsCommandLineException(string value)
+    {
+        Assert.Throws<CommandLineException>(
+            () => CommandLineOptions.Parse(["--corpus", "docs", "--context-window", value]));
     }
 
     /// <summary>
