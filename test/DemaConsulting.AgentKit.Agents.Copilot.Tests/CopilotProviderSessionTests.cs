@@ -290,6 +290,45 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a session that has observed a rewrite refuses the <em>next</em> turn without
+    ///     sending it, rather than running it and reporting the divergence afterwards.
+    /// </summary>
+    /// <remarks>
+    ///     Detecting the first rewrite is unavoidably after the fact. Every send after it is not: a
+    ///     turn that reaches the runtime lets the model run this application's tools, with their
+    ///     real side effects, against a conversation the engine no longer describes. A host that
+    ///     responds to the first failure by retrying - the ordinary response to an
+    ///     <see cref="InvalidOperationException"/> - would do it again on every attempt. Asserting
+    ///     the prompt count is what distinguishes refusing from merely reporting.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn()
+    {
+        // Arrange: a first turn the runtime truncates, and a second that would otherwise succeed
+        var runtime = Runtime(
+            Turn(
+                CopilotEvents.Truncation(),
+                CopilotEvents.Usage(400, 8000),
+                CopilotEvents.Assistant("the answer")),
+            Turn(
+                CopilotEvents.Usage(500, 8000),
+                CopilotEvents.Assistant("a later answer")));
+        await using var session = await OpenAsync(runtime);
+
+        // Act: the first turn is refused after the fact, then a second is attempted
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+        var sentAfterFirstRefusal = runtime.Channels[0].Prompts.Count;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("another question", TestContext.Current.CancellationToken));
+
+        // Assert: the second turn never reached the runtime
+        Assert.Contains("truncated", error.Message, StringComparison.Ordinal);
+        Assert.Equal(sentAfterFirstRefusal, runtime.Channels[0].Prompts.Count);
+    }
+
+    /// <summary>
     ///     Proves a session that went idle without answering is refused, and that the runtime's own
     ///     error is named. Recording an empty answer would present a runtime failure as a model with
     ///     nothing to say.
@@ -307,6 +346,38 @@ public class CopilotProviderSessionTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => session.SendAsync("a question", TestContext.Current.CancellationToken));
         Assert.Contains("model unavailable", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an error reported during one turn is not named as the cause of a later turn's
+    ///     silence.
+    /// </summary>
+    /// <remarks>
+    ///     The last reported error exists only to name the cause when a turn goes idle without an
+    ///     answer. Carried across turns it names the wrong cause in the one message whose entire job
+    ///     is to name the right one - and it would read as authoritative, because the message states
+    ///     the runtime reported it.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_Send_ErrorFromAnEarlierTurn_IsNotNamedAsTheCause()
+    {
+        // Arrange: a first turn reporting an error, then a turn that goes idle reporting nothing
+        var runtime = Runtime(
+            Turn(
+                CopilotEvents.Usage(400, 8000),
+                CopilotEvents.Error("model unavailable")),
+            Turn(CopilotEvents.Usage(500, 8000)));
+        await using var session = await OpenAsync(runtime);
+
+        // Act: the first turn fails naming its error, then a second goes idle for its own reasons
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("another question", TestContext.Current.CancellationToken));
+
+        // Assert: the stale error is not presented as this turn's cause
+        Assert.DoesNotContain("model unavailable", error.Message, StringComparison.Ordinal);
+        Assert.Contains("reported no error", error.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

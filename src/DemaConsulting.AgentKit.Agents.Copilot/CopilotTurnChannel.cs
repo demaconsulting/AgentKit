@@ -26,6 +26,12 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     Implementations are not safe for concurrent use: one channel serves one conversation, and
 ///     turns within a conversation are sequential by nature.
 ///     </para>
+///     <para>
+///     <b>Disposal must not throw.</b> It runs on the failure paths of a rotation, in a
+///     summarizer's <c>finally</c>, and inside a factory's catch block, none of which can act on a
+///     teardown error. An implementation that threw would replace a consolidation that had already
+///     succeeded, or mask the very exception a caller was preserving.
+///     </para>
 /// </remarks>
 internal interface ICopilotTurnChannel : IAsyncDisposable
 {
@@ -150,16 +156,28 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     the runtime's only irreversible removal, so it is asked for.
     ///     </para>
     ///     <para>
-    ///     <b>The delete is best-effort and its failure is swallowed.</b> Disposal must not throw:
-    ///     it runs on the failure paths of a rotation and on the caller's own release, and a
-    ///     housekeeping call that could not be made is not a reason to fail either. The session
-    ///     itself is already released by then, so the worst outcome of a failed delete is
-    ///     recoverable disk state the runtime expires on its own.
+    ///     <b>Neither call may throw.</b> Disposal runs on the failure paths of a rotation and on
+    ///     the caller's own release, and neither is a place a failure can be acted on. The release
+    ///     is not local teardown — it detaches over the runtime's transport, so a connection going
+    ///     away underneath it throws, and at shutdown that is the ordinary case rather than an
+    ///     exotic one. Left unguarded it would replace a consolidation that had already succeeded
+    ///     with a detach failure, or mask the very exception a caller's catch block was preserving.
+    ///     The delete is best-effort for the same reason: the session is already released by then,
+    ///     so the worst outcome is recoverable disk state the runtime expires on its own.
     ///     </para>
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        await _session.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await _session.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Intentionally swallowed: see the remarks. Detaching reaches the runtime over its
+            // transport, so this throws when the connection is already gone - which is exactly
+            // when disposal is most likely to be running.
+        }
 
         try
         {

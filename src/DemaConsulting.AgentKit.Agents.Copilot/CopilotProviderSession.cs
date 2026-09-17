@@ -178,6 +178,15 @@ public sealed class CopilotProviderSession : IProviderSession
     {
         ArgumentNullException.ThrowIfNull(message);
         ObjectDisposedException.ThrowIf(IsReleased, this);
+
+        // Refused before the turn is sent, not only after. The flag latches, so once the runtime has
+        // rewritten history every later turn is a real send against a conversation the engine no
+        // longer describes - the model would run this application's tools, with their side effects,
+        // against corrupted state, and a host that responds to the failure below by retrying would
+        // do it again on every attempt. Detecting the first rewrite is unavoidably after the fact;
+        // letting the second one happen is not.
+        ThrowIfHistoryRewritten();
+
         cancellationToken.ThrowIfCancellationRequested();
 
         // Discard anything a previous turn left behind before the runtime can produce anything new,
@@ -190,15 +199,7 @@ public sealed class CopilotProviderSession : IProviderSession
         // compact or truncate a session its own engine drives; if it did so anyway, the transcript
         // the engine believes it owns no longer describes what the provider holds, and every figure
         // below is about a conversation that no longer exists.
-        if (_observer.ProviderRewroteHistory)
-        {
-            throw new InvalidOperationException(
-                "The Copilot runtime compacted or truncated this session's history, which AgentKit's "
-                + "session engine believes it owns. The session was created with the runtime's "
-                + "infinite-session compaction disabled, so that request was not honored. The "
-                + "engine's transcript and the conversation the runtime holds have diverged, and "
-                + "this session cannot be used further.");
-        }
+        ThrowIfHistoryRewritten();
 
         // The runtime went idle without producing an assistant message. Recording an empty answer
         // would hide a runtime failure as a model that had nothing to say, so the error the session
@@ -246,6 +247,32 @@ public sealed class CopilotProviderSession : IProviderSession
     {
         IsReleased = true;
         await _channel.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Refuses the session if the runtime has rewritten history the engine believes it owns.
+    /// </summary>
+    /// <remarks>
+    ///     Called both before a turn is sent and after it returns, so the failure is raised on the
+    ///     turn that first observes the rewrite and on every turn that follows. A single call site
+    ///     after the send would report the divergence once and then let the next turn proceed, which
+    ///     is the worse half of the problem: the first rewrite can only be detected after the fact,
+    ///     but every send after it is avoidable.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The runtime compacted or truncated the session.</exception>
+    private void ThrowIfHistoryRewritten()
+    {
+        if (!_observer.ProviderRewroteHistory)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "The Copilot runtime compacted or truncated this session's history, which AgentKit's "
+            + "session engine believes it owns. The session was created with the runtime's "
+            + "infinite-session compaction disabled, so that request was not honored. The "
+            + "engine's transcript and the conversation the runtime holds have diverged, and "
+            + "this session cannot be used further.");
     }
 
     /// <summary>

@@ -106,9 +106,14 @@ sections:
               the engine's transcript describing a conversation the provider no longer holds, and
               every occupancy figure afterwards is about that vanished conversation. Refusing turns a
               silent divergence into a diagnosable failure, which is the convention this library
-              already follows where it cannot know something it needs.
+              already follows where it cannot know something it needs. The refusal is raised before a
+              turn is sent as well as after one returns: detecting the first rewrite is unavoidably
+              after the fact, but a later turn that reached the runtime would let the model run the
+              application's tools, with their side effects, against a conversation the engine no
+              longer describes - and a host retrying the failure would do it again each time.
             tests:
               - CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn
+              - CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
             title: >-
@@ -119,10 +124,13 @@ sections:
               happens when the turn failed rather than when the model had nothing to say. Recording an
               empty answer would present a runtime failure as an unhelpful model, and the engine would
               seed the next session from a turn that never happened. Naming the reported error is what
-              lets an application act on the failure rather than only observe it.
+              lets an application act on the failure rather than only observe it - and the error named
+              must be this turn's, since an error carried over from an earlier turn would name the
+              wrong cause in the one message whose purpose is to name the right one.
             tests:
               - CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError
               - CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo
+              - CopilotProviderSession_Send_ErrorFromAnEarlierTurn_IsNotNamedAsTheCause
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
             title: >-

@@ -179,6 +179,11 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         {
             // Released rather than abandoned. Nothing else holds this session: the instance that
             // would have owned it does not exist, and the caller was never given one.
+            //
+            // This relies on the channel's disposal not throwing, which its contract requires. A
+            // throwing disposal here would replace the failure being handled - typically the
+            // cancellation above - with a teardown error the caller cannot act on, and defeat any
+            // catch of OperationCanceledException.
             await channel.DisposeAsync().ConfigureAwait(false);
             throw;
         }

@@ -206,12 +206,17 @@ internal sealed class CopilotSessionObserver
     ///     Called before the prompt is sent, so <see cref="DrainEntries"/> afterwards returns this
     ///     turn's work and no other's. A turn that failed mid-flight leaves entries here; clearing
     ///     at the start rather than the end is what stops them being attributed to the next turn.
+    ///     The last reported error is cleared for the same reason and is the more important of the
+    ///     two: it is read only to name the cause when a turn goes idle without an answer, so an
+    ///     error carried over from a previous turn would name the wrong cause in the one message
+    ///     whose entire job is to name the right one.
     /// </remarks>
     internal void BeginTurn()
     {
         lock (_gate)
         {
             _entries.Clear();
+            _lastErrorMessage = null;
         }
     }
 

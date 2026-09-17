@@ -141,7 +141,10 @@ to make.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory: A Rewritten History Ends the Session
 
-**Test**: `CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn`
+**Tests**:
+
+- `CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn`
+- `CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn`
 
 Error path, and the one guarding a defect that is otherwise invisible. Scripts a turn during which
 the runtime truncates the history itself — the runtime then answers normally and reports its
@@ -151,18 +154,30 @@ compaction was not honored, because that is what an application would need to ac
 scenario, two compactors acting on one conversation would produce no exception anywhere: the engine
 would simply start seeding replacements from a history the provider had discarded.
 
+The second proves the refusal is raised *before* the next turn is sent, by asserting the runtime
+received no further prompt. That distinction is the whole value of the latch: detecting the first
+rewrite can only happen after the fact, but a later turn that reached the runtime would let the model
+run the application's tools, with their real side effects, against a conversation the engine no longer
+describes — and a host retrying an `InvalidOperationException`, which is the ordinary response, would
+cause it again on every attempt. A test asserting only the exception would pass against a session that
+reported the divergence and then kept working.
+
 #### AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession: A Silent Session Is Not an Empty Answer
 
 **Tests**:
 
 - `CopilotProviderSession_Send_NoAssistantMessage_ThrowsNamingTheRuntimeError`
 - `CopilotProviderSession_Send_NoAssistantMessageAndNoError_ThrowsSayingSo`
+- `CopilotProviderSession_Send_ErrorFromAnEarlierTurn_IsNotNamedAsTheCause`
 
 Error paths. The first scripts a runtime that reports an error and produces no assistant message, and
 asserts the refusal carries the runtime's own message — recording an empty answer there would present
 a runtime failure as a model with nothing to say, and the engine would seed the next session from a
 turn that never happened. The second is the boundary: a session that went idle with no answer and no
-error is still refused, and says so rather than naming a cause it does not have.
+error is still refused, and says so rather than naming a cause it does not have. The third proves the
+named cause belongs to this turn: an error reported during an earlier turn must not be presented as
+the explanation for a later silence, because the message states that the runtime reported it and would
+therefore read as authoritative while being wrong.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments: Bad Arguments and Failed Turns
 
