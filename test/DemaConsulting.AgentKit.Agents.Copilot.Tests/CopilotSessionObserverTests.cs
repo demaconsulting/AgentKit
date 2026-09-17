@@ -130,6 +130,31 @@ public class CopilotSessionObserverTests
     }
 
     /// <summary>
+    ///     Proves a reported error does not outlive the turn that reported it.
+    /// </summary>
+    /// <remarks>
+    ///     The error exists only to name the cause when a turn goes idle without answering. Carried
+    ///     into a later turn it would name the wrong cause in the one message whose job is to name
+    ///     the right one, and it would read as authoritative because the message says the runtime
+    ///     reported it. The cumulative usage reading is deliberately not cleared here; this is.
+    /// </remarks>
+    [Fact]
+    public void CopilotSessionObserver_BeginTurn_ClearsTheReportedError()
+    {
+        // Arrange: a turn during which the runtime reported an error
+        var observer = new CopilotSessionObserver();
+        observer.OnEvent(CopilotEvents.Error("model unavailable"));
+        observer.OnEvent(CopilotEvents.Usage(400, 8000));
+
+        // Act
+        observer.BeginTurn();
+
+        // Assert: the error is gone, the usage reading stays
+        Assert.Null(observer.LastErrorMessage);
+        Assert.NotNull(observer.LatestUsage);
+    }
+
+    /// <summary>
     ///     Proves a turn's entries are collected in arrival order and carry the runtime's own call
     ///     identifiers, so a rotation keeps each call with its result.
     /// </summary>

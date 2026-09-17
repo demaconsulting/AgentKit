@@ -389,35 +389,34 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves a send that fails before the runtime accepts it still ends the session, so the
-    ///     seeded record cannot be silently lost.
+    ///     Proves a seeded record is carried on the first message only.
     /// </summary>
     /// <remarks>
-    ///     The record is consumed as the message is handed to the runtime, and from that moment this
-    ///     session cannot tell whether it arrived. Letting the caller retry would either repeat a
-    ///     turn the runtime took or continue without the history the replacement was seeded with —
-    ///     and the second is silent, because the conversation simply carries on having forgotten
-    ///     everything before the rotation. Refusing is what turns that into something an application
-    ///     can see.
+    ///     Carried on every message it would re-send the whole consolidated history each turn,
+    ///     inflating the conversation the engine rotates on — so the session would compact itself
+    ///     into rotating faster and faster. Two successful turns is the only arrangement that shows
+    ///     it: one turn cannot tell a record sent once from a record sent always.
     /// </remarks>
     [Fact]
-    public async Task CopilotProviderSession_Send_FailedSendOfASeededTurn_EndsTheSession()
+    public async Task CopilotProviderSession_Send_SeededRecord_RidesTheFirstMessageOnly()
     {
-        // Arrange: a session seeded with history, whose first send fails at the channel
-        var runtime = new FakeCopilotRuntime(_ => [], beforeOpen: _ => { });
+        // Arrange: a session seeded with history, and two turns that both succeed
+        var runtime = Runtime(
+            Turn(CopilotEvents.Usage(400, 8000), CopilotEvents.Assistant("first answer")),
+            Turn(CopilotEvents.Usage(500, 8000), CopilotEvents.Assistant("second answer")));
         var seed = new ProviderSessionSeed(null, [], [TranscriptEntry.User("earlier question")]);
         await using var session = await OpenAsync(runtime, seed);
 
-        // Act: the first send fails because nothing was scripted for it
-        await Assert.ThrowsAnyAsync<Exception>(
-            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+        // Act
+        await session.SendAsync("a question", TestContext.Current.CancellationToken);
+        await session.SendAsync("another question", TestContext.Current.CancellationToken);
 
-        // Assert: the session refuses further use rather than letting a retry proceed without the
-        // seeded record it has already spent
-        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => session.SendAsync("a retry", TestContext.Current.CancellationToken));
-        Assert.Contains("could not be recorded", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("will not be sent again", refusal.Message, StringComparison.Ordinal);
+        // Assert: the record is on the first prompt and nowhere after it
+        var prompts = runtime.Channels[0].Prompts;
+        Assert.Contains(CopilotProviderSessionFactory.RecordOpening, prompts[0], StringComparison.Ordinal);
+        Assert.Contains("earlier question", prompts[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(CopilotProviderSessionFactory.RecordOpening, prompts[1], StringComparison.Ordinal);
+        Assert.Equal("another question", prompts[1]);
     }
 
     /// <summary>
