@@ -188,11 +188,19 @@ internal sealed class CopilotSessionObserver
         switch (sessionEvent)
         {
             case SessionUsageInfoEvent { Data: { } usage }:
-                Record(() => _usageReportedThisTurn = true);
-                Record(() => _latestUsage = new CopilotUsageReading(
-                    usage.CurrentTokens,
-                    usage.TokenLimit,
-                    usage.ConversationTokens));
+
+                // One action, so the flag and the reading become visible together. Split across two
+                // the reader can catch the gap: a turn would look as though it had reported while
+                // the reading was still absent, so the refusal would pass and occupancy would answer
+                // with the provisional figure for a turn that had genuinely reported.
+                Record(() =>
+                {
+                    _usageReportedThisTurn = true;
+                    _latestUsage = new CopilotUsageReading(
+                        usage.CurrentTokens,
+                        usage.TokenLimit,
+                        usage.ConversationTokens);
+                });
                 break;
 
             case ToolExecutionStartEvent { Data: { ParentToolCallId: null, ToolCallId: { } callId } start }
