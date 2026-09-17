@@ -872,15 +872,6 @@ public static class AgentComposition
             },
             (result, call) => ToolTrace.PrintResult(result, call, MemoryPack.FamilyPrefix));
 
-        var window = await OllamaContextWindow.ReadAsync(
-            ollama,
-            model,
-            options.ContextWindow,
-            cancellationToken);
-
-        var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
-        var summarizer = new ChatClientSummarizer(summaryClient);
-
         var cleanup = new AsyncDisposableAction(() =>
         {
             // Disposing the reporting client releases the Ollama client beneath it; the transport
@@ -890,6 +881,28 @@ public static class AgentComposition
             http.Dispose();
             return ValueTask.CompletedTask;
         });
+
+        // Built before the first awaited call, so a failure reaching Ollama - the host being down
+        // is the ordinary case, not an exotic one - releases the transports through the same handle
+        // the caller would have used. Disposing a second list assembled in a catch block would be
+        // the list that drifts.
+        ContextWindow window;
+        try
+        {
+            window = await OllamaContextWindow.ReadAsync(
+                ollama,
+                model,
+                options.ContextWindow,
+                cancellationToken);
+        }
+        catch
+        {
+            await cleanup.DisposeAsync();
+            throw;
+        }
+
+        var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
+        var summarizer = new ChatClientSummarizer(summaryClient);
 
         return new ProviderBackend(
             (tools, instructions, name) => ChatClientAgentFactory.Create(ollama, tools, instructions, name: name),
