@@ -78,6 +78,7 @@ includes:
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session-factory.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/prompt-size-recording-chat-client.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-summarizer.yaml
   - docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-copilot.yaml

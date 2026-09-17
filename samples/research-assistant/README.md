@@ -154,23 +154,28 @@ flag the conversation's own model does the work, on a separate client. Either wa
 the session being compacted, because a consolidation sent through the live session would spend the
 very context it exists to reclaim.
 
-### What the sample had to write for itself
+### What the sample still writes for itself
 
-Two chat-client decorators sit beneath the session — `PromptSizeRecorder` and
-`TurnReportingChatClient` — and neither should have been necessary. They are kept, documented, and
-called out here rather than hidden:
+One chat-client decorator sits beneath the session — `ToolCallReportingChatClient` — and it is there
+for a reason the library cannot serve:
 
-- **The tool-calling loop must be installed by the application.** A compacting session declares its
-  tools to the model and never invokes them; `FunctionInvokingChatClient` is what closes that loop,
-  and the session does not install it.
-- **That loop reports usage summed across its requests.** A turn that calls six tools reports
-  something near six times the conversation's real size, and the session reads that figure as
-  occupancy — so a tool-using agent appears to fill its window on its first turn and rotates on
-  every turn thereafter. The recorder captures the size of each real prompt beneath the loop, and
-  the reporting client puts it back above.
 - **A session turn reports no tool activity.** The session records every call and result into the
   transcript it later consolidates, and hands none of them back, so the reporting client reads them
-  from the turn's messages instead.
+  from the conversation on its way to the provider instead. Watching the agent plan, file, recall and
+  delegate is the sample's whole demonstration, so it is worth the class.
+
+Two other decorators used to sit here and no longer do. The tool-calling loop and the occupancy
+figure are now AgentKit's, not the application's:
+
+- **The tool-calling loop is installed by `ChatClientProviderSessionFactory`.** A session declares
+  its tools to the model on every request, so a bare client emits tool calls that nothing answers.
+  The factory closes that loop itself, rather than leaving a composition that looks right and is
+  silently wrong.
+- **The occupancy figure is the last prompt, not the loop's summed usage.** A turn that calls six
+  tools is six requests, and the response the loop returns reports their input tokens added
+  together. Read as occupancy that made a tool-using agent appear to fill its window on its first
+  turn. The factory now records the size of each real prompt beneath the loop and reports the last
+  one, so the sample no longer writes a recorder and a repairer to undo it.
 
 On `--provider copilot` none of this applies: the runtime holds its own conversation, AgentKit ships
 no provider session for it, and nothing compacts.

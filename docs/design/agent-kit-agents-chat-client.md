@@ -31,17 +31,20 @@ and none of them keeps the conversation — and supplies the summarizer the engi
 through. One adapter serves all of them because none of them holds the conversation: seeding a
 session is starting a message list, and releasing one is forgetting it.
 
-The system is a thin adapter throughout. Beyond validation, the unconditional decorator, and the
-mapping between this library's transcript entries and chat messages, its only jobs are to construct
-the framework's own `ChatClientAgent` and to answer the engine's one token question. It implements no
-agent runtime, no tool-calling loop, no provider abstraction and no compaction policy — those belong
-to Microsoft Agent Framework and to Core, on both of which it depends.
+The system is a thin adapter throughout. Beyond validation, the unconditional decorator, the mapping
+between this library's transcript entries and chat messages, and the small pipeline it builds around
+the client an application hands it, its only jobs are to construct the framework's own
+`ChatClientAgent` and to answer the engine's one token question. It implements no agent runtime, no
+tool-calling loop, no provider abstraction and no compaction policy — those belong to Microsoft Agent
+Framework and to Core, on both of which it depends. It does decide *where* the tool-calling loop
+sits, because that placement is what makes the occupancy figure honest, and an application asked to
+get it right would sometimes get it wrong silently.
 
 ## Dependency Isolation
 
 This system carries `Microsoft.Agents.AI`, the Microsoft Agent Framework runtime, whose size and
-monthly churn bar it from Core, which takes exactly one runtime dependency; see _AgentKitCore
-System Design_. Isolating it in its own
+monthly churn bar it from Core, which takes exactly one runtime dependency; see *AgentKitCore
+System Design*. Isolating it in its own
 package is exactly what that dependency justifies: Core stays small and slow-moving, and an
 application that never builds an agent through this adapter never takes the dependency. The system
 references Core (for `ImagePromotingChatClient` and the session contracts) and `Microsoft.Agents.AI`
@@ -50,7 +53,7 @@ reference on, the Copilot adapter.
 
 ## Structure
 
-The system is flat: four classes, no subsystem layer, mirroring how a small system is modeled
+The system is flat: five classes, no subsystem layer, mirroring how a small system is modeled
 elsewhere in the repository. A subsystem layer would add artifacts without reducing the units anyone
 has to review. The agent factory and the session adapter share a package rather than a code path:
 both exist to make one `IChatClient` usable, and neither calls the other.
@@ -59,9 +62,13 @@ both exist to make one `IChatClient` usable, and neither calls the other.
   supplied client in the image-promoting decorator, and builds a `ChatClientAgent`.
 - **ChatClientProviderSession (Unit)** — one Core session over an `IChatClient`: the seeded message
   list, the conversation resent on every turn, the transcript entries a turn produces, and the
-  provider's own occupancy reported against a supplied window.
-- **ChatClientProviderSessionFactory (Unit)** — holds the client and the window, and creates a
-  session from a seed at the start of a conversation and again at every rotation.
+  occupancy reported against a supplied window.
+- **ChatClientProviderSessionFactory (Unit)** — holds the client and the window, builds the pipeline
+  each session runs on, and creates a session from a seed at the start of a conversation and again
+  at every rotation.
+- **PromptSizeRecordingChatClient (Unit)** — sits beneath the tool-calling loop in that pipeline and
+  records the prompt size of each individual request, so occupancy is the last request's prompt
+  rather than usage summed across a tool-calling turn.
 - **ChatClientSummarizer (Unit)** — consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted.
 
@@ -71,7 +78,8 @@ both exist to make one `IChatClient` usable, and neither calls the other.
 src/DemaConsulting.AgentKit.Agents.ChatClient/
 ├── ChatClientAgentFactory.cs              — builds an agent from an IChatClient, decorator always installed
 ├── ChatClientProviderSession.cs           — one Core session over an IChatClient
-├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client and the window
+├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client, the window and the pipeline
+├── PromptSizeRecordingChatClient.cs       — records each request's prompt size, beneath the tool-calling loop
 └── ChatClientSummarizer.cs                — consolidates history through an IChatClient
 ```
 
@@ -80,11 +88,13 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 - **AgentKitCore** — supplies `ImagePromotingChatClient`, the decorator the factory installs, and the
   session contracts the adapter implements: `IProviderSession`, `IProviderSessionFactory`,
   `ISummarizer`, `ProviderSessionSeed`, `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and
-  `ConsolidationPrompt`; see _AgentKitCore System Design_.
-- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`; see _Microsoft.Agents.AI
-  Design_.
-- **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient` and `AIFunction`; reached
-  transitively through Core and directly through `Microsoft.Agents.AI`.
+  `ConsolidationPrompt`; see *AgentKitCore System Design*.
+- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`, and brings the chat-client
+  extensions carrying `FunctionInvokingChatClient`, the tool-calling loop the session factory
+  installs; see *Microsoft.Agents.AI Design*.
+- **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `AIFunction` and
+  `DelegatingChatClient`; reached transitively through Core and directly through
+  `Microsoft.Agents.AI`.
 
 ## Document Conventions
 

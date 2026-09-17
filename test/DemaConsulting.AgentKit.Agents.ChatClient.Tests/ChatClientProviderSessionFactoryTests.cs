@@ -1,10 +1,12 @@
 using DemaConsulting.AgentKit.Core;
+using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.ChatClient.Tests;
 
 /// <summary>
 ///     Unit tests for <see cref="ChatClientProviderSessionFactory"/>: the sessions it creates, the
-///     client and window they carry, and construction-time validation.
+///     client and window they carry, the pipeline it builds around that client, and
+///     construction-time validation.
 /// </summary>
 public class ChatClientProviderSessionFactoryTests
 {
@@ -87,19 +89,145 @@ public class ChatClientProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves the occupancy a tool-using turn reports is the last request's prompt, not the sum
+    ///     of every request the turn made.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This is the reading the whole session engine turns on, and it is the one a
+    ///     tool-calling turn is most easily wrong about. The tool-invoking layer the factory
+    ///     installs answers a tool call and asks again, and the response it finally returns carries
+    ///     usage summed across every request it made. A session reading that figure would have a
+    ///     tool-using agent - which is every agent this library exists for - believe its window was
+    ///     full on its first turn, rotate on every turn after it, and eventually discard history to
+    ///     reclaim room it never occupied.
+    ///     </para>
+    ///     <para>
+    ///     The scripted sizes are chosen so the right answer and the wrong one cannot be confused:
+    ///     the last prompt is 150 and the sum is 250, and both are asserted - the second as the
+    ///     figure this must not be.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum()
+    {
+        // Arrange: a provider that calls a tool and then answers, reporting a different prompt size
+        // for each of the two requests that takes, and a session seeded with the tool
+        var client = new RecordingChatClient()
+            .Queue(
+                RecordingChatClient.Answer(
+                    [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "probe", null)])],
+                    inputTokens: 100))
+            .Queue("done", inputTokens: 150);
+        var factory = new ChatClientProviderSessionFactory(client, Window);
+        var seed = new ProviderSessionSeed(null, [AIFunctionFactory.Create(() => "42", "probe")], []);
+
+        // Act: take the turn and read the occupancy
+        await using var session = await factory.CreateAsync(seed, TestContext.Current.CancellationToken);
+        await session.SendAsync("look it up", TestContext.Current.CancellationToken);
+        var usage = session.CurrentUsage;
+
+        // Assert: the turn really did make two requests, and the occupancy is the last one's prompt
+        // rather than the total the turn was billed for
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Equal(150, usage.UsedTokens);
+        Assert.Equal(150, usage.ConversationTokens);
+        Assert.NotEqual(100 + 150, usage.UsedTokens);
+    }
+
+    /// <summary>
+    ///     Proves the factory installs tool invocation: a seeded tool is actually run, and its
+    ///     result reaches the transcript the turn produces.
+    /// </summary>
+    /// <remarks>
+    ///     A session seeds its tools into every request it sends, so a bare client would emit tool
+    ///     calls that nothing answers: the model would wait for a result that never came, and the
+    ///     transcript would record a call with no result beside it. The factory owns that placement
+    ///     precisely so a correct-looking composition cannot be silently wrong, which is only
+    ///     observable by watching the tool run.
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript()
+    {
+        // Arrange: a tool that records being run, and a provider that calls it and then answers
+        var invocations = 0;
+        var tool = AIFunctionFactory.Create(
+            () =>
+            {
+                invocations++;
+                return "42";
+            },
+            "probe");
+        var client = new RecordingChatClient()
+            .Queue(
+                RecordingChatClient.Answer(
+                    [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "probe", null)])],
+                    inputTokens: 100))
+            .Queue("done", inputTokens: 150);
+        var factory = new ChatClientProviderSessionFactory(client, Window);
+        var seed = new ProviderSessionSeed(null, [tool], []);
+
+        // Act: take the turn
+        await using var session = await factory.CreateAsync(seed, TestContext.Current.CancellationToken);
+        var turn = await session.SendAsync("look it up", TestContext.Current.CancellationToken);
+
+        // Assert: the tool ran once, the result went back to the provider in a further request, and
+        // the call and its result are both recorded in the transcript alongside the answer
+        Assert.Equal(1, invocations);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Equal(
+            [TranscriptEntryKind.ToolCall, TranscriptEntryKind.ToolResult, TranscriptEntryKind.AssistantMessage],
+            turn.Entries.Select(entry => entry.Kind));
+        Assert.Equal("probe()", turn.Entries[0].Text);
+        Assert.Equal("42", turn.Entries[1].Text);
+        Assert.Equal("done", turn.ResponseText);
+    }
+
+    /// <summary>
+    ///     Proves a created session reads its own occupancy rather than one a previous session left
+    ///     behind, which is what makes a replacement report occupying nothing until it has spoken.
+    /// </summary>
+    /// <remarks>
+    ///     The factory builds the recording pipeline once per session for this reason. Shared, it
+    ///     would hand a replacement the figure that provoked the rotation - so the engine would
+    ///     rotate a session that had sent nothing, again and again - and two sessions run at once
+    ///     would overwrite each other's reading, which the concurrency this contract promises does
+    ///     not allow.
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_AfterAnEarlierSessionSpoke_TheReplacementOccupiesNothing()
+    {
+        // Arrange: one factory, and a first session that has taken a turn filling the window
+        var client = RecordingChatClient.Answering("answer", inputTokens: 3000);
+        var factory = new ChatClientProviderSessionFactory(client, Window);
+        var first = await factory.CreateAsync(EmptySeed(), TestContext.Current.CancellationToken);
+        await first.SendAsync("hello", TestContext.Current.CancellationToken);
+        var occupiedBefore = first.CurrentUsage.UsedTokens;
+        await first.DisposeAsync();
+
+        // Act: create the replacement a rotation would, and read its occupancy before it speaks
+        await using var replacement = await factory.CreateAsync(
+            new ProviderSessionSeed(null, [], [TranscriptEntry.ContextRecord("what happened earlier")]),
+            TestContext.Current.CancellationToken);
+        var usage = replacement.CurrentUsage;
+
+        // Assert: the replacement occupies nothing, rather than what its predecessor occupied
+        Assert.Equal(3000, occupiedBefore);
+        Assert.Equal(0, usage.UsedTokens);
+        Assert.Equal(Window, usage.WindowTokens);
+    }
+
+    /// <summary>
     ///     Proves a missing client is refused where the application configured its provider.
     /// </summary>
     [Fact]
     public void ChatClientProviderSessionFactory_Constructor_NullClient_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new ChatClientProviderSessionFactory(null!, Window));
-    }
-
-    /// <summary>
-    ///     Proves a window that is not positive is refused, because every session this factory makes
-    ///     would report an occupancy against it.
-    /// </summary>
-    /// <param name="windowTokens">The rejected window.</param>
+    }    /// <summary>    ///     Proves a window that is not positive is refused, because every session this factory makes
+         ///     would report an occupancy against it.
+         /// </summary>
+         /// <param name="windowTokens">The rejected window.</param>
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

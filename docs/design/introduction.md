@@ -134,10 +134,13 @@ software items, specifically:
 - **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
   image-promoting decorator and builds a `ChatClientAgent`
 - **ChatClientProviderSession (Unit)** — One Core session over an `IChatClient`: the seeded message
-  list, the conversation resent on every turn, and the provider's own occupancy reported against a
-  supplied window
-- **ChatClientProviderSessionFactory (Unit)** — Holds the client and the window, and creates a
-  session from a seed at the start of a conversation and again at every rotation
+  list, the conversation resent on every turn, and the occupancy reported against a supplied window
+- **ChatClientProviderSessionFactory (Unit)** — Holds the client and the window, builds the pipeline
+  each session runs on, and creates a session from a seed at the start of a conversation and again
+  at every rotation
+- **PromptSizeRecordingChatClient (Unit)** — Records the prompt size of each individual request
+  beneath the tool-calling loop, so occupancy is the last request's prompt rather than usage summed
+  across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
@@ -351,7 +354,8 @@ chat-client adapter adds the session adapter that carries a Core session over an
 src/DemaConsulting.AgentKit.Agents.ChatClient/
 ├── ChatClientAgentFactory.cs              — builds an agent from an IChatClient, decorator always installed
 ├── ChatClientProviderSession.cs           — one Core session over an IChatClient
-├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client and the window
+├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client, the window and the pipeline
+├── PromptSizeRecordingChatClient.cs       — records each request's prompt size, beneath the tool-calling loop
 └── ChatClientSummarizer.cs                — consolidates history through an IChatClient
 
 src/DemaConsulting.AgentKit.Agents.Copilot/

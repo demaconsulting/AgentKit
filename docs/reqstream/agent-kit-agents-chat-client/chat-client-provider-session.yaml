@@ -42,20 +42,27 @@ sections:
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-ReportsProviderUsage
             title: >-
-              The unit shall report the provider's own count of the input it last answered, taken
-              against the window supplied at construction, and shall report a provider that has
-              overrun that window as full.
+              The unit shall report the prompt size of the last request the turn made, taken against
+              the window supplied at construction, and shall report a provider that has overrun that
+              window as full.
             justification: |
-              The input tokens a provider counted for the request it just answered are exactly the
-              occupancy a rotation decision needs, and they are the only figure in the provider's own
-              currency. The window cannot come from the same place - a chat client publishes no
-              context window - so it is supplied once where the provider is configured and reported
-              beside the count thereafter. A provider that has already overrun its own window is
-              reported as full rather than beyond it: the usage shape refuses a figure larger than the
-              window, and being at the limit is both the truthful reading and the one that rotates.
+              The tokens a provider counted for the prompt it was last sent are exactly the occupancy
+              a rotation decision needs, and they are the only figure in the provider's own currency.
+              They are deliberately not the input-token count carried on the response a turn returns:
+              a tool-using turn is several requests, and that response reports usage summed across
+              all of them, which read as occupancy would have a tool-using agent conclude its window
+              was full on its first turn and rotate on every turn after it. The prompt of the last
+              request is the conversation, because by then the tool calls and their results are part
+              of what is being sent. The window cannot come from the same place - a chat client
+              publishes no context window - so it is supplied once where the provider is configured
+              and reported beside the figure thereafter. A provider that has already overrun its own
+              window is reported as full rather than beyond it: the usage shape refuses a figure
+              larger than the window, and being at the limit is both the truthful reading and the one
+              that rotates.
             tests:
               - ChatClientProviderSession_CurrentUsage_AfterTurn_ReportsTheProvidersInputTokens
               - ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsFull
+              - ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-ZeroBeforeTheFirstTurn
             title: >-
@@ -67,21 +74,27 @@ sections:
               is not a special case for a new conversation: it is the state every replacement session
               is created in, holding a seed the provider has not seen yet. Reporting the seed's size
               instead would charge the provider for something it was never sent, and would have the
-              engine rotate a session that has not yet spoken.
+              engine rotate a session that has not yet spoken - which is also why the pipeline the
+              reading comes from belongs to one session rather than to the factory that made it.
             tests:
               - ChatClientProviderSession_CurrentUsage_BeforeFirstTurn_IsZero
+              - ChatClientProviderSessionFactory_CreateAsync_AfterAnEarlierSessionSpoke_TheReplacementOccupiesNothing
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-RefusesUnreportedUsage
             title: >-
-              The unit shall refuse a turn whose answer reported no token usage, with a message
-              naming the missing fact and what the application can do about it.
+              The unit shall refuse a turn after which no request it made has reported token usage,
+              with a message naming the missing fact and what the application can do about it.
             justification: |
               Knowing when the window is filling is the one thing this library needs a token count
               for, so estimating an absent figure would mean guessing forever at the single fact the
               whole arrangement turns on. Every provider reached this way reports usage - Ollama
               returns its prompt evaluation count and the hosted services report usage with every
               response - so an absent figure means something is wrong that the application can see and
-              fix. Saying so, and naming the remedy, is more use than a number nobody can trust.
+              fix. Saying so, and naming the remedy, is more use than a number nobody can trust. A
+              provider that reports nothing is therefore caught on its first turn, which is the turn
+              an application can act on; a single later request reporting none, within a turn made of
+              several, leaves the last figure that was true standing rather than failing a turn the
+              session was already able to measure.
             tests:
               - ChatClientProviderSession_Send_ProviderReportsNoUsage_Throws
 
@@ -121,17 +134,17 @@ sections:
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-RejectsInvalidArguments
             title: >-
-              The unit shall reject a missing client, a missing seed, a window that is not positive,
-              a missing message, and a canceled turn, sending nothing when it refuses.
+              The unit shall reject a missing message and a canceled turn, sending nothing when it
+              refuses.
             justification: |
               Each is a defect in the composing application rather than a provider condition, so each
               is refused where the application wrote it rather than discovered at the first
-              conversation. A window that is not positive is refused because every occupancy reading
-              is taken against it. A canceled turn is refused before anything is sent, so cancellation
-              costs no call and leaves no message the provider saw but the transcript does not record.
+              conversation. A canceled turn is refused before anything is sent, so cancellation costs
+              no call and leaves no message the provider saw but the transcript does not record. The
+              arguments a session is constructed from are checked by the factory instead, which is
+              the only thing that can construct one: an application configures a client and a window
+              there and reaches a constructor here through nothing else, so refusing them twice would
+              describe a path no application can take.
             tests:
-              - ChatClientProviderSession_Constructor_NullClient_Throws
-              - ChatClientProviderSession_Constructor_NullSeed_Throws
-              - ChatClientProviderSession_Constructor_NonPositiveWindow_Throws
               - ChatClientProviderSession_Send_NullMessage_Throws
               - ChatClientProviderSession_Send_Canceled_ThrowsAndSendsNothing

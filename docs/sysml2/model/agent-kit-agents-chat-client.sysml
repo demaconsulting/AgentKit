@@ -21,6 +21,7 @@ package AgentKitAgentsChatClient {
         part chatClientAgentFactory : ChatClientAgentFactory;
         part chatClientProviderSession : ChatClientProviderSession;
         part chatClientProviderSessionFactory : ChatClientProviderSessionFactory;
+        part promptSizeRecordingChatClient : PromptSizeRecordingChatClient;
         part chatClientSummarizer : ChatClientSummarizer;
     }
 }

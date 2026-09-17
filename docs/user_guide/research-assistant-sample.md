@@ -83,10 +83,10 @@ client of its own, outside the session being compacted.
 
 **On `--provider copilot` none of this happens.** AgentKit ships no provider session for the Copilot
 runtime, so that conversation runs on the runtime's own session and is not compacted. The banner
-says so rather than leaving a reader to assume otherwise. The sample also writes two chat-client
-decorators of its own beneath the session — one recovering the occupancy figure that the
-tool-calling loop's summed usage destroys, and one surfacing the tool calls a session turn does not
-report — and its README explains both, because neither should have been the application's work.
+says so rather than leaving a reader to assume otherwise. The sample also writes one chat-client
+decorator of its own beneath the session, surfacing the tool calls a session turn does not report,
+and its README explains why that one is the application's work and the tool-calling loop and the
+occupancy figure are not.
 
 ## Supplying an Embedding Generator
 

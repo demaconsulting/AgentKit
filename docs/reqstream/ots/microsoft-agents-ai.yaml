@@ -36,3 +36,20 @@ sections:
             tests:
               - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
               - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
+          - id: AgentKit-OTS-MicrosoftAgentsAI-FunctionInvokingChatClient
+            title: >-
+              Microsoft.Agents.AI shall bring the chat-client extensions providing
+              FunctionInvokingChatClient, which answers a model's tool calls and asks again until the
+              model answers.
+            justification: |
+              FunctionInvokingChatClient ships in Microsoft.Extensions.AI, which the Microsoft Agent
+              Framework runtime brings and which ChatClientAgent runs its own loop through. AgentKit
+              does not implement a tool-calling loop; the session factory installs this one above the
+              client an application supplied, because a session declares its tools on every request
+              and a bare client would emit tool calls nothing answers. AgentKit's tests that seed a
+              tool into a session and watch it run, and that observe the usage the loop reports
+              across the requests it made, prove the loop behaves as the placement around it assumes.
+            tags: [ots]
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript
+              - PromptSizeRecordingChatClient_GetResponse_BeneathToolInvocation_KeepsTheLastPromptWhileTheTurnReportsTheSum

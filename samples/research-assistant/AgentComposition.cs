@@ -826,13 +826,14 @@ public static class AgentComposition
     ///     conversation's own model does the work, on a client of its own.
     ///     </para>
     ///     <para>
-    ///     <b>The layering beneath the session is not decoration, and two of its four layers should
-    ///     not have been necessary.</b> From the bottom: the Ollama client; a
-    ///     <see cref="PromptSizeRecorder"/> capturing the size of each real prompt; the
-    ///     tool-calling loop, without which a session's tools are declared to the model and never
-    ///     invoked; and a <see cref="TurnReportingChatClient"/> that both surfaces the tool activity
-    ///     a session turn does not report and repairs the occupancy figure the loop's summed usage
-    ///     destroys. Those two classes carry the explanation.
+    ///     <b>The client handed to the session factory is the one that talks to Ollama.</b> AgentKit
+    ///     builds the pipeline: a prompt-size recorder directly around that client, and the
+    ///     tool-calling loop above it. The application used to have to write both of those
+    ///     placements itself — a recorder beneath the loop and a repairer above it — because the
+    ///     loop reports usage summed across its requests and a session reading that figure
+    ///     mis-measures every tool-using agent. It no longer does. What remains here is a
+    ///     <see cref="ToolCallReportingChatClient"/>, which exists only because a session turn
+    ///     reports no tool activity and the sample's whole demonstration is watching it.
     ///     </para>
     /// </remarks>
     /// <param name="options">The options carrying the Ollama host, models and any stated window.</param>
@@ -859,13 +860,11 @@ public static class AgentComposition
         // can run on a different model without a second connection or a second timeout policy.
         var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
 
-        // Beneath the session, bottom up: the provider, the prompt-size recorder, the tool-calling
-        // loop, and the turn reporter. See this method's remarks and the two decorator classes.
-        var promptSize = new PromptSizeRecorder(ollama);
-        var toolCalling = promptSize.AsBuilder().UseFunctionInvocation().Build();
-        var sessionClient = new TurnReportingChatClient(
-            toolCalling,
-            promptSize,
+        // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
+        // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a
+        // session turn does not do for itself.
+        var sessionClient = new ToolCallReportingChatClient(
+            ollama,
             call =>
             {
                 ToolTrace.PrintCall(call);
@@ -884,8 +883,8 @@ public static class AgentComposition
 
         var cleanup = new AsyncDisposableAction(() =>
         {
-            // Disposing the outermost client releases the whole chain beneath it, including the
-            // Ollama client itself; the transport is the sample's and is released last.
+            // Disposing the reporting client releases the Ollama client beneath it; the transport
+            // is the sample's and is released last.
             sessionClient.Dispose();
             summaryClient.Dispose();
             http.Dispose();

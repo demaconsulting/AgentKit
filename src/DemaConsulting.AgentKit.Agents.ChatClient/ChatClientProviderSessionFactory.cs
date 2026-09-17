@@ -25,22 +25,41 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 ///     </para>
 ///     <para>
 ///     Safe for concurrent use: creating a session touches nothing this factory owns beyond reading
-///     the client reference and the window.
+///     the client reference and the window, and each session gets a pipeline of its own.
 ///     </para>
 /// </remarks>
 public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
 {
     /// <summary>
-    ///     The client every created session carries its turns on.
+    ///     The client the application talks to its provider with, which every pipeline this factory
+    ///     builds is wrapped around and which none of them disposes.
     /// </summary>
     private readonly IChatClient _client;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ChatClientProviderSessionFactory"/> class.
     /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Hand it the client that talks to the provider, not a pipeline.</b> This factory builds
+    ///     the pipeline itself, one per session it creates: a recorder directly around the supplied
+    ///     client, and the function-invoking layer above that. Both placements matter.
+    ///     </para>
+    ///     <para>
+    ///     The recorder must sit underneath, because a turn that calls tools makes several requests
+    ///     and the response finally returned carries usage summed across all of them - which read as
+    ///     occupancy would have a tool-using agent believe its window was full on its first turn.
+    ///     Underneath, each request is seen separately and the last one is the conversation.
+    ///     </para>
+    ///     <para>
+    ///     The function-invoking layer must sit above, because a session seeds its tools into every
+    ///     request and a bare client will happily emit tool calls that nothing answers. Owning both
+    ///     placements here is what stops a correct-looking composition being silently wrong.
+    ///     </para>
+    /// </remarks>
     /// <param name="client">
-    ///     The chat client every created session carries its turns on. Must not be
-    ///     <see langword="null"/>.
+    ///     The client that talks to the provider. Must not be <see langword="null"/>. Decorators of
+    ///     your own are fine; do not add function invocation, which this factory installs.
     /// </param>
     /// <param name="windowTokens">
     ///     The provider's context window in tokens. Must be positive.
@@ -62,6 +81,13 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
     public int WindowTokens { get; }
 
     /// <inheritdoc/>
+    /// <remarks>
+    ///     The pipeline is built here rather than once at construction, because the recorder holds
+    ///     the occupancy of one conversation. Shared between sessions it would hand a replacement
+    ///     the figure its predecessor left behind - so a session that had sent nothing would report
+    ///     a full window and rotate again immediately - and two sessions run at once would overwrite
+    ///     each other's reading, which the concurrency this contract promises does not allow.
+    /// </remarks>
     public Task<IProviderSession> CreateAsync(
         ProviderSessionSeed seed,
         CancellationToken cancellationToken = default)
@@ -69,7 +95,10 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
         ArgumentNullException.ThrowIfNull(seed);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var recorder = new PromptSizeRecordingChatClient(_client);
+        var pipeline = new FunctionInvokingChatClient(recorder);
+
         return Task.FromResult<IProviderSession>(
-            new ChatClientProviderSession(_client, seed, WindowTokens));
+            new ChatClientProviderSession(pipeline, recorder, seed, WindowTokens));
     }
 }

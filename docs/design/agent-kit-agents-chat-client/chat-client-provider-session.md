@@ -16,25 +16,41 @@ shapes differ between providers — exists in a single place.
 
 It is also where the session engine's one token question is answered. The engine holds no token
 arithmetic: it asks how full the session is and out of how much, and believes the answer. This class
-answers with the input-token count the provider itself reported for the request it last answered,
-taken against the window it was given at construction.
+answers with the size of the **last prompt the provider was actually sent**, taken against the window
+it was given at construction.
+
+That is deliberately not the input-token count on the `ChatResponse` a turn returns. A tool-using
+turn is several requests — the tool-calling loop answers a call and asks again — and the response it
+finally returns carries usage summed across all of them. Read as occupancy that figure is wrong in
+the direction that does harm: a tool-using agent would conclude its window was full on its first turn
+and rotate on every turn after it. The prompt of the last request is the conversation, because by
+then the calls and their results are part of what is being sent; a `PromptSizeRecordingChatClient`
+installed beneath the loop sees each request separately and holds that figure. See
+_PromptSizeRecordingChatClient Unit Design_.
 
 The class implements `IProviderSession`. Instances are not safe for concurrent use, consistent with
 that contract: one session serves one conversation, and turns within a conversation are sequential
 by nature.
 
+**Construction is internal.** An application obtains a session from
+`ChatClientProviderSessionFactory`, which builds the pipeline the session runs on and hands both the
+pipeline and the recorder within it to the constructor. A session cannot be assembled correctly from
+the outside — a client without the recorder beneath it reports no prompt size, and one without the
+tool-calling loop above it emits tool calls nothing answers — so it is not offered.
+
 ### Data Model
 
-- **`_client`** (`IChatClient`) — The client carrying each turn. Supplied by the application, never
-  disposed by this session, and shared with every other session the same factory creates.
+- **`_client`** (`IChatClient`) — The pipeline carrying each turn: the application's client, with
+  the prompt-size recorder beneath and the tool-calling loop above. Built by the factory, never
+  disposed by this session.
+- **`_recorder`** (`PromptSizeRecordingChatClient`) — The layer within that pipeline holding the
+  prompt size of the last request the session made. Invariant: the same instance the pipeline was
+  built around, so the figure read here is the figure that pipeline recorded.
 - **`_options`** (`ChatOptions?`) — The options every turn is sent with, carrying the seeded tools.
   Null when the seed carried no tools, so a session offering nothing sends no options at all.
 - **`_messages`** (`List<ChatMessage>`) — The whole conversation, resent on every turn because the
   provider holds none of it. Invariant: it holds the seeded system message and history from
   construction, and thereafter grows by the message sent and everything the provider produced.
-- **`_reportedInputTokens`** (`long?`) — The provider's own count of the input it last answered, or
-  null when no turn has been taken. Invariant: set only from a provider's own report, never
-  estimated.
 - **`WindowTokens`** (`int`) — The provider's context window in tokens, as supplied at construction.
   Invariant: positive.
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
@@ -42,14 +58,24 @@ by nature.
 
 ### Key Methods
 
-#### The ChatClientProviderSession Constructor (IChatClient client, ProviderSessionSeed seed, int windowTokens)
+#### The ChatClientProviderSession Constructor (IChatClient, PromptSizeRecordingChatClient, ProviderSessionSeed, int)
 
 **Purpose:** Turn a seed into the message list a stateless provider expects.
 
-**Algorithm:** Reject a null client, a null seed and a window that is not positive. Record the client
-and the window. Where the seed carries instructions, add them as a leading system message. Render
-each seeded history entry as a chat message, in order. Where the seed carries tools, build the
-`ChatOptions` every turn will be sent with.
+**Algorithm:** Reject a null client, a null seed and a window that is not positive. Record the
+pipeline, the recorder within it and the window. Where the seed carries instructions, add them as a
+leading system message. Render each seeded history entry as a chat message, in order. Where the seed
+carries tools, build the `ChatOptions` every turn will be sent with.
+
+The parameters are, in order, the pipeline the turn is sent through, the
+`PromptSizeRecordingChatClient` within it, the seed the session starts from, and the window every
+occupancy reading is taken against.
+
+The constructor is internal because only the factory can supply a matching pipeline and recorder.
+Its argument checks are therefore a guard on an internal contract rather than a message to an
+application: the factory refuses a null client and a window that is not positive where the
+application configured its provider, and refuses a null seed where a rotation asked for a session.
+See _ChatClientProviderSessionFactory Unit Design_.
 
 The window is a parameter rather than a reading, because an `IChatClient` publishes none: the
 abstraction exposes a provider name, a provider URI and a default model identifier, and nothing about
@@ -58,7 +84,7 @@ context length and takes a configured one, and for a hosted model the window is 
 of the model the application has already chosen — so it is asked for once, where the provider is
 configured, rather than guessed at here.
 
-**Preconditions:** `client` and `seed` are not null; `windowTokens` is positive.
+**Preconditions:** `client`, `recorder` and `seed` are not null; `windowTokens` is positive.
 
 **Postconditions:** The session holds the seeded conversation and is ready to take its first turn.
 Nothing has been sent to the provider.
@@ -67,13 +93,14 @@ Nothing has been sent to the provider.
 
 **Purpose:** Answer the engine's one token question for this provider.
 
-**Algorithm:** Where no turn has been taken, report nothing occupied out of the supplied window: a
-stateless provider receives the conversation with the request, so a session that has made no request
-occupies nothing — including immediately after a rotation, when the replacement holds a seed the
-provider has not seen yet. Otherwise report the provider's own input-token count, clamped to the
-window, as both the tokens used and the conversation. The clamp exists because a provider that has
-already overrun its own window would otherwise produce a figure the usage shape refuses; being at the
-limit is the truthful reading in that case, and it is the one that rotates.
+**Algorithm:** Where the recorder holds no prompt size, report nothing occupied out of the supplied
+window: a stateless provider receives the conversation with the request, so a session that has made
+no request occupies nothing — including immediately after a rotation, when the replacement holds a
+seed the provider has not seen yet, and whose own recorder has therefore recorded nothing. Otherwise
+report the recorded prompt size, clamped to the window, as both the tokens used and the conversation.
+The clamp exists because a provider that has already overrun its own window would otherwise produce a
+figure the usage shape refuses; being at the limit is the truthful reading in that case, and it is
+the one that rotates.
 
 The whole reading is attributed to the conversation because a chat client reports no split between
 the system prompt, the tool declarations and the exchange. That credits the session with no overhead
@@ -90,20 +117,22 @@ exactly what it is: a figure the provider reported. Reading it contacts nothing 
 **Purpose:** Take one turn and record what it produced.
 
 **Algorithm:** Reject a null message, a released session and a canceled token. Append the message to
-the conversation and send the whole conversation, with the seeded tool options, to the client. Append
-every message the provider produced, so the next turn sends again a history the provider has already
-seen. Record the reported input tokens, or refuse the turn where the provider reported none. Map each
-produced message to the transcript entries it contributes and return them with the provider's answer.
+the conversation and send the whole conversation, with the seeded tool options, through the pipeline.
+Append every message the pipeline produced — which, for a tool-using turn, includes the calls and the
+results the loop obtained for them — so the next turn sends again a history the provider has already
+seen. Refuse the turn where the recorder still holds no prompt size, which means no request this
+session made reported usage at all. Map each produced message to the transcript entries it
+contributes and return them with the answer.
 
-The usage is recorded before the entries are built, so a usage read between turns reflects the turn
-that just happened rather than the one before it.
+The occupancy needs no recording step here: the recorder already holds it, having seen the last
+request go past on its way to the provider.
 
 **Preconditions:** `message` is not null; the session is not released; cancellation has not been
 requested.
 
-**Postconditions:** On success, the conversation holds the message and everything the provider
-produced, the reported occupancy is the provider's own, and the returned `ProviderTurn` carries the
-answer and the entries that led to it.
+**Postconditions:** On success, the conversation holds the message and everything the turn produced,
+the occupancy reads as the last request's prompt, and the returned `ProviderTurn` carries the answer
+and the entries that led to it.
 
 #### DisposeAsync()
 
@@ -168,19 +197,24 @@ arguments are recorded for what they say about the call rather than to be parsed
 | Null `message`                             | `ArgumentNullException` propagates          |
 | Turn on a released session                 | `ObjectDisposedException` propagates        |
 | Cancellation before the turn               | `OperationCanceledException` propagates     |
-| Provider answered without reporting usage  | `InvalidOperationException` propagates      |
+| No request has reported token usage        | `InvalidOperationException` propagates      |
 
-The refusal of an answer carrying no usage is the one condition here that is not a programming error,
-and it is deliberately not softened: knowing when the window is filling is the one thing this library
-needs a token count for, so an absent figure means something the application can see and fix. The
-message names the missing fact and the two remedies — use a chat client that reports usage, or wrap
-one in an implementation that does.
+The refusal of a turn that leaves no prompt size recorded is the one condition here that is not a
+programming error, and it is deliberately not softened: knowing when the window is filling is the one
+thing this library needs a token count for, so an absent figure means something the application can
+see and fix. The message names the missing fact and the two remedies — use a chat client that reports
+usage, or wrap one in an implementation that does. A provider that reports usage on no request at all
+is caught on its first turn, which is the turn an application can act on; a later request that
+reports none leaves the last figure that was true standing rather than failing a turn the session was
+already able to measure. See _PromptSizeRecordingChatClient Unit Design_.
 
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSession`, `ProviderSessionSeed`, `ProviderTurn`,
   `TranscriptEntry` and `ContextUsage`; see _ProviderSession Unit Design_ and _ContextUsage Unit
   Design_.
+- **PromptSizeRecordingChatClient** — holds the prompt size this session answers for the window
+  with; see _PromptSizeRecordingChatClient Unit Design_.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `ChatMessage`, `ChatOptions`,
   `ChatResponse`, `FunctionCallContent` and `FunctionResultContent`; see
   _Microsoft.Extensions.AI.Abstractions Design_.
@@ -188,5 +222,6 @@ one in an implementation that does.
 ### Callers
 
 `ChatClientProviderSessionFactory` constructs one at the start of a conversation and again at every
-rotation; see _ChatClientProviderSessionFactory Unit Design_. An application may construct one
-directly for a session it drives itself. Within this system nothing else calls it.
+rotation; see _ChatClientProviderSessionFactory Unit Design_. Because the constructor is internal and
+takes a pipeline only that factory builds, nothing else constructs one — within this system or
+outside it.

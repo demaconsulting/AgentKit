@@ -472,6 +472,16 @@ The provider's context window is deliberately *not* configured here. It is a fac
 provider, so it belongs where the provider is constructed; carrying a second copy in the options
 invited the two to disagree, and left the session deciding which to believe.
 
+**Hand the factory the client that talks to your provider, not a pipeline.** It builds the pipeline
+itself: a prompt-size recorder directly around the client you supply, and the function-invocation
+loop above that. Both placements matter, and getting either wrong is silent. The recorder must sit
+underneath because a turn that calls tools is several requests, and the response the loop finally
+returns reports their input tokens *added together* — read as occupancy, that has a tool-using agent
+conclude its window is full on its first turn and rotate on every turn after it. The loop must sit
+above because a session declares its tools on every request, and a bare client will emit tool calls
+that nothing answers. Decorators of your own are welcome around the client you supply; do not add
+function invocation, which the factory installs.
+
 ## Where the Window Comes From
 
 An `IChatClient` publishes no context window — the abstraction exposes a provider name, a provider

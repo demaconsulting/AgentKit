@@ -80,7 +80,7 @@ internal sealed record AgentTurns(AIAgent Agent, AgentSession Session);
 ///     <para>
 ///     Tool activity is printed on both paths, from different places, because the two shapes reveal
 ///     it differently: an agent streams it, and a compacting session does not report it at all —
-///     see <see cref="TurnReportingChatClient"/>, which is installed beneath the session for
+///     see <see cref="ToolCallReportingChatClient"/>, which is installed beneath the session for
 ///     exactly that reason.
 ///     </para>
 ///     <para>

@@ -30,13 +30,22 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 ///     would be wrong for most callers.
 ///     </para>
 ///     <para>
-///     <b>Usage comes from the provider, because it is the only honest source.</b>
-///     <see cref="ChatResponse.Usage"/> carries the input tokens a provider counted for the request
-///     it just answered, which is exactly the conversation occupancy a rotation decision needs.
-///     Every provider reached this way reports it. One that answers without doing so is refused
-///     rather than estimated around: knowing when the window is filling is the one thing this
-///     library needs a token count for, and guessing at it would mean guessing forever at the single
-///     fact the whole arrangement turns on.
+///     <b>Usage comes from the provider, because it is the only honest source - but from the last
+///     prompt, not from the turn's total.</b> A tool-using turn is several requests, and the
+///     <see cref="ChatResponse"/> the tool-invoking layer finally returns carries usage summed
+///     across all of them. The occupancy a rotation decision needs is the prompt of the
+///     <em>last</em> request, because by then the tool calls and their results are part of the
+///     conversation being sent; a <see cref="PromptSizeRecordingChatClient"/> installed beneath that
+///     layer sees each request separately and holds that figure. Every provider reached this way
+///     reports usage. One that never does is refused rather than estimated around: knowing when the
+///     window is filling is the one thing this library needs a token count for, and guessing at it
+///     would mean guessing forever at the single fact the whole arrangement turns on.
+///     </para>
+///     <para>
+///     <b>A session is obtained from <see cref="ChatClientProviderSessionFactory"/>.</b> That
+///     factory builds the pipeline this session runs on, and is the only thing that can: a client
+///     without the recorder beneath it reports no prompt size, and one without the tool-invoking
+///     layer above it emits tool calls nothing answers.
 ///     </para>
 ///     <para>
 ///     Instances are not safe for concurrent use, consistent with <see cref="IProviderSession"/>.
@@ -50,6 +59,11 @@ public sealed class ChatClientProviderSession : IProviderSession
     private readonly IChatClient _client;
 
     /// <summary>
+    ///     Sees each request a turn makes, so occupancy is the last prompt rather than their sum.
+    /// </summary>
+    private readonly PromptSizeRecordingChatClient _recorder;
+
+    /// <summary>
     ///     The options every turn is sent with, carrying the tools the agent may call.
     /// </summary>
     private readonly ChatOptions? _options;
@@ -60,15 +74,10 @@ public sealed class ChatClientProviderSession : IProviderSession
     private readonly List<ChatMessage> _messages = [];
 
     /// <summary>
-    ///     The provider's own count of the input it last answered, or <see langword="null"/> when it
-    ///     reported none.
-    /// </summary>
-    private long? _reportedInputTokens;
-
-    /// <summary>
     ///     Initializes a new instance of the <see cref="ChatClientProviderSession"/> class.
     /// </summary>
     /// <param name="client">The chat client carrying each turn. Must not be <see langword="null"/>.</param>
+    /// <param name="recorder">Sees each request a turn makes, underneath tool invocation.</param>
     /// <param name="seed">What the session starts from. Must not be <see langword="null"/>.</param>
     /// <param name="windowTokens">
     ///     The provider's context window in tokens. Must be positive. Read it from the provider
@@ -79,13 +88,18 @@ public sealed class ChatClientProviderSession : IProviderSession
     ///     <paramref name="client"/> or <paramref name="seed"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
-    public ChatClientProviderSession(IChatClient client, ProviderSessionSeed seed, int windowTokens)
+    internal ChatClientProviderSession(
+        IChatClient client,
+        PromptSizeRecordingChatClient recorder,
+        ProviderSessionSeed seed,
+        int windowTokens)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(seed);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
 
         _client = client;
+        _recorder = recorder;
         WindowTokens = windowTokens;
 
         if (!string.IsNullOrEmpty(seed.Instructions))
@@ -112,8 +126,9 @@ public sealed class ChatClientProviderSession : IProviderSession
     /// <inheritdoc/>
     /// <remarks>
     ///     <para>
-    ///     The provider's own count of the input it last answered, which is exactly the occupancy a
-    ///     rotation decision needs, taken against the window this session was given.
+    ///     The provider's own count of the last prompt it was sent, which is exactly the occupancy a
+    ///     rotation decision needs, taken against the window this session was given. Deliberately not
+    ///     the total a tool-using turn is billed for, which is larger than the conversation ever was.
     ///     </para>
     ///     <para>
     ///     <b>Before the first turn it is zero, because nothing has been sent.</b> A stateless
@@ -135,7 +150,7 @@ public sealed class ChatClientProviderSession : IProviderSession
     {
         get
         {
-            if (_reportedInputTokens is not { } reported)
+            if (_recorder.LastPromptTokens is not { } reported)
             {
                 return ContextUsage.FromProvider(0, WindowTokens, 0);
             }
@@ -163,14 +178,16 @@ public sealed class ChatClientProviderSession : IProviderSession
         // Everything the provider produced joins the conversation, so the next turn sends again a
         // history matching what it has already seen.
         _messages.AddRange(response.Messages);
-
-        // Recorded before the entries are built, so a usage read between turns reflects the turn
-        // that just happened rather than the one before it.
-        _reportedInputTokens = response.Usage?.InputTokenCount
-            ?? throw new InvalidOperationException(
+        // The turn is answered; the recorder underneath has the prompt size of the last request it
+        // took to get there. A turn that reported none leaves nothing to rotate on, which is refused
+        // rather than guessed at.
+        if (_recorder.LastPromptTokens is null)
+        {
+            throw new InvalidOperationException(
                 "The provider answered without reporting token usage, so this session cannot tell "
                 + "when its context window is filling. Use a chat client that reports usage, or "
                 + "wrap this one in an implementation that does.");
+        }
 
         var entries = new List<TranscriptEntry>();
         foreach (var produced in response.Messages)

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.ChatClient.Tests;
@@ -158,19 +159,36 @@ internal sealed class RecordingChatClient : IChatClient
     }
 
     /// <summary>
-    ///     Refuses to stream, because nothing under test streams.
+    ///     Records the request and answers from the script as a stream of updates.
     /// </summary>
+    /// <remarks>
+    ///     The session adapter never streams, but the prompt-size recorder installed beneath it
+    ///     implements the streaming member of <see cref="IChatClient"/> and reads usage from the
+    ///     updates rather than from a response, so streaming is scripted here rather than refused.
+    ///     The same scripted answer is rendered as the stream a provider would have produced: one
+    ///     update per message, and a final update carrying the usage where the answer reported any.
+    /// </remarks>
     /// <param name="messages">The conversation handed to the client.</param>
-    /// <param name="options">The request options.</param>
-    /// <param name="cancellationToken">A token that cancels the request.</param>
-    /// <returns>Never returns.</returns>
-    /// <exception cref="NotSupportedException">Always.</exception>
-    public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+    /// <param name="options">The request options, recorded so a test can assert on the tools offered.</param>
+    /// <param name="cancellationToken">A token that cancels the request, ignored.</param>
+    /// <returns>The scripted answer, as updates.</returns>
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException(
-            "The session adapter never streams, so a streaming answer would be evidence of nothing.");
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+        foreach (var message in response.Messages)
+        {
+            yield return new ChatResponseUpdate(message.Role, message.Contents);
+        }
+
+        if (response.Usage is { } usage)
+        {
+            yield return new ChatResponseUpdate(ChatRole.Assistant, (IList<AIContent>)[new UsageContent(usage)]);
+        }
+    }
 
     /// <summary>
     ///     Returns no service, because this client offers none.

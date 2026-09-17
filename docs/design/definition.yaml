@@ -73,6 +73,7 @@ input-files:
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/design/agent-kit-agents-chat-client/chat-client-provider-session.md
   - docs/design/agent-kit-agents-chat-client/chat-client-provider-session-factory.md
+  - docs/design/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-summarizer.md
   - docs/design/agent-kit-agents-copilot.md
   - docs/design/agent-kit-agents-copilot/copilot-agent-factory.md

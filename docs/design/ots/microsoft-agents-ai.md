@@ -16,6 +16,10 @@ AgentKitAgentsChatClient package only, deliberately kept out of Core.
 - `ChatClientAgent` — builds an `AIAgent` from an `IChatClient` and a tool list, and runs the
   function-invocation loop above the client it is given, which is what places the image-promoting
   decorator beneath that loop
+- `FunctionInvokingChatClient` — the function-invocation loop itself, which ships in the
+  `Microsoft.Extensions.AI` package this dependency brings. `ChatClientProviderSessionFactory`
+  installs one above the client an application supplies, because a session declares its tools on
+  every request and a bare client would emit tool calls nothing answers
 
 ### Integration Pattern
 
@@ -24,3 +28,8 @@ references it as a **direct** `PackageReference`. The factory wraps the supplied
 Core's `ImagePromotingChatClient` and constructs a `ChatClientAgent` over the wrapped client,
 passing the supplied instructions, name, and tools. There is no initialization or disposal step of
 the framework's own; the returned `AIAgent`, and the client beneath it, remain the host's to manage.
+
+`ChatClientProviderSessionFactory` consumes the same package graph directly, constructing a
+`FunctionInvokingChatClient` for each session it creates and placing AgentKit's own prompt-size
+recorder beneath it. Neither wrapper is disposed by the session: the client at the bottom of the
+chain is the application's and outlives every session a rotation creates.

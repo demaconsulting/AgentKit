@@ -8,6 +8,14 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient.Tests;
 ///     conversation resent on every turn, the provider's own occupancy figure, the transcript
 ///     entries a turn produces, and release.
 /// </summary>
+/// <remarks>
+///     Every session here is obtained from <see cref="ChatClientProviderSessionFactory"/>, because
+///     that is the only way an application obtains one: the factory owns the pipeline the session
+///     runs on - the prompt-size recorder directly around the caller's client, and function
+///     invocation above it - and a session constructed around a bare client would be a session no
+///     application can have. The recording client therefore sits at the bottom of that pipeline, so
+///     what it observes is what the provider would.
+/// </remarks>
 public class ChatClientProviderSessionTests
 {
     /// <summary>
@@ -37,7 +45,7 @@ public class ChatClientProviderSessionTests
                 TranscriptEntry.ToolCall("call-1", "probe()"),
                 TranscriptEntry.ToolResult("call-1", "42"),
             ]);
-        await using var session = new ChatClientProviderSession(client, seed, Window);
+        await using var session = await CreateSessionAsync(client, seed);
 
         // Act: take a turn, which is what sends the seeded list to the provider
         await session.SendAsync("next", TestContext.Current.CancellationToken);
@@ -61,7 +69,7 @@ public class ChatClientProviderSessionTests
     {
         // Arrange: a seed with no instructions and no tools
         var client = RecordingChatClient.Answering("answer", inputTokens: 100);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take a turn
         await session.SendAsync("hello", TestContext.Current.CancellationToken);
@@ -83,7 +91,7 @@ public class ChatClientProviderSessionTests
         var client = new RecordingChatClient()
             .Queue("first answer", inputTokens: 100)
             .Queue("second answer", inputTokens: 200);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take two turns
         await session.SendAsync("first", TestContext.Current.CancellationToken);
@@ -109,7 +117,7 @@ public class ChatClientProviderSessionTests
         var client = new RecordingChatClient()
             .Queue("answer", inputTokens: 137)
             .Queue("answer", inputTokens: 461);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take two turns, reading the usage after each
         await session.SendAsync("first", TestContext.Current.CancellationToken);
@@ -137,7 +145,7 @@ public class ChatClientProviderSessionTests
     ///     replacement session is created in.
     /// </remarks>
     [Fact]
-    public void ChatClientProviderSession_CurrentUsage_BeforeFirstTurn_IsZero()
+    public async Task ChatClientProviderSession_CurrentUsage_BeforeFirstTurn_IsZero()
     {
         // Arrange: a session seeded as a rotation seeds a replacement, with nothing sent yet
         var client = RecordingChatClient.Answering("answer", inputTokens: 500);
@@ -145,7 +153,7 @@ public class ChatClientProviderSessionTests
             "be brief",
             [],
             [TranscriptEntry.ContextRecord("what happened earlier"), TranscriptEntry.User("recent")]);
-        var session = new ChatClientProviderSession(client, seed, Window);
+        await using var session = await CreateSessionAsync(client, seed);
 
         // Act: read the usage before any turn has been taken
         var usage = session.CurrentUsage;
@@ -167,7 +175,7 @@ public class ChatClientProviderSessionTests
     {
         // Arrange: a client reporting more input than the window holds
         var client = RecordingChatClient.Answering("answer", inputTokens: Window * 5);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take a turn and read the usage
         await session.SendAsync("hello", TestContext.Current.CancellationToken);
@@ -194,7 +202,7 @@ public class ChatClientProviderSessionTests
         // Arrange: a client answering normally but reporting no usage at all
         var client = new RecordingChatClient()
             .Queue(RecordingChatClient.AnswerWithoutUsage("answer"));
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take a turn
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -223,7 +231,7 @@ public class ChatClientProviderSessionTests
                     new ChatMessage(ChatRole.Assistant, "done"),
                 ],
                 inputTokens: 100));
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take the turn
         var turn = await session.SendAsync("look it up", TestContext.Current.CancellationToken);
@@ -272,7 +280,7 @@ public class ChatClientProviderSessionTests
                     new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-3", "42")]),
                 ],
                 inputTokens: 100));
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take the turn
         var turn = await session.SendAsync("look it up", TestContext.Current.CancellationToken);
@@ -289,18 +297,25 @@ public class ChatClientProviderSessionTests
     ///     Proves a tool call taking no arguments is recorded as the call it was, rather than
     ///     dropped or rendered as something a reader has to decode.
     /// </summary>
+    /// <remarks>
+    ///     The call is scripted beside the result that answered it, because that is the only shape a
+    ///     turn can have once the factory has installed function invocation: a call left unanswered
+    ///     is one the tool-invoking layer would go back to the provider about, and no turn this
+    ///     session sees ever ends holding one.
+    /// </remarks>
     [Fact]
     public async Task ChatClientProviderSession_Send_ToolCallWithoutArguments_RecordsTheBareCall()
     {
-        // Arrange: a provider calling a tool that takes nothing
+        // Arrange: a provider calling a tool that takes nothing, and the result answering it
         var client = new RecordingChatClient().Queue(
             RecordingChatClient.Answer(
                 [
                     new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-9", "probe", null)]),
+                    new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-9", "42")]),
                     new ChatMessage(ChatRole.Assistant, "done"),
                 ],
                 inputTokens: 100));
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         // Act: take the turn
         var turn = await session.SendAsync("go", TestContext.Current.CancellationToken);
@@ -318,7 +333,7 @@ public class ChatClientProviderSessionTests
     {
         // Arrange: a session that has taken a turn, so there is a conversation to forget
         var client = RecordingChatClient.Answering("answer", inputTokens: 100);
-        var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        var session = await CreateSessionAsync(client, EmptySeed());
         await session.SendAsync("hello", TestContext.Current.CancellationToken);
 
         // Act: release it
@@ -342,14 +357,15 @@ public class ChatClientProviderSessionTests
     [Fact]
     public async Task ChatClientProviderSession_Dispose_DoesNotDisposeTheSuppliedClient()
     {
-        // Arrange: one client, as a rotation shares one across sessions
+        // Arrange: one factory over one client, as a rotation shares both across sessions
         var client = RecordingChatClient.Answering("answer", inputTokens: 100);
-        var first = new ChatClientProviderSession(client, EmptySeed(), Window);
+        var factory = new ChatClientProviderSessionFactory(client, Window);
+        var first = await CreateSessionAsync(factory, EmptySeed());
         await first.SendAsync("hello", TestContext.Current.CancellationToken);
 
         // Act: release that session and take a turn on a replacement over the same client
         await first.DisposeAsync();
-        await using var replacement = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var replacement = await CreateSessionAsync(factory, EmptySeed());
         var turn = await replacement.SendAsync("hello again", TestContext.Current.CancellationToken);
 
         // Assert: the client was never disposed and still answers
@@ -364,8 +380,8 @@ public class ChatClientProviderSessionTests
     [Fact]
     public async Task ChatClientProviderSession_Dispose_Twice_IsPermitted()
     {
-        var session = new ChatClientProviderSession(
-            RecordingChatClient.Answering("answer", inputTokens: 100), EmptySeed(), Window);
+        var session = await CreateSessionAsync(
+            RecordingChatClient.Answering("answer", inputTokens: 100), EmptySeed());
 
         await session.DisposeAsync();
         await session.DisposeAsync();
@@ -381,7 +397,7 @@ public class ChatClientProviderSessionTests
     public async Task ChatClientProviderSession_Send_Canceled_ThrowsAndSendsNothing()
     {
         var client = RecordingChatClient.Answering("answer", inputTokens: 100);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
@@ -392,51 +408,44 @@ public class ChatClientProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves a missing client is refused where the application composed it.
-    /// </summary>
-    [Fact]
-    public void ChatClientProviderSession_Constructor_NullClient_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(
-            () => new ChatClientProviderSession(null!, EmptySeed(), Window));
-    }
-
-    /// <summary>
-    ///     Proves a missing seed is refused: a session with nothing to start from cannot be built.
-    /// </summary>
-    [Fact]
-    public void ChatClientProviderSession_Constructor_NullSeed_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(
-            () => new ChatClientProviderSession(new RecordingChatClient(), null!, Window));
-    }
-
-    /// <summary>
-    ///     Proves a window that is not positive is refused, because every occupancy reading is taken
-    ///     against it and a window of nothing describes no provider.
-    /// </summary>
-    /// <param name="windowTokens">The rejected window.</param>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void ChatClientProviderSession_Constructor_NonPositiveWindow_Throws(int windowTokens)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => new ChatClientProviderSession(new RecordingChatClient(), EmptySeed(), windowTokens));
-    }
-
-    /// <summary>
     ///     Proves a missing message is refused rather than sent to the provider as nothing.
     /// </summary>
     [Fact]
     public async Task ChatClientProviderSession_Send_NullMessage_Throws()
     {
         var client = RecordingChatClient.Answering("answer", inputTokens: 100);
-        await using var session = new ChatClientProviderSession(client, EmptySeed(), Window);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
 
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => session.SendAsync(null!, TestContext.Current.CancellationToken));
     }
+
+    /// <summary>
+    ///     Builds the session an application gets: one obtained from
+    ///     <see cref="ChatClientProviderSessionFactory"/>, which owns the pipeline the session runs
+    ///     on. Construction is deliberately not exercised directly, because an application cannot
+    ///     reach it.
+    /// </summary>
+    /// <param name="client">The client the factory talks to the provider with.</param>
+    /// <param name="seed">What the session starts from.</param>
+    /// <returns>The created session.</returns>
+    private static Task<ChatClientProviderSession> CreateSessionAsync(
+        IChatClient client,
+        ProviderSessionSeed seed) =>
+        CreateSessionAsync(new ChatClientProviderSessionFactory(client, Window), seed);
+
+    /// <summary>
+    ///     Creates a session from an existing factory, for a test that needs two sessions over the
+    ///     one factory a rotation shares.
+    /// </summary>
+    /// <param name="factory">The factory to create from.</param>
+    /// <param name="seed">What the session starts from.</param>
+    /// <returns>The created session.</returns>
+    private static async Task<ChatClientProviderSession> CreateSessionAsync(
+        ChatClientProviderSessionFactory factory,
+        ProviderSessionSeed seed) =>
+        Assert.IsType<ChatClientProviderSession>(
+            await factory.CreateAsync(seed, TestContext.Current.CancellationToken));
 
     /// <summary>
     ///     Builds a seed carrying nothing, for a test about something other than seeding.

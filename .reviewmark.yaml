@@ -1121,7 +1121,7 @@ reviews:
 
   # AgentKitAgentsChatClient-ChatClientProviderSession Review (one per unit)
   #
-  # The session adapter's three units share one recording chat client, so that test double is
+  # The session adapter's four units share one recording chat client, so that test double is
   # claimed by each of their review-sets: it is the fake the unit's own tests are written
   # against, and a reviewer cannot judge those tests without it.
   - id: AgentKitAgentsChatClient-ChatClientProviderSession
@@ -1151,6 +1151,32 @@ reviews:
       - "docs/verification/agent-kit-agents-chat-client/chat-client-provider-session-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientProviderSessionFactory.cs"       # unit source
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientProviderSessionFactoryTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
+
+  # AgentKitAgentsChatClient-PromptSizeRecordingChatClient Review (one per unit)
+  #
+  # The unit is internal to the package and is reached by its tests through InternalsVisibleTo. It
+  # is nonetheless a unit like any other - a class with its own requirements, design, verification,
+  # source and tests - so it gets the same five-artifact review-set. Its correctness is what the
+  # session's occupancy figure rests on, which is precisely why it is reviewed rather than folded
+  # into the factory that builds it.
+  #
+  # The recording chat client is claimed here too, for the same reason the session adapter's other
+  # units claim it: it is the fake this unit's tests are written against, and a reviewer cannot
+  # judge those tests without it. The unit's design also depends on the placement the factory owns,
+  # so that unit's design document is supplied as context.
+  - id: AgentKitAgentsChatClient-PromptSizeRecordingChatClient
+    title: Review that AgentKitAgentsChatClient PromptSizeRecordingChatClient Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+      - "docs/design/agent-kit-agents-chat-client/chat-client-provider-session-factory.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/prompt-size-recording-chat-client.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/PromptSizeRecordingChatClient.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/PromptSizeRecordingChatClientTests.cs"  # unit tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
 
   # AgentKitAgentsChatClient-ChatClientSummarizer Review (one per unit)

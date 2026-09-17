@@ -23,6 +23,29 @@ sections:
               - ChatClientProviderSessionFactory_CreateAsync_CreatesSessionCarryingItsClientAndWindow
               - ChatClientProviderSessionFactory_CreateAsync_EachCall_ReturnsADistinctSessionOverTheSameClient
 
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-OwnsTheSessionPipeline
+            title: >-
+              The factory shall build the pipeline each session runs on from the client it was given
+              - the prompt-size recorder directly around that client, and tool invocation above it -
+              and shall build one per session.
+            justification: |
+              Both placements decide whether the session is correct, and an application composing
+              them itself would sometimes compose something that looks right and is wrong with no
+              error to notice. Tool invocation must sit above, because a session seeds its tools into
+              every request and a bare client will emit tool calls that nothing answers. The recorder
+              must sit underneath, because a turn that calls tools makes several requests and the
+              response the tool-calling layer finally returns carries usage summed across all of
+              them - read as occupancy, that would have a tool-using agent believe its window was
+              full on its first turn. Underneath, each request is seen separately and the last one is
+              the conversation. The pipeline is built per session because the figure it records
+              belongs to one conversation: shared, it would hand a replacement the figure that
+              provoked the rotation, and two sessions run at once would overwrite each other's
+              reading, which the concurrency this contract promises does not allow.
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript
+              - ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum
+              - ChatClientProviderSessionFactory_CreateAsync_AfterAnEarlierSessionSpoke_TheReplacementOccupiesNothing
+
           - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-SeedsTheCreatedSession
             title: >-
               The factory shall create the session already holding the seeded instructions, tools and
@@ -42,8 +65,9 @@ sections:
             justification: |
               A missing client or a window that is not positive is a defect in the application's
               provider configuration, refused where that configuration was written rather than at the
-              first conversation it breaks. A canceled creation yields no session, so a canceled
-              rotation leaves nothing unowned for the engine to release.
+              first conversation it breaks - and refused here rather than in the session, because
+              this is the only place an application can supply either. A canceled creation yields no
+              session, so a canceled rotation leaves nothing unowned for the engine to release.
             tests:
               - ChatClientProviderSessionFactory_Constructor_NullClient_Throws
               - ChatClientProviderSessionFactory_Constructor_NonPositiveWindow_Throws

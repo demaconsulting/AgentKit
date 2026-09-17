@@ -19,12 +19,15 @@ for. The two together establish that an agent built by the factory talks to its 
 functioning image-promoting decorator.
 
 The session adapter is proven end to end rather than inferred from its units. One scenario runs a
-Core session over the adapter and asserts the occupancy it reports is the provider's own count
-against the window the application stated. A second holds a short conversation against a provider
-that reports a filling window on every turn, and asserts the whole arrangement: the rotation happens
-on nothing but what the provider reported, the consolidation goes out through a **separate** chat
-client, the record that client returns is found in the conversation the provider is later sent, and
-the replacement session reports occupying nothing because it has not been sent anything yet.
+Core session over the adapter and asserts the occupancy it reports is the provider's own figure for
+the prompt it was last sent, against the window the application stated. A second holds a short
+conversation against a provider that reports a filling window on every turn, and asserts the whole
+arrangement: the rotation happens on nothing but what the provider reported, the consolidation goes
+out through a **separate** chat client, the record that client returns is found in the conversation
+the provider is later sent, and the replacement session reports occupying nothing because it has not
+been sent anything yet. That last assertion also pins the pipeline the session factory builds: a
+replacement sharing its predecessor's prompt-size recorder would report the figure that provoked the
+rotation, and the scenario would fail.
 
 **What is out of automated scope, stated honestly.** A live end-to-end run against a real
 `IChatClient` provider is not automated: the asymmetry the decorator exists for happens at a
