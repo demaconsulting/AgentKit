@@ -129,9 +129,17 @@ software items, specifically:
 - **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
   the registered packs rather than from the parent's tool list
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
-  `IChatClient`, installing the image-promoting decorator on every agent unconditionally
+  `IChatClient`, installing the image-promoting decorator on every agent unconditionally, and
+  carries a Core session over that same `IChatClient`
 - **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
   image-promoting decorator and builds a `ChatClientAgent`
+- **ChatClientProviderSession (Unit)** — One Core session over an `IChatClient`: the seeded message
+  list, the conversation resent on every turn, and the provider's own occupancy reported against a
+  supplied window
+- **ChatClientProviderSessionFactory (Unit)** — Holds the client and the window, and creates a
+  session from a seed at the start of a conversation and again at every rotation
+- **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
+  application's choosing, out of the session being compacted
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
   Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
   allow-list from the supplied tools
@@ -336,11 +344,15 @@ src/DemaConsulting.AgentKit.Tools/
 
 Each family folder mirrors the subsystem it represents in the software structure above.
 
-Each provider-adapter system is one factory class in its own source tree:
+Each provider-adapter system is its own source tree. The Copilot adapter is one factory class; the
+chat-client adapter adds the session adapter that carries a Core session over an `IChatClient`:
 
 ```text
 src/DemaConsulting.AgentKit.Agents.ChatClient/
-└── ChatClientAgentFactory.cs   — builds an agent from an IChatClient, decorator always installed
+├── ChatClientAgentFactory.cs              — builds an agent from an IChatClient, decorator always installed
+├── ChatClientProviderSession.cs           — one Core session over an IChatClient
+├── ChatClientProviderSessionFactory.cs    — creates those sessions, holding the client and the window
+└── ChatClientSummarizer.cs                — consolidates history through an IChatClient
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed

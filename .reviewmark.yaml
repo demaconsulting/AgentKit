@@ -1121,23 +1121,52 @@ reviews:
 
   # AgentKitAgentsChatClient-ChatClientProviderSession Review (one per unit)
   #
-  # The chat-client provider-session adapter - the session, its factory and the summarizer that
-  # runs consolidation through the same client - arrived with the session engine's move into Core
-  # and has no companion requirements, design or verification chapter yet; those land with the
-  # increment that wires the adapter to an application. The sources are claimed here rather than
-  # left uncovered, so the gap is a named review-set waiting for its artifacts rather than three
-  # files nothing in the hierarchy accounts for.
+  # The session adapter's three units share one recording chat client, so that test double is
+  # claimed by each of their review-sets: it is the fake the unit's own tests are written
+  # against, and a reviewer cannot judge those tests without it.
   - id: AgentKitAgentsChatClient-ChatClientProviderSession
     title: Review that AgentKitAgentsChatClient ChatClientProviderSession Implementation is Correct
     context:
       - "docs/design/agent-kit-agents-chat-client.md"
       - "docs/reqstream/agent-kit-agents-chat-client.yaml"
       - "docs/design/agent-kit-core/provider-session.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/chat-client-provider-session.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/chat-client-provider-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientProviderSession.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientProviderSessionTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
+
+  # AgentKitAgentsChatClient-ChatClientProviderSessionFactory Review (one per unit)
+  - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory
+    title: Review that AgentKitAgentsChatClient ChatClientProviderSessionFactory Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
+      - "docs/design/agent-kit-core/provider-session.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session-factory.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/chat-client-provider-session-factory.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/chat-client-provider-session-factory.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientProviderSessionFactory.cs"       # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientProviderSessionFactoryTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
+
+  # AgentKitAgentsChatClient-ChatClientSummarizer Review (one per unit)
+  - id: AgentKitAgentsChatClient-ChatClientSummarizer
+    title: Review that AgentKitAgentsChatClient ChatClientSummarizer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-chat-client.md"
+      - "docs/reqstream/agent-kit-agents-chat-client.yaml"
       - "docs/design/agent-kit-core/summarizer.md"
     paths:
-      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientProviderSession.cs"         # unit source
-      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientProviderSessionFactory.cs"  # factory source
-      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientSummarizer.cs"              # summarizer source
+      - "docs/reqstream/agent-kit-agents-chat-client/chat-client-summarizer.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-chat-client/chat-client-summarizer.md"        # unit design
+      - "docs/verification/agent-kit-agents-chat-client/chat-client-summarizer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.ChatClient/ChatClientSummarizer.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/ChatClientSummarizerTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/RecordingChatClient.cs"  # recording chat client fake
 
   # AgentKitAgentsCopilot-Architecture Review (one per system)
   - id: AgentKitAgentsCopilot-Architecture

@@ -1,0 +1,51 @@
+---
+# Software Unit Requirements for ChatClientProviderSessionFactory
+#
+# These requirements describe the design-level behavior of the ChatClientProviderSessionFactory unit.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: ChatClientProviderSessionFactory Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-CreatesSessionsCarryingItsClientAndWindow
+            title: >-
+              The factory shall create a chat-client provider session carrying the client and the
+              window it holds, once at the start of a conversation and again at every rotation.
+            justification: |
+              An application states its provider once, where it configures it, and a rotating session
+              must not ask for either fact again. Holding the client and the window here is what lets
+              the compaction engine ask one question - how full, out of how much - and believe the
+              answer, because every session the engine is handed answers against the same window over
+              the same client. Each call yields a fresh session, because that is what a rotation
+              needs: a new conversation over the provider the application already chose.
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_CreatesSessionCarryingItsClientAndWindow
+              - ChatClientProviderSessionFactory_CreateAsync_EachCall_ReturnsADistinctSessionOverTheSameClient
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-SeedsTheCreatedSession
+            title: >-
+              The factory shall create the session already holding the seeded instructions, tools and
+              history.
+            justification: |
+              A replacement session must continue the conversation rather than start one, so the seed
+              the rotation produced has to reach the session before its first message does. The
+              factory therefore passes the seed straight through rather than creating an empty
+              session an engine would have to replay into.
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_PassesTheSeedToTheSession
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-RejectsInvalidArguments
+            title: >-
+              The factory shall reject a missing client, a window that is not positive, a missing
+              seed, and a canceled creation.
+            justification: |
+              A missing client or a window that is not positive is a defect in the application's
+              provider configuration, refused where that configuration was written rather than at the
+              first conversation it breaks. A canceled creation yields no session, so a canceled
+              rotation leaves nothing unowned for the engine to release.
+            tests:
+              - ChatClientProviderSessionFactory_Constructor_NullClient_Throws
+              - ChatClientProviderSessionFactory_Constructor_NonPositiveWindow_Throws
+              - ChatClientProviderSessionFactory_CreateAsync_NullSeed_Throws
+              - ChatClientProviderSessionFactory_CreateAsync_Canceled_Throws

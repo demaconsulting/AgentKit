@@ -60,3 +60,75 @@ sections:
           - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
         tests:
           - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+
+      - id: AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
+        title: >-
+          The library shall carry an AgentKit Core session over any Microsoft.Extensions.AI chat
+          client, seeding each session from the instructions, tools and history the session engine
+          supplies and resending the accumulated conversation on every turn.
+        tags: [system]
+        justification: |
+          Ollama, OpenAI and AI Foundry all reach this library as a chat client, and none of them
+          keeps the conversation: every turn sends the whole message list again. One adapter
+          therefore serves the entire stateless family, and writing it once means the mapping
+          between this library's transcript entries and chat messages - the part most likely to rot,
+          because tool-calling shapes differ between providers - exists in a single place. Without
+          it an application would have to write that mapping itself before Core's compacting session
+          could run against the provider it already chose.
+        children:
+          - AgentKitAgentsChatClient-ChatClientProviderSession-SeedsAMessageList
+          - AgentKitAgentsChatClient-ChatClientProviderSession-SendsTheWholeConversationEachTurn
+          - AgentKitAgentsChatClient-ChatClientProviderSession-RecordsToolTraffic
+          - AgentKitAgentsChatClient-ChatClientProviderSession-ReleasesWithoutDisposingTheClient
+          - AgentKitAgentsChatClient-ChatClientProviderSession-RejectsInvalidArguments
+          - AgentKitAgentsChatClient-ChatClientProviderSessionFactory-CreatesSessionsCarryingItsClientAndWindow
+          - AgentKitAgentsChatClient-ChatClientProviderSessionFactory-SeedsTheCreatedSession
+          - AgentKitAgentsChatClient-ChatClientProviderSessionFactory-RejectsInvalidArguments
+        tests:
+          - AgentKitAgentsChatClient_Session_AnswersAndReportsTheProvidersOccupancy
+          - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
+        title: >-
+          The library shall answer for the context window with the provider's own token count taken
+          against the window supplied where the provider was configured, shall report a session that
+          has sent nothing as occupying nothing, and shall refuse a provider that reports no usage.
+        tags: [system]
+        justification: |
+          The session engine holds no token arithmetic: it asks the provider session how full it is
+          and out of how much, and believes the answer. This adapter is where that answer comes from,
+          so it must come from the provider rather than from an estimate. The window is supplied at
+          construction because a chat client publishes none, while one layer down it is nearly always
+          readable - Ollama reports the loaded model's context length - or known, a hosted model's
+          window being a published property of the model the application chose. A provider answering
+          without reporting usage is refused rather than estimated around, because estimating would
+          mean guessing forever at the single fact the whole arrangement turns on.
+        children:
+          - AgentKitAgentsChatClient-ChatClientProviderSession-ReportsProviderUsage
+          - AgentKitAgentsChatClient-ChatClientProviderSession-ZeroBeforeTheFirstTurn
+          - AgentKitAgentsChatClient-ChatClientProviderSession-RefusesUnreportedUsage
+        tests:
+          - AgentKitAgentsChatClient_Session_AnswersAndReportsTheProvidersOccupancy
+          - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
+        title: >-
+          The library shall consolidate session history through a chat client of the application's
+          choosing, out of the session being compacted, using the consolidation prompt AgentKit Core
+          publishes.
+        tags: [system]
+        justification: |
+          Compaction cannot happen without a summarizer, and the mechanism is this library's to
+          guarantee rather than every application's to write. Consolidation runs through a client the
+          application chooses and deliberately separate from the one carrying the conversation: a
+          consolidation sent through the live session would consume the very context it exists to
+          reclaim, which was measured on a real backend and is why the contract takes a summarizer at
+          all rather than reducing in place. A smaller and cheaper model is usually the right choice,
+          because consolidation is summarization rather than reasoning.
+        children:
+          - AgentKitAgentsChatClient-ChatClientSummarizer-SendsTheConsolidationPrompt
+          - AgentKitAgentsChatClient-ChatClientSummarizer-CarriesNoToolsOrHistory
+          - AgentKitAgentsChatClient-ChatClientSummarizer-EmptyAnswerIsAnEmptyRecord
+          - AgentKitAgentsChatClient-ChatClientSummarizer-RejectsInvalidArguments
+        tests:
+          - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
