@@ -1,6 +1,6 @@
 package AgentKitSessions {
     part def ProviderSession {
-        doc /* The whole interface between the compaction engine and a provider adapter: the seed a fresh session is created from, what one turn produced, the minimal disposable session contract, and the factory that produces a replacement session at every rotation. The engine never touches a provider API directly. */
+        doc /* The whole interface between the compaction engine and a provider adapter: the seed a fresh session is created from, what one turn produced, the minimal disposable session contract - which also answers how much of its provider's window it occupies and out of how much - and the factory that produces a replacement session at every rotation. The engine never touches a provider API directly. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Sessions/ProviderSession.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Sessions.Tests/ProviderSessionTests.cs */

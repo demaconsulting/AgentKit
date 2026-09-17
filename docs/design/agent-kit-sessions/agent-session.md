@@ -1,87 +1,77 @@
 ## AgentSession
 
-![AgentKit Sessions Structure](AgentKitSessionsView.svg)
-
-The `AgentSession` unit publishes `IAgentSession`, the contract an application programs against, and
-`AgentSessionResponse`, what one turn reports back.
-
 ### Purpose
 
-`IAgentSession` is the whole of what an application needs to know about this system. An application
-that wants a long-running agent should not have to learn how the context window is managed in order
-to get one, so the contract says nothing about providers, tiers, rotation or summarizers. It says:
-send a message, read what the window looks like, see how many times the session has rotated, and
-dispose when finished.
-
-Keeping it small is a deliberate bet that it can be extended later without breaking anyone.
-Disposal is in the contract rather than left as an implementation detail because an implementation
-owns a live provider session, which for some providers is server-side state that keeps being billed
-for until it is released.
-
-`AgentSessionResponse` reports compaction rather than hiding it. An application that never looks is
-never troubled; an application that does look can log a rotation, act on a saturation signal, or
-explain why one answer took longer than the last. Hiding it would make a saturated agent
-indistinguishable from a healthy one — precisely the condition that most needs to be visible.
+`AgentSession` defines the public contract for one compacting conversation and the immutable response
+returned from each accepted turn. It hides provider details, rotation mechanics and summarizer work
+behind a small application-facing surface.
 
 ### Data Model
 
-`IAgentSession` members:
+`AgentSessionResponse` properties, immutable after construction:
 
-- **`Usage`** (`ContextUsage`) — The context usage after the most recent turn. Before the first turn, what the
-  freshly seeded session occupies
-- **`RotationCount`** (`int`) — How many times the session has replaced its provider session since creation
+- **`Text`** (`string`) — The provider's answer; never null and may be empty.
+- **`Usage`** (`ContextUsage`) — The usage reading after the turn; never null.
+- **`RotationOccurred`** (`bool`) — True when the session replaced its provider session after the
+  answer was produced.
+- **`Level`** (`CompactionLevel`) — The compaction level after the turn.
+- **`MaterialDropped`** (`bool`) — True when the turn discarded preserved material rather than
+  reducing it: a slot binned under sustained pressure, or a consolidation that came back blank.
 
-`AgentSessionResponse` properties, all immutable after construction:
+`IAgentSession` properties:
 
-- **`Text`** (`string`) — Never null; may be empty
-- **`Usage`** (`ContextUsage`) — Never null
-- **`RotationOccurred`** (`bool`) — True when the session rotated during this turn
-- **`Saturations`** (`IReadOnlyList<SaturationSignal>`) — Never null; never contains null; empty when the rotation
-  reduced normally; a read-only view over a copy taken at construction, so `IsSaturated` cannot change after the turn
-  it describes
-- **`IsSaturated`** (`bool`) — Derived: `Saturations.Count > 0`
+- **`Usage`** (`ContextUsage`) — The current usage; before the first turn this describes the newly
+  created provider session.
+- **`RotationCount`** (`int`) — The number of completed provider-session replacements.
+- **`Level`** (`CompactionLevel`) — Current adaptive compaction level.
+
+The interface inherits `IAsyncDisposable` because a live provider session may hold server-side state
+that must be released.
 
 ### Key Methods
 
 #### SendAsync(string message, CancellationToken cancellationToken)
 
-Sends one message and returns the answer, compacting afterwards if the window requires it.
+**Purpose:** Send one non-blank message, return the provider's answer, and compact after the answer
+when the window requires it.
+
+**Algorithm:** The implementation sends the message to the live provider session. If the provider
+accepts the turn, the implementation records the whole exchange, reads the provider session's usage,
+rotates when needed, and returns an `AgentSessionResponse` carrying the answer and compaction state.
 
 **Preconditions:** `message` is not null, empty or blank; the session has not been disposed.
 
-**Postconditions:** the answer, the resulting usage and the rotation flag are reported. Compaction,
-when it happens, happens **after** the answer is produced: the turn is served by the session that
-was live when it arrived, and the replacement is prepared for the turn after. That ordering means a
-caller never waits on a summarizer before receiving an answer the session could already give.
-
-**Throws:** `ArgumentException` for a blank message; `ObjectDisposedException` once disposed;
-`OperationCanceledException` on cancellation.
+**Postconditions:** On success, the accepted turn is part of the session history. If rotation was
+needed and completed, the response reports it and the session is ready for the next turn against the
+replacement provider session.
 
 #### The AgentSessionResponse Constructor
 
-Constructs a turn report, validating before assignment so a malformed report never exists even
-briefly. A null `saturations` means none, and is normalized to an empty list so a caller never has
-to null-check it.
+**Purpose:** Create an immutable report for one turn.
+
+**Algorithm:** Validate `text`, `usage` and `level`, then store the answer, usage, rotation flag,
+compaction level and dropped-material flag.
+
+**Preconditions:** `text` and `usage` are not null; `level` is a defined `CompactionLevel` member.
+
+**Postconditions:** The response is immutable and safe to share.
 
 ### Error Handling
 
-- **Null response text** — `ArgumentNullException` propagates
-- **Null usage figure** — `ArgumentNullException` propagates
-- **Null entry in `saturations`** — `ArgumentException` propagates
-- **Blank message to `SendAsync`** — `ArgumentException` propagates
-- **Use after disposal** — `ObjectDisposedException` propagates
-
-Each rejected condition could only arise from a defect in the calling application or in an adapter,
-and each would otherwise surface far from its cause — in the application that displayed the response,
-or at a later rotation. Refusing them at construction puts the failure where it can be diagnosed.
+- **Null or blank message** — The implementation throws `ArgumentException`.
+- **Disposed session** — The implementation throws `ObjectDisposedException`.
+- **Cancellation** — The implementation propagates `OperationCanceledException` and does not record a
+  turn the provider did not accept.
+- **Null response text or usage in `AgentSessionResponse`** — `ArgumentNullException` propagates.
+- **Undefined compaction level** — `ArgumentOutOfRangeException` propagates.
 
 ### Dependencies
 
-- **ContextUsage** — the usage figure a turn reports; see _ContextUsage Unit Design_.
-- **RotationEngine** — supplies `SaturationSignal`; see _RotationEngine Unit Design_.
+- **ContextUsage** — Reported after every turn; see _ContextUsage Unit Design_.
+- **CompactionLevel** — Public fidelity state reported by session and response.
+- **CompactingAgentSession** — Implements the interface; see _CompactingAgentSession Unit Design_.
 
 ### Callers
 
-`IAgentSession` is implemented by `CompactingAgentSession` and is the public entry point an
-application holds. `AgentSessionResponse` is constructed only by `CompactingAgentSession` and is
-consumed by the application.
+Applications consume `IAgentSession` to run long conversations without knowing the provider seam.
+Provider adapters do not call this unit; they implement `ProviderSession` contracts below it.

@@ -1,139 +1,72 @@
 ## ContextLayout Unit Verification Design
 
-This document describes the unit-level verification strategy for `ContextTier` and `ContextLayout`.
+This document describes the unit-level verification strategy for `Slot`, `Tier` and `ContextLayout`.
 
 ### Verification Approach
 
-Both types are immutable and compute their figures arithmetically, so they are verified by direct
-construction and direct property reads. Nothing is mocked.
+The layout is verified as the internal round-robin structure that backs compaction: three tiers,
+four slots per tier, and a turn-granular verbatim tail. Tests assert the constants, the ring behavior
+of tiers, empty layout creation, seed ordering, seeded-slot labels, estimated occupancy and malformed
+replacement rejection.
 
-The accounting scenarios use a layout with a deliberately non-zero fixed overhead — a measured
-system prompt and tool declarations — because the distinction that matters is between conversation
-tokens and total tokens, and a layout with zero overhead would make the two identical and the
-assertion vacuous.
+No provider or summarizer is required for these tests. Rotation behavior that fills and cascades the
+layout is verified in `RotationEngineTests.cs`.
 
-The seed scenario asserts ordering by position rather than by set membership. Most-stable-first is
-the whole reason the seed exists, and a test that only checked the right records were present would
-pass on a seed emitted in exactly the wrong order.
-
-Unit tests reside in `ContextLayoutTests.cs`, with the shared small policy and exact-size builders
-in `SessionTestData.cs`, both within the `DemaConsulting.AgentKit.Sessions.Tests` project.
+Unit tests reside in `ContextLayoutTests.cs`.
 
 ### Test Environment
 
-- **Framework**: xUnit v3 running under the .NET SDK
+- **Framework**: xUnit running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None; **no network access is used**
+- **External services**: None; no provider or model is contacted
 - **Mocking**: None required
-- **Isolation**: Each test builds its own layout; no state is shared
+- **Isolation**: Each test builds its own layout, tier and slot values
 
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any tier hierarchy that does not match its policy, any bound that does not
-follow from the configuration, any mutation of an existing layout, or any seed emitted out of order
-constitutes a failure.
+explicitly asserted. Any drift in the fixed shape, any blank slot accepted, any tier that grows
+without ring behavior, any seed emitted in the wrong order, any unlabeled slot, or any malformed tier
+replacement accepted constitutes a failure.
 
 ### Test Scenarios
 
 #### AgentKitSessions-ContextLayout-TierModel: The Hierarchy Matches the Policy From the Outset
 
-**Tests**: `ContextLayout_Create_AllocatesOneCoarseTierPerBudgetAboveTierZero`,
-`ContextLayout_WithTiers_WrongTierCount_Throws`,
-`ContextLayout_WithTiers_TierIndexDisagreesWithThePolicy_Throws`,
-`ContextLayout_WithTiers_TierBudgetDisagreesWithThePolicy_Throws`,
-`ContextTier_Construct_TierZero_Throws`
+**Tests**:
 
-Asserts a new layout allocates one coarse tier per non-verbatim budget, numbered from one and
-carrying the policy's budget for each index, all empty. Asserts a replacement tier list of the wrong
-length is refused rather than silently truncating the hierarchy, and that tier zero cannot be
-constructed as a coarse tier at all — it holds verbatim history and is a transcript. A tier
-appearing or vanishing mid-session would make the bound unverifiable at the moment it mattered most.
+- `ContextLayout_Constants_AreTheRoundRobinShape`
+- `Tier_RingOperations_Hold`
+- `Slot_Construct_Blank_Throws`
 
-Two further scenarios supply a list of the right length whose tiers disagree with the policy: one
-whose first slot claims to be tier three, and one whose tier-one slot carries tier three's budget.
-Both are refused. The count alone is not sufficient validation, because the position in the list is
-what rotation reads the policy's budget by, what the seed labels the record by, and what the bound
-is computed from; a mismatched slot would leave those accounts describing different hierarchies
-while each looked individually correct.
+Asserts `SlotsPerTier` is four, `TierCount` is three, and the internal rotation threshold is the
+published fraction. Tier tests prove the ring reports full at its fixed complement, exposes the
+oldest slot and drops the oldest slot. Slot construction rejects blank records.
 
-#### AgentKitSessions-ContextLayout-PublishesTheBound: The Accounting Follows From the Configuration
+#### AgentKitSessions-ContextLayout-EstimatesItsSize: The Accounting Follows From the Configuration
 
-**Tests**: `ContextLayout_MaximumBoundTokens_IsOverheadPlusEveryTierBudget`,
-`ContextLayout_MaximumBoundTokens_CoversTheFramingOfEverySeededRecord`,
-`ContextLayout_Create_UnrepresentableBound_Throws`,
-`ContextLayout_ConversationTokens_ExcludeTheFixedOverhead`,
-`ContextTier_IsWithinBudget_ReflectsTheRecordSize`,
-`ContextTier_BlankRecord_IsChargedNothingAndFitsItsBudget`
+**Test**: `ContextLayout_EstimatedTokens_CountSeedAndOverhead`
 
-Asserts the bound is exactly the fixed overhead, every tier budget and the framing each tier record
-carries when seeded, and that a fresh layout sits within it; that conversation tokens count the
-transcript and tiers only, while the total adds the
-overhead back; and that a tier knows whether its record still fits, which is the test the rotation
-engine makes after every consolidation. The bound depending only on the configuration is what makes
-it something an application can reason about before a session starts.
-
-The framing scenario is the boundary case the bound exists for: it fills every coarse tier to exactly
-its budget and tier zero to exactly its own, measures what `BuildSeed` would actually hand a
-provider, and asserts both that the seed exceeds the raw sum of the tier budgets — which is why a
-bound counting raw content alone was an under-count — and that the published bound still covers it.
-For a provider reporting no usage, that estimate is what drives the rotation decision, so an
-under-count there rotates too late.
-
-The rejection scenario probes the arithmetic instead of the values. A policy already refuses
-budgets whose own bound cannot be represented as a token count, so the fixed overhead is the only
-remaining way to exceed one; a system prompt and a declaration block of `int.MaxValue` each are
-refused at creation rather than allowed to wrap. A wrapped bound is negative, and an empty layout —
-which holds nothing at all — would then report itself outside the bound it was constructed to
-respect.
-
-The blank-record scenario is the other side of the same accounting, and it is where the
-whitespace-as-empty class reopened. A one-token tier holding a hundred characters of whitespace is
-empty to `IsEmpty`, absent from `ConversationTokens` and omitted from `BuildSeed`, and the test
-asserts the tier's own estimate is zero and that it therefore fits a budget it could not otherwise
-fit. Against an estimate taken from the content unconditionally it reports twenty-five tokens and
-`IsWithinBudget` is false — a tier declared over budget for material no provider would ever be sent.
-Normalizing a summarizer's answer closed this for the values a rotation produces and could not reach
-a record a host composed through the public tier constructor, which is the route this scenario
-takes.
+Asserts estimated conversation tokens include seeded slots, their framing and the verbatim tail, and
+that total estimated tokens add the fixed overhead to that same accounting.
 
 #### AgentKitSessions-ContextLayout-Immutable: A Layout Is Never Modified in Place
 
-**Tests**: `ContextLayout_WithTranscript_LeavesTheOriginalUnchanged`,
-`ContextLayout_CoarseTiers_CannotBeCastAndMutated`
+**Tests**:
 
-Gives an empty layout a transcript and asserts the original is still empty. The second scenario
-asserts the published tier list is not the backing array and refuses a write through an `IList`
-cast: an `IReadOnlyList` over a bare array can be cast back and an element replaced, which would
-change both the conversation tokens and the next seed of a layout documented as immutable. Immutability is what
-makes the rotation engine a pure function and lets a test compare a before and an after; a mutating
-update would still produce correct-looking layouts while breaking every such comparison.
+- `ContextLayout_Create_IsEmpty`
+- `ContextLayout_WithTiers_Malformed_Throws`
+
+Verifies a fresh layout has no slots or turns and builds an empty seed. Replacement rejects the wrong
+number of tiers or a null tier, so callers cannot create a malformed layout state.
 
 #### AgentKitSessions-ContextLayout-SeedsMostStableFirst: The Seed Is Emitted Coarsest First
 
-**Tests**: `ContextLayout_BuildSeed_EmitsCoarsestRecordsFirstThenVerbatimHistory`,
-`ContextLayout_BuildSeed_EmptyLayout_EmitsNothing`,
-`ContextLayout_BuildSeed_CannotBeCastAndMutated`,
-`ContextLayout_ConversationTokens_BlankTierRecord_ChargesNothingItWouldNotSeed`
+**Tests**:
 
-Builds a layout with records in tiers one and two, an empty tier three and one verbatim turn, then
-asserts by position that tier two's record comes first, tier one's second, the empty tier is skipped
-entirely, and the verbatim turn comes last. Stability decreasing from left to right is what allows a
-provider's prompt cache to match the longest possible prefix; seeding an empty record would spend
-framing tokens to say nothing. A layout that has held no conversation seeds nothing at all.
+- `ContextLayout_BuildSeed_IsCoarsestFirst`
+- `ContextLayout_BuildSeed_LabelsSlotsByTier`
 
-The third asserts the seed is neither the `List<TranscriptEntry>` it was built in nor a bare array,
-and that writing through it is refused. The seed goes straight to a provider-session factory, so a
-caller able to cast it back could seed a fresh session with material the layout never held — the
-same defect the tier list is already protected against, applied to the one collection that actually
-leaves the package.
-
-The fourth asserts the **conversation figure and the seed agree about the same tier**. A blank
-record counts as an empty tier, which the seed omits, and the accounting used to add the tier's
-content before asking whether the tier was empty — so a blank record was charged against a rotation
-threshold measuring tokens the provider would never receive, and the estimating path disagreed with
-the provider-reported one about one session. The scenario carries 40 tokens of whitespace in tier one
-beside 60 tokens of verbatim history and asserts a conversation of 60, neither content nor framing
-charged, against a seed emitting no record. The rotation engine now normalizes a blank summarizer
-answer where it receives it, so this arrives only by the route that remains: `ContextTier`'s public
-constructor, used by a host composing a layout of its own.
+Asserts the seed emits the coarsest tier first, then finer tiers, then the verbatim tail in order.
+Seeded records are labeled by detail level so the provider receives stable context before recent
+turns.

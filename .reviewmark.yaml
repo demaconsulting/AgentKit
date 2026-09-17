@@ -1056,6 +1056,9 @@ reviews:
       - "docs/verification/agent-kit-sessions.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Sessions.Tests/AgentKitSessionsTests.cs"  # integration tests
       - "test/DemaConsulting.AgentKit.Sessions.Tests/FakeSummarizer.cs"  # deterministic summarizer fake
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/DivergentTokenizerProviderSession.cs"  # divergent fake
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/ProviderTestDoubles.cs"  # failure-injection doubles
+      - "test/DemaConsulting.AgentKit.Sessions.Tests/PublicSurfaceTests.cs"  # public-surface check
       - "test/DemaConsulting.AgentKit.Sessions.Tests/SessionTestData.cs"  # exact-size transcript builders
       - "test/DemaConsulting.AgentKit.Sessions.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
 
@@ -1102,6 +1105,7 @@ reviews:
       - "docs/design/agent-kit-sessions/agent-session.md"        # unit design
       - "docs/verification/agent-kit-sessions/agent-session.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Sessions/AgentSession.cs"     # unit source
+      - "src/DemaConsulting.AgentKit.Sessions/CompactionLevel.cs"  # reported compaction-level signal
       - "test/DemaConsulting.AgentKit.Sessions.Tests/AgentSessionTests.cs"  # unit tests
 
   # AgentKitSessions-AgentSessionOptions Review (one per unit)

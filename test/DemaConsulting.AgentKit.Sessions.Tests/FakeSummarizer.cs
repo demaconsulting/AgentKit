@@ -9,15 +9,14 @@ namespace DemaConsulting.AgentKit.Sessions.Tests;
 ///     This is what makes the rotation engine testable at all. The engine is a pure function of the
 ///     layout it is handed and the summarizer it is injected with, so replacing the one
 ///     non-deterministic collaborator with a deterministic one makes the whole rotation
-///     reproducible: the same layout always produces the same tiers, the same consolidation count,
-///     and the same saturation reports.
+///     reproducible: the same layout always produces the same tiers and the same consolidation
+///     count.
 ///     </para>
 ///     <para>
 ///     Recording the requests matters as much as producing the answers. The design rules that
-///     cannot be observed from the resulting layout alone — that a consolidation receives the
-///     previous record as an input, that a cascade degrades the older record rather than the newer
-///     material, that only overflowing tiers are consolidated — are all visible in the request
-///     sequence and nowhere else.
+///     cannot be observed from the resulting layout alone — that a rotation consolidates a span of
+///     history into one slot, that a full tier consolidates its slots as peers, which aggressiveness
+///     clause was handed over — are visible in the request sequence.
 ///     </para>
 /// </remarks>
 internal sealed class FakeSummarizer : ISummarizer
@@ -31,12 +30,8 @@ internal sealed class FakeSummarizer : ISummarizer
     ///     Initializes a new instance of the <see cref="FakeSummarizer"/> class that compresses its
     ///     input by a fixed ratio.
     /// </summary>
-    /// <remarks>
-    ///     A ratio rather than a fixed size, so that a test which grows its transcript sees the
-    ///     tiers grow proportionately, the way a real consolidation would.
-    /// </remarks>
     /// <param name="compressionRatio">
-    ///     The fraction of the combined input length the answer occupies. Must be positive.
+    ///     The fraction of the material length the answer occupies. Must be positive.
     /// </param>
     public FakeSummarizer(double compressionRatio = 0.25)
         : this(request => Compress(request, compressionRatio))
@@ -47,41 +42,48 @@ internal sealed class FakeSummarizer : ISummarizer
     ///     Initializes a new instance of the <see cref="FakeSummarizer"/> class with a supplied
     ///     responder.
     /// </summary>
-    /// <remarks>
-    ///     Used by the tests that need a specific pathological shape: an answer that expands rather
-    ///     than compresses, an answer that echoes its input, or a null answer.
-    /// </remarks>
     /// <param name="responder">Computes the consolidated record for a request.</param>
-    public FakeSummarizer(Func<ConsolidationRequest, string?> responder)
-    {
-        _responder = responder;
-    }
+    public FakeSummarizer(Func<ConsolidationRequest, string?> responder) => _responder = responder;
 
     /// <summary>
-    ///     Creates a summarizer that returns a record filling its tier's budget exactly.
+    ///     Creates a summarizer whose every answer occupies exactly the requested number of tokens,
+    ///     regardless of its input.
     /// </summary>
     /// <remarks>
-    ///     <para>
-    ///     <b>This is the steady state, and its absence is what hid a convergence defect for five
-    ///     rounds.</b> Every other rotation test here compresses — this class's ratio constructor
-    ///     defaults to 25 percent, and the system tests ran at 10 — so the tiers never approach
-    ///     their budgets and the context a rotation lands on is far smaller than the one the
-    ///     configuration actually permits. A real session does not behave that way: consolidation
-    ///     removes redundancy until there is none left to remove, at which point each tier holds
-    ///     about what it is budgeted for. That is the layout the construction bound describes, and
-    ///     it is the only layout that can reveal whether a rotated context lands below the rotation
-    ///     threshold or on top of it.
-    ///     </para>
-    ///     <para>
-    ///     Filling exactly rather than overflowing is deliberate: overflowing produces saturation
-    ///     signals and exercises the cascade, which is a different property with its own tests. This
-    ///     summarizer stays within every budget, so a session using it is one the library claims
-    ///     should settle.
-    ///     </para>
+    ///     Models the measured reality that a summarizer's output lands at its natural length rather
+    ///     than a size it was asked for. A test that wants a slot of a known size uses this.
     /// </remarks>
-    /// <returns>A summarizer whose every answer occupies exactly the requested tier's budget.</returns>
-    public static FakeSummarizer Filling() =>
-        new(request => new string('s', request.BudgetTokens * TokenEstimator.CharactersPerToken));
+    /// <param name="tokens">The tokens every answer occupies.</param>
+    /// <returns>A summarizer producing answers of a fixed size.</returns>
+    public static FakeSummarizer Fixed(int tokens) =>
+        new(_ => new string('s', tokens * TokenEstimator.CharactersPerToken));
+
+    /// <summary>
+    ///     Creates a summarizer that returns more than it was given, for proving rule 5 terminates
+    ///     even when consolidation buys nothing.
+    /// </summary>
+    /// <returns>A summarizer whose answer is longer than its material.</returns>
+    public static FakeSummarizer Expanding() =>
+        new(request => request.Material + request.Material);
+
+    /// <summary>
+    ///     Creates a summarizer that echoes its material unchanged.
+    /// </summary>
+    /// <returns>A summarizer whose answer is its material.</returns>
+    public static FakeSummarizer Echoing() => new(request => request.Material);
+
+    /// <summary>
+    ///     Creates a summarizer that returns a blank answer, which the engine must normalize to
+    ///     empty.
+    /// </summary>
+    /// <returns>A summarizer whose answer is whitespace.</returns>
+    public static FakeSummarizer Blank() => new(_ => "   ");
+
+    /// <summary>
+    ///     Creates a summarizer that returns null, which the engine must refuse.
+    /// </summary>
+    /// <returns>A summarizer whose answer is null.</returns>
+    public static FakeSummarizer Null() => new(_ => null);
 
     /// <summary>
     ///     Gets every request this summarizer was given, in order.
@@ -94,15 +96,10 @@ internal sealed class FakeSummarizer : ISummarizer
     public int CallCount => Requests.Count;
 
     /// <summary>
-    ///     Gets the tier index and degradation flag of each request, in order.
+    ///     Gets the tier index and aggressiveness clause of each request, in order.
     /// </summary>
-    /// <remarks>
-    ///     The single most useful projection for asserting cascade behavior: a cascade is visible as
-    ///     a merge at one tier, a degradation at the next coarser tier, then a fresh recording at the
-    ///     first.
-    /// </remarks>
-    public IReadOnlyList<(int Tier, bool Degradation)> Shape =>
-        [.. Requests.Select(request => (request.TierIndex, request.IsDegradation))];
+    public IReadOnlyList<(int Tier, string Instruction)> Shape =>
+        [.. Requests.Select(request => (request.TierIndex, request.Instruction))];
 
     /// <inheritdoc/>
     public Task<string> ConsolidateAsync(
@@ -117,17 +114,16 @@ internal sealed class FakeSummarizer : ISummarizer
     }
 
     /// <summary>
-    ///     Produces a record of a fixed fraction of the combined input length, labeled so a test can
-    ///     tell which tier produced it and whether it carried a previous record forward.
+    ///     Produces a record of a fixed fraction of the material length, labeled so a test can tell
+    ///     which tier produced it.
     /// </summary>
     /// <param name="request">The request to answer.</param>
-    /// <param name="ratio">The fraction of the combined input length the answer occupies.</param>
+    /// <param name="ratio">The fraction of the material length the answer occupies.</param>
     /// <returns>The labeled, deterministically sized record.</returns>
     private static string Compress(ConsolidationRequest request, double ratio)
     {
-        var inputLength = (request.PreviousRecord?.Length ?? 0) + request.Material.Length;
-        var label = $"[T{request.TierIndex}{(request.IsDegradation ? "D" : "M")}]";
-        var target = Math.Max(label.Length, (int)(inputLength * ratio));
+        var label = $"[T{request.TierIndex}]";
+        var target = Math.Max(label.Length, (int)(request.Material.Length * ratio));
 
         return label.PadRight(target, '.');
     }
@@ -140,10 +136,8 @@ internal sealed class FakeSummarizer : ISummarizer
 /// <remarks>
 ///     <b>Contract-conformant, and that is the point.</b> <see cref="ISummarizer"/> documents only
 ///     that an implementation <em>may</em> throw on cancellation, so an implementation that never
-///     looks at the token is within its rights — and a model-backed one that maps the token onto an
-///     HTTP call it cannot abort is a realistic example. The rotation engine therefore cannot
-///     delegate the check, and this is what proves it does not: handed to a cascade,
-///     it will keep answering for as long as the engine keeps asking.
+///     looks at the token is within its rights. The rotation engine therefore cannot delegate the
+///     check, and this proves it does not.
 /// </remarks>
 /// <param name="responder">Computes the consolidated record for a request.</param>
 internal sealed class InattentiveSummarizer(Func<ConsolidationRequest, string> responder) : ISummarizer

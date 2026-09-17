@@ -11,33 +11,27 @@ namespace DemaConsulting.AgentKit.Sessions;
 ///     <b>Shipped rather than confined to this library's tests, deliberately.</b> The compaction
 ///     engine's whole promise is that a long-running agent keeps the detail that matters, and that
 ///     promise is only believable if it can be exercised end to end without a live model. An
-///     application author writing their own summarizer, choosing tier budgets, or deciding what to
-///     do about a saturation signal needs the same ability. Keeping the fake in the package makes
-///     that a supported activity instead of something each consumer reimplements.
+///     application author writing their own summarizer, choosing a verbatim tail length, or acting
+///     on the reported compaction level needs the same ability. Keeping the fake in the package
+///     makes that a supported activity instead of something each consumer reimplements.
 ///     </para>
 ///     <para>
-///     <b>It reports usage by default, so the provider-reported path is exercised.</b> Real
-///     providers differ: one reports current and limit figures, the other reports nothing. This
-///     session can be either, through the <c>reportsUsage</c> switch on its factory, so both engine
-///     paths are reachable from a test. When it reports, the figures are computed from its own
-///     seeded history and turns, marked <see cref="ContextUsageOrigin.Provider"/> because from the
-///     engine's point of view that is exactly what they are.
+///     <b>It answers for its own window, as every adapter does.</b> A provider session is the one
+///     place that can say how full it is and out of how much, so this one computes both from its
+///     seeded history and the window it was given, and reports them as a provider's own figures.
+///     That is the shape a real adapter has, which is what makes exercising the engine against this
+///     session meaningful.
 ///     </para>
 ///     <para>
 ///     Instances are not safe for concurrent use, consistent with <see cref="IProviderSession"/>.
 ///     </para>
 /// </remarks>
-public sealed class InMemoryProviderSession : IProviderSession, IContextUsageReporter
+public sealed class InMemoryProviderSession : IProviderSession
 {
     /// <summary>
     ///     The answer for a given message.
     /// </summary>
     private readonly Func<string, ProviderTurn> _responder;
-
-    /// <summary>
-    ///     Whether this session reports usage, standing in for a provider that does.
-    /// </summary>
-    private readonly bool _reportsUsage;
 
     /// <summary>
     ///     The history, seeded plus everything since.
@@ -60,11 +54,6 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     /// <param name="windowTokens">
     ///     The context window this session pretends to have. Must be positive.
     /// </param>
-    /// <param name="reportsUsage">
-    ///     Whether the session reports its own usage, standing in for a provider that does. When
-    ///     <see langword="false"/>, <see cref="CurrentUsage"/> returns <see langword="null"/> and
-    ///     the engine falls back to its own estimate.
-    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="seed"/> or <paramref name="responder"/> is <see langword="null"/>.
     /// </exception>
@@ -72,8 +61,7 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     public InMemoryProviderSession(
         ProviderSessionSeed seed,
         Func<string, ProviderTurn> responder,
-        int windowTokens,
-        bool reportsUsage = true)
+        int windowTokens)
     {
         ArgumentNullException.ThrowIfNull(seed);
         ArgumentNullException.ThrowIfNull(responder);
@@ -81,7 +69,6 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
 
         Seed = seed;
         _responder = responder;
-        _reportsUsage = reportsUsage;
         WindowTokens = windowTokens;
         _history = [.. seed.History];
         _historyView = _history.AsReadOnly();
@@ -147,20 +134,13 @@ public sealed class InMemoryProviderSession : IProviderSession, IContextUsageRep
     /// <remarks>
     ///     Computed from this session's own history and its fixed overhead, and marked as
     ///     provider-reported because that is what it stands in for. The conversation is reported
-    ///     separately, as a provider that distinguishes the two does, so the engine's
-    ///     provider-reported path is exercised in the shape a real reporting adapter will use.
-    ///     Returns <see langword="null"/> when the session was configured not to report, which is
-    ///     how a provider that reveals nothing is simulated.
+    ///     separately, as a provider that distinguishes the two does, so the shape a real reporting
+    ///     adapter uses is the shape exercised here.
     /// </remarks>
-    public ContextUsage? CurrentUsage
+    public ContextUsage CurrentUsage
     {
         get
         {
-            if (!_reportsUsage)
-            {
-                return null;
-            }
-
             // Accumulated wide and saturated where it is narrowed, for the reason the transcript's
             // own total is: entries carrying the longest strings that can exist sum past a token
             // count, and a wrapped negative conversation would be refused by ContextUsage from
@@ -267,6 +247,17 @@ public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
     private readonly Lock _gate = new();
 
     /// <summary>
+    ///     The context window the created sessions pretend to have when none is given.
+    /// </summary>
+    /// <remarks>
+    ///     A round number large enough that a test which is not about the window does not
+    ///     accidentally rotate, and small enough that one which is can reach it cheaply. It stands
+    ///     for nothing in particular: a real adapter reads its window from its provider or is told
+    ///     it, and this session is the stand-in for one.
+    /// </remarks>
+    public const int DefaultWindowTokens = 128_000;
+
+    /// <summary>
     ///     Produces the turn for a given message.
     /// </summary>
     private readonly Func<string, ProviderTurn> _responder;
@@ -287,32 +278,21 @@ public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
     /// <param name="windowTokens">
     ///     The context window the sessions pretend to have. Must be positive.
     /// </param>
-    /// <param name="reportsUsage">
-    ///     Whether the created sessions report their own usage. <see langword="false"/> simulates a
-    ///     provider that reveals nothing, so the engine falls back to its own estimate.
-    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="windowTokens"/> is not positive.</exception>
     public InMemoryProviderSessionFactory(
         Func<string, ProviderTurn>? responder = null,
-        int windowTokens = AgentSessionOptions.DefaultProviderWindowTokens,
-        bool reportsUsage = true)
+        int windowTokens = DefaultWindowTokens)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowTokens);
 
         _responder = responder ?? (message => new ProviderTurn($"Acknowledged: {message}"));
         WindowTokens = windowTokens;
-        ReportsUsage = reportsUsage;
     }
 
     /// <summary>
     ///     Gets the context window the created sessions pretend to have.
     /// </summary>
     public int WindowTokens { get; }
-
-    /// <summary>
-    ///     Gets a value indicating whether the created sessions report their own usage.
-    /// </summary>
-    public bool ReportsUsage { get; }
 
     /// <summary>
     ///     Gets every session created so far, oldest first.
@@ -342,7 +322,7 @@ public sealed class InMemoryProviderSessionFactory : IProviderSessionFactory
         ArgumentNullException.ThrowIfNull(seed);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var session = new InMemoryProviderSession(seed, _responder, WindowTokens, ReportsUsage);
+        var session = new InMemoryProviderSession(seed, _responder, WindowTokens);
 
         // Serialize the record. An unsynchronized List<T>.Add from two rotations at once can lose a
         // session or leave the list internally inconsistent, and this factory is the one an

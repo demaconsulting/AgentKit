@@ -1,15 +1,16 @@
 namespace DemaConsulting.AgentKit.Sessions;
 
 /// <summary>
-///     What one turn of a session produced: the answer, what the window looks like afterwards, and
-///     whether the session had to rotate to make room.
+///     What one turn of a session produced: the answer, what the window looks like afterwards,
+///     whether the session had to rotate to make room, how hard it is compacting, and whether it had
+///     to drop history outright.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     Compaction is reported rather than hidden. An application that never looks will never
-///     notice, which is the point — the session keeps working either way — but an application that
-///     does look can log a rotation, act on a saturation signal, or show a user why an answer took
-///     longer than the last one. Hiding it would make a saturated agent indistinguishable from a
+///     Compaction is reported rather than hidden. An application that never looks will never notice,
+///     which is the point — the session keeps working either way — but an application that does look
+///     can log a rotation, watch the compaction level climb, or act on the honest signal that
+///     material was dropped. Hiding it would make a struggling agent indistinguishable from a
 ///     healthy one.
 ///     </para>
 ///     <para>
@@ -24,36 +25,40 @@ public sealed class AgentSessionResponse
     /// <param name="text">The provider's answer. Must not be <see langword="null"/>; may be empty.</param>
     /// <param name="usage">The context usage after the turn. Must not be <see langword="null"/>.</param>
     /// <param name="rotationOccurred">Whether the session rotated during this turn.</param>
-    /// <param name="saturations">
-    ///     Any saturation the rotation reported. <see langword="null"/> means none. Must contain no
-    ///     <see langword="null"/> entry.
+    /// <param name="level">The compaction level the session is at after the turn.</param>
+    /// <param name="materialDropped">
+    ///     Whether the turn's rotation had to drop history outright because a fully consolidated
+    ///     context still did not fit.
     /// </param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="text"/> or <paramref name="usage"/> is <see langword="null"/>.
     /// </exception>
-    /// <exception cref="ArgumentException"><paramref name="saturations"/> contains a <see langword="null"/> entry.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     <paramref name="level"/> is not a defined <see cref="CompactionLevel"/> member.
+    /// </exception>
     public AgentSessionResponse(
         string text,
         ContextUsage usage,
         bool rotationOccurred,
-        IReadOnlyList<SaturationSignal>? saturations = null)
+        CompactionLevel level = CompactionLevel.Low,
+        bool materialDropped = false)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(usage);
 
-        if (saturations is not null && saturations.Any(signal => signal is null))
+        if (!Enum.IsDefined(level))
         {
-            throw new ArgumentException("A saturation signal in the list is null.", nameof(saturations));
+            throw new ArgumentOutOfRangeException(
+                nameof(level),
+                level,
+                "The compaction level must be a defined CompactionLevel member.");
         }
 
         Text = text;
         Usage = usage;
         RotationOccurred = rotationOccurred;
-
-        // Copy the signals into storage this response owns, exposed only as a read-only view. A
-        // response is documented as immutable, and a caller that retained the list it supplied - or
-        // that cast this one back to an array - could otherwise change IsSaturated after the fact.
-        Saturations = Array.AsReadOnly<SaturationSignal>([.. saturations ?? []]);
+        Level = level;
+        MaterialDropped = materialDropped;
     }
 
     /// <summary>
@@ -79,19 +84,27 @@ public sealed class AgentSessionResponse
     public bool RotationOccurred { get; }
 
     /// <summary>
-    ///     Gets any saturation the rotation reported, empty when there was none.
-    /// </summary>
-    public IReadOnlyList<SaturationSignal> Saturations { get; }
-
-    /// <summary>
-    ///     Gets a value indicating whether the rotation reported saturation.
+    ///     Gets the compaction level the session is at after this turn.
     /// </summary>
     /// <remarks>
-    ///     True means a consolidation could not reduce what it was given: the agent's context holds
-    ///     no redundancy left to remove, and further rotations will cost summarizer tokens without
-    ///     buying room. What to do about it is the application's decision.
+    ///     The fidelity signal. A higher level means fewer recent turns are kept verbatim and the
+    ///     summarizer is told to be terser. It replaces the saturation signal the earlier design
+    ///     carried: where that reported a ratio, this reports how hard the session is compacting,
+    ///     which is a fact an application can act on directly.
     /// </remarks>
-    public bool IsSaturated => Saturations.Count > 0;
+    public CompactionLevel Level { get; }
+
+    /// <summary>
+    ///     Gets a value indicating whether this turn's rotation dropped history outright.
+    /// </summary>
+    /// <remarks>
+    ///     True when the session escalated as far as it could and a fully consolidated context still
+    ///     did not fit, so a consolidated slot or a verbatim turn had to be discarded. It is the
+    ///     honest signal that compaction bought nothing — the one thing standing between "escalated
+    ///     to High and still rotating every turn" and total silence. What to do about it is the
+    ///     application's decision.
+    /// </remarks>
+    public bool MaterialDropped { get; }
 }
 
 /// <summary>
@@ -133,10 +146,19 @@ public interface IAgentSession : IAsyncDisposable
     /// <remarks>
     ///     A rotation is a complete replacement of the provider session, seeded from consolidated
     ///     history. Exposed because it is the single most useful number for understanding a
-    ///     long-running agent's behavior, and because a saturation signal means much more alongside
-    ///     the rotation count that produced it.
+    ///     long-running agent's behavior.
     /// </remarks>
     int RotationCount { get; }
+
+    /// <summary>
+    ///     Gets the compaction level the session is currently at.
+    /// </summary>
+    /// <remarks>
+    ///     Session state that adapts under pressure. Read alongside <see cref="RotationCount"/>: a
+    ///     level climbing to High over many rotations is what a struggling long-running agent looks
+    ///     like.
+    /// </remarks>
+    CompactionLevel Level { get; }
 
     /// <summary>
     ///     Sends one message and returns the answer, compacting afterwards if the window requires it.
@@ -152,7 +174,7 @@ public interface IAgentSession : IAsyncDisposable
     ///     spends context to say nothing.
     /// </param>
     /// <param name="cancellationToken">Cancels the turn, and any compaction it triggers.</param>
-    /// <returns>The answer, the resulting usage, and whether the session rotated.</returns>
+    /// <returns>The answer, the resulting usage, whether the session rotated, and the compaction level.</returns>
     /// <exception cref="ArgumentException"><paramref name="message"/> is <see langword="null"/>, empty, or blank.</exception>
     /// <exception cref="ObjectDisposedException">The session has been disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>

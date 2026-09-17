@@ -10,129 +10,52 @@ sections:
         requirements:
           - id: AgentKitSessions-ContextUsage-UsageShape
             title: >-
-              A context usage figure shall carry the tokens occupied, the window size, the tokens the
-              conversation occupies, whether the figure was reported by the provider or estimated,
-              and the derived overhead, free tokens and occupied fraction.
+              The unit shall reduce every provider to one usage shape carrying the used tokens, the
+              window, the conversation split and the origin that records whether the adapter measured
+              the figures or estimated them.
             justification: |
-              This is the single shape both provider families are reduced to, so the compaction
-              engine has one arithmetic rather than two. The origin is not decoration: a
-              provider-reported figure counts framing this library never sees, whereas an estimate is
-              only as good as its character ratio. Surfacing the difference lets an application log
-              it and lets a test assert that a provider's own numbers were preferred when offered.
-              The conversation is carried rather than left to a consumer to derive because every
-              rotation decision is made against it, and the only honest way to obtain it is from
-              whoever produced the totals: a provider that reports a conversation count counted it
-              with the tokenizer it counted everything else with, so the overhead derived from the
-              two is in that same currency. Carrying it is what removes the subtraction of this
-              library's character-ratio estimate from a provider's measurement. The derived figures
-              are computed rather than stored so they cannot disagree with the counts they come from.
+              Providers disagree about what they will reveal, so every adapter answers in one shape.
+              The origin is not decoration: an adapter whose provider publishes real counts reports
+              framing this library never sees, while an adapter for a provider that reveals nothing
+              estimates and says so, and recording which road a figure came down is what lets an
+              application tell a measurement from a derivation instead of treating them as
+              interchangeable.
             tests:
-              - ContextUsage_FromProvider_MarksTheOriginAsProvider
-              - ContextUsage_FromEstimate_MarksTheOriginAsEstimated
-              - ContextUsage_Derived_ReportsFreeTokensAndFraction
-              - ContextUsage_FromProvider_WithConversationSplit_CarriesItAndDerivesTheOverhead
+              - ContextUsage_FromProvider_CarriesSplitAndOrigin
+              - ContextUsage_FromEstimate_MarksEstimated
 
           - id: AgentKitSessions-ContextUsage-DefaultsToAllConversation
             title: >-
-              A context usage figure whose producer reports no conversation split shall treat the
-              whole of its occupied tokens as conversation.
+              The unit shall treat the whole of the usage as conversation when a provider reports only
+              totals, crediting no overhead.
             justification: |
-              An adapter that receives only totals genuinely does not know the split, and estimating
-              it here would mix this library's character ratio into a provider's measurement - the
-              defect this shape exists to remove. Attributing everything to the conversation is not
-              an invented figure: it credits the session with no overhead allowance, so the window
-              the rotation threshold is a fraction of is the whole reported window and the session
-              rotates strictly earlier than a correct split would. Erring early is the safe
-              direction, because the guarantee this package delivers is that the provider's own
-              compactor never fires.
-
-              That reasoning covers the rotation trigger and nothing else, and reading it more widely
-              is what a consumer of this default must not do. A session also has to decide whether it
-              can converge in the window at all, and there the same default makes the window look
-              larger than it is rather than smaller, which admits a configuration that rotates on
-              every turn. The figure keeps this default; the session measures the fold for itself,
-              per provider session, at the moment each one is created. See
-              AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow.
+              An adapter that receives only totals is not made to invent a split. Treating the whole as
+              conversation credits the session with no overhead allowance, which rotates strictly
+              earlier than a correct split would and so cannot let the session run past the provider's
+              own compactor. Estimating the split here would mix this library's character ratio into a
+              provider's measurement, which is the one thing this shape exists to prevent.
             tests:
-              - ContextUsage_WithoutConversationSplit_TreatsTheWholeUsageAsConversation
+              - ContextUsage_FromProvider_NoSplit_TreatsAllAsConversation
 
           - id: AgentKitSessions-ContextUsage-ReportsOverFullHonestly
             title: >-
-              A context usage figure shall report no free tokens when the window is over-full while
-              leaving the occupied count and fraction unclamped.
+              The unit shall report free tokens floored at zero and a used fraction that is not
+              clamped, so an over-full window is visible.
             justification: |
-              A provider may genuinely report usage beyond its own limit, and that is exactly the
-              condition an application most needs to see. Clamping the counts would hide it; floors
-              on the remaining space simply reflect that a full window has no negative amount of
-              room.
+              A window that is over-full has no negative amount of room, so free tokens are floored at
+              zero; but the over-full condition itself is exactly what an application most needs to see,
+              so the used fraction is left unclamped and may exceed one.
             tests:
-              - ContextUsage_OverFullWindow_ReportsNoFreeTokensButKeepsTheCounts
+              - ContextUsage_DerivedFigures_AreHonest
 
           - id: AgentKitSessions-ContextUsage-RejectsMeaninglessFigures
             title: >-
-              A context usage figure shall reject a negative occupied count, a non-positive window
-              size, a conversation count that is negative or exceeds the occupied count, and an
+              The unit shall reject a conversation larger than the total, a non-positive window, and an
               undefined origin.
             justification: |
-              A negative occupied count could only come from a defect and would make every threshold
-              comparison meaningless. A window of zero would leave nothing for the occupied fraction
-              to be a fraction of. A conversation larger than everything occupied is not a condition
-              any accounting can produce - unlike usage beyond the window, which a provider genuinely
-              reports - and it would make the derived overhead negative, enlarging the window the
-              rotation threshold is taken from and letting the session run past the provider's own
-              compactor. An undefined origin is refused because everything that reads the
-              origin asks only whether it is Provider: a cast integer would be accepted and then
-              silently read as an estimate, taking the configured-window rotation threshold and
-              skipping the reported-window bound check entirely. A value that names nothing must not
-              select behavior, so it is refused where the caller wrote it, following the precedent
-              set for a transcript entry's kind.
+              A conversation larger than everything occupied is not a condition any accounting can
+              produce and would make the overhead negative, enlarging the effective window a threshold
+              is taken from. An undefined origin is a cast integer that would silently select a
+              different code path. Each is refused where the adapter's arithmetic defect was written.
             tests:
-              - ContextUsage_Construct_NegativeUsage_Throws
-              - ContextUsage_Construct_ZeroWindow_Throws
-              - ContextUsage_Construct_ConversationExceedingUsage_Throws
-              - ContextUsage_Construct_NegativeConversation_Throws
-              - ContextUsage_Construct_UndefinedOrigin_Throws
-
-          - id: AgentKitSessions-ContextUsage-OptionalReportingContract
-            title: >-
-              The usage reporting contract shall be separate from the provider session contract and
-              shall allow an implementation to report that it does not know.
-            justification: |
-              Requiring every provider session to report usage would force an adapter for a provider
-              that reports nothing to invent a number, and an invented number is indistinguishable
-              from a real one at the point it is consumed. Keeping the capability in its own
-              interface lets an adapter say "I do not know" by simply not implementing it, and lets
-              an adapter that sometimes knows report nothing until it does.
-
-              The freedom to report nothing until later costs accuracy rather than the measurement
-              itself. What an unsplit figure folds into its conversation count is measured once per
-              provider session, at the first instant that provider session produces a figure of its
-              own: creation for an implementation that reports from creation, where the conversation
-              is exactly the seeded history and the subtraction is exact, and the first turn it does
-              report on otherwise, where the subtrahend is this library's own estimate of the
-              conversation by then and a turn's worth of estimating error sits inside the result.
-              That error is credited as fold only where the provider reports no split at all, which
-              is the one case in which no better reading of its conversation figure exists. An
-              implementation that reports a split has already stated its overhead and is credited no
-              fold, because the difference between its tokenizer and this library's character ratio
-              is two counts of the same text disagreeing rather than overhead anybody is hiding, and
-              crediting it would raise the bound and refuse a window the session would have run in.
-
-              Deferring the measurement rather than refusing the transition is deliberate. This
-              contract invites an implementation that sometimes knows to report nothing until it
-              does, so refusing would abandon a session over conformant adapter behavior, and would
-              abandon it after a real message had been spent. What reporting late no longer does is
-              leave the fold unmeasured: an implementation silent at creation used to be credited a
-              fold of zero for that provider session's whole life, so a provider charging real
-              overhead it never breaks out was treated as charging none, a window it cannot converge
-              in was accepted, and the session rotated on every turn without raising a saturation
-              signal. Reporting from creation, or reporting the split, remains what an
-              implementation should do, because it is the difference between an exact measurement
-              and an approximate one. See
-              AgentKitSessions-CompactingAgentSession-RefusesUnusableReportedWindow.
-            tests:
-              - ContextUsage_Reporter_MayReportNothing
-              - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull
-              - CompactingAgentSession_SendAsync_ProviderBeginsReportingAfterItsFirstTurn_MeasuresTheFoldThen
-              - CompactingAgentSession_SendAsync_LateReportingProviderInAConvergentWindow_RotatesAndSettles
-              - CompactingAgentSession_SendAsync_LateReportingProviderThatReportsASplit_IsCreditedNoFold
+              - ContextUsage_Construct_MeaninglessFigures_Throws

@@ -1,91 +1,73 @@
 ## Summarizer Unit Verification Design
 
-This document describes the unit-level verification strategy for `ConsolidationRequest`,
-`ISummarizer` and `ConsolidationPrompt`.
+This document describes the unit-level verification strategy for `ISummarizer`,
+`ConsolidationRequest` and `ConsolidationPrompt`.
 
 ### Verification Approach
 
-`ConsolidationRequest` and `ConsolidationPrompt` are deterministic and stateless, so they are
-verified by direct construction and direct call with no mocking.
+The summarizer seam is verified by constructing requests and composing prompts. Tests assert a
+request carries the target tier, material and aggressiveness `Instruction`; it does not carry a
+previous record or a requested length. Prompt tests verify material is treated as peers, repetition
+may be collapsed, preservation categories remain named, and each `CompactionLevel` selects a plain
+language instruction.
 
-`ISummarizer` is an interface and has no behavior of its own. Its obligations — that the engine
-injects it, that a previous record arrives as an input, that a null return is refused — are verified
-where they are observable, in _RotationEngine Unit Verification Design_.
-
-Two scenarios here are unusual and are the reason this document is worth reading. The first asserts
-that the recommended instruction contains **no digit at all**. That is a mechanical proxy for a
-design rule that would otherwise rest on review: a model cannot count its own output, so the prompt
-must never name a target size, and a check that simply looks for digits catches any future edit that
-reintroduces one. The second asserts, by phrase, that the instruction still asks for each category
-of detail the design names — paths, decisions, constraints, errors, outstanding work — because those
-categories are the whole of what makes a consolidation worth keeping, and prose drifts.
-
-Unit tests reside in `SummarizerTests.cs` within the `DemaConsulting.AgentKit.Sessions.Tests`
-project.
+Unit tests reside in `SummarizerTests.cs`.
 
 ### Test Environment
 
-- **Framework**: xUnit v3 running under the .NET SDK
+- **Framework**: xUnit running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. **No model and no network access is used**
-- **Mocking**: None required
-- **Isolation**: Each test constructs its own request; no state is shared
+- **External services**: None; no model is contacted
+- **Mocking**: None required; tests exercise request and prompt construction directly
+- **Isolation**: Each test constructs its own request
 
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any prompt that names a target size, any prompt that has stopped asking for a
-category of detail the design names, any composition that places the new material before the
-previous record, or any malformed request accepted constitutes a failure.
+explicitly asserted. Any request that loses tier, material or instruction, any prompt that restores a
+previous-record section, any instruction that omits preservation categories, or any malformed request
+accepted constitutes a failure.
 
 ### Test Scenarios
 
 #### AgentKitSessions-Summarizer-InjectedContract: A First Recording Is Distinguished From an Extension
 
-**Test**: `ConsolidationRequest_IsDegradation_TrueWhenNoPreviousRecord`
+**Test**: `ConsolidationRequest_Construct_CarriesTierMaterialAndInstruction`
 
-Asserts a request with no previous record reports itself as a degradation and one with a previous
-record does not. This is what tells a summarizer whether the ratchet rule applies: never drop detail
-an earlier consolidation kept, except when deliberately coarsening.
+Asserts a request carries `TierIndex`, `Material` and `Instruction`. The scenario verifies the new
+peer-consolidation contract: the summarizer receives material and an aggressiveness instruction, not
+a previous record or a size target.
 
 #### AgentKitSessions-Summarizer-RejectsMalformedRequest: An Impossible Request Is Refused
 
-**Tests**: `ConsolidationRequest_Construct_TierZero_Throws`,
-`ConsolidationRequest_Construct_BlankMaterial_Throws`,
-`ConsolidationRequest_Construct_NonPositiveBudget_Throws`
+**Tests**:
 
-Three error paths. Tier zero is verbatim history by definition, so a request to consolidate into it
-could only be a defect in the engine. Blank material would spend a model round trip to say nothing.
-A tier that could hold nothing is not a tier. Each is refused where it was constructed rather than
-discovered from a record that makes no sense.
+- `ConsolidationRequest_Construct_TierBelowOne_Throws`
+- `ConsolidationRequest_Construct_Blank_Throws`
+- `ConsolidationPrompt_Compose_Null_Throws`
+
+Rejects a tier below one, blank material, a blank instruction and a null request to compose. The
+verbatim tail is not a consolidation tier, and a request without material or instruction has no
+meaningful summarizer work.
 
 #### AgentKitSessions-Summarizer-ConsolidationPrompt: The Prompt Names No Target Size
 
-**Test**: `ConsolidationPrompt_Instruction_NamesNoTargetSize`
+**Test**: `ConsolidationPrompt_Compose_HasNoPreviousRecordSection`
 
-Asserts the recommended instruction contains no digit. Asking a model to hit a token budget does not
-work — in the compaction spike, consolidations asked for between 9,870 and 19,741 tokens returned
-1,665 and 4,259 tokens (n = 2 requests, recorded in that spike). This scenario is what stops that
-rule eroding through a well-meaning edit.
+Composes a prompt and asserts it includes the base instruction, selected aggressiveness clause and
+material while excluding any previous-record section. The prompt treats the material as peers.
 
 #### AgentKitSessions-Summarizer-ConsolidationPrompt: The Prompt Still Asks for Specific Content
 
-**Test**: `ConsolidationPrompt_Instruction_AsksForSpecificContent`
+**Test**: `ConsolidationPrompt_Instruction_LicensesCollapsingRepetition`
 
-A data-driven scenario asserting the instruction still names each category of detail the design
-requires to survive: paths, decisions, constraints, errors and outstanding work. Prompting for
-content rather than for length is the whole approach, and prose drifts without a check on it.
+Asserts the base instruction allows collapsing repetition while preserving facts such as decisions,
+errors and outstanding work. This is how consolidation can buy room without discarding the named
+classes of useful context.
 
-#### AgentKitSessions-Summarizer-ConsolidationPrompt: Composition Reads in the Ratchet's Order
+#### AgentKitSessions-Summarizer-ConsolidationPrompt: Composition Reads in Peer Order
 
-**Tests**: `ConsolidationPrompt_Compose_PlacesThePreviousRecordBeforeTheNewMaterial`,
-`ConsolidationPrompt_Compose_Degradation_StatesThereIsNoPreviousRecord`,
-`ConsolidationPrompt_Compose_AlwaysCarriesTheInstruction`,
-`ConsolidationPrompt_Compose_NullRequest_Throws`
+**Test**: `ConsolidationPrompt_InstructionFor_SelectsPerLevelClause`
 
-Asserts both the previous record and the new material appear and that the previous record appears
-**first** — by index comparison, not merely by presence — because that is the order the ratchet
-reads in: carry this forward, then fold this in. Asserts a degradation states the absence explicitly
-rather than presenting an empty section a model might try to fill from nothing. Asserts the
-published instruction always leads the composed text, and that a null request is refused rather than
-composing a prompt about nothing.
+Asserts each compaction level maps to its own aggressiveness instruction. The instruction is plain
+language, so the summarizer adapts to low, medium or high pressure without receiving a numeric target.

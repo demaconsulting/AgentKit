@@ -1,123 +1,72 @@
 ## TokenEstimator
 
-![AgentKit Sessions Structure](AgentKitSessionsView.svg)
-
-The `TokenEstimator` class estimates the token cost of session material, so the engine can decide
-without asking a provider.
-
 ### Purpose
 
-Two provider shapes must be served by the same engine, and they disagree about what they will
-reveal. One reports current and maximum token counts after every turn; the other reports nothing and
-leaves the window size to be configured. The engine therefore needs one arithmetic it can always
-perform, and uses a provider's own numbers in preference when they are offered.
-
-**Why a character ratio rather than a real tokenizer.** A tokenizer is provider- and model-specific,
-changes with model releases, and would make this package's behavior vary across upgrades. Every
-number this engine computes feeds a *threshold* decision — rotate, or do not rotate yet — taken at
-roughly 70 percent of the effective window, which leaves around 30 percent of headroom for the
-estimate to be wrong in. A cheap, stable, deterministic ratio is therefore the right instrument, and
-being deterministic is what lets the rotation engine be unit-tested without a model at all.
-
-The class is static, holds no state, and is safe for concurrent use.
+`TokenEstimator` provides deterministic token estimates for the work no provider figure covers: the
+fixed overhead measured from application configuration, the engine's own account of the context it
+holds, grouping oversized material into summarizer calls, and an adapter whose provider reveals
+nothing.
 
 ### Data Model
 
-The class holds no instance state. Its published constants are:
+Internal constants:
 
-- **`CharactersPerToken`** (4) — A rule of thumb for English prose and source code under common tokenizers, not a
-  measurement of any particular model. The same ratio is recorded in AgentKit Core's tool ceilings. Deliberately a
-  whole number so every estimate is reproducible by hand when reviewing a test
-- **`PerEntryOverheadTokens`** (4) — Every entry a provider receives is framed — a role marker, delimiters, and for
-  a tool call or result an identifier tying the pair together — and that framing is charged even when the text is
-  short. Large enough that the under-count does not accumulate over a long run of small entries, small enough that
-  it never dominates
-- **`PerToolOverheadTokens`** (8) — A declaration is wrapped in provider-specific structure heavier than a message
-  envelope. Larger than the entry allowance because declarations are fixed overhead subtracted before any
-  percentage, so under-counting them would inflate the effective window and delay rotation
+- **`CharactersPerToken`** (`int`) — Four characters per token.
+- **`PerEntryOverheadTokens`** (`int`) — Four tokens of framing per transcript entry.
+- **`PerToolOverheadTokens`** (`int`) — Eight tokens of framing per tool declaration.
+
+The estimator is internal. It is not a provider tokenizer and is not used to override a provider's own
+usage report.
 
 ### Key Methods
 
 #### EstimateTokens(string? text)
 
-Returns zero for null or empty text — the honest answer for absent content — and otherwise
-`ceil(text.Length / CharactersPerToken)`.
+**Purpose:** Estimate the token cost of text using the deterministic character ratio.
 
-**Rounding up is load-bearing.** A budget comparison that treated short content as free would let an
-unbounded number of short entries accumulate inside it.
+**Algorithm:** Null or empty text estimates as zero. Non-empty text is rounded up by the
+four-characters-per-token ratio, so short present text is not free.
 
-**The rounding addition is `int` arithmetic and stays there, because the length is capped well below
-what could wrap one.** A string is a single object and the runtime caps one object at two gigabytes
-— the very-large-object setting raises that for arrays, not for strings — so at two bytes per
-character the longest string that can exist holds a little under 2^30 characters. Measured on this
-repository's own targets, the largest allocatable length is 1,073,741,791 and one character more
-throws an out-of-memory failure. `text.Length + 3` therefore reaches at most 1,073,741,794, short of
-half the largest representable count, and a single estimate reaches at most 268,435,448 tokens. That
-cap is the invariant every other estimate in this package inherits: two or three estimates may be
-added in plain token arithmetic without wrapping, which is what makes the entry framing allowance
-and the rotation engine's saturation input sound. It is recorded here and in the code because it has
-been raised as an overflow twice and refuted twice.
+**Preconditions:** None; null is accepted.
+
+**Postconditions:** The result is non-negative and deterministic.
 
 #### EstimateEntryTokens(TranscriptEntry entry)
 
-Returns `EstimateTokens(entry.Text) + PerEntryOverheadTokens`. The framing allowance is included
-here rather than left to each caller to remember, so no call site can forget it.
+**Purpose:** Estimate one transcript entry including message framing.
 
-**Throws:** `ArgumentNullException` for a null entry — a null estimated as zero would silently
-understate a transcript.
+**Algorithm:** Require an entry, estimate its text, and add the per-entry overhead.
+
+**Preconditions:** `entry` is not null.
+
+**Postconditions:** The result is at least the per-entry overhead.
 
 #### EstimateToolDeclarationTokens(IReadOnlyList&lt;AIFunction&gt;? tools)
 
-Returns zero for a null or empty list. Otherwise sums, per tool, the estimated tokens of the name,
-the description and the JSON schema, plus `PerToolOverheadTokens`. Those three pieces of text are
-what a provider is given: the name a model selects by, the description it selects on, and the schema
-it fills in.
+**Purpose:** Estimate fixed overhead for the tool declarations sent with every provider request.
 
-**Throws:** `ArgumentException` for a null tool — skipping it would understate the fixed overhead
-and delay rotation past the point it was meant to fire, which is a quiet miscalculation rather than
-a visible failure — and for a declaration block whose estimate exceeds a token count.
+**Algorithm:** Null or empty tools cost zero. For each tool, add estimates for the name, description,
+JSON schema and per-tool overhead. Accumulate in a wide integer and reject a total that cannot be
+represented as a token count.
 
-**Why the total is accumulated wide.** Each declaration fits a token count on its own, because a
-string cannot be longer than the runtime's object cap allows and the ratio only divides. The sum
-need not, and an `int` accumulator would wrap it to a small or negative figure that every site
-downstream would consume as a real measurement of the fixed overhead: the effective window, the
-rotation threshold and the published overhead would all then describe a window nobody configured.
-The declarations are where that figure first becomes computable, so it is accumulated in a wider type
-and rejected here rather than re-checked at each later site. It is not reachable by any test this
-build will run; see *TokenEstimator Unit Verification Design*.
+**Preconditions:** The tool list contains no null entries.
 
-**Each addend is widened before any of them are added.** Written as `total += a + b + c + d` the
-four declaration terms are summed in `int` arithmetic and only the result is widened, which makes
-the wide accumulator depend on a second invariant to be sound: that one declaration's three
-estimates cannot themselves wrap. They cannot — the string cap holds each estimate below 2^28 and
-three of them below 2^30 — so that form was not defective, and a review raising it as one is
-answered by the cap rather than by a change. The widening is nonetheless applied, because an
-accumulator that exists to catch an overflow should not be reached through arithmetic that could
-have one, and it costs nothing.
-
-**Order of magnitude.** The compaction spike that preceded this package measured a declaration block
-of 2,589 tokens for a set of 11 tools (n = 11 tools, one measurement, recorded in that spike). It is
-quoted to show the scale involved — thousands of tokens, not tens — and not as a value this method
-reproduces.
+**Postconditions:** The result is non-negative and is suitable for subtracting from a configured
+window when no provider report is available.
 
 ### Error Handling
 
-- **Null or empty text** — Returns zero; not an error
-- **Null transcript entry** — `ArgumentNullException` propagates
-- **Null or empty tool list** — Returns zero; not an error
-- **Null tool within the list** — `ArgumentException` propagates
-- **Declaration block larger than a token count** — `ArgumentException` propagates, rejected before
-  the wide total is narrowed
+- **Null transcript entry** — `ArgumentNullException` propagates.
+- **Null tool entry** — `ArgumentException` propagates.
+- **Tool declaration total too large to represent** — `ArgumentException` propagates.
 
 ### Dependencies
 
-- **SessionTranscript** — supplies `TranscriptEntry`; see *SessionTranscript Unit Design*.
-- **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`.
+- **TranscriptEntry** — Entry estimates are used by transcript and layout accounting.
+- **Microsoft.Extensions.AI.Abstractions** — Supplies `AIFunction` tool declarations.
 
 ### Callers
 
-`TranscriptEntry` and `ContextTier` call `EstimateTokens` at construction, so the estimate is
-computed once rather than re-derived on every rotation. `AgentSessionOptions` calls
-`EstimateTokens` and `EstimateToolDeclarationTokens` to measure the fixed overhead.
-`RotationEngine` calls `EstimateTokens` to decide whether a consolidated record fits its tier and
-whether it saturated. `InMemoryProviderSession` uses both to account for its own simulated window.
+`AgentSessionOptions` estimates fixed overhead, `ContextLayout` estimates the context it holds,
+`SessionTranscript` and `TranscriptEntry` cache entry estimates, `RotationEngine` groups oversized
+material by estimated size, and `InMemoryProviderSession` answers for its own window with it.

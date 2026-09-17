@@ -1,6 +1,6 @@
 package AgentKitSessions {
     part def Summarizer {
-        doc /* The injected out-of-session consolidation contract, the request that expresses the ratchet by carrying the previous record in as an input, and the documented default consolidation prompt that asks for specificity and content and never for a target size. */
+        doc /* The injected out-of-session consolidation contract, the request that carries the material as a body of peers together with an aggressiveness clause and the target tier, and the consolidation prompt that licenses collapsing repetition, names the specific content that must survive, and asks for terseness by instruction rather than a target size. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Sessions/Summarizer.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Sessions.Tests/SummarizerTests.cs */

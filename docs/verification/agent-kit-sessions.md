@@ -4,53 +4,54 @@ This document describes the system-level verification strategy for the AgentKitS
 
 ## Verification Approach
 
-The AgentKitSessions system is verified through system-level tests that run whole conversations
-end to end against `InMemoryProviderSession` and a deterministic fake summarizer, asserting the
-system's promise rather than any one unit's behavior.
+AgentKitSessions is verified through deterministic end-to-end conversations against the shipped
+`InMemoryProviderSession`, the divergent-tokenizer provider fake, and `FakeSummarizer`. The tests do
+not contact a live provider or a model. They prove the redesigned compaction core by observing the
+public session behavior, the provider sessions created during rotation, and the seed history carried
+into each replacement session.
 
-**Everything is deterministic, and that is the central point of the strategy.** The compaction
-engine is a pure function of the layout it is handed and the summarizer it is injected with, so
-replacing the one non-deterministic collaborator — the model — with a fake makes an entire
-conversation reproducible: the same messages always produce the same tiers, the same rotation count
-and the same saturation reports. Nothing here is a probabilistic assertion about what a model might
-remember; every assertion is about what the engine actually kept.
+The redesigned core is verified as a rotation system: a session keeps a configurable verbatim tail,
+then retains older context in a fixed round-robin shape of three tiers with four slots per tier. The
+unit tests cover the internal rules, and the system tests cover the observable promise that a long
+conversation keeps answering, takes its window from whatever provider it is on, and preserves
+important early detail.
 
-The shipped in-memory provider is used rather than a test-only double, so the system tests exercise
-exactly the code an application author is offered for the same purpose. It is run in both of its
-configurations — reporting its own usage, and reporting nothing — so both provider families are
-covered.
+The high-pressure cases are part of system verification. `DivergentTokenizerProviderSession` reports
+usage at 1x, 2x and 3x this library's estimate so the same session behavior is exercised when a
+provider counts the seeded context differently. Those tests prove the response to pressure terminates
+and is reported instead of silently churning when the provider's tokenizer diverges.
 
-**What is out of automated scope, stated honestly.** No live provider and no real model is
-contacted. Two things therefore rest on the exploratory measurement recorded in the design rather
-than on a test: that a real summarizing model, prompted as this system prompts it, preserves the
-categories of detail the prompt names; and that the tiered arrangement out-recalls a flat rolling
-summary over 50 rotations. Both are recorded in _AgentKitSessions System Design_ with their sample
-sizes and their source. What the tests establish is the mechanism those measurements depend on:
-that rotation happens when it should, that tiers age as designed, that the previous record is
-carried forward, that the bound holds, and that a failure to reduce is reported.
+Compaction pressure is reported as `CompactionLevel.Low`, `CompactionLevel.Medium` or
+`CompactionLevel.High`. The compacting session adapts that level with hysteresis: near-repeat
+rotations escalate the level, while a long quiet stretch relaxes it.
 
-System tests reside in `AgentKitSessionsTests.cs`, with the deterministic fake summarizer in
-`FakeSummarizer.cs` and the exact-size transcript builders in `SessionTestData.cs`, all within the
-`DemaConsulting.AgentKit.Sessions.Tests` project.
+The package surface is also verified mechanically. `PublicSurfaceTests.cs` asserts the assembly
+exports exactly the deliberate list of public types, and that the compaction-core internals — the
+layout, the tiers, the transcript and the rotation engine — are not among them, so the API shape is
+checked against the built assembly rather than maintained only by prose. The list is asserted rather
+than a count: a count is a metric, and pinning one pressures whoever comes next toward the number
+instead of the design, which is how a genuinely useful type ends up hidden to keep a total down.
+
+System tests reside in `AgentKitSessionsTests.cs`, `CompactingAgentSessionTests.cs`,
+`PublicSurfaceTests.cs` and `XmlDocExampleTests.cs`, with helpers in `FakeSummarizer.cs`,
+`SessionTestData.cs`, `DivergentTokenizerProviderSession.cs` and `ProviderTestDoubles.cs`.
 
 ## Test Environment
 
-- **Framework**: xUnit v3 running under the .NET SDK
+- **Framework**: xUnit running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No provider is contacted and **no network access is used**
-- **File system**: None. Every transcript is built in memory
-- **Models**: None. Consolidation is performed by `FakeSummarizer`, which computes its answer
-  arithmetically from the request
-- **Isolation**: Each test constructs its own provider factory, summarizer, options and session; no
-  state is shared
+- **External services**: None; no provider or model is contacted
+- **File system**: None for the session scenarios; transcripts and provider sessions are in memory
+- **Models**: None; consolidation is performed by deterministic summarizer fakes
+- **Isolation**: Each test constructs its own provider factory, summarizer, options and session
 
 ## Acceptance Criteria
 
 A system-level test run passes when every scenario below passes without error or exception beyond
-those explicitly asserted. Any session that stops answering as a conversation grows, any rotation
-that leaves the context outside its construction bound, any early detail absent from the context
-after many rotations, any superseded provider session left undisposed, or any failure to reduce that
-goes unreported constitutes a failure.
+those explicitly asserted. Any session that stops answering as the conversation grows, any rotation
+that leaks a superseded provider session, any comparison that mixes a figure one party counted with a
+figure another did, any pathological compaction that fails to terminate, any missing dropped-material
+signal, any lost early detail, or any public-surface drift constitutes a failure.
 
 ## Test Scenarios
 
@@ -58,99 +59,115 @@ goes unreported constitutes a failure.
 
 **Test**: `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
 
-Runs twenty turns against a deliberately small window, each turn larger than a fraction of it, and
-asserts the session keeps answering, rotated at least five times, created exactly one provider
-session per rotation plus the original, disposed every superseded session, and left only the live
-one open. This is the system's headline promise: a conversation far larger than the window keeps
-working, and nothing is leaked doing it.
+Runs forty turns against a small reporting provider window and asserts every turn returns text and
+that at least one rotation occurred. The scenario proves the system's headline behavior: a compacting
+agent session continues to answer after accumulated history exceeds the provider window.
 
-### Long Conversation: The Context Stays Within Its Construction Bound
+### Rotation: Replacement Sessions Preserve Operation
 
-**Test**: `AgentKitSessions_LongConversation_StaysWithinItsConstructionBound`
+**Test**: `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
 
-Runs the same conversation and checks the bound **at the moment of every rotation**, not merely at
-the end. The bound — fixed overhead, the sum of the tier budgets, and the framing each tier record
-carries when it is seeded — is a property of the
-configuration alone, so a rotation that left the context outside it would mean the arrangement is
-not in fact bounded. Checking at each rotation rather than once at the end is what makes a transient
-violation detectable.
+The same long conversation also verifies rotation at the system boundary. The provider factory
+creates replacement sessions as compaction occurs, the live session remains usable after each
+replacement, and rotation is observable through `RotationCount`.
 
-### Long Conversation: Early Detail Survives Many Rotations
+### Tiered Retention: Early Detail Survives Many Rotations
 
 **Test**: `AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext`
 
-States a distinctive fact — a specific file path — in the first turn, buries it under forty-five
-later turns, and asserts that after at least five rotations the path is still present in the context
-the session would send. The summarizer used here behaves as a summarizer does: it drops the routine
-padding and collapses repetition, keeping each distinct thing once, so what survives is decided by
-the tier arrangement and the ratchet rather than by a model's discretion. It deliberately does not
-keep everything it is given — budgets are enforced rather than requested, so a summarizer that never
-reduces has its oldest material dropped, and this test would then be measuring that instead of
-retention. That case is asserted separately below. This is the property the tiered scheme exists for,
-asserted rather than assumed: a flat rolling summary re-summarizes its own summary and loses old
-material entirely.
+Places a distinctive marker in the first turn, drives many later turns and rotations, and asserts
+the live replacement session still carries that marker in its seed history. The deterministic
+summarizer preserves marker facts while reducing routine padding, so the test verifies the
+round-robin retention structure rather than model memory.
 
-### Enforcement: A Summarizer That Never Reduces Still Holds the Bound
+### Fitting Strategy: Divergent Tokenizers Keep Answering
 
-**Test**: `AgentKitSessions_SummarizerThatNeverReduces_StillHoldsTheBound`
+**Tests**:
 
-Runs forty turns against a deliberately adversarial summarizer — one that concatenates its inputs, so
-every consolidation returns more than it was given and nothing is ever deduplicated — and asserts, at
-the moment of every rotation, that each tier is within the budget its policy configured and that the
-layout agrees it is within the bound it states for itself.
+- `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
+- `CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates`
+- `CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher`
+- `CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel`
+- `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
 
-This is what makes a budget a bound rather than a request, and it cannot be delegated to the
-summarizer. A budget is stated in the consolidation prompt, but no prompt makes a model comply:
-measured against live models, requests in the tens of thousands of tokens came back as a small
-fraction of them. A tier permitted to hold more than its budget makes the construction bound a
-tendency rather than a property, and an arrangement that merely tends to stay small is one that
-eventually does not. Once consolidation stops deduplicating there is nothing left to compress, and
-dropping the oldest material is the only move arithmetic leaves — no finite window holds an unbounded
-history.
+These tests cover the response to pressure. A normal long conversation keeps answering, and a
+provider fake at 1x, 2x and 3x tokenizer divergence completes every turn. Divergence is then verified
+as a difference rather than asserted away: a 2x and 3x provider rotates strictly more often and
+escalates to a strictly higher level than a 1x one, each collapsing and failing if reverted to 1x.
+Adapting is verified in both directions — the level comes back down after a quiet stretch, so a
+session that met one busy period does not pay for it in fidelity thereafter. Separately, a window too
+small to hold a full structure escalates to `CompactionLevel.High` and reports `MaterialDropped`.
+Together they verify that pressure is answered in counts of turns and slots, and that the answer
+terminates, without anything measuring a context that has not been sent.
 
-The adversarial summarizer is the point of the test. Every other scenario here uses a summarizer that
-cooperates to some degree, and a cooperating summarizer keeps the budgets satisfied on its own, which
-is precisely how an unenforced budget goes unnoticed: the bound held in every test while nothing in
-the engine was holding it.
+### Out-of-Session Summarizer: Consolidation Is Deterministic
 
-### Saturation: A Context That Cannot Be Reduced Says So
+**Test**: `AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext`
 
-**Test**: `AgentKitSessions_ContextWithNoRedundancyLeft_ReportsSaturation`
+Uses an injected summarizer outside the live provider session. The marker-preserving fake records
+consolidated material deterministically, proving the system can verify retention without asking the
+provider to summarize itself.
 
-Uses a summarizer that returns its material unchanged — a context with no redundancy left — runs
-until the first rotation, and asserts the turn reports saturation naming the tier that could not
-reduce. Without detection this failure is invisible: every rotation appears to succeed while buying
-no room.
+### Tool Traffic: Whole Turns Are Indivisible
 
-### Provider Neutrality: Both Provider Shapes Compact and Stay Bounded
+**Tests**:
 
-**Test**: `AgentKitSessions_SameConversation_CompactsAndStaysBoundedOnBothProviderShapes`
+- `SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn`
+- `RotationEngine_Rotate_OversizedMaterial_IsChunked`
 
-Runs the identical conversation twice, once against a provider that reports its own usage and once
-against one that reports nothing, and asserts each used the usage source its provider offered, that
-both compacted, that both stayed within their bound, and that both kept consolidated records ahead
-of verbatim turns.
+Verifies the transcript records a user message, tool traffic and assistant answer as one turn, and
+that a rotation splitting oversized material across several summarizer calls still places each turn
+whole in one of them. Since all boundaries are turn-granular, a tool call and its result are retained,
+consolidated or dropped together, and a result can never reach a summarizer without its call.
 
-**Rotation counts are deliberately not asserted equal, and the reason is recorded here rather than
-worked around.** A provider's own figures count framing this library never sees — the envelope
-around each seeded record, for one — so a reporting provider legitimately crosses the threshold
-sooner than the engine's own estimate does. That difference is a true account of the two providers,
-and asserting it away would mean preferring an estimate over a measurement. What must hold on both
-is that compaction happens, that the bound is respected, and that the context keeps its shape.
+### Compaction Reporting: Level and Dropped Material Are Visible
+
+**Test**: `CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial`
+
+Drives a window too small to hold a full structure, so compaction becomes aggressive and then
+discards history, using a provider whose window is narrow rather than one whose tokenizer diverges.
+The response stream is asserted to include `CompactionLevel.High` and `MaterialDropped`, which are the
+application-visible signals that compaction pressure is high and history was discarded.
+
+### Provider Neutrality: The Window Comes From the Provider
+
+**Test**: `AgentKitSessions_WindowComesFromTheProvider_NarrowCompactsWhereWideDoesNot`
+
+Runs the same conversation against two providers differing only in the window they report. The narrow
+one must provoke compaction and the wide one must not, with nothing configured alongside the session
+to distinguish them. This verifies the window is a fact the adapter answers for, and that every
+occupancy comparison stays in the currency of the reading it came from.
+
+### In-Memory Verification: No Live Model Is Required
+
+**Test**: `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
+
+Exercises the full session lifecycle through the shipped in-memory provider. The test proves the
+same provider offered to application authors can demonstrate creation, turns, rotation and disposal
+without network access.
+
+### Public Surface: Exported Types Are Mechanical Evidence
+
+**Tests**:
+
+- `AgentKitSessions_PublicSurface_IsTheDeliberateSet`
+- `AgentKitSessions_PublicSurface_ExcludesDeletedAndInternalTypes`
+
+Reflects over the built assembly and asserts the public surface is exactly the deliberate list of
+exported types, so a type becoming public is a decision someone made rather than an accident. The
+companion test asserts deleted or internal compaction-core types are not exported, keeping the
+redesigned API boundary verifiable.
 
 ### Documented Examples: Every Published Example Compiles
 
 **Test**: `AgentKitSessions_XmlDocExamplesCompile`
 
-Compiles every `<example><code>` block in the package's shipped XML documentation against the real
-API. The examples are the instructions a consumer follows to configure tier budgets, supply a
-summarizer and run a compacting conversation; an example naming a member the code does not have
-would fail only once the reader had acted on it.
+Compiles every shipped XML documentation example against the real API. A stale example that names a
+removed member or omits the new response signals fails here before a consumer follows it.
 
 ## Platform Verification
 
-The system's platform and runtime requirements are evidenced by running
-`AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering` under source filters for
-Windows, Linux and macOS and for .NET 8, 9 and 10. That test is chosen because it exercises the
-whole system — transcript, estimation, rotation, consolidation, provider lifecycle and disposal — so
-a platform on which any part of it failed would not produce the evidence.
+The system's platform requirements are evidenced by running the long-conversation system test in the
+CI platform matrix. That scenario exercises transcript recording, usage reporting, rotation,
+consolidation, provider replacement and disposal, so a platform-specific failure in the session
+lifecycle would fail the evidence run.

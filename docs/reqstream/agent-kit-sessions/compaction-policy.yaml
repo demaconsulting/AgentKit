@@ -8,72 +8,42 @@ sections:
     sections:
       - title: CompactionPolicy Requirements
         requirements:
-          - id: AgentKitSessions-CompactionPolicy-TierBudgets
+          - id: AgentKitSessions-CompactionPolicy-VerbatimTurns
             title: >-
-              The policy shall carry one token budget per tier, tier zero first, and shall publish
-              their sum as the most conversation context the arrangement can hold.
+              The policy shall carry the one control an application configures, the maximum number of
+              recent turns kept verbatim, as a positive count.
             justification: |
-              The per-tier budgets are what make the whole arrangement bounded rather than merely
-              well behaved. Because each is fixed, the total is a property of the configuration alone
-              and can be stated before a session starts. Tier zero comes first because it is the
-              verbatim tier: the recent history that has not yet been consolidated at all.
+              Compaction is configured in counts, not tokens. The round-robin structure keeps a fixed
+              number of recent turns verbatim and, behind them, a fixed number of tiers each holding a
+              fixed number of consolidated slots. The counts that give the structure its shape are
+              internal constants, because an application has no basis for choosing them and no symptom
+              telling it a choice was wrong. The only number an author can reason about is how much
+              recent history to keep untouched, so that is the one control the policy carries.
             tests:
-              - CompactionPolicy_Default_CarriesThePublishedTierBudgets
-              - CompactionPolicy_Construct_CopiesTheSuppliedBudgets
-              - CompactionPolicy_TierBudgetTokens_CannotBeCastAndMutated
+              - CompactionPolicy_Default_CarriesThePublishedVerbatimTurns
+              - CompactionPolicy_Construct_SetsVerbatimTurns
 
           - id: AgentKitSessions-CompactionPolicy-ValidatedDefaults
             title: >-
-              The policy shall provide validated default budgets, rotation threshold and saturation
-              ratio, a shared default instance, and optional constructor parameters allowing any one
-              of them to be replaced without restating the others.
+              The policy shall provide a validated default verbatim tail length and a shared default
+              instance.
             justification: |
-              This follows the convention the rest of AgentKit's option types already establish, so
-              an author who has configured tool limits or memory options needs to learn nothing new.
-              The default rotation threshold of 70 percent of the effective window leaves 30 percent
-              of headroom, which covers both the error in a character-ratio token estimate and the
-              turn in flight when the threshold is crossed. What keeps rotation from re-triggering
-              immediately is the convergence invariant AgentSessionOptions asserts - a rotated
-              context lands below the rotation threshold - rather than this fraction by itself. How
-              far below, and so how generous the hysteresis is, is a property of how the host sized
-              its window against its tier budgets: sized several times the bound a rotation lands
-              near 40 percent, and sized near the invariant's minimum it lands just under the
-              threshold and buys a single turn. The default budgets of 2,000, 1,200, 900 and
-              700 tokens are the starting values the compaction spike that preceded this package ran
-              with (n = 50 rotations, one run, recorded in that spike); they are published as
-              constants precisely so a different window or task shape can replace them.
+              This follows the convention the rest of AgentKit's option types already establish, so an
+              author who has configured tool limits or memory options needs to learn nothing new. The
+              default of twenty recent turns is a maximum rather than a quota - a session under
+              pressure keeps fewer - and is a starting point suited to an ordinary conversational
+              agent. A single shared default instance lets a caller establish by reference that no host
+              configuration was applied.
             tests:
               - CompactionPolicy_Default_IsShared
-              - CompactionPolicy_Construct_SingleOverride_KeepsOtherDefaults
 
           - id: AgentKitSessions-CompactionPolicy-RejectsUnworkableConfiguration
             title: >-
-              The policy shall reject fewer than two tiers, a non-positive tier budget, a tier budget
-              larger than the tier it ages from, a rotation threshold or saturation ratio that is
-              NaN or outside the range greater than zero and at most one, and budgets whose bound
-              cannot be represented as a token count.
+              The policy shall reject a verbatim tail length that is not positive.
             justification: |
-              One tier is not a hierarchy: with nowhere for overflowing history to age into, the
-              arrangement degenerates to dropping the oldest turns outright. A coarser tier allowed
-              more room than the finer tier it ages from is the opposite of what consolidation is
-              for and would never reduce. A threshold at or below zero would rotate on every turn and
-              above one could never fire. NaN is rejected explicitly because every ordered
-              comparison against it is false, so a range check built from them accepts a NaN with no
-              sign bit and the policy then compares false against every conversation size and every
-              consolidation result - silently disabling rotation or saturation reporting rather than
-              announcing that it had been misconfigured. A bound that cannot be represented as a
-              token count is rejected here, where the whole bound is first known, because that is
-              what lets every later site - the session options' window check and the layout's own
-              bound - add the budgets to the seed framing in plain token arithmetic instead of
-              wrapping into a negative figure a window comparison silently passes. Each is a defect
-              in the host's configuration
-              code rather than a runtime condition a model can provoke, so each is surfaced rather
-              than clamped.
+              A tail of zero turns would keep no recent history verbatim and would rotate everything
+              the moment it arrived, which is not a session an application could reason about. A
+              rejected value is a defect in the host's configuration code rather than a runtime
+              condition a model can provoke, so it is surfaced rather than clamped.
             tests:
-              - CompactionPolicy_Construct_SingleTier_Throws
-              - CompactionPolicy_Construct_NonPositiveBudget_Throws
-              - CompactionPolicy_Construct_GrowingBudgets_Throws
-              - CompactionPolicy_Construct_ThresholdOutOfRange_Throws
-              - CompactionPolicy_Construct_SaturationRatioOutOfRange_Throws
-              - CompactionPolicy_Construct_NaNControl_Throws
-              - CompactionPolicy_Construct_UnrepresentableBound_Throws
+              - CompactionPolicy_Construct_NonPositive_Throws

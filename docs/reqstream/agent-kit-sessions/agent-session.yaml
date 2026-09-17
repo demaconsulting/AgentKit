@@ -10,46 +10,45 @@ sections:
         requirements:
           - id: AgentKitSessions-AgentSession-SessionContract
             title: >-
-              The session contract shall expose sending a message, the context usage after the most
-              recent turn, the number of rotations so far, and asynchronous disposal, and nothing
-              about providers or compaction mechanism.
+              The unit shall define the session contract an application programs against: send a
+              message, read the answer and the resulting usage, and dispose when finished.
             justification: |
-              An application that wants a long-running agent should not have to learn how the window
-              is managed to get one. Keeping the contract to a message, a usage figure, a rotation
-              count and disposal means an application can adopt it without knowing what a tier is,
-              and means the contract can be extended later without breaking anyone. Disposal is part
-              of the contract rather than an implementation detail because the implementation owns a
-              live provider session, which for some providers is server-side state that keeps being
-              billed for until released.
+              The contract is deliberately small and says nothing about providers, tools, streaming or
+              how compaction is achieved, because an application that simply wants a long-running agent
+              should not have to know any of that, and a small contract can be extended later without
+              breaking anyone. The per-turn response carries the answer, the usage after the turn, and
+              whether the session rotated.
             tests:
-              - AgentSessionResponse_Construct_OrdinaryTurn_ReportsNoCompaction
-              - CompactingAgentSession_DisposeAsync_ReleasesTheLiveProviderSession
+              - AgentSessionResponse_Construct_CarriesTheTurnResult
+              - CompactingAgentSession_Send_AnswersTurns
 
           - id: AgentKitSessions-AgentSession-ReportsCompaction
             title: >-
-              A turn response shall report the answer, the resulting context usage, whether the
-              session rotated, and any saturation the rotation found.
+              The unit shall report on each turn the compaction level the session is at and whether the
+              turn had to drop history outright.
             justification: |
-              Compaction is reported rather than hidden. An application that never looks is never
-              troubled by it, which is the point; but an application that does look can log a
-              rotation, act on a saturation signal, or explain to a user why one answer took longer
-              than the last. Hiding it would make a saturated agent indistinguishable from a healthy
-              one, which is precisely the condition that most needs to be visible.
+              Compaction is reported rather than hidden. The compaction level is the fidelity signal -
+              a higher level means fewer recent turns are kept verbatim and the summarizer is asked to
+              be terser - and it replaces the saturation family the earlier design carried. Dropped
+              material is the honest signal that history was discarded rather than reduced: the
+              session was already at its tersest level when the window filled again, so the oldest
+              consolidated slot went in the bin, or a consolidation came back with nothing and the
+              material it was given could not be recorded anywhere. Together they let an application
+              tell a struggling agent from a healthy one.
             tests:
-              - AgentSessionResponse_Construct_SaturatedRotation_SurfacesTheSignals
-              - AgentSessionResponse_Saturations_CannotBeCastAndMutated
-              - AgentSessionResponse_Construct_OrdinaryTurn_ReportsNoCompaction
+              - AgentSessionResponse_Construct_CarriesTheTurnResult
+              - AgentSessionResponse_Construct_DefaultsToLowAndNotDropped
+              - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
 
           - id: AgentKitSessions-AgentSession-RejectsMalformedTurnReport
             title: >-
-              A turn response shall reject a missing answer, a missing usage figure, or a null
-              saturation signal.
+              The unit shall reject a null answer or usage and an undefined compaction level in a turn
+              report.
             justification: |
-              Each of these could only come from a defect in an adapter or in the engine, and each
-              would surface in the application that displayed or inspected the response rather than
-              where it was produced. Refusing them at construction puts the failure where it can be
-              diagnosed.
+              A response is documented as immutable and always populated, so an unusable one must never
+              exist even briefly. An undefined compaction level is a cast integer - a defect in the
+              caller - and is refused following the enum-validation convention the rest of the package
+              uses.
             tests:
-              - AgentSessionResponse_Construct_NullText_Throws
-              - AgentSessionResponse_Construct_NullUsage_Throws
-              - AgentSessionResponse_Construct_NullSaturationSignal_Throws
+              - AgentSessionResponse_Construct_NullArgument_Throws
+              - AgentSessionResponse_Construct_UndefinedLevel_Throws

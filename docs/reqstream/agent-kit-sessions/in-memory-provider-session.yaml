@@ -10,66 +10,40 @@ sections:
         requirements:
           - id: AgentKitSessions-InMemoryProviderSession-ContactsNothing
             title: >-
-              The in-memory provider session shall hold its seeded history, answer from a supplied
-              responder, record nothing when the responder fails, returns nothing, or completes after
-              cancellation was requested, and contact no provider and no network.
+              The unit shall provide an in-memory provider session that answers from a supplied
+              responder, holds its history in memory, and records nothing for a canceled turn.
             justification: |
-              The system's promise is only believable if it can be exercised end to end without a
-              live model, and a demonstration needing one is neither deterministic nor repeatable in
-              a build. It is shipped rather than confined to this library's own tests because an
-              application author writing a summarizer, choosing tier budgets, or deciding what to do
-              about a saturation signal needs exactly the same ability. Because it is shipped,
-              adapter authors read it as the reference implementation, so it must observe the same
-              rule the session engine does: the responder runs first and nothing is recorded until
-              it has produced a turn, so a responder that throws or returns nothing leaves no user
-              message behind that no turn ever answered. A fake whose history diverges from the
-              engine's transcript under failure is worse than no fake.
-
-              Cancellation is checked on both sides of the responder for the same reason. The
-              provider-session contract says a canceled turn leaves the session as it was, and a
-              check made only beforehand honors that for a token canceled earlier and not for one
-              canceled while the responder was running - a responder may cancel the token itself, and
-              an adapter for a real provider awaits a call a cancellation can overtake. The message,
-              the answer and the turn count were then all recorded for a turn whose caller had been
-              told it was canceled, which is the contract this session exists to model faithfully.
+              The compaction engine's promise is only believable if it can be exercised end to end
+              without a live model, which is neither deterministic nor repeatable in a build. The
+              in-memory session answers from a responder and holds its seeded history plus everything
+              since. A canceled turn leaves it exactly as it was, with no ghost message, matching the
+              rule the compacting session applies to its own transcript.
             tests:
-              - InMemoryProviderSession_Construct_StartsHoldingTheSeededHistory
-              - InMemoryProviderSession_SendAsync_RecordsTheMessageAndTheTurn
-              - InMemoryProviderSession_SendAsync_ResponderThrows_RecordsNoGhostEntry
-              - InMemoryProviderSession_SendAsync_ResponderReturnsNull_RecordsNoGhostEntry
-              - InMemoryProviderSession_SendAsync_CanceledWhileResponding_RecordsNoGhostEntry
-              - InMemoryProviderSessionFactory_DefaultResponder_Answers
-
-          - id: AgentKitSessions-InMemoryProviderSession-SimulatesBothProviderShapes
-            title: >-
-              The in-memory provider session shall be able either to report its own context usage or
-              to report nothing, so both provider families are reachable without a live model.
-            justification: |
-              Real providers differ: one reports current and limit figures and one reports neither.
-              Both engine paths - preferring the provider's account, and falling back to the
-              library's own estimate - must be reachable in a test, or one of them ships unexercised.
-              When reporting, the figures are computed from this session's own history and fixed
-              overhead and marked as provider-supplied, because from the engine's point of view that
-              is exactly what they are.
-            tests:
-              - InMemoryProviderSession_CurrentUsage_ReportsProviderOriginAndGrows
-              - InMemoryProviderSession_CurrentUsage_WhenNotReporting_IsNull
+              - InMemoryProviderSession_Send_AnswersAndRecords
+              - InMemoryProviderSession_CanceledTurn_RecordsNothing
 
           - id: AgentKitSessions-InMemoryProviderSession-RecordsRotationEvidence
             title: >-
-              The in-memory provider session shall make its disposal observable and refuse further
-              turns once disposed, and its factory shall record every session it created, including
-              when several are created concurrently.
+              The unit shall make disposal observable and record every session its factory created, so
+              a rotation test can assert what was created and released.
             justification: |
-              Rotation creates a replacement session and disposes its predecessor, and both halves
-              have to be observable for that behavior to be verifiable at all. Against a real
-              provider a leaked session holds a server-side conversation open and keeps being billed
-              for, so a rotation that failed to dispose one must be detectable rather than merely
-              suspected. The factory is required to be safe for concurrent use because an
-              application may run several sessions against one factory, and an unsynchronized record
-              can lose a session or be observed halfway through an addition.
+              Rotation creates a replacement and disposes the previous session, and both halves have to
+              be observable for the behavior to be verifiable at all: a test asserts how many sessions
+              were created, that the earlier ones were disposed, and what the newest was seeded with.
             tests:
-              - InMemoryProviderSession_DisposeAsync_MarksDisposedAndRefusesFurtherTurns
-              - InMemoryProviderSessionFactory_CreateAsync_RecordsEverySessionItMakes
-              - InMemoryProviderSessionFactory_CreateAsync_ConcurrentCreations_RecordsEveryOne
-              - CompactingAgentSession_SendAsync_AboveThreshold_RotatesIntoAFreshSeededSession
+              - InMemoryProviderSession_Dispose_IsObservable
+              - InMemoryProviderSessionFactory_Create_RecordsSessions
+
+          - id: AgentKitSessions-InMemoryProviderSession-AnswersForItsOwnWindow
+            title: >-
+              The unit shall answer for its own window as every adapter does, reporting what its
+              history occupies out of the window it was given.
+            justification: |
+              A provider session is the one place that can say how full it is and out of how much, so
+              the in-memory one computes both from its seeded history and the window it was
+              constructed with and reports them as a provider's own figures, with the conversation
+              broken out as a provider that distinguishes the two does. That is the shape a real
+              adapter has, which is what makes exercising the engine against this session meaningful
+              rather than a rehearsal of a path no adapter takes.
+            tests:
+              - InMemoryProviderSession_Usage_AnswersForItsOwnWindow
