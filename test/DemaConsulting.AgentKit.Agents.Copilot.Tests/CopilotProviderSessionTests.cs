@@ -381,6 +381,57 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a stated ceiling lowers the window the session accounts against.
+    /// </summary>
+    /// <remarks>
+    ///     Copilot's smallest window is larger than any conversation a test would produce, so
+    ///     without a ceiling a rotation is unreachable. Lowering the accounted window is what makes
+    ///     one observable - and what lets a host prefer a consolidated record over a very long
+    ///     context. It costs more rather than less, which the API documentation says plainly.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_CurrentUsage_StatedCeilingBelowTheRuntimes_LowersTheWindow()
+    {
+        // Arrange: a runtime reporting a large window, and a session told to account against less
+        var runtime = Runtime(Turn(
+            CopilotEvents.Usage(400, 272000),
+            CopilotEvents.Assistant("the answer")));
+        await using var session = await OpenAsync(runtime, maxWindowTokens: 8000);
+
+        // Act
+        await session.SendAsync("a question", TestContext.Current.CancellationToken);
+
+        // Assert: the ceiling is what the session accounts against, not the runtime's figure
+        Assert.Equal(8000, session.CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a ceiling above the runtime's own window is ignored rather than honored.
+    /// </summary>
+    /// <remarks>
+    ///     This is the direction that matters. The runtime's figure is what the conversation may
+    ///     actually reach, so accounting against a larger one would have the engine believe it has
+    ///     room the provider will not give, and rotate too late - losing material rather than merely
+    ///     costing money. Taking the smaller of the two makes the setting unable to do harm however
+    ///     it is misused.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_CurrentUsage_StatedCeilingAboveTheRuntimes_IsIgnored()
+    {
+        // Arrange: a runtime reporting a small window, and a ceiling larger than it
+        var runtime = Runtime(Turn(
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant("the answer")));
+        await using var session = await OpenAsync(runtime, maxWindowTokens: 272000);
+
+        // Act
+        await session.SendAsync("a question", TestContext.Current.CancellationToken);
+
+        // Assert: the runtime's own window still governs
+        Assert.Equal(8000, session.CurrentUsage.WindowTokens);
+    }
+
+    /// <summary>
     ///     Proves a session that went idle without answering and without reporting anything is still
     ///     refused, and says so rather than naming a cause it does not have.
     /// </summary>
@@ -528,12 +579,17 @@ public class CopilotProviderSessionTests
     /// </summary>
     /// <param name="runtime">The fake runtime to open on.</param>
     /// <param name="seed">What the session starts from, or <see langword="null"/> for a bare seed.</param>
+    /// <param name="maxWindowTokens">
+    ///     A ceiling on the accounted window, or <see langword="null"/> to account against whatever
+    ///     the fake runtime reports.
+    /// </param>
     /// <returns>The opened session.</returns>
     private static async Task<CopilotProviderSession> OpenAsync(
         FakeCopilotRuntime runtime,
-        ProviderSessionSeed? seed = null)
+        ProviderSessionSeed? seed = null,
+        int? maxWindowTokens = null)
     {
-        var factory = new CopilotProviderSessionFactory(runtime.Opener, model: null);
+        var factory = new CopilotProviderSessionFactory(runtime.Opener, model: null, maxWindowTokens);
         var session = await factory.CreateAsync(
             seed ?? new ProviderSessionSeed(null, [], []),
             TestContext.Current.CancellationToken);

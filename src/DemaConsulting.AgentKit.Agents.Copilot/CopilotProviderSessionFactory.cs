@@ -99,6 +99,12 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     private readonly string? _model;
 
     /// <summary>
+    ///     The ceiling every session accounts its window against, or <see langword="null"/> to
+    ///     account against whatever the runtime reports.
+    /// </summary>
+    private readonly int? _maxWindowTokens;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSessionFactory"/> class.
     /// </summary>
     /// <param name="client">
@@ -112,12 +118,25 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     signed-in user may use, so an unrecognized name is refused at session creation.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public CopilotProviderSessionFactory(CopilotClient client, string? model = null)
+    /// <param name="maxWindowTokens">
+    ///     A ceiling on the window each session accounts against, or <see langword="null"/> to
+    ///     account against whatever the runtime reports. Only ever lowers: the runtime's figure is
+    ///     what the conversation may actually reach, so a ceiling above it is ignored rather than
+    ///     honored. Supplying one makes the engine rotate sooner, which costs <em>more</em> rather
+    ///     than less — the runtime serves a repeated prompt almost entirely from cache, and a
+    ///     replacement session starts a new cached prefix and adds a summarizer call. Set it for
+    ///     answer quality across a long conversation, or to make rotation reachable at all against
+    ///     a window larger than any test conversation; not to save money.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxWindowTokens"/> is less than 1.</exception>
+    public CopilotProviderSessionFactory(CopilotClient client, string? model = null, int? maxWindowTokens = null)
     {
         ArgumentNullException.ThrowIfNull(client);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
 
         _opener = CopilotSessionChannel.Open(client);
         _model = model;
+        _maxWindowTokens = maxWindowTokens;
     }
 
     /// <summary>
@@ -132,13 +151,15 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// </remarks>
     /// <param name="opener">Opens one runtime session per rotation.</param>
     /// <param name="model">The model to name on each session, or <see langword="null"/> for the runtime's default.</param>
+    /// <param name="maxWindowTokens"></param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
-    internal CopilotProviderSessionFactory(CopilotChannelOpener opener, string? model)
+    internal CopilotProviderSessionFactory(CopilotChannelOpener opener, string? model, int? maxWindowTokens = null)
     {
         ArgumentNullException.ThrowIfNull(opener);
 
         _opener = opener;
         _model = model;
+        _maxWindowTokens = maxWindowTokens;
     }
 
     /// <inheritdoc/>
@@ -173,7 +194,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
             // window in this method where that is true.
             cancellationToken.ThrowIfCancellationRequested();
 
-            return new CopilotProviderSession(channel, observer);
+            return new CopilotProviderSession(channel, observer, _maxWindowTokens);
         }
         catch
         {

@@ -211,3 +211,22 @@ can still be created on the same runtime afterwards — which a session that had
 would have made impossible, and which is exactly what a rotation does. The second asserts repeated
 release is permitted, that the session reports itself released, that a later turn is refused, and
 that nothing further reached the runtime.
+
+#### AgentKitAgentsCopilot-CopilotProviderSession-HonorsAWindowCeilingDownwardOnly: A Ceiling Only Lowers
+
+**Tests**:
+
+- `CopilotProviderSession_CurrentUsage_StatedCeilingBelowTheRuntimes_LowersTheWindow`
+- `CopilotProviderSession_CurrentUsage_StatedCeilingAboveTheRuntimes_IsIgnored`
+
+A pair, and the second is the one that matters. The first shows a ceiling below the runtime's limit
+becomes the window the session accounts against, which is what makes a rotation reachable on a
+runtime whose smallest window is larger than any conversation a test would produce. The second shows
+a ceiling above the limit is discarded — the direction in which a mistake would have the engine
+believe it has room the provider will not give, and rotate too late, losing material rather than
+merely costing money. A single test of the first kind would pass against an implementation that
+assigned the ceiling unconditionally.
+
+Verified live as well as in the fake: a Copilot run with a 14,000-token ceiling against a runtime
+reporting 272,000 rotated on its fifth turn, and the sixth turn answered correctly from material the
+replacement session had never read.

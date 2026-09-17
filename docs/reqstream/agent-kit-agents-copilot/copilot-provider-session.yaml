@@ -164,3 +164,27 @@ sections:
             tests:
               - CopilotProviderSession_Dispose_DisposesTheRuntimeSession_AndNotTheClient
               - CopilotProviderSession_Dispose_Twice_IsPermittedAndRejectsLaterTurns
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSession-HonorsAWindowCeilingDownwardOnly
+            title: >-
+              The session shall account against a host-stated window ceiling where one is lower than
+              the runtime's reported limit, and shall ignore one that is higher.
+            justification: |
+              The runtime's limit is what the conversation may actually reach, so accounting against
+              a larger figure would have the engine believe it has room the provider will not give
+              and rotate too late - which loses material rather than merely costing money. Taking the
+              smaller of the two makes the setting unable to do harm however it is misused.
+
+              Lowering it is worth offering because a model reasons less reliably across a very long
+              context than across a consolidated record of the same material, so a host may prefer to
+              rotate sooner. It is also the only way a rotation can be reached on a provider whose
+              smallest window is larger than any conversation a test would produce - without it the
+              engine's behavior on this runtime would be unobservable.
+
+              It is not a cost control, and the documentation says so, because the opposite is the
+              natural assumption. Measured against the runtime, a repeated prompt is served almost
+              entirely from cache from the second turn onward, and rotating discards that cached
+              prefix and adds a summarizer call. Setting a ceiling costs more, not less.
+            tests:
+              - CopilotProviderSession_CurrentUsage_StatedCeilingBelowTheRuntimes_LowersTheWindow
+              - CopilotProviderSession_CurrentUsage_StatedCeilingAboveTheRuntimes_IsIgnored

@@ -189,8 +189,7 @@ public sealed class CommandLineOptions
 
     /// <summary>
     ///     Gets the context window the compacting session accounts against, or
-    ///     <see langword="null"/> to read it from the provider. Set by <c>--context-window</c>;
-    ///     Ollama only.
+    ///     <see langword="null"/> to take it from the provider. Set by <c>--context-window</c>.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -201,9 +200,14 @@ public sealed class CommandLineOptions
     ///     context length smaller than the model publishes, which nothing else reveals.
     ///     </para>
     ///     <para>
-    ///     Unused on the Copilot runtime, which reports its occupancy and its limit with every turn.
-    ///     There is nothing to state there and nothing a stated figure could do but disagree with the
-    ///     provider's own.
+    ///     On the Copilot runtime, which reports its occupancy and its limit with every turn, the
+    ///     figure is a <em>ceiling</em> rather than a statement: it can only lower the window the
+    ///     session accounts against, never raise it above what the runtime will actually allow.
+    ///     Lowering it makes the conversation rotate sooner, which is how a rotation can be observed
+    ///     at all on a provider whose smallest window is larger than any conversation this sample
+    ///     would otherwise produce. It costs more rather than less — a repeated prompt is served
+    ///     almost entirely from cache, and a replacement session starts a new cached prefix and adds
+    ///     a summarizer call.
     ///     </para>
     /// </remarks>
     public int? ContextWindow { get; init; }
@@ -610,12 +614,15 @@ public sealed class CommandLineOptions
                                      conversation's own model on Ollama, the runtime's default on
                                      Copilot). Consolidation is summarization rather than reasoning,
                                      so a smaller model is usually right.
-           --context-window <tokens> Context window the compacting session accounts against; Ollama
-                                     only (default: read from Ollama — the loaded model's length
-                                     where one is loaded, else the model's published maximum). State
-                                     it when the server loaded the model with a smaller length than
-                                     the model publishes, which nothing else reveals. Copilot reports
-                                     its own window with every turn, so this does not apply there.
+           --context-window <tokens> Context window the compacting session accounts against (default:
+                                     read from Ollama — the loaded model's length where one is
+                                     loaded, else the model's published maximum; taken from the
+                                     runtime on Copilot). State it on Ollama when the server loaded
+                                     the model with a smaller length than the model publishes, which
+                                     nothing else reveals. On Copilot it is a ceiling only: it can
+                                     lower the accounted window but never raise it, and lowering it
+                                     is how a rotation becomes reachable at all on a window larger
+                                     than any conversation this sample would otherwise produce.
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
                                      GITHUB_TOKEN environment variable, else the logged-in user).
            --transcript <path>       Append a machine-readable record of every tool call to a file.

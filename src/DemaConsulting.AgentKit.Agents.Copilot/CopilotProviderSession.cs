@@ -75,6 +75,12 @@ public sealed class CopilotProviderSession : IProviderSession
     private readonly CopilotSessionObserver _observer;
 
     /// <summary>
+    ///     The ceiling the host set on the window this session accounts against, or
+    ///     <see langword="null"/> to account against whatever the runtime reports.
+    /// </summary>
+    private readonly int? _maxWindowTokens;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSession"/> class.
     /// </summary>
     /// <remarks>
@@ -86,16 +92,22 @@ public sealed class CopilotProviderSession : IProviderSession
     /// </remarks>
     /// <param name="channel">The runtime session this instance takes ownership of.</param>
     /// <param name="observer">The observer registered on that session before it was created.</param>
+    /// <param name="maxWindowTokens"></param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="channel"/> or <paramref name="observer"/> is <see langword="null"/>.
     /// </exception>
-    internal CopilotProviderSession(ICopilotTurnChannel channel, CopilotSessionObserver observer)
+    internal CopilotProviderSession(
+        ICopilotTurnChannel channel,
+        CopilotSessionObserver observer,
+        int? maxWindowTokens = null)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(observer);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
 
         _channel = channel;
         _observer = observer;
+        _maxWindowTokens = maxWindowTokens;
     }
 
     /// <summary>
@@ -134,13 +146,13 @@ public sealed class CopilotProviderSession : IProviderSession
         {
             if (_observer.LatestUsage is not { } reading)
             {
-                return ContextUsage.FromProvider(0, ProvisionalWindowTokens, 0);
+                return ContextUsage.FromProvider(0, CapWindow(ProvisionalWindowTokens), 0);
             }
 
             // Reported as it came back, including past the window: a session that has overrun its
             // own limit is the condition an application most needs to see.
             var used = Narrow(reading.CurrentTokens, minimum: 0);
-            var window = Narrow(reading.TokenLimit, minimum: 1);
+            var window = CapWindow(Narrow(reading.TokenLimit, minimum: 1));
 
             // Held to the total rather than passed through. ContextUsage refuses a conversation
             // larger than everything occupied - correctly, because it would enlarge the effective
@@ -288,4 +300,38 @@ public sealed class CopilotProviderSession : IProviderSession
     /// <returns>The figure, held within <paramref name="minimum"/> and <see cref="int.MaxValue"/>.</returns>
     private static int Narrow(long value, int minimum) =>
         (int)Math.Clamp(value, minimum, int.MaxValue);
+
+    /// <summary>
+    ///     Holds the window this session accounts against to the host's stated ceiling, if it set one.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Only ever lowers. The runtime's figure is what the conversation may actually reach, so a
+    ///     ceiling above it would have the engine believe it has room the provider will not give and
+    ///     rotate too late - which is the one direction that loses material rather than costing
+    ///     money. Taking the smaller of the two makes the setting unable to do harm however it is
+    ///     misused.
+    ///     </para>
+    ///     <para>
+    ///     <b>It is not a cost control, and setting it will cost more rather than less.</b> That is
+    ///     worth stating because the opposite is the natural assumption: every turn sends the whole
+    ///     conversation again, so carrying a large context looks expensive. Measured against the
+    ///     runtime it is not — from the second turn onward the prompt is served from cache almost
+    ///     entirely (22,016 cached of 22,125 sent, with the cached figure flat as the conversation
+    ///     grew, so
+    ///     only each turn's increment is billed). Rotating earlier discards that cached prefix,
+    ///     because a replacement session starts a new one, and adds a summarizer call on top.
+    ///     </para>
+    ///     <para>
+    ///     What a ceiling buys is answer quality and observability, not money. A model reasons less
+    ///     reliably across a very long context than across a consolidated record of the same
+    ///     material, so a host may prefer to rotate sooner. And it is the only way to reach a
+    ///     rotation at all against a provider whose smallest window is larger than any conversation
+    ///     a test would otherwise produce.
+    ///     </para>
+    /// </remarks>
+    /// <param name="reported">The window the runtime reported, already narrowed.</param>
+    /// <returns>The smaller of <paramref name="reported"/> and the host's ceiling.</returns>
+    private int CapWindow(int reported) =>
+        _maxWindowTokens is { } ceiling ? Math.Min(reported, ceiling) : reported;
 }

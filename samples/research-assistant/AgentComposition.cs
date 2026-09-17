@@ -812,7 +812,10 @@ public static class AgentComposition
             throw;
         }
 
-        var providerSessions = new CopilotProviderSessionFactory(client, options.Model);
+        var providerSessions = new CopilotProviderSessionFactory(
+            client,
+            options.Model,
+            options.ContextWindow);
         var summarizer = new CopilotSummarizer(client, options.SummaryModel);
 
         return new ProviderBackend(
@@ -823,8 +826,12 @@ public static class AgentComposition
                 new AgentSessionOptions(summarizer, instructions, [.. tools]),
                 providerSessions,
 
-                // Nothing is stated: the runtime answers for its own window with every turn.
-                Window: null));
+                // Stated only when the host set a ceiling. Left null the runtime answers for its own
+                // window with every turn; given one, the banner should say so rather than claim the
+                // provider's figure is what the session is accounting against.
+                Window: options.ContextWindow is { } ceiling
+                    ? new ContextWindow(ceiling, ContextWindowSource.Stated)
+                    : null));
     }
 
     /// <summary>

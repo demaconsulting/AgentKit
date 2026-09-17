@@ -161,11 +161,18 @@ sections:
           than inferring it keeps every threshold comparison in the runtime's own tokens. A turn
           answered with no reading at all is refused rather than estimated around, because an absent
           figure means something an application can see and fix.
+
+          An application may set a ceiling on the window accounted against, which only ever lowers
+          it. That is not a second source of truth: the runtime's figure still governs, and a
+          ceiling above it is ignored. It buys answer quality on a very long conversation, and it is
+          what makes a rotation reachable at all on a runtime whose smallest window is larger than
+          any conversation a test would produce.
         children:
           - AgentKitAgentsCopilot-CopilotSessionObserver-HoldsTheLatestUsageReading
           - AgentKitAgentsCopilot-CopilotProviderSession-ReportsTheRuntimesUsage
           - AgentKitAgentsCopilot-CopilotProviderSession-ZeroBeforeTheFirstTurn
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesUnreportedUsage
+          - AgentKitAgentsCopilot-CopilotProviderSession-HonorsAWindowCeilingDownwardOnly
         tests:
           - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
 
