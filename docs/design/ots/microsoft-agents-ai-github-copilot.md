@@ -26,8 +26,8 @@ AgentKitAgentsCopilot package only, deliberately kept out of Core.
   default permission handler is expressed
 - `SystemMessageConfig` — carries the supplied instructions onto the session, and nothing else: the
   seeded conversation record a rotation produces is deliberately kept out of it, because the SDK
-  offers no history or messages field of any kind and the record is material a tool result may have
-  written. It travels on the session's first message instead
+  offers no history or messages field of any kind and a record charged as overhead rather than as
+  conversation makes the engine's accounting drift. It travels on the session's first message instead
 - **The session lifecycle** — creating a session from a configuration, sending one message and
   waiting for the session to become idle under a caller-supplied deadline, and releasing and
   deleting the session. The deadline matters as much as the operations: the SDK applies a

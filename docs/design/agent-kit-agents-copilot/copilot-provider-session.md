@@ -17,8 +17,9 @@ stateless provider is resent the whole conversation each turn, so its adapter ke
 and can count what it sent. Copilot keeps the conversation server-side: a turn sends one prompt, and
 what the session holds afterwards is the runtime's business. So this class keeps no running history.
 The one exception is the seeded record a rotation produced, which it holds only until the first
-message carries it — Copilot's configuration has no history channel, and the record is untrusted
-material that must not travel in the system one. Composing that record is
+message carries it — Copilot's configuration has no history channel of any kind, and a record
+configured as part of the system message would be charged to the engine's overhead rather than to the
+conversation it describes. Composing that record is
 `CopilotProviderSessionFactory`'s work; carrying it is this class's. Releasing is disposing the
 runtime's session.
 
@@ -57,8 +58,8 @@ _CopilotProviderSessionFactory Unit Design_.
   this and the runtime's reported limit.
 - **`_historyPreamble`** (`string?`) — The seeded conversation record, until the first message
   carries it, and null thereafter. Invariant: consumed at most once, so a long conversation carries
-  it exactly once. Held rather than configured because the system message is the wrong channel for
-  material a tool result may have written; see _CopilotProviderSessionFactory Unit Design_.
+  it exactly once. Held rather than configured because a record charged to the engine's overhead
+  makes its accounting drift; see _CopilotProviderSessionFactory Unit Design_.
 - **`_unusableReason`** (`string?`) — Why this session may no longer be used, or null while it may.
   Invariant: it latches — once set, never cleared.
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
@@ -200,7 +201,7 @@ preamble and return it followed by a blank line and the message.
 
 The preamble is consumed rather than kept, so it rides exactly one message. Prepending it to a
 message the engine was already sending is what makes a rotation cost one request rather than two, and
-what keeps the material in the conversation channel instead of the system one.
+what charges the record to the conversation rather than to the engine's overhead.
 
 **Preconditions:** `message` is not null.
 

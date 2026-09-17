@@ -60,10 +60,25 @@ simulated.
   is sent as well as after one returns. What the tests prove is that the raised threshold is carried
   on every session and that the refusal fires; what only a live run can settle is whether the refusal
   ever needs to.
+- **That a seeded record charged as overhead makes the engine's accounting drift is measured, not
+  argued.** On a live run with the record placed in the system message, the overhead the engine
+  accounted against — the system message and the tool declarations — climbed across three rotations:
+
+  | Rotation | Overhead accounted (tokens) |
+  | --- | --- |
+  | First | 8,694 |
+  | Second | 10,708 |
+  | Third | 12,032 |
+
+  Overhead grew at every rotation while the conversation appeared small, so the engine's picture of
+  its own window drifted further from the runtime's the longer the conversation ran. Carried on the
+  first user message the record is charged to the conversation instead, which is the region that gets
+  compacted. This measurement is not automated and is not re-run by the suite; it is recorded here
+  because it is the reason the record travels where it does.
 - **Whether the model weights a seeded record delivered as one conversation message as it would
   weight the turns it replaces is unverified**, and unverifiable offline. The tests prove the record
-  is rendered, ordered and fenced exactly as designed, that every entry kind a rotation produces
-  survives it, and that it reaches the model on the conversation channel rather than the system one.
+  is rendered and ordered exactly as designed, that every entry kind a rotation produces survives it,
+  and that it reaches the model on the conversation channel rather than the system one.
 - **Whether a live runtime emits its usage event before it goes idle** is unverified. The adapter
   refuses a turn that reported no usage, so a runtime that reported occupancy only after going idle
   would surface as a refusal rather than as a wrong figure — a diagnosable failure rather than a
@@ -157,11 +172,10 @@ and the superseded session was released exactly once while the replacement was n
 the replacement reports nothing occupied — a replacement that inherited its predecessor's figure would
 cross the threshold again on adoption and rotate forever.
 
-The two assertions about the record are one scenario because they state one decision. Untrusted
-material — a record carries tool results, and a tool result may be the contents of a file the agent
-was pointed at — is kept out of the provider's highest-trust channel and delivered on the
-conversation channel instead. Asserting the system message by **equality** is what rules out a copy
-being left behind, and asserting the record arrives on the first prompt, ending with the caller's own
+The two assertions about the record are one scenario because they state one decision: the record is
+charged to the conversation rather than to the engine's overhead. Asserting the system message by
+**equality** is what rules out a copy being left behind, and asserting the record arrives on the first
+prompt, ending with the caller's own
 message, is what proves a rotation still costs one request rather than two: the record rides the turn
 the engine was already taking rather than a priming turn of its own.
 

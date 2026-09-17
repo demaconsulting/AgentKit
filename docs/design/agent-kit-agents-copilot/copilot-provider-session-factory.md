@@ -12,9 +12,10 @@ so an application states both once — where it configures its provider — and 
 for neither again. Everything decided about a session is decided here, at creation, because that is
 the only moment at which Copilot accepts configuration.
 
-**There is no window parameter, unlike the stateless factory.** Copilot reports its own occupancy
-and its own limit, so the application is not asked for a figure the provider already knows. See
-_CopilotProviderSession Unit Design_.
+**There is no required window parameter, unlike the stateless factory.** Copilot reports its own
+occupancy and its own limit, so the application is not asked for a figure the provider already knows.
+An application may state an optional ceiling, which only ever lowers the window a session accounts
+against and is never raised above what the runtime reports. See _CopilotProviderSession Unit Design_.
 
 **There is no permission-handler parameter either.** A session created here is driven by AgentKit's
 session engine rather than by the host turn by turn, so there is no host present to adjudicate a
@@ -39,21 +40,26 @@ the configuration and its base was enumerated against the shipped assembly — s
 travel some other way.
 
 The session's system message carries the seed's instructions and nothing else. The history is
-rendered as a labeled record, fenced between an opening and a closing line bearing a marker drawn for
-that record, and handed to the session to carry ahead of the first message it sends:
+rendered as a labeled record between a fixed opening and a fixed closing line, and handed to the
+session to carry ahead of the first message it sends:
 
 ```text
-=== CONVERSATION RECORD {marker} — earlier turns of this session. … The record ends only at the
-line bearing the marker {marker}. ===
+--- begin record of earlier turns in this conversation ---
 RECORD: …
 USER: …
 ASSISTANT: …
 TOOL CALL [id]: …
 TOOL RESULT [id]: …
-=== END CONVERSATION RECORD {marker} ===
+--- end record of earlier turns; the message below is the current one ---
 
 {the message the engine was already sending}
 ```
+
+**A rotated session is briefed, not replayed.** The Copilot SDK has no history channel of any kind,
+so the earlier conversation cannot arrive as role-bearing messages the way it can on the stateless
+path. The record is a written handover document. The two fixed lines are punctuation, marking where
+the handover ends and the current message begins; they were once a marker drawn per record, and are
+plain text now because the model read that marker back out and offered it as an answer.
 
 Each entry is rendered with Core's own `TranscriptEntry.ToTranscriptLine`, which is already the
 labeled, mechanical rendering a consolidation is performed on. Using it rather than writing a second
@@ -61,27 +67,16 @@ renderer means the history a model is seeded with and the material a consolidati
 the conversation the same way, and that the rendering is deterministic enough for a test to assert
 on exactly.
 
-**Why the conversation channel, and not the system message.** This is a trust decision rather than a
-formatting one. The record's entries are user messages, model answers and tool results — and a tool
-result may be the contents of a file the agent was pointed at, which nobody in this library wrote.
-The system message is the highest-trust channel a provider has. Putting text an attacker can
-influence there, and defending it with a fence and a sentence telling the model the block is data
-rather than instructions, is a prompt-level mitigation: it asks the model not to be fooled, which is
-the class of protection this library exists to avoid relying on. Carried on the first user message
-instead, the material sits in the channel its own contents came from, and a model that reads it as
-conversation is reading it correctly. The security rests on the channel; the fence is there so a
-reader can tell the account of what happened from the question being asked.
+**Why the first user message, and not the system message — the engine's accounting.** The engine
+reasons about the window as overhead — the system message and the tool declarations — against the
+conversation. A record placed in the system message is charged as overhead, so overhead grows at
+every rotation while the conversation appears small, and the engine's model of its own window drifts
+from the runtime's. Compacted content belongs in the region that gets compacted. Secondarily, tool
+output in the instructions channel reads with more authority than it has earned.
 
 **It costs no extra request.** The record is prepended to the message the engine was already about to
 send, so a rotation still produces exactly one call, and the runtime holds the result for the rest of
 the session as it holds any other turn.
-
-**The marker is drawn per record and chosen so it does not occur in the material.** A fixed delimiter
-can be imitated by the text it delimits, and a near-miss of a fixed delimiter reads to a model as a
-boundary even when it no longer matches exactly. Re-drawing until the marker is absent makes an early
-close unrepresentable rather than merely unlikely, without altering the transcript a model reads —
-which escaping the material would have done. What is at stake is now clarity rather than containment,
-but a boundary the material can imitate is confusing even when nothing is at stake.
 
 **The rendering is a block of labeled text, not a sequence of role-bearing messages, and that is
 still decisive.** The defect that shipped to review on the stateless path was a seeded tool result
@@ -92,19 +87,14 @@ mapping can drop part of a message without dropping the message.
 
 **What was rejected, each checked against the shipped assembly rather than assumed:**
 
-- **The system message, after the instructions, fenced.** Rejected on the trust argument above: it
-  places material a tool result may have written into the provider's highest-trust channel and then
-  defends it with prose. It was the original design of this unit and is recorded here because the
-  reasoning that replaced it is the reasoning a future maintainer needs.
-- **Send the record as a priming message of its own, before the real one.** Rejected, but the
-  reasoning has changed and is stated honestly. Two objections were made originally: that it costs a
-  round trip and a billed answer per rotation and invites a response, and that the record then lives
-  in Copilot's _conversation_, where the runtime's own truncation can drop it. The second objection
-  no longer distinguishes the alternatives — the record now lives in the conversation either way, and
-  what makes that acceptable is that the runtime's compaction threshold is held clear of the engine's
-  rotation point and a rewrite that happens anyway is announced, detected and refused. The first
-  objection stands and is what decides it: a message of its own is a second call and a second answer
-  per rotation, where prepending to the pending turn is neither.
+- **The system message, after the instructions, fenced.** Rejected on the accounting argument above:
+  a record charged as overhead makes the engine's picture of its own window drift. It was the
+  original design of this unit and is recorded here because a maintainer will otherwise re-propose it.
+- **Send the record as a priming message of its own, before the real one.** Rejected because it costs
+  a round trip and a billed answer per rotation, where prepending to the pending turn costs neither.
+  A second objection made originally — that the record then lives in Copilot's conversation, where
+  the runtime's own truncation can drop it — no longer distinguishes the alternatives, since the
+  record lives in the conversation either way.
 - **`MessageOptions.Attachments`.** Every attachment subclass is file-like or a GitHub
   reference, and several carry a reason the runtime may have omitted them. There is no
   conversational attachment, and a channel the runtime may silently omit is precisely the one not
@@ -119,14 +109,12 @@ mapping can drop part of a message without dropping the message.
   more invasive than appending and forks the single configuration path the safety argument depends
   on. It is doubly rejected now, since it is the system channel.
 
-**Two consequences, stated rather than hidden.** The record is charged to the **conversation's** own
-share rather than to the runtime's system-token overhead, so it is counted in the figure rotation is
-decided on and the session rotates progressively _earlier_ as records accumulate — the safe
-direction, and well-defined at the limit because Core's rotation threshold is never below one token,
-so even a record larger than the window degrades to "rotate every turn" rather than to a negative
-threshold. And the record arrives as one message rather than as the turns it describes, so the model
-may weight it differently from turns it lived through; that cannot be verified without a live run and
-is recorded as unverified rather than asserted.
+**Two consequences, stated rather than hidden.** Charged to the conversation, the record counts
+toward the figure rotation is decided on, so a session rotates progressively _earlier_ as records
+accumulate — the safe direction, and well-defined at the limit because Core's rotation threshold is
+never below one token. And the record arrives as one message rather than as the turns it describes,
+so the model may weight it differently from turns it lived through; that is recorded as unverified
+rather than asserted.
 
 ### Data Model
 
@@ -134,32 +122,29 @@ is recorded as unverified rather than asserted.
   session on the host's client; in a test, a scripted channel. See _CopilotTurnChannel Unit Design_.
 - **`_model`** (`string?`) — The model backing every session this factory creates, or null to leave
   the choice to the runtime.
-- **`RecordOpening`**, **`RecordClosing`** (`const string`) — Composite format strings for the lines
-  fencing a seeded record, each taking the record's marker as its single argument. Fixed apart from
-  the marker, so the rendering is deterministic and a test can assert on it exactly once the marker
-  is read back out of the output.
-- **`RecordMarkerBytes`** (`const int`, eight) — The random bytes behind a record's marker, rendered
-  as sixteen hexadecimal characters. Invariant: the marker does not occur in the material it fences.
-  The size is not what makes the boundary sound — the absence check is — but it makes a first-draw
-  collision vanishingly unlikely, so the re-draw is a proof rather than a loop anyone waits on.
+- **`_maxWindowTokens`** (`int?`) — The ceiling each session accounts its window against, or null to
+  account against whatever the runtime reports. Invariant: one or greater when stated.
+- **`RecordOpening`**, **`RecordClosing`** (`const string`) — The fixed lines opening and closing a
+  seeded record. Plain text rather than generated tokens, so the rendering is deterministic and a
+  test can assert on it exactly.
 
 ### Key Methods
 
-#### The CopilotProviderSessionFactory Constructor (CopilotClient, string?)
+#### The CopilotProviderSessionFactory Constructor (CopilotClient, string?, int?)
 
 **Purpose:** Hold what every session this factory creates needs, and nothing else.
 
-**Algorithm:** Reject a null client. Build the production channel opener over it — once, so the
-client reference is captured in exactly one place and every session a rotation creates demonstrably
-runs on the client the host started. Record the model name without checking it: only the runtime
-knows which models the signed-in user may use, so an unrecognized name is refused at session
-creation rather than here.
+**Algorithm:** Reject a null client and a ceiling below one. Build the production channel opener over
+the client — once, so the client reference is captured in exactly one place and every session a
+rotation creates demonstrably runs on the client the host started. Record the model name without
+checking it: only the runtime knows which models the signed-in user may use, so an unrecognized name
+is refused at session creation rather than here. Record the window ceiling as stated.
 
-**Preconditions:** `client` is not null and has been started.
+**Preconditions:** `client` is not null and has been started; any stated ceiling is one or greater.
 
 **Postconditions:** A factory ready to create sessions, owning nothing disposable.
 
-#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?)
+#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?)
 
 **Purpose:** The test seam.
 
@@ -206,8 +191,7 @@ event handler.
 
 The seeded history is deliberately **not** part of what this method builds. Passing the instructions
 through untouched is what makes a session the engine drives configured byte for byte as the agent
-path configures one, and it is where the trust boundary is drawn: nothing a tool result may have
-written reaches the configuration at all.
+path configures one: nothing a tool returned reaches the configuration at all.
 
 The whole confinement comes from the agent factory rather than from here. A second allow-list
 derivation is the drift this package exists to prevent, so there is not one; see _CopilotAgentFactory
@@ -227,39 +211,24 @@ seeded history.
 **Purpose:** Render the seeded history into the preamble the session's first message will carry.
 
 **Algorithm:** Reject a null seed. A seed with no history composes to nothing at all — so the first
-message of such a session is sent exactly as the caller wrote it, and a record fence around nothing
-never tells a model that a conversation happened when none had. Otherwise each entry is rendered to
-its transcript line and joined; a marker is chosen for the record; and the joined lines are placed
-between the opening and closing lines that marker formats.
+message of such a session is sent exactly as the caller wrote it, and a record around nothing never
+tells a model that a conversation happened when none had. Otherwise each entry is rendered to its
+transcript line and joined, and the joined lines are placed between the fixed opening and closing
+lines.
 
 Internal rather than private, because what it composes is what a rotation actually sends and a test
 asserts on it directly — the configuration no longer carries it.
 
 **Preconditions:** `seed` is not null.
 
-**Postconditions:** The fenced record, or null when the seed carries no history.
-
-#### ChooseRecordMarker(string record)
-
-**Purpose:** Choose a boundary marker that does not occur in the material it will delimit.
-
-**Algorithm:** Draw random bytes, render them as hexadecimal, and return the result if the material
-does not contain it; otherwise draw again. A marker the content contains is never used, so the
-closing line cannot be produced by the content.
-
-Escaping the material instead was rejected: it would alter the transcript a model reads, and a
-near-miss of a fixed delimiter can still read to a model as a boundary even when it no longer matches
-exactly.
-
-**Preconditions:** `record` is not null.
-
-**Postconditions:** A marker absent from `record`.
+**Postconditions:** The rendered record, or null when the seed carries no history.
 
 ### Error Handling
 
 | Condition                               | Handling                                       |
 |-----------------------------------------|------------------------------------------------|
 | Null `client` or `opener`               | `ArgumentNullException` propagates             |
+| Window ceiling below one                | `ArgumentOutOfRangeException` propagates       |
 | Null `seed`                             | `ArgumentNullException` propagates             |
 | Cancellation before opening             | `OperationCanceledException`; nothing is opened|
 | Cancellation after opening              | `OperationCanceledException`; session released |

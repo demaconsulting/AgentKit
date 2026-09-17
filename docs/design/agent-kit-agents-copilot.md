@@ -44,26 +44,22 @@ session's **first user message**, prepended to the message the engine was alread
 session's system message carries the application's instructions and nothing else, byte for byte as
 the plain agent path configures them.
 
-**Which channel carries the record is a trust decision, not a formatting one.** The record's entries
-are user messages, model answers and tool results — and a tool result may be the contents of a file
-the agent was pointed at, which nobody in this library wrote. The system message is the highest-trust
-channel a provider has. Putting attacker-influenceable text there, and defending it with a fence and
-a sentence asking the model to read the block as data rather than as instructions, is a prompt-level
-mitigation: it asks the model not to be fooled. That is exactly the class of protection this library
-exists to avoid relying on, and this runtime had already shown what relying on a request rather
-than a mechanism buys — it silently ignores the infinite-session enablement flag. Carried on
-the first user message instead, the material sits in the channel its own contents came from, and a
-model that treats it as conversation is treating it correctly.
+**Why the first user message, and not the system message — the engine's accounting.** The engine
+reasons about the window as overhead — the system message and the tool declarations — against the
+conversation. A record placed in the system message is charged as overhead, so overhead grows at
+every rotation while the conversation appears small, and the engine's model of its own window drifts
+from the runtime's; the figures a live run produced are in _AgentKitAgentsCopilot System Verification
+Design_. Compacted content belongs in the region that gets compacted. Secondarily, tool output in the
+instructions channel reads with more authority than it has earned. Nothing rests on how the record is
+delimited: the material was already in the model's context before it was consolidated, so seeding it
+back grants nothing new, and this library's guarantee is the tool policy rather than prompt hygiene.
 
 **It costs no extra request.** The record rides the message the engine was already sending, so a
 rotation is still exactly one call, and the runtime then holds the result for the rest of the session
 as it holds any other turn.
 
-**The fence remains, and its job is now clarity rather than containment.** The record is still
-rendered between an opening and a closing line, with a marker drawn per record and chosen so that it
-cannot occur in the material, so a reader — and a model — can see where the account of what happened
-ends and the question being asked begins. What keeps injected content from being read as direction is
-the channel, not the delimiter.
+**A rotated session is briefed, not replayed.** The record is a handover document, opened and closed
+by two fixed lines that mark where it ends and the current message begins.
 
 The rendering is still a block of labeled text lines rather than a sequence of role-bearing messages,
 and that remains decisive. The defect that shipped to review on the stateless path was a seeded tool
@@ -81,13 +77,9 @@ where the runtime's own truncation could in principle drop it — which was the 
 sending it as a separate priming message. It is admitted here because this design does not rely on
 the runtime leaving the conversation alone: every session the engine drives is created with the
 runtime's compaction threshold raised clear of the engine's rotation point, and a rewrite that
-happens anyway is announced, detected and refused rather than silently absorbed. The record is also
-charged to the conversation's own share rather than to the runtime's system-token overhead, so it is
-counted in the figure rotation is decided on and the session rotates progressively **earlier** as
-records accumulate — the safe direction, and well-defined at the limit because Core's rotation
-threshold is never below one token. And the record still arrives as one message rather than as the
-turns it describes, so the model may weight it differently from turns it lived through; that cannot
-be verified without a live run and is recorded as unverified rather than asserted.
+happens anyway is announced, detected and refused rather than silently absorbed. And the record
+arrives as one message rather than as the turns it describes, so the model may weight it differently
+from turns it lived through; that is recorded as unverified rather than asserted.
 
 ## A Session the Engine Cannot Account For Is Finished
 
@@ -229,8 +221,8 @@ session over the runtime.
   it could not record, records tool traffic as identified pairs, reports the runtime's occupancy, and
   owns and releases its session.
 - **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: configures the session's
-  system message with the application's instructions alone, composes the seeded history into a fenced
-  record for the first message to carry, reuses the one confinement path, holds the runtime's
+  system message with the application's instructions alone, composes the seeded history into a
+  labeled record for the first message to carry, reuses the one confinement path, holds the runtime's
   compaction clear of the engine's rotation point, registers the observer before the session is
   created, and guards the ownership window.
 - **CopilotSessionObserver (Unit)** — watches the runtime's event stream and holds the latest usage

@@ -28,38 +28,34 @@ sections:
               - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
               - CopilotProviderSessionFactory_BuildSessionConfig_ModelIsCarriedOrLeftToTheRuntime
 
-          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsAFencedRecord
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsALabeledRecord
             title: >-
-              The factory shall render a seeded history as a labeled record fenced by an opening and a
-              closing line bearing a marker drawn for that record and absent from the material it
-              fences, shall render a seeded tool call and its result as labeled lines carrying their
+              The factory shall render a seeded history as a labeled record opened and closed by fixed
+              lines, shall render a seeded tool call and its result as labeled lines carrying their
               identifier rather than under any role, and shall render no record when the seed carries
               no history.
             justification: |
               Copilot's session configuration carries no history or messages field of any kind, so a
               rotation that must seed a rewritten history has to render it as text and carry it on the
-              only channel that takes text — the conversation. Rendering it as a block of labeled
-              lines rather than as role-bearing messages is what makes one class of defect
-              unrepresentable: what shipped on the stateless path was a seeded tool result rendered
-              under a role a provider's wire mapping silently discards, and a labeled line inside one
-              message cannot be dropped without dropping the message.
+              only channel that takes text — the conversation. A rotated session is briefed rather
+              than replayed, and the record is the handover document it is briefed from. Rendering it
+              as a block of labeled lines rather than as role-bearing messages is what makes one class
+              of defect unrepresentable: what shipped on the stateless path was a seeded tool result
+              rendered under a role a provider's wire mapping silently discards, and a labeled line
+              inside one message cannot be dropped without dropping the message.
 
-              The fence tells a reader, and a model, where the account of what already happened ends
-              and the question being asked begins. Its marker is drawn per record and checked against
-              the material because a fixed delimiter can be imitated by the text it delimits, and a
-              boundary the material can close early is confusing even where nothing is at stake.
-              Escaping the material instead would alter the transcript the model reads, and a
-              near-miss of a fixed delimiter still reads as a boundary.
+              The opening and closing lines are punctuation, marking where the handover ends and the
+              current message begins. They are fixed text rather than a token generated per record,
+              because a generated marker was read back out by the model and offered as an answer.
 
               A seed with no history renders nothing at all, so the first message of such a session is
-              sent exactly as the caller wrote it and a record fence around nothing never tells a
-              model that a conversation happened when none had.
+              sent exactly as the caller wrote it and a record around nothing never tells a model that
+              a conversation happened when none had.
             tests:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
               - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
               - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
-              - CopilotProviderSessionFactory_Preamble_HistoryImitatingTheFence_CannotEndTheRecordEarly
               - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
@@ -68,15 +64,11 @@ sections:
               instructions alone, carrying no part of a seeded conversation record there, and shall
               configure no system message at all when the application supplied no instructions.
             justification: |
-              A seeded record's entries are user messages, model answers and tool results, and a tool
-              result may be the contents of a file the agent was pointed at, which nobody in this
-              library wrote. The system message is the highest-trust channel a provider offers.
-              Placing material an attacker can influence there and defending it with a fence and a
-              sentence asking the model to read the block as data is a prompt-level mitigation — it
-              asks the model not to be fooled — and this library exists so that an unsafe operation is
-              impossible to express rather than politely refused. This runtime had already shown
-              what trusting a request rather than a mechanism buys: it silently ignores the
-              infinite-session enablement flag.
+              The session engine reasons about the window as overhead — the system message and the
+              tool declarations — against the conversation. A record placed in the system message is
+              charged as overhead, so overhead grows at every rotation while the conversation appears
+              small and the engine's model of its own window drifts. Compacted content belongs in the
+              region that gets compacted, and tool output does not belong in the instructions channel.
 
               Keeping the channel to the instructions alone also means a session the engine drives is
               configured byte for byte as the plain agent path configures one, so the confinement

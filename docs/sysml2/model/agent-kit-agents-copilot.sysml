@@ -8,8 +8,9 @@ package AgentKitAgentsCopilot {
      * Copilot SDK exposes no IChatClient, so the compaction engine could not otherwise run on
      * the one provider this project's continuous integration can reach. The session adapter
      * carries a rotation's history on the first message of the session it seeds, because Copilot
-     * offers no history channel and the record is untrusted material that must not travel in the
-     * system one; takes its occupancy and its window from the runtime's own reporting
+     * offers no history channel of any kind and a record charged to the engine's overhead rather
+     * than to the conversation would make its accounting drift; takes its occupancy and its window
+     * from the runtime's own reporting
      * rather than from any figure the application supplies; and holds the runtime's own
      * compaction threshold clear of the engine's rotation point so two compactors never act on
      * one conversation, ending a session outright when the runtime is left holding a turn the
