@@ -1,0 +1,53 @@
+---
+# Software Unit Requirements for ContextLayout
+#
+# These requirements describe the design-level behavior of the ContextLayout unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ContextLayout Requirements
+        requirements:
+          - id: AgentKitCore-ContextLayout-TierModel
+            title: >-
+              The unit shall model the context as a round-robin structure: a verbatim tail of whole
+              turns and a fixed number of tiers, each a ring of a fixed number of consolidated slots.
+            justification: |
+              A round-robin database does not measure the size of its archives: a fixed number of fine
+              samples consolidate into one coarse sample, and each archive holds a fixed number of them,
+              so resolution decays with age by construction and nothing is weighed. The slots-per-tier
+              and tier counts are internal constants because they are the values the recall measurement
+              was taken at and an application has no basis for choosing them. A slot must hold a
+              non-blank record, and a tier is a ring that drops its oldest slot when another arrives
+              and it is already at its complement.
+            tests:
+              - ContextLayout_Constants_AreTheRoundRobinShape
+              - Tier_Append_Null_Throws
+              - Tier_AppendAndDropOldest_KeepOldestFirstAndLeaveTheOriginal
+              - Tier_DropOldest_Empty_Throws
+              - Slot_Construct_Blank_Throws
+
+          - id: AgentKitCore-ContextLayout-Immutable
+            title: >-
+              The unit shall be immutable, every mutator returning a new layout, and shall reject a
+              malformed replacement of its tiers.
+            justification: |
+              Immutability is what makes the rotation engine a pure function and lets a test compare a
+              before and after. A replacement carrying the wrong number of tiers, or a null tier, is
+              refused so a layout can never be internally inconsistent.
+            tests:
+              - ContextLayout_Create_IsEmpty
+              - ContextLayout_WithTiers_Malformed_Throws
+
+          - id: AgentKitCore-ContextLayout-SeedsMostStableFirst
+            title: >-
+              The unit shall build the seed most-stable-first - the coarsest tier, then each finer tier,
+              then the verbatim tail - labeling each slot with its detail level.
+            justification: |
+              The further back in the seed's prefix the more stable the content, which is the shape a
+              provider's prompt cache rewards. Each slot is labeled with the detail level it belongs to,
+              because a model handed several records with no ordering cue cannot tell which supersedes
+              which.
+            tests:
+              - ContextLayout_BuildSeed_IsCoarsestFirst
+              - ContextLayout_BuildSeed_LabelsSlotsByTier

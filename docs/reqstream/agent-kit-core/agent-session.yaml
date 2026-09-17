@@ -1,0 +1,54 @@
+---
+# Software Unit Requirements for AgentSession
+#
+# These requirements describe the design-level behavior of the AgentSession unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: AgentSession Requirements
+        requirements:
+          - id: AgentKitCore-AgentSession-SessionContract
+            title: >-
+              The unit shall define the session contract an application programs against: send a
+              message, read the answer and the resulting usage, and dispose when finished.
+            justification: |
+              The contract is deliberately small and says nothing about providers, tools, streaming or
+              how compaction is achieved, because an application that simply wants a long-running agent
+              should not have to know any of that, and a small contract can be extended later without
+              breaking anyone. The per-turn response carries the answer, the usage after the turn, and
+              whether the session rotated.
+            tests:
+              - AgentSessionResponse_Construct_CarriesTheTurnResult
+              - CompactingAgentSession_Send_AnswersTurns
+
+          - id: AgentKitCore-AgentSession-ReportsCompaction
+            title: >-
+              The unit shall report on each turn the compaction level the session is at and whether the
+              turn had to drop history outright.
+            justification: |
+              Compaction is reported rather than hidden. The compaction level is the fidelity signal -
+              a higher level means fewer recent turns are kept verbatim and the summarizer is asked to
+              be terser - and it replaces the saturation family the earlier design carried. Dropped
+              material is the honest signal that history was discarded rather than reduced: the
+              session was already at its tersest level when the window filled again, so the oldest
+              consolidated slot went in the bin, or a consolidation came back with nothing and the
+              material it was given could not be recorded anywhere. Together they let an application
+              tell a struggling agent from a healthy one.
+            tests:
+              - AgentSessionResponse_Construct_CarriesTheTurnResult
+              - AgentSessionResponse_Construct_DefaultsToLowAndNotDropped
+              - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
+
+          - id: AgentKitCore-AgentSession-RejectsMalformedTurnReport
+            title: >-
+              The unit shall reject a null answer or usage and an undefined compaction level in a turn
+              report.
+            justification: |
+              A response is documented as immutable and always populated, so an unusable one must never
+              exist even briefly. An undefined compaction level is a cast integer - a defect in the
+              caller - and is refused following the enum-validation convention the rest of the package
+              uses.
+            tests:
+              - AgentSessionResponse_Construct_NullArgument_Throws
+              - AgentSessionResponse_Construct_UndefinedLevel_Throws

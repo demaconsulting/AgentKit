@@ -1,0 +1,76 @@
+---
+# Software Unit Requirements for SessionTranscript
+#
+# These requirements describe the design-level behavior of the SessionTranscript unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: SessionTranscript Requirements
+        requirements:
+          - id: AgentKitCore-SessionTranscript-KeptOutOfSession
+            title: >-
+              The unit shall keep the verbatim history out of session, grouped into whole turns and
+              appended only in whole turns.
+            justification: |
+              Consolidation must run out of session: asking a live session to summarize itself spends
+              that session's own context on the summary and triggers the provider's built-in compactor.
+              The engine therefore maintains this record itself and hands the material to a separate
+              stateless call, and the record is available when a provider session has been disposed,
+              which is exactly when a fresh one must be seeded. Grouping by turn is what lets the
+              boundary machinery deal only in whole exchanges.
+            tests:
+              - SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn
+              - SessionTranscript_AppendTurn_Malformed_Throws
+
+          - id: AgentKitCore-SessionTranscript-PairedEntries
+            title: >-
+              The unit shall identify a tool call and its result by a shared identifier and reject an
+              identifier on any other kind of entry.
+            justification: |
+              Pairing a call with its result by identifier is what lets a provider match the outcome to
+              the request. An identifier on a plain message would be meaningless and is refused rather
+              than ignored, so a caller that supplies one learns it misunderstood the model.
+            tests:
+              - TranscriptEntry_Construct_ValidatesPairingIdentifier
+
+          - id: AgentKitCore-SessionTranscript-SplitsAtTurnBoundary
+            title: >-
+              The unit shall split the history at a turn boundary, keeping the newest turns verbatim
+              and returning everything older as whole turns.
+            justification: |
+              The verbatim tail is the newest turns and everything older is what a rotation
+              consolidates; both are counted in turns, never tokens, which is what lets the compaction
+              structure be configured in counts. The older material is handed back as whole turns
+              rather than as a flat run of their entries, because whatever consolidates it may have to
+              split it across several summarizer calls, and a flat run lets one turn's message, tool
+              call, tool result and answer land in different calls - the orphaning that turn-granular
+              boundaries exist to make impossible.
+            tests:
+              - SessionTranscript_SplitAtTail_KeepsNewestTurns
+              - SessionTranscript_SplitAtTail_NothingOlder_RetainsAll
+
+          - id: AgentKitCore-SessionTranscript-KeepsToolTrafficWithItsTurn
+            title: >-
+              The unit shall never separate a tool call from its result, because a turn groups the
+              message, the answer and all intervening tool traffic as one indivisible exchange.
+            justification: |
+              A boundary falling between a call and its result leaves the seeded history beginning with
+              a result whose call is gone, which some providers reject and a model cannot interpret.
+              With a turn as the unit, the call and its result cannot be separated because they are one
+              thing, which retires the earlier design's rule that had to snap a boundary.
+            tests:
+              - SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn
+
+          - id: AgentKitCore-SessionTranscript-RendersLabeledMaterial
+            title: >-
+              The unit shall render every kind of history entry as one deterministic labeled line, a
+              tool call and its result naming the identifier that pairs them.
+            justification: |
+              The summarizer is a stateless call that receives text, so the material must say who said
+              what, and a tool result must name the call it answers or the reader cannot tell what was
+              asked. The label is fixed and mechanical so the same history always renders to the same
+              string, which is what lets a fake summarizer assert on exactly what the engine asked it to
+              consolidate.
+            tests:
+              - TranscriptEntry_ToTranscriptLine_IsDeterministicAndLabeled

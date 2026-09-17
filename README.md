@@ -21,8 +21,8 @@ application configures and a tool cannot omit.
 > `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
 > a GitHub Copilot `CopilotClient`. A provider-agnostic session engine with tiered context
-> compaction is implemented in `DemaConsulting.AgentKit.Sessions`; wiring it to the two provider
-> adapters is the next increment.
+> compaction is implemented in `DemaConsulting.AgentKit.Core` alongside the contract; wiring it to
+> the two provider adapters is the next increment.
 
 Three runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
 end to end: **document-assistant** demonstrates consuming the shipped tools,
@@ -57,14 +57,22 @@ section below.
 
 AgentKit does not provide an agent runtime or a provider abstraction. Microsoft Agent Framework
 supplies those. It does now provide **context-window management**: the
-`DemaConsulting.AgentKit.Sessions` package adds an AgentKit-owned session that compacts a full
+`DemaConsulting.AgentKit.Core` package adds an AgentKit-owned session that compacts a full
 context by rotating into a fresh provider session seeded with tiered, consolidated history, so a
 long-running agent behaves the same way on every provider.
 
 ## Packages
 
 - **`DemaConsulting.AgentKit.Core`** — policy primitives, guarded tool construction, tool result
-  helpers, and the tool-pack contract.
+  helpers, the tool-pack contract, and the provider-agnostic session engine: a session that
+  keeps its own transcript out of session and, when the context window fills, consolidates older
+  history into a round-robin structure of tiered slots, creates a fresh provider session seeded with
+  the preserved content, and only then disposes the one it replaced. The one setting an application
+  configures is how many recent turns to keep verbatim; the window comes from the provider adapter
+  itself. When the context fills again quickly the session compacts harder and, at its tersest,
+  discards its oldest consolidated slot, and it reports how hard it is working. Ships an in-memory
+  provider session so the whole lifecycle can be exercised without a live model. Provider wiring is
+  a later increment.
 - **`DemaConsulting.AgentKit.Tools`** — the ready-made guarded tool families listed under
   [Capabilities](#capabilities), each composed onto a policy through the pack contract.
 - **`DemaConsulting.AgentKit.Agents.ChatClient`** — builds a Microsoft Agent Framework agent from any
@@ -73,15 +81,6 @@ long-running agent behaves the same way on every provider.
 - **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
   allow-list from the supplied tools.
-- **`DemaConsulting.AgentKit.Sessions`** — the provider-agnostic session engine: a session that
-  keeps its own transcript out of session and, when the context window fills, consolidates older
-  history into a round-robin structure of tiered slots, creates a fresh provider session seeded with
-  the preserved content, and only then disposes the one it replaced. The one setting an application
-  configures is how many recent turns to keep verbatim; the window comes from the provider adapter
-  itself. When the context fills again quickly the session compacts harder and, at its tersest,
-  discards its oldest consolidated slot, and it reports how hard it is working. Ships an in-memory
-  provider session so the whole lifecycle can be exercised without a live model. Provider wiring is a
-  later increment.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 

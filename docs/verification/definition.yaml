@@ -16,6 +16,16 @@ input-files:
   - docs/verification/agent-kit-core/tool-pack-builder.md
   - docs/verification/agent-kit-core/tool-pack.md
   - docs/verification/agent-kit-core/tool-result.md
+  - docs/verification/agent-kit-core/agent-session.md
+  - docs/verification/agent-kit-core/agent-session-options.md
+  - docs/verification/agent-kit-core/context-usage.md
+  - docs/verification/agent-kit-core/session-transcript.md
+  - docs/verification/agent-kit-core/context-layout.md
+  - docs/verification/agent-kit-core/rotation-engine.md
+  - docs/verification/agent-kit-core/summarizer.md
+  - docs/verification/agent-kit-core/provider-session.md
+  - docs/verification/agent-kit-core/in-memory-provider-session.md
+  - docs/verification/agent-kit-core/compacting-agent-session.md
   - docs/verification/agent-kit-tools.md
   - docs/verification/agent-kit-tools/image.md
   - docs/verification/agent-kit-tools/image/image-media-types.md
@@ -63,19 +73,6 @@ input-files:
   - docs/verification/agent-kit-agents-chat-client/chat-client-agent-factory.md
   - docs/verification/agent-kit-agents-copilot.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
-  - docs/verification/agent-kit-sessions.md
-  - docs/verification/agent-kit-sessions/agent-session.md
-  - docs/verification/agent-kit-sessions/agent-session-options.md
-  - docs/verification/agent-kit-sessions/compaction-policy.md
-  - docs/verification/agent-kit-sessions/context-usage.md
-  - docs/verification/agent-kit-sessions/token-estimator.md
-  - docs/verification/agent-kit-sessions/session-transcript.md
-  - docs/verification/agent-kit-sessions/context-layout.md
-  - docs/verification/agent-kit-sessions/rotation-engine.md
-  - docs/verification/agent-kit-sessions/summarizer.md
-  - docs/verification/agent-kit-sessions/provider-session.md
-  - docs/verification/agent-kit-sessions/in-memory-provider-session.md
-  - docs/verification/agent-kit-sessions/compacting-agent-session.md
   - docs/verification/ots.md
   - docs/verification/ots/apimark.md
   - docs/verification/ots/buildmark.md

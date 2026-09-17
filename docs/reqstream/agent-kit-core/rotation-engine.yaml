@@ -1,0 +1,127 @@
+---
+# Software Unit Requirements for RotationEngine
+#
+# These requirements describe the design-level behavior of the RotationEngine unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: RotationEngine Requirements
+        requirements:
+          - id: AgentKitCore-RotationEngine-ConsolidatesIntoTierOne
+            title: >-
+              The unit shall consolidate everything older than the level-adjusted verbatim tail into
+              one slot and append it to tier one.
+            justification: |
+              This is rule two of the round-robin structure. A rotation gathers the span of history the
+              verbatim tail no longer covers, renders it, and hands it to the summarizer as one body of
+              material to be reduced into a single slot, which is appended to the finest coarse tier.
+            tests:
+              - RotationEngine_Rotate_ConsolidatesOlderIntoOneTierOneSlot
+              - RotationEngine_Rotate_HandsTheOlderTurnsOverAsRenderedMaterial
+
+          - id: AgentKitCore-RotationEngine-ConsolidatesFullTiers
+            title: >-
+              The unit shall consolidate a full coarse tier's slots as peers into one slot of the next
+              tier and clear it, and shall make the coarsest tier a ring that drops its oldest slot when
+              full.
+            justification: |
+              These are rules three and four. When a tier from one to the last-but-one is full and a
+              slot arrives, its slots are consolidated batch-then-clear as peers - there is no standing
+              record being extended - into the next tier, and the arriving slot takes the emptied tier.
+              The coarsest tier is a ring: a slot arriving to a full coarsest tier drops its oldest,
+              which is a large block of the oldest history discarded whole to keep the prompt cache
+              stable.
+            tests:
+              - RotationEngine_Rotate_FullTier_ConsolidatesAsPeersIntoNextTier
+              - RotationEngine_Rotate_CoarsestTier_IsARing
+
+          - id: AgentKitCore-RotationEngine-ConsolidatesOncePerTier
+            title: >-
+              The unit shall consolidate a given turn's material exactly once per tier - three times in
+              its whole life - as it cascades from tier one to the coarsest tier.
+            justification: |
+              A flat rolling summary re-summarizes its own summary on every rotation, so recall collapses
+              after a handful of rotations. Under this structure a turn is written into a tier-one slot,
+              then consolidated into tier two only when tier one fills, then into tier three only when
+              tier two fills - once per tier, three times in its life - which is the property the whole
+              design rests on.
+            tests:
+              - RotationEngine_ManyRotations_ConsolidatesOncePerTier
+
+          - id: AgentKitCore-RotationEngine-MovesAtLeastOneTurn
+            title: >-
+              The unit shall rotate once at the compaction level it is given, always moving at least
+              the oldest turn out of the verbatim tail, and shall report the consolidations it
+              performed and whether any material was lost.
+            justification: |
+              Nothing here judges whether the result will fit, because nothing has been sent and the
+              engine holds no token arithmetic of its own with which to judge it. The engine moves
+              material and reports what it did; deciding how hard to compact, and whether to discard a
+              slot outright, belongs to the session, which is the only place that knows how quickly
+              the window filled. The level is the session's state and is handed in rather than
+              reported back.
+
+              What the engine does guarantee is progress. The trigger is the provider's own occupancy,
+              measured in tokens, while the verbatim tail is held by a count of turns: a provider
+              whose tokenizer runs well ahead of an ordinary conversation's growth therefore reaches
+              its threshold while the tail is still shorter than its configured maximum, leaving
+              nothing older to consolidate and a rotation identical to the layout it came from. That
+              left the session using a provider session already past its window - measured at five
+              times divergence, riding to one hundred and forty percent of it across nineteen turns
+              without rotating once, which is exactly where a provider's own compactor fires and
+              truncates history. So the tail keeps at most what the level asks for and at most one
+              turn fewer than it holds, whichever is smaller, and a rotation can never consolidate
+              nothing.
+            tests:
+              - RotationEngine_Rotate_TailShorterThanItsMaximum_StillMakesProgress
+              - RotationEngine_LevelHelpers_SaturateAtTheExtremes
+              - RotationEngine_VerbatimTurnsFor_ShortensWithLevel
+
+          - id: AgentKitCore-RotationEngine-RejectsMalformedConsolidation
+            title: >-
+              The unit shall refuse a null summarizer answer and honor cancellation itself rather than
+              delegating it to the summarizer.
+            justification: |
+              A summarizer with nothing to say must return an empty string, so a null answer is a defect
+              refused where it is received. The summarizer interface documents only that an
+              implementation may honor cancellation, so the engine checks the token before and after
+              every consolidation, so a cascade does not run to completion after the caller has given
+              up and a result produced across a cancellation is refused rather than accepted.
+            tests:
+              - RotationEngine_Rotate_NullAnswer_Throws
+              - RotationEngine_Rotate_Canceled_Throws
+
+          - id: AgentKitCore-RotationEngine-NormalizesBlankRecords
+            title: >-
+              The unit shall normalize a blank summarizer answer to empty at the single boundary where
+              it crosses, produce no slot rather than a whitespace slot, keep the material the answer
+              failed to consolidate, and report the loss when a full tier's consolidation comes back
+              blank.
+            justification: |
+              The summarizer interface forbids only null, so an answer of pure whitespace is permitted.
+              Normalizing it to empty where it is received means a blank answer produces no slot rather
+              than a slot that silently erases a span of history while still costing framing, and no
+              downstream consumer has to decide what whitespace means. The material then stays
+              verbatim, because retaining only the shortened tail would discard those turns with
+              nothing recorded in their place, and the loss would be committed to the provider as soon
+              as the replacement session was seeded.
+
+              A full tier's consolidation coming back blank is the same defect one level down. The
+              tier is not cleared on the strength of a record that was never written, so the slots it
+              holds survive; the arriving slot still has to go somewhere, so one slot is displaced and
+              the loss is reported rather than passed off as an ordinary success.
+            tests:
+              - RotationEngine_Rotate_BlankAnswer_ProducesNoSlotAndKeepsTheMaterial
+              - RotationEngine_Rotate_FullTierBlankAnswer_DisplacesOneSlotAndReportsIt
+
+          - id: AgentKitCore-RotationEngine-Deterministic
+            title: >-
+              The unit shall be a deterministic function of the layout it is handed and the summarizer
+              it is injected with.
+            justification: |
+              Every decision the engine makes is arithmetic over the layout, so supplying a deterministic
+              fake summarizer makes the whole rotation reproducible: the same layout always produces the
+              same tiers and the same consolidation count, which is how it is tested without a model.
+            tests:
+              - RotationEngine_ManyRotations_ConsolidatesOncePerTier

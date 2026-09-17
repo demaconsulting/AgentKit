@@ -1,0 +1,60 @@
+---
+# Software Unit Requirements for ContextUsage
+#
+# These requirements describe the design-level behavior of the ContextUsage unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ContextUsage Requirements
+        requirements:
+          - id: AgentKitCore-ContextUsage-UsageShape
+            title: >-
+              The unit shall reduce every provider to one usage shape carrying the used tokens, the
+              window and the conversation split.
+            justification: |
+              Providers disagree about what they will reveal, so every adapter answers in one shape.
+              The shape carries the conversation split rather than leaving a consumer to derive it,
+              because the only honest way to work it out is to ask whoever produced the totals: a
+              provider that reports a conversation count counted it with the same tokenizer it
+              counted everything else with. The shape records no provenance, because there is nothing
+              to distinguish: the engine holds no arithmetic of its own for a provider's figure to be
+              compared against, so every figure in a comparison arrived from one reading.
+            tests:
+              - ContextUsage_FromProvider_CarriesSplit
+
+          - id: AgentKitCore-ContextUsage-DefaultsToAllConversation
+            title: >-
+              The unit shall treat the whole of the usage as conversation when a provider reports only
+              totals, crediting no overhead.
+            justification: |
+              An adapter that receives only totals is not made to invent a split. Treating the whole as
+              conversation credits the session with no overhead allowance, which rotates strictly
+              earlier than a correct split would and so cannot let the session run past the provider's
+              own compactor. Estimating the split here would put a figure nobody counted beside two
+              that a provider did, which is the one thing this shape exists to prevent.
+            tests:
+              - ContextUsage_FromProvider_NoSplit_TreatsAllAsConversation
+
+          - id: AgentKitCore-ContextUsage-ReportsOverFullHonestly
+            title: >-
+              The unit shall carry a window a provider reports as over-full without clamping it, so
+              the over-full condition remains visible.
+            justification: |
+              A window that is over-full is exactly what an application most needs to see, and a
+              provider genuinely reports it, so the figures are carried as they arrived rather than
+              reduced to the window's size. Clamping would hide the one condition that distinguishes a
+              session running past its provider's own compactor from a healthy one.
+            tests:
+              - ContextUsage_FromProvider_BeyondTheWindow_IsNotClamped
+
+          - id: AgentKitCore-ContextUsage-RejectsMeaninglessFigures
+            title: >-
+              The unit shall reject a conversation larger than the total and a non-positive window.
+            justification: |
+              A conversation larger than everything occupied is not a condition any accounting can
+              produce and would make the overhead negative, enlarging the effective window a threshold
+              is taken from. A window of zero or less is a capacity nothing can be a fraction of. Each
+              is refused where the adapter's arithmetic defect was written.
+            tests:
+              - ContextUsage_Construct_MeaninglessFigures_Throws

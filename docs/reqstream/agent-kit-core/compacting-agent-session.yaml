@@ -1,0 +1,117 @@
+---
+# Software Unit Requirements for CompactingAgentSession
+#
+# These requirements describe the design-level behavior of the CompactingAgentSession unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: CompactingAgentSession Requirements
+        requirements:
+          - id: AgentKitCore-CompactingAgentSession-AnswersTurns
+            title: >-
+              The unit shall answer a turn against the live provider session and record the whole turn -
+              the message, any tool work and the answer - as one turn.
+            justification: |
+              This is where the parts meet: the options say what the agent is, the layout accounts for
+              the context, the rotation engine ages it, and the factory produces the replacement. The
+              turn is served by the session that was live when it arrived, and the whole exchange is
+              recorded as one turn so the boundary machinery deals only in whole exchanges.
+            tests:
+              - CompactingAgentSession_Send_AnswersTurns
+
+          - id: AgentKitCore-CompactingAgentSession-RotatesAtThreshold
+            title: >-
+              The unit shall rotate when occupancy reaches the rotation threshold, creating a
+              replacement seeded from the consolidated context and disposing the session it replaced.
+            justification: |
+              Rule two: when the conversation crosses the threshold - both figures taken from the same
+              provider reading, so both in the same currency and nothing subtracted - older history is
+              consolidated, a replacement is created and adopted, and only then is the superseded
+              session disposed. That order leaves the session able to answer if a summarizer fails, and
+              the adoption carries no await so the live provider, the layout and the counters never
+              describe different sessions.
+            tests:
+              - CompactingAgentSession_Send_RotatesAtThreshold
+
+          - id: AgentKitCore-CompactingAgentSession-AdaptsLevelUnderPressure
+            title: >-
+              The unit shall answer pressure measured in turns - escalating its compaction level when
+              the window fills again within k turns of a rotation, discarding the oldest consolidated
+              slot instead when it is already at the tersest level, and relaxing after m quiet turns -
+              and shall report the level and any dropped material.
+            justification: |
+              The compaction level is session state, not a setting. The session already knows how
+              quickly the window filled after the last rotation, in turns, and that count is the whole
+              pressure signal: a refill within k turns escalates, m quiet turns relax, m is greater
+              than k so the two predicates cannot both hold, and both are internal constants derived
+              from the verbatim tail length. At the tersest level there is no terser answer left, so
+              the oldest slot of the coarsest tier holding one is discarded - the ring of rule four
+              brought forward, because the context is filling faster than the ring's own schedule
+              empties it - and that discard is reported as dropped material. Nothing here measures a
+              context that has not been sent: the response to pressure is a count of turns and a count
+              of slots, which is what makes it terminate by construction even when a provider's
+              tokenizer diverges from this library's estimate.
+            tests:
+              - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
+              - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
+              - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
+              - CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel
+
+          - id: AgentKitCore-CompactingAgentSession-TakesTheWindowFromTheProvider
+            title: >-
+              The unit shall read how full it is, and out of how much, from the live provider session
+              after every turn, and shall derive the rotation threshold from that window alone.
+            justification: |
+              There is one path and one source. The provider session answers for its own window, so
+              the window, the overhead credited against it and the conversation compared with the
+              threshold are all counted by whoever produced them, and nothing has to be reconciled. An
+              earlier arrangement let the session fall back to its own estimate against a window
+              configured separately, which meant two sources of truth for one fact, a rule for
+              deciding between them, and a figure whose provenance the session had to check before it
+              could use it.
+            tests:
+              - CompactingAgentSession_Usage_IsTheProviderSessionsOwnFigure
+              - CompactingAgentSession_Send_RotatesAtThreshold
+
+          - id: AgentKitCore-CompactingAgentSession-RejectsBlankMessage
+            title: >-
+              The unit shall refuse a blank message and a turn after disposal.
+            justification: |
+              A blank turn spends context to say nothing, so it is refused. A disposed session refuses
+              further turns, because a turn taken after disposal would go to a provider session the
+              object is in the middle of releasing.
+            tests:
+              - CompactingAgentSession_Send_BlankMessage_Throws
+              - CompactingAgentSession_Send_AfterDispose_Throws
+
+          - id: AgentKitCore-CompactingAgentSession-DisposesProviderSession
+            title: >-
+              The unit shall release the live provider session on disposal, propagating a failed release
+              and keeping it retryable.
+            justification: |
+              Disposing the session releases whichever provider session it currently holds; earlier ones
+              were released when they were replaced. A failed release propagates, because a caller that
+              asked for release is entitled to learn it did not happen, and the provider is considered
+              released only once its own disposal completes, so a later call tries again rather than
+              turning a transient failure into a permanent leak.
+            tests:
+              - CompactingAgentSession_Dispose_ReleasesLiveProviderSession
+              - CompactingAgentSession_Dispose_FailedRelease_PropagatesAndRetries
+
+          - id: AgentKitCore-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt
+            title: >-
+              The unit shall release a provider session it cannot adopt rather than orphan it, and
+              shall surface the original failure even when that release fails as well.
+            justification: |
+              Reading a provider session's usage is adapter code that can throw by design, and it happens
+              while the session is owned by nothing. On creation the session is released and the original
+              failure rethrown; when the release itself fails, the original failure is still what the
+              caller learns, because the reason creation failed is more use than the reason the cleanup
+              after it failed. On rotation a replacement that cannot be adopted is released, leaving the
+              session coherent against the provider it already had.
+            tests:
+              - CompactingAgentSession_Create_UsageThrows_ReleasesAndRethrowsOriginal
+              - CompactingAgentSession_Create_UsageThrowsAndReleaseFails_ReportsTheCreationFailure
+              - CompactingAgentSession_Rotate_ReplacementUsageThrows_ReleasesReplacement
+              - CompactingAgentSession_Create_NullProviderSession_Throws
