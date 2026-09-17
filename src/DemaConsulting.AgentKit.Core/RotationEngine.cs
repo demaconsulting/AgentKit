@@ -432,7 +432,7 @@ internal static class RotationEngine
             // pairs a small summarizer with a large provider anyway, the call fails or comes back
             // empty, which is a case this engine already answers: the material stays verbatim, the
             // window keeps filling, and the session sheds its oldest card. Splitting the material to
-            // pre-empt that was machinery guarding a door that is already locked.
+            // forestall that was machinery guarding a door that is already locked.
             var content = await ConsolidateAsync(string.Join("\n", items), tierIndex, cancellationToken)
                 .ConfigureAwait(false);
 

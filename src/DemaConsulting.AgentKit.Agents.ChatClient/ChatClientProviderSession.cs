@@ -14,7 +14,7 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 ///     <para>
 ///     <b>One implementation for the whole stateless family.</b> Ollama, OpenAI and AI Foundry all
 ///     reach this library as an <see cref="IChatClient"/>, and none of them keeps the conversation:
-///     every turn resends the whole message list. Seeding a session is therefore starting a list,
+///     every turn sends the whole message list again. Seeding a session is therefore starting a list,
 ///     and releasing one is forgetting it. Writing that once means the mapping between this
 ///     library's transcript entries and chat messages - the part most likely to rot, because
 ///     tool-calling shapes differ between providers - exists in a single place.
@@ -160,7 +160,7 @@ public sealed class ChatClientProviderSession : IProviderSession
         var response = await _client.GetResponseAsync(_messages, _options, cancellationToken)
             .ConfigureAwait(false);
 
-        // Everything the provider produced joins the conversation, so the next turn resends a
+        // Everything the provider produced joins the conversation, so the next turn sends again a
         // history matching what it has already seen.
         _messages.AddRange(response.Messages);
 
