@@ -228,9 +228,18 @@ public class AgentKitAgentsCopilotTests
         // Act
         await session.SendAsync("a question", TestContext.Current.CancellationToken);
 
-        // Assert
+        // Assert: the threshold is what the runtime honors and therefore what holds it off, so that
+        // is what every session must carry. The flag is asserted too, but only as stated intent -
+        // it was measured to be inert, so a test that checked it alone would pass against a session
+        // the runtime was free to compact at its default of 0.80, just below the engine's 0.70.
         Assert.Equal(2, runtime.Configs.Count);
-        Assert.All(runtime.Configs, config => Assert.False(config.InfiniteSessions!.Enabled));
+        Assert.All(
+            runtime.Configs,
+            config =>
+            {
+                Assert.True(config.InfiniteSessions!.BackgroundCompactionThreshold > 0.90);
+                Assert.False(config.InfiniteSessions.Enabled);
+            });
     }
 
     /// <summary>
