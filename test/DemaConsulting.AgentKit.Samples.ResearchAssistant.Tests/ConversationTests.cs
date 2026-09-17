@@ -69,10 +69,16 @@ public class ConversationTests
     ///     Proves a conversation with no AgentKit session reports nothing about compaction, so the
     ///     turn loop prints no session lines for a run that has no session.
     /// </summary>
+    /// <remarks>
+    ///     Both providers this sample supports now carry a compacting session, so the shape asserted
+    ///     here is one the sample does not currently produce. It is kept because the shape remains
+    ///     representable — a provider AgentKit ships no provider session for would produce one — and
+    ///     the turn loop must go on handling it.
+    /// </remarks>
     [Fact]
     public async Task Conversation_StartAsync_ProviderManagedPlan_ExposesNoSession()
     {
-        // Arrange: a plan with no compacting session, as a Copilot run produces
+        // Arrange: a plan with no compacting session
         using var client = new ScriptedChatClient(
             new ScriptedAnswer(new ChatMessage(ChatRole.Assistant, "hello"), InputTokens: 10));
         var plan = new ConversationPlan(new ChatClientAgent(client), Compacting: null);
@@ -106,6 +112,33 @@ public class ConversationTests
             InMemoryProviderSessionFactory.DefaultWindowTokens.ToString(System.Globalization.CultureInfo.InvariantCulture),
             described,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a provider that answers for its own window says so in the banner rather than having
+    ///     a plausible number invented for it. The window is the one figure the whole arrangement
+    ///     turns on, so printing an invented one would be worse than printing none — and this is the
+    ///     Copilot path, where nothing is stated because the runtime reports both figures itself.
+    /// </summary>
+    [Fact]
+    public void ConversationPlan_Describe_ProviderReportedWindow_SaysTheProviderReportsIt()
+    {
+        // Arrange: a compacting plan that was told no window
+        using var client = new ScriptedChatClient(
+            new ScriptedAnswer(new ChatMessage(ChatRole.Assistant, "hello"), InputTokens: 10));
+        var plan = new ConversationPlan(
+            new ChatClientAgent(client),
+            new CompactingSessionPlan(
+                new AgentSessionOptions(new StubSummarizer(), instructions: "You are a research assistant."),
+                new InMemoryProviderSessionFactory(),
+                Window: null));
+
+        // Act
+        var described = plan.Describe();
+
+        // Assert: the compacting shape is named, and the window is attributed to the provider
+        Assert.Contains("compacting session", described, StringComparison.Ordinal);
+        Assert.Contains("reported by the provider", described, StringComparison.Ordinal);
     }
 
     /// <summary>

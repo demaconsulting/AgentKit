@@ -55,3 +55,44 @@ sections:
               - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
               - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
               - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+          - id: AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle
+            title: >-
+              Microsoft.Agents.AI.GitHub.Copilot shall provide a session lifecycle that creates a
+              session from a configuration, sends one message and waits for the session to become
+              idle under a caller-supplied deadline, and releases and deletes the session.
+            justification: |
+              The Copilot provider session is one AgentKit session over one of these runtime
+              sessions: a rotation creates one from a configuration, each turn sends one message and
+              waits, and releasing the AgentKit session releases and deletes the runtime's. The
+              deadline matters as much as the operations: the SDK applies a sixty-second default when
+              told none, so the adapter states an infinite one and governs the turn with the
+              cancellation token the session contract already carries. The lifecycle calls themselves
+              reach an authenticated Copilot CLI and so are out of automated scope; AgentKit's
+              adapter reaches them through one internal seam, and the tests above that seam provide
+              the offline evidence that the configuration handed to session creation is correct and
+              that a session is released on every path. See the Copilot adapter verification for the
+              honest scope boundary.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+              - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+          - id: AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents
+            title: >-
+              Microsoft.Agents.AI.GitHub.Copilot shall dispatch session events reporting token usage
+              against a limit, tool executions and their outcomes, session errors, and the runtime's
+              own compaction and truncation, to a handler registered on the session configuration
+              before the session is created.
+            justification: |
+              A Copilot turn reveals what it did through events rather than through a return value,
+              so this is where the adapter's occupancy figure, its tool-traffic record and its
+              detection of the runtime rewriting history all come from. Registering the handler on
+              the configuration rather than on the session afterwards is what covers the very first
+              turn, which the SDK documents and which AgentKit depends on. Every one of these event
+              types is constructable, so AgentKit's tests drive the SDK's own event objects through
+              the adapter's own matching, offline; what remains out of automated scope is whether a
+              live runtime emits them when expected, and in particular whether it honors a request to
+              disable its own compaction.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+              - AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds

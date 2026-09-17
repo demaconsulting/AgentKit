@@ -94,3 +94,39 @@ instructions skipped, so a confined agent receives only the capability and direc
 attached. Both values are read from the constructed session configuration rather than inferred, so
 either one reverting to the permissive value — which would widen the agent without changing anything
 the host wrote — fails this scenario.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath: One Derivation, Two Entry Points
+
+**Tests**: `CopilotAgentFactory_BothPaths_DeriveTheSameConfinement`,
+`CopilotAgentFactory_BuildEngineSessionConfig_EmptyTools_ProducesAnEmptyAllowList`,
+`CopilotAgentFactory_BuildSessionConfig_EmptyTools_Throws`,
+`CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws`
+
+The first builds the same tool set through both entry points and asserts the allow-list, the
+published tool names, the skills setting and the custom-instruction setting are identical. It is the
+scenario that makes having two entry points safe: they differ in what tool lists they accept and in
+the runtime compaction, and in nothing that decides what a session may call. An implementation that
+forked the derivation would pass every other scenario in this file and fail only this one.
+
+The second asserts the engine path accepts an empty tool list and produces an empty allow-list with
+the injection channels still shut — the strongest confinement the factory can express, which is what
+a consolidation session needs. The third asserts the agent path still refuses the same list, because
+an agent publishing no tools is a defect in its host; emptiness is the only rule the two paths
+disagree about. The fourth asserts the engine path still refuses a duplicated tool name, so relaxing
+emptiness did not relax everything else.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone: The Deliberate Asymmetry
+
+**Tests**: `CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched`,
+`CopilotAgentFactory_BuildEngineSessionConfig_DisablesTheRuntimesCompaction`
+
+Both sides of the asymmetry are asserted, because it is the one a maintainer is most likely to
+"tidy" into consistency. The agent path leaves the runtime's infinite-session setting at whatever a
+freshly constructed session configuration carries — a plain agent has no AgentKit compactor behind
+it, so disabling the runtime's would remove the only protection that session has when its window
+fills. The engine path sets it explicitly disabled — a session the engine drives has an AgentKit
+compactor behind it, and two compactors reading one occupancy signal would fight.
+
+Whether a live runtime honors the disabling is unverified here and is recorded as such in
+_AgentKitAgentsCopilot System Verification Design_; what these scenarios establish is that the
+request is made on exactly the sessions it should be and on no others.

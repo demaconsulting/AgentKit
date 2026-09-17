@@ -43,11 +43,12 @@ public sealed record AgentSetup(
 ///     </para>
 ///     <para>
 ///     <b>A second delegate answers "can this provider carry an AgentKit session?"</b> It can when
-///     AgentKit ships a provider session for it, which today means any <c>IChatClient</c>. A
-///     provider with none leaves it unset, and the conversation runs on that runtime's own session
-///     instead — which works, and does not compact. The difference is stated here rather than
-///     smoothed over, because a conversation that silently stops compacting is exactly the failure
-///     the session engine exists to prevent.
+///     AgentKit ships a provider session for it, which today means any <c>IChatClient</c> and the
+///     GitHub Copilot runtime — so both providers this sample supports carry one. A provider with
+///     none would leave it unset, and the conversation would run on that runtime's own session
+///     instead, which works and does not compact. The difference is stated here rather than smoothed
+///     over, because a conversation that silently stops compacting is exactly the failure the
+///     session engine exists to prevent.
 ///     </para>
 /// </remarks>
 /// <param name="CreateAgent">
@@ -744,7 +745,8 @@ public static class AgentComposition
     }
 
     /// <summary>
-    ///     Builds the GitHub Copilot backend, which the host owns and disposes.
+    ///     Builds the GitHub Copilot backend, which the host owns and disposes, and the compacting
+    ///     session that runs on it.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -756,13 +758,27 @@ public static class AgentComposition
     ///     Every agent — root and child alike — is built through <c>CopilotAgentFactory</c>, which
     ///     derives each session's tool allow-list from exactly the tools it is given. That is what
     ///     suppresses the runtime's own built-in shell and fetch tools for a delegated agent as well
-    ///     as for the parent.
+    ///     as for the parent. <c>CopilotProviderSessionFactory</c> derives it through the same
+    ///     confinement, so a compacting run is confined exactly as an agent run is.
+    ///     </para>
+    ///     <para>
+    ///     <b>Nothing is stated about the window here, and that is the point.</b> The Ollama path has
+    ///     to read a window and pass it in, because an <c>IChatClient</c> publishes none. Copilot
+    ///     reports its occupancy and its limit with every turn, so the provider-session factory takes
+    ///     no window and <c>--context-window</c> has nothing to apply to on this path.
+    ///     </para>
+    ///     <para>
+    ///     <b>The consolidation model is separate from the conversation model, deliberately</b>, for
+    ///     the reason <c>CopilotSummarizer</c> documents: a consolidation runs on a session of its
+    ///     own so it does not spend the context it exists to reclaim, and summarization is a cheaper
+    ///     job than reasoning. <c>--summary-model</c> makes that choice on this path too; without it
+    ///     the runtime's own default performs the consolidation.
     ///     </para>
     /// </remarks>
     /// <param name="options">The options carrying the model and any token.</param>
     /// <param name="corpusRoot">The working directory for the runtime process.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
-    /// <returns>The Copilot agent factory and the client as its cleanup handle.</returns>
+    /// <returns>The Copilot agent factory, session planner, and the client as its cleanup handle.</returns>
     private static async Task<ProviderBackend> CreateCopilotBackendAsync(
         CommandLineOptions options,
         string corpusRoot,
@@ -780,6 +796,11 @@ public static class AgentComposition
             UseLoggedInUser = token is null,
         });
 
+        // Built before the first awaited call, so a failure starting the runtime releases through the
+        // same handle the caller would have used. Disposing a client assembled in a catch block
+        // instead would be the second path that drifts.
+        var cleanup = new AsyncDisposableAction(client.DisposeAsync);
+
         try
         {
             await client.StartAsync(cancellationToken);
@@ -787,14 +808,23 @@ public static class AgentComposition
         catch
         {
             // Do not leak a partially started client if StartAsync (or cancellation) fails.
-            await client.DisposeAsync();
+            await cleanup.DisposeAsync();
             throw;
         }
+
+        var providerSessions = new CopilotProviderSessionFactory(client, options.Model);
+        var summarizer = new CopilotSummarizer(client, options.SummaryModel);
 
         return new ProviderBackend(
             (tools, instructions, name) =>
                 CopilotAgentFactory.Create(client, tools, instructions, name: name, model: options.Model),
-            client);
+            cleanup,
+            (tools, instructions) => new CompactingSessionPlan(
+                new AgentSessionOptions(summarizer, instructions, [.. tools]),
+                providerSessions,
+
+                // Nothing is stated: the runtime answers for its own window with every turn.
+                Window: null));
     }
 
     /// <summary>

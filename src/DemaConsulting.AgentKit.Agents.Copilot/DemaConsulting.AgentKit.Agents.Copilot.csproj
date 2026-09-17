@@ -11,7 +11,7 @@
     <Version>0.0.0</Version>
     <Authors>DEMA Consulting</Authors>
     <Company>DEMA Consulting</Company>
-    <Description>Builds a Microsoft Agent Framework agent from a GitHub Copilot CopilotClient, suppressing the runtime's built-in tools by deriving the session allow-list from the supplied tools</Description>
+    <Description>Builds a Microsoft Agent Framework agent from a GitHub Copilot CopilotClient, suppressing the runtime's built-in tools by deriving the session allow-list from the supplied tools, and carries an AgentKit compacting session over the same runtime</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>

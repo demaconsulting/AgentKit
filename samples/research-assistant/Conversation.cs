@@ -16,11 +16,17 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 /// <param name="ProviderSessions">
 ///     Produces the first provider session and every replacement a rotation needs.
 /// </param>
-/// <param name="Window">The context window the factory was told, and where that figure came from.</param>
+/// <param name="Window">
+///     The context window the factory was told and where that figure came from, or
+///     <see langword="null"/> when the provider reports its own window and was told nothing. Ollama
+///     publishes no window through <c>IChatClient</c>, so the application must answer for it;
+///     Copilot reports both its occupancy and its limit with every turn, so there is nothing to
+///     state and nothing that could disagree.
+/// </param>
 public sealed record CompactingSessionPlan(
     AgentSessionOptions Options,
     IProviderSessionFactory ProviderSessions,
-    ContextWindow Window);
+    ContextWindow? Window);
 
 /// <summary>
 ///     Everything needed to start one conversation, in whichever shape the chosen provider
@@ -28,18 +34,21 @@ public sealed record CompactingSessionPlan(
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>The two shapes are not a preference, and the sample does not pretend otherwise.</b>
-///     AgentKit ships a provider session for any <c>IChatClient</c>, so the Ollama conversation runs
-///     on a <c>CompactingAgentSession</c> and outlives the model's context window. It ships none for
-///     the GitHub Copilot runtime, so that conversation runs on the runtime's own session and ends
-///     when the runtime's own context is exhausted. Naming both here, rather than hiding the
-///     difference behind one loop, is what lets the banner tell a reader which one they are about
-///     to watch.
+///     <b>Both providers this sample supports carry an AgentKit compacting session</b>, so a
+///     conversation on either outlives the model's context window. What differs is where the window
+///     comes from: Ollama publishes none through <c>IChatClient</c>, so the application reads it and
+///     states it; the GitHub Copilot runtime reports its occupancy and its limit with every turn, so
+///     nothing is stated and nothing could disagree.
+///     </para>
+///     <para>
+///     A plan carrying no compacting session is still representable — a provider AgentKit ships no
+///     provider session for would produce one — and is named plainly in the banner rather than
+///     hidden behind one loop, because a conversation that silently stops compacting is exactly the
+///     failure the session engine exists to prevent.
 ///     </para>
 /// </remarks>
 /// <param name="Agent">
-///     The built agent. Carries the Copilot conversation, and on either provider is what a
-///     delegated child is started from.
+///     The built agent. On either provider it is what a delegated child is started from.
 /// </param>
 /// <param name="Compacting">
 ///     The compacting session to run this conversation on, or <see langword="null"/> when the
@@ -54,8 +63,21 @@ public sealed record ConversationPlan(AIAgent Agent, CompactingSessionPlan? Comp
     public string Describe() => Compacting is null
         ? "provider-managed (the runtime holds the conversation; AgentKit ships no provider "
           + "session for it, so nothing compacts when its window fills)"
-        : $"AgentKit compacting session — window {Compacting.Window.Describe()}, "
+        : $"AgentKit compacting session — window {DescribeWindow(Compacting.Window)}, "
           + $"{Compacting.Options.VerbatimTurns} recent turns kept verbatim";
+
+    /// <summary>
+    ///     Describes where the window this conversation is accounted against came from.
+    /// </summary>
+    /// <remarks>
+    ///     A provider that answers for its own window is said to, rather than having a plausible
+    ///     number invented for the banner. The window is the one figure the whole arrangement turns
+    ///     on, and printing an invented one would be worse than printing none.
+    /// </remarks>
+    /// <param name="window">The stated window, or <see langword="null"/> when the provider reports its own.</param>
+    /// <returns>One clause naming the window and its provenance.</returns>
+    private static string DescribeWindow(ContextWindow? window) =>
+        window?.Describe() ?? "reported by the provider with every turn, so none was stated";
 }
 
 /// <summary>
@@ -78,10 +100,11 @@ internal sealed record AgentTurns(AIAgent Agent, AgentSession Session);
 ///     settled once here.
 ///     </para>
 ///     <para>
-///     Tool activity is printed on both paths, from different places, because the two shapes reveal
-///     it differently: an agent streams it, and a compacting session does not report it at all —
-///     see <see cref="ToolCallReportingChatClient"/>, which is installed beneath the session for
-///     exactly that reason.
+///     Tool activity is printed on both shapes, from different places, because they reveal it
+///     differently: an agent streams it, and a compacting session does not report it at all. On the
+///     Ollama path a <see cref="ToolCallReportingChatClient"/> sits beneath the session for exactly
+///     that reason. On the Copilot path there is no such seam — the runtime carries the tool loop
+///     itself — so a compacting Copilot run prints answers rather than a tool trace.
 ///     </para>
 ///     <para>
 ///     Instances are not safe for concurrent use: one conversation is one thread of turns.
@@ -195,8 +218,9 @@ public sealed class Conversation : IAsyncDisposable
 
         if (_session is not null)
         {
-            // The whole turn is one call. Tool activity was already printed by the reporting client
-            // beneath the session, which is the only place it is visible.
+            // The whole turn is one call. On the Ollama path the tool activity was already printed
+            // by the reporting client beneath the session, which is the only place it is visible;
+            // on the Copilot path the runtime carries the tool loop and there is no such seam.
             var response = await _session.SendAsync(message, cancellationToken);
             Console.Write(response.Text);
             return response;

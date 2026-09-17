@@ -145,9 +145,22 @@ software items, specifically:
   application's choosing, out of the session being compacted
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
   Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools
+  allow-list from the supplied tools, and carries an AgentKit session over the same runtime
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
-  default-safe permission handler, and builds the agent without taking ownership of the client
+  default-safe permission handler, and builds the agent without taking ownership of the client; the
+  single place a Copilot session configuration is built
+- **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
+  records the runtime's tool traffic, reports the runtime's own occupancy, and refuses a turn it
+  cannot account for
+- **CopilotProviderSessionFactory (Unit)** — Creates one seeded Copilot session per rotation,
+  rendering the seeded history into the session's system message and disabling the runtime's own
+  compaction
+- **CopilotSessionObserver (Unit)** — Watches the runtime's event stream for the usage reading, the
+  turn's tool traffic, and any sign the runtime rewrote history itself
+- **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
+  out of the session being compacted
+- **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
+  what makes everything above it testable without a live Copilot runtime
 
 The following OTS items are also covered:
 
@@ -157,7 +170,7 @@ The following OTS items are also covered:
 - **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
   abstraction
 - **Microsoft.Agents.AI.GitHub.Copilot** — the GitHub Copilot SDK providing `CopilotClient`,
-  `SessionConfig`, and the permission RPC
+  `SessionConfig`, the permission RPC, the session lifecycle and the session event stream
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
 - **Pandoc** — Markdown-to-HTML conversion tool
@@ -238,8 +251,9 @@ in a package a developer has to discover is a packaging mistake rather than a de
 provider-agnostic by design — the same rotation behavior on a provider that re-sends history each
 turn and on one that holds it server-side — and carries no provider dependency; its provider seam is
 the `IProviderSession` interface, which `AgentKitAgentsChatClient` implements for every provider
-reached as a chat client. `AgentKitAgentsCopilot` does not implement it yet, so a Copilot-backed
-application composes an agent rather than a compacting session.
+reached as a chat client and `AgentKitAgentsCopilot` implements natively for the GitHub Copilot
+runtime — which exposes no chat client at all, and reports its own occupancy and window rather than
+being told them.
 
 `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
@@ -258,9 +272,12 @@ depended upon by another capability package.
 turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
 justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
-`AgentKitAgentsCopilot` is one factory class. `AgentKitAgentsChatClient` holds five units: that
-factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy from
-the last request of a turn. Both are flat, and the two share no code and never reference each other.
+`AgentKitAgentsCopilot` carries six units: that factory, a provider session, its factory, a
+summarizer, the observer that reads occupancy from the runtime's event stream, and the internal turn
+channel that makes all of it testable without a live runtime. `AgentKitAgentsChatClient` holds five:
+that factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy
+from the last request of a turn. Both are flat, and the two share no code and never reference each
+other.
 
 The `SoftwareStructureView.svg` above renders all four systems.
 
@@ -362,8 +379,8 @@ src/DemaConsulting.AgentKit.Tools/
 
 Each family folder mirrors the subsystem it represents in the software structure above.
 
-Each provider-adapter system is its own source tree. The Copilot adapter is one factory class; the
-chat-client adapter adds the session adapter that carries a Core session over an `IChatClient`:
+Each provider-adapter system is its own source tree. Both carry a session adapter over their
+provider, and both differ only in what their provider makes available:
 
 ```text
 src/DemaConsulting.AgentKit.Agents.ChatClient/
@@ -374,7 +391,12 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 └── ChatClientSummarizer.cs                — consolidates history through an IChatClient
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
-└── CopilotAgentFactory.cs      — builds a Copilot agent with the built-in tools suppressed
+├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session configuration
+├── CopilotProviderSession.cs         — one Core session over one Copilot session
+├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
+├── CopilotSessionObserver.cs         — watches the runtime's event stream
+├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
+└── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
 The demonstration samples live under `samples/`, one folder per sample. They are not software

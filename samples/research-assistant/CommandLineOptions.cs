@@ -169,7 +169,7 @@ public sealed class CommandLineOptions
 
     /// <summary>
     ///     Gets the model each context consolidation is sent to, or <see langword="null"/> to use
-    ///     the conversation's own model. Set by <c>--summary-model</c>; Ollama only.
+    ///     the conversation's own model. Set by <c>--summary-model</c>.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -180,15 +180,17 @@ public sealed class CommandLineOptions
     ///     changes nothing the agent can observe.
     ///     </para>
     ///     <para>
-    ///     Unused on the Copilot runtime, which carries its own session and never reaches the
-    ///     compaction engine.
+    ///     Applies on both providers, because both carry an AgentKit compacting session. On Ollama
+    ///     an unstated value falls back to the conversation's model; on Copilot it falls back to
+    ///     whichever model the runtime chooses by default.
     ///     </para>
     /// </remarks>
     public string? SummaryModel { get; init; }
 
     /// <summary>
     ///     Gets the context window the compacting session accounts against, or
-    ///     <see langword="null"/> to read it from the provider. Set by <c>--context-window</c>.
+    ///     <see langword="null"/> to read it from the provider. Set by <c>--context-window</c>;
+    ///     Ollama only.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -197,6 +199,11 @@ public sealed class CommandLineOptions
     ///     Ollama rather than asking for it — see <see cref="OllamaContextWindow"/> — and this flag
     ///     exists for the case the reading gets wrong: a server that has loaded the model with a
     ///     context length smaller than the model publishes, which nothing else reveals.
+    ///     </para>
+    ///     <para>
+    ///     Unused on the Copilot runtime, which reports its occupancy and its limit with every turn.
+    ///     There is nothing to state there and nothing a stated figure could do but disagree with the
+    ///     provider's own.
     ///     </para>
     /// </remarks>
     public int? ContextWindow { get; init; }
@@ -598,14 +605,16 @@ public sealed class CommandLineOptions
                                      behavior you intend to cite.
            --embedding-model <name>  Ollama embedding model (default: {DefaultOllamaEmbeddingModel};
                                      --embeddings ollama only).
-           --summary-model <name>    Ollama model each context consolidation is sent to (default:
-                                     the conversation's own model). Consolidation is summarization
-                                     rather than reasoning, so a smaller model is usually right.
-           --context-window <tokens> Context window the compacting session accounts against
-                                     (default: read from Ollama — the loaded model's length where
-                                     one is loaded, else the model's published maximum). State it
-                                     when the server loaded the model with a smaller length than
-                                     the model publishes, which nothing else reveals.
+           --summary-model <name>    Model each context consolidation is sent to (default: the
+                                     conversation's own model on Ollama, the runtime's default on
+                                     Copilot). Consolidation is summarization rather than reasoning,
+                                     so a smaller model is usually right.
+           --context-window <tokens> Context window the compacting session accounts against; Ollama
+                                     only (default: read from Ollama — the loaded model's length
+                                     where one is loaded, else the model's published maximum). State
+                                     it when the server loaded the model with a smaller length than
+                                     the model publishes, which nothing else reveals. Copilot reports
+                                     its own window with every turn, so this does not apply there.
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
                                      GITHUB_TOKEN environment variable, else the logged-in user).
            --transcript <path>       Append a machine-readable record of every tool call to a file.

@@ -48,12 +48,15 @@ shows how it *proceeds*.
   turn prints what it occupies, whether it rotated, and whether compacting bought nothing and
   history had to be dropped. See
   [Context that outlives the window](#context-that-outlives-the-window).
-- **Provider neutrality, with one honest exception.** The same composition — the same policy, the
+- **Provider neutrality, with one honest difference.** The same composition — the same policy, the
   same packs, the same instructions — runs on the GitHub Copilot runtime or any Ollama model, and
-  nothing above the single factory-selection switch knows which. The exception is the session:
-  AgentKit ships a provider session for any `IChatClient` and none for the Copilot runtime, so the
-  Copilot conversation runs on that runtime's own session and does not compact. The startup banner
-  says which shape a run got.
+  nothing above the single factory-selection switch knows which. Both now carry an AgentKit
+  compacting session, so a conversation outlives the model's window on either. The difference is
+  where the window comes from: Ollama publishes none through `IChatClient`, so the sample reads it
+  from the server and states it; Copilot reports its occupancy and its limit with every turn, so
+  nothing is stated. The startup banner says which a run got. The other difference is the tool
+  trace: the sample surfaces one beneath the Ollama session through a decorator of its own, and the
+  Copilot runtime carries the tool loop itself and offers no equivalent seam.
 
 ## Running it
 
@@ -177,8 +180,14 @@ figure are now AgentKit's, not the application's:
   turn. The factory now records the size of each real prompt beneath the loop and reports the last
   one, so the sample no longer writes a recorder and a repairer to undo it.
 
-On `--provider copilot` none of this applies: the runtime holds its own conversation, AgentKit ships
-no provider session for it, and nothing compacts.
+On `--provider copilot` none of this applies, for a different reason: there is no chat-client
+pipeline to place anything in. `CopilotProviderSessionFactory` creates one Copilot session per
+rotation and the runtime carries the tool loop itself, so there is no loop to close and no summed
+usage to undo — the runtime reports the occupancy, the limit and the conversation's own share
+directly. What the sample gives up in exchange is the live tool trace: the Copilot runtime offers no
+seam beneath the session to print calls from, so a compacting Copilot run prints answers and session
+figures rather than each call as it happens. `--transcript` therefore records tool calls on the
+Ollama path only.
 
 ## What the recall turn proves, and what the prompts cannot
 

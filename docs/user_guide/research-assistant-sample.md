@@ -69,24 +69,33 @@ is the one signal that compacting bought nothing and history was discarded.
 *conversation*. The store is the application's, lives outside the session entirely, and survives
 every rotation intact — which is why the `--recall-question` turn still answers correctly after one.
 
-**The window is read from the provider rather than assumed.** An `IChatClient` publishes no context
-window, so the application has to answer for it. The sample prefers, in order: a window stated with
-`--context-window`; the **loaded** model's context length, which is what the Ollama server actually
-enforces; the model's **published** maximum, which the server may have loaded it below; and finally
-Ollama's own default, announced as an assumption. The startup banner names which of the four a run
-used, because a session told a window larger than the server enforces will not rotate until the
-provider has already truncated the conversation, and nothing downstream can detect that.
+**On `--provider ollama` the window is read from the provider rather than assumed.** An
+`IChatClient` publishes no context window, so the application has to answer for it. The sample
+prefers, in order: a window stated with `--context-window`; the **loaded** model's context length,
+which is what the Ollama server actually enforces; the model's **published** maximum, which the
+server may have loaded it below; and finally Ollama's own default, announced as an assumption. The
+startup banner names which of the four a run used, because a session told a window larger than the
+server enforces will not rotate until the provider has already truncated the conversation, and
+nothing downstream can detect that.
 
-`--summary-model` sends each consolidation to a different Ollama model. Consolidation is
-summarization rather than reasoning, so a smaller model is usually right; either way it runs on a
-client of its own, outside the session being compacted.
+**On `--provider copilot` nothing is stated, because the runtime answers for itself.** Copilot
+reports the tokens it currently holds, the limit it will hold them to, and how much of the total the
+conversation accounts for, with every turn. So `--context-window` does not apply on that path, and
+the banner says the window is reported by the provider rather than printing a number nobody stated.
+That is the honest difference between the two providers, and it is why the Copilot adapter takes no
+window at all.
 
-**On `--provider copilot` none of this happens.** AgentKit ships no provider session for the Copilot
-runtime, so that conversation runs on the runtime's own session and is not compacted. The banner
-says so rather than leaving a reader to assume otherwise. The sample also writes one chat-client
-decorator of its own beneath the session, surfacing the tool calls a session turn does not report,
-and its README explains why that one is the application's work and the tool-calling loop and the
-occupancy figure are not.
+`--summary-model` sends each consolidation to a different model, on either provider. Consolidation
+is summarization rather than reasoning, so a smaller model is usually right; either way it runs
+outside the session being compacted — on a separate client for Ollama, and on a separate, tool-free
+Copilot session for Copilot.
+
+**One thing genuinely differs between the two providers: the tool trace.** On `--provider ollama`
+the sample installs a chat-client decorator of its own beneath the session, surfacing the tool calls
+a session turn does not report; its README explains why that one is the application's work and the
+tool-calling loop and the occupancy figure are not. The Copilot runtime carries the tool loop itself
+and offers no equivalent seam, so a compacting Copilot run prints answers and session figures rather
+than a live tool trace.
 
 ## Supplying an Embedding Generator
 
@@ -195,5 +204,6 @@ dotnet run --project samples/research-assistant -- \
 Omitting `--prompt` starts an interactive session. `--transcript <path>` appends one line per tool
 call, naming the tool and nothing else, which is how an unattended run can be checked without
 reading its prose. `--context-window <tokens>` states the window the compacting session is accounted
-against when the server cannot be asked, and `--summary-model <name>` sends each consolidation to a
-smaller model; both apply to `--provider ollama` only.
+against when the Ollama server cannot be asked, and applies to `--provider ollama` only — Copilot
+reports its own window. `--summary-model <name>` sends each consolidation to a smaller model, and
+applies to both providers.

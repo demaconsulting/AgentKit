@@ -120,3 +120,41 @@ sections:
             tests:
               - CopilotAgentFactory_BuildSessionConfig_Model_CarriedOnSession
               - CopilotAgentFactory_BuildSessionConfig_NoModel_LeavesSessionModelAtDefault
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
+            title: >-
+              The factory shall confine every Copilot session this package builds — for an agent, for
+              a compacting session, and for a consolidation — through one derivation of the
+              allow-list, and shall accept an empty tool list only on the session-engine path.
+            justification: |
+              The safety property of this package is that a published tool set and the allow-list that
+              suppresses the runtime's built-ins cannot drift apart. A second builder with its own
+              derivation is exactly that drift, so every path ends in the same block: the tools and
+              the allow-list are assigned from one collection, the skill and custom-instruction
+              channels are closed, and a permission handler is installed. The one rule the two paths
+              disagree about is emptiness. An agent publishing no tools is a defect in its host and is
+              still refused; a consolidation must run on a session offering nothing, which produces an
+              empty allow-list and a handler that approves nothing — the strongest confinement this
+              factory can express rather than the weakest.
+            tests:
+              - CopilotAgentFactory_BothPaths_DeriveTheSameConfinement
+              - CopilotAgentFactory_BuildEngineSessionConfig_EmptyTools_ProducesAnEmptyAllowList
+              - CopilotAgentFactory_BuildSessionConfig_EmptyTools_Throws
+              - CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone
+            title: >-
+              The factory shall disable the Copilot runtime's own infinite-session compaction on
+              every session built for AgentKit's session engine, and shall leave it untouched on every
+              session built for a plain agent.
+            justification: |
+              A session the engine drives has an AgentKit compactor behind it, and two compactors
+              reading the same occupancy signal would fight: the runtime would rewrite history
+              underneath a session whose transcript the engine believes it owns. A plain agent has no
+              AgentKit compactor behind it, so disabling the runtime's there would remove the only
+              protection that session has when its window fills. The asymmetry is therefore deliberate
+              and is asserted on both paths, so that neither can be "tidied" into the other without a
+              test saying so.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched
+              - CopilotAgentFactory_BuildEngineSessionConfig_DisablesTheRuntimesCompaction

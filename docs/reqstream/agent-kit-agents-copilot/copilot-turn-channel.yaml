@@ -1,0 +1,62 @@
+---
+# Software Unit Requirements for CopilotTurnChannel
+#
+# These requirements describe the design-level behavior of the CopilotTurnChannel unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotTurnChannel Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-CarriesOneRuntimeSession
+            title: >-
+              The turn channel shall present one Copilot session as the two operations an AgentKit
+              provider session needs of it — take a turn, and release the session — and shall be
+              injectable, so everything built on it can be exercised without a live Copilot runtime.
+            justification: |
+              The SDK's session type is sealed with a non-public constructor and no virtual members,
+              and its client type is sealed, so neither can be faked, subclassed or constructed in a
+              test. Without an injectable seam the whole adapter — the seeding, the usage arithmetic,
+              the refusals and the ownership discipline — would ship with no automated evidence at
+              all, on the one provider this repository's CI can reach but cannot authenticate. The
+              seam is one interface with one method and a production implementation that forwards two
+              calls, which is the smallest surface that makes everything above it reachable. Its
+              correctness is established by the units built on it, which are exercised against a
+              channel that replays the runtime's own event types.
+            tests:
+              - CopilotProviderSession_Send_Answer_IsReturnedAndRecordedOnce
+              - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
+              - CopilotSummarizer_Consolidate_RunsOutOfTheSessionBeingCompacted
+
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-OwnsTheSessionNotTheClient
+            title: >-
+              The turn channel shall release the Copilot session it opened and shall not dispose the
+              Copilot client, and its release shall not fail for a session the runtime declined to
+              delete.
+            justification: |
+              The ownership contract this package records must not regress: the host constructs,
+              starts and disposes the client, and every session a rotation creates is AgentKit's.
+              Releasing a session alone is documented to preserve its state on disk so it can be
+              resumed later, which is the wrong outcome for a rotated session — a long conversation
+              would leave one preserved session behind per rotation — so the runtime is also asked to
+              delete it. That request is best-effort: release runs on a rotation's failure paths and
+              on the caller's own release, and a housekeeping call that could not be made is not a
+              reason to fail either of them.
+            tests:
+              - CopilotProviderSession_Dispose_DisposesTheRuntimeSession_AndNotTheClient
+              - CopilotSummarizer_Consolidate_Fails_DisposesTheSession
+
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-CallerGovernsTheDeadline
+            title: >-
+              The turn channel shall place no timeout of its own on a turn, leaving the caller's
+              cancellation token as the turn's only deadline.
+            justification: |
+              The SDK applies a sixty-second timeout to a turn it is told no timeout for, which a
+              tool-using research turn exceeds routinely — and the resulting failure would read as a
+              model or tool fault rather than as a deadline nobody chose. The session contract already
+              carries a cancellation token and the compacting session already flows it, so the
+              application governs the deadline rather than this library inventing a number or offering
+              a configuration knob nobody asked for.
+            tests:
+              - CopilotProviderSession_Send_Canceled_SendsNothing
+              - CopilotSummarizer_Consolidate_Canceled_OpensNothing

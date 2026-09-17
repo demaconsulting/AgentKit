@@ -83,6 +83,11 @@ includes:
   - docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-copilot.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session-factory.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-session-observer.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-summarizer.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-turn-channel.yaml
   - docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/apimark.yaml
