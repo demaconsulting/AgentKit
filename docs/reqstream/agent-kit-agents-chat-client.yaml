@@ -78,9 +78,13 @@ sections:
           between this library's transcript entries and chat messages - the part most likely to rot,
           because tool-calling shapes differ between providers - exists in a single place. Without
           it an application would have to write that mapping itself before Core's compacting session
-          could run against the provider it already chose.
+          could run against the provider it already chose. That mapping must also be portable rather
+          than merely working: a shape one provider tolerates and another discards without an error
+          is the failure this single place exists to contain, which is why the seeded history carries
+          no tool-role message.
         children:
           - AgentKitAgentsChatClient-ChatClientProviderSession-SeedsAMessageList
+          - AgentKitAgentsChatClient-ChatClientProviderSession-SeedsNoToolRoleMessage
           - AgentKitAgentsChatClient-ChatClientProviderSession-SendsTheWholeConversationEachTurn
           - AgentKitAgentsChatClient-ChatClientProviderSession-RecordsToolTraffic
           - AgentKitAgentsChatClient-ChatClientProviderSession-ReleasesWithoutDisposingTheClient

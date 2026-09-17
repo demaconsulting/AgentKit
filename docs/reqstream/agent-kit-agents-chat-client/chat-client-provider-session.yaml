@@ -26,6 +26,26 @@ sections:
               - ChatClientProviderSession_Send_Seed_ProducesInstructionsHistoryAndToolsInOrder
               - ChatClientProviderSession_Send_SeedWithoutInstructions_SendsNoSystemMessage
 
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-SeedsNoToolRoleMessage
+            title: >-
+              The unit shall carry a seeded tool call and its result as labeled assistant text, and
+              shall place no message in a seeded history under the tool role.
+            justification: |
+              A tool-role message is addressed by call identifier on the wire, so one carrying only
+              text cannot be represented. The OpenAI family maps tool-role content to a message only
+              where it is function-result content and discards anything else without reporting an
+              error, so a text-only tool message leaves the model a conversation in which it called a
+              tool and was never told the answer - once per rotation, silently, and worst in the
+              verbatim tail, which is kept verbatim precisely because it is the freshest and most
+              load-bearing material. Function-call content is not the answer either: a rotation can
+              separate a call from its result, and a call replayed with no result behind it is a
+              pending call the provider is invited to answer again. Labeled text is understood by
+              every provider and can be dropped by none, and a seeded history is a record of what
+              happened rather than a live exchange, so a record is the honest shape for it.
+            tests:
+              - ChatClientProviderSession_Send_SeededToolResult_UsesNoToolRoleMessage
+              - ChatClientProviderSession_Send_Seed_ProducesInstructionsHistoryAndToolsInOrder
+
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-SendsTheWholeConversationEachTurn
             title: >-
               The unit shall accumulate the conversation itself and send the whole of it on every

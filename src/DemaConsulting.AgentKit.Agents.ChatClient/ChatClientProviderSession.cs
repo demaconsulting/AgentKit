@@ -54,6 +54,12 @@ namespace DemaConsulting.AgentKit.Agents.ChatClient;
 public sealed class ChatClientProviderSession : IProviderSession
 {
     /// <summary>
+    ///     The label introducing a seeded tool result, so the model reads it as an answer a tool
+    ///     gave rather than as something the assistant asserted.
+    /// </summary>
+    private const string ToolResultPrefix = "Tool result: ";
+
+    /// <summary>
     ///     The client carrying each turn.
     /// </summary>
     private readonly IChatClient _client;
@@ -236,17 +242,30 @@ public sealed class ChatClientProviderSession : IProviderSession
     ///     Renders one transcript entry as the chat message a provider expects.
     /// </summary>
     /// <remarks>
-    ///     A tool call and its result are carried as assistant and tool messages rather than as
+    ///     <para>
+    ///     A tool call and its result are carried as labeled assistant text rather than as
     ///     function-call content, because a seeded history is a record of what happened rather than
     ///     a live exchange: the call has already been answered, and replaying it as a pending call
-    ///     invites a provider to answer it again.
+    ///     invites a provider to answer it again. A rotation can also separate a call from its
+    ///     result, and a call replayed as function-call content with no result behind it is exactly
+    ///     the pending call this avoids.
+    ///     </para>
+    ///     <para>
+    ///     A result is not carried on a tool-role message either, even though that reads as the
+    ///     natural home for it. A tool-role message is addressed by call identifier on the wire, so
+    ///     one carrying only text cannot be represented: the OpenAI family maps tool-role content to
+    ///     a message only when it is <c>FunctionResultContent</c>, and drops anything else without
+    ///     an error. The result would vanish from the seed after every rotation, leaving the model a
+    ///     conversation in which it called a tool and was never told the answer. Labeled text is
+    ///     understood by every provider and can be dropped by none.
+    ///     </para>
     /// </remarks>
     /// <param name="entry">The entry to render.</param>
     /// <returns>The chat message carrying it.</returns>
     private static ChatMessage ToChatMessage(TranscriptEntry entry) => entry.Kind switch
     {
         TranscriptEntryKind.UserMessage => new ChatMessage(ChatRole.User, entry.Text),
-        TranscriptEntryKind.ToolResult => new ChatMessage(ChatRole.Tool, entry.Text),
+        TranscriptEntryKind.ToolResult => new ChatMessage(ChatRole.Assistant, $"{ToolResultPrefix}{entry.Text}"),
         _ => new ChatMessage(ChatRole.Assistant, entry.Text),
     };
 

@@ -152,11 +152,21 @@ same session.
 
 **Purpose:** Render one seeded transcript entry as the chat message a provider expects.
 
-**Algorithm:** A user message becomes a user message, a tool result becomes a tool message, and
-everything else — an answer, a tool call, a consolidated record — becomes an assistant message. A
-tool call and its result are carried as assistant and tool messages rather than as function-call
-content, because a seeded history is a record of what happened rather than a live exchange: the call
-has already been answered, and replaying it as a pending call invites a provider to answer it again.
+**Algorithm:** A user message becomes a user message, a tool result becomes an assistant message
+carrying a fixed `Tool result:` label, and everything else — an answer, a tool call, a consolidated
+record — becomes an assistant message. A tool call and its result are carried as labeled text rather
+than as function-call content, because a seeded history is a record of what happened rather than a
+live exchange: the call has already been answered, and replaying it as a pending call invites a
+provider to answer it again — and a rotation can separate a call from its result, which is exactly
+how a replayed call ends up pending.
+
+Nothing in a seeded history goes out under the tool role. A tool-role message is addressed by call
+identifier on the wire, so one carrying only text cannot be represented: the OpenAI family maps
+tool-role content to a message only where it is function-result content, and discards anything else
+without reporting an error. A text-only tool message would therefore leave the model a conversation
+in which it called a tool and was never told the answer — once per rotation, silently, and worst in
+the verbatim tail, which is kept verbatim precisely because it is the freshest material. Labeled text
+is understood by every provider and can be dropped by none.
 
 **Preconditions:** `entry` is not null, which the seed guarantees.
 

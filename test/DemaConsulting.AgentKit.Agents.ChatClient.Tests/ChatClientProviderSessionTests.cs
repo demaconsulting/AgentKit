@@ -53,11 +53,47 @@ public class ChatClientProviderSessionTests
         // Assert: the system message leads, the history follows in order, the new message is last,
         // and the tool the seed carried is offered as a tool rather than as conversation
         Assert.Equal(
-            ["system:be brief", "user:u1", "assistant:a1", "assistant:probe()", "tool:42", "user:next"],
+            [
+                "system:be brief", "user:u1", "assistant:a1", "assistant:probe()",
+                "assistant:Tool result: 42", "user:next",
+            ],
             Rendered(client.LastMessages));
         Assert.Equal(
             [tool],
             client.Requests[0].Options?.Tools ?? []);
+    }
+
+    /// <summary>
+    ///     Proves a seeded history carries no tool-role message, so no provider can drop a tool
+    ///     result from it.
+    /// </summary>
+    /// <remarks>
+    ///     A tool-role message is addressed by call identifier on the wire. One carrying only text
+    ///     cannot be represented, and the OpenAI family drops it without an error rather than
+    ///     failing - so the model would be seeded a conversation in which it called a tool and was
+    ///     never told the answer, once per rotation, silently. Asserting the absence of the role is
+    ///     what makes that unrepresentable, rather than asserting the text of the replacement.
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSession_Send_SeededToolResult_UsesNoToolRoleMessage()
+    {
+        // Arrange: a seed whose history holds a tool call and its result
+        var client = RecordingChatClient.Answering("answer", inputTokens: 100);
+        var seed = new ProviderSessionSeed(
+            null,
+            [],
+            [
+                TranscriptEntry.ToolCall("call-1", "probe()"),
+                TranscriptEntry.ToolResult("call-1", "42"),
+            ]);
+        await using var session = await CreateSessionAsync(client, seed);
+
+        // Act: take a turn, which sends the seeded list to the provider
+        await session.SendAsync("next", TestContext.Current.CancellationToken);
+
+        // Assert: nothing went out under the tool role, and the result is still present
+        Assert.DoesNotContain(client.LastMessages, message => message.Role == ChatRole.Tool);
+        Assert.Contains(client.LastMessages, message => message.Text.Contains("42", StringComparison.Ordinal));
     }
 
     /// <summary>

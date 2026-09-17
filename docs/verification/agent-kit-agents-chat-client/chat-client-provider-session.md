@@ -199,3 +199,22 @@ The arguments a session is _constructed_ from are refused by the factory rather 
 covered in _ChatClientProviderSessionFactory Unit Verification Design_. An application supplies a
 client and a window there and reaches this constructor through nothing else, so a scenario asserting
 the same refusals twice would describe a path no application can take.
+
+#### AgentKitAgentsChatClient-ChatClientProviderSession-SeedsNoToolRoleMessage: No Tool-Role Message Is Seeded
+
+**Tests**:
+
+- `ChatClientProviderSession_Send_SeededToolResult_UsesNoToolRoleMessage`
+- `ChatClientProviderSession_Send_Seed_ProducesInstructionsHistoryAndToolsInOrder`
+
+The first asserts the absence of the role rather than the text of what replaced it, because the
+absence is the property that matters: any message sent under the tool role without a call identifier
+is one a provider may discard. It also asserts the result text still reaches the provider, so a
+rendering that satisfied the prohibition by dropping the material would fail. The second pins the
+exact rendered sequence, so a change to the label is a deliberate act rather than an accident.
+
+The scenario needs its own test because the defect it guards against is invisible from inside this
+library: the adapter builds a well-formed message list, the fake client records it faithfully, and
+every other assertion passes. The material is lost at the provider's wire mapping, on a family none
+of these tests exercise directly, and the model answers anyway from a conversation in which it called
+a tool and was never told the answer.
