@@ -106,8 +106,7 @@ sections:
           of any kind: the history a rotation produces is rendered as a labeled record and carried on
           the session's first message, prepended to the message the engine was already sending, so a
           rotation still costs exactly one request and a rotated session is briefed rather than
-          replayed. Which channel the record travels on is stated separately. Ownership follows the
-          contract the package already records:
+          replayed. Ownership follows the contract the package already records:
           the host owns the client, and every session a rotation creates is AgentKit's, released on
           every path including failure. A session that can no longer describe the conversation the
           runtime holds is abandoned rather than reused, because the engine's own answer to such a
@@ -155,6 +154,7 @@ sections:
           any conversation a test would produce.
         children:
           - AgentKitAgentsCopilot-CopilotSessionObserver-HoldsTheLatestUsageReading
+          - AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage
           - AgentKitAgentsCopilot-CopilotProviderSession-ReportsTheRuntimesUsage
           - AgentKitAgentsCopilot-CopilotProviderSession-ZeroBeforeTheFirstTurn
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesUnreportedUsage

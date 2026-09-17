@@ -34,8 +34,10 @@ sections:
               uses it with ownership left to the host. The construction call itself reaches an
               authenticated Copilot CLI and so is out of automated scope; AgentKit's test that
               constructs the session configuration this path consumes provides the offline evidence
-              that the allow-list-carrying configuration is built. See the Copilot adapter
-              verification for the honest scope boundary.
+              that the allow-list-carrying configuration is built. That test is proxy evidence and
+              nothing more: it never calls the construction path, and no automated test in this
+              repository does. The path itself is exercised only by running an agent against the
+              live runtime. See the Copilot adapter verification for the honest scope boundary.
             tags: [ots]
             tests:
               - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
@@ -70,7 +72,9 @@ sections:
               reach an authenticated Copilot CLI and so are out of automated scope; AgentKit's
               adapter reaches them through one internal seam, and the tests above that seam provide
               the offline evidence that the configuration handed to session creation is correct and
-              that a session is released on every path. See the Copilot adapter verification for the
+              that a session is released on every path. Those tests prove AgentKit uses the
+              lifecycle correctly, not that the SDK implements it; the SDK's own behavior on these
+              calls is established only by a live run. See the Copilot adapter verification for the
               honest scope boundary.
             tags: [ots]
             tests:

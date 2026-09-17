@@ -131,16 +131,18 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
             title: >-
-              The session shall accept no further turn, and shall send none, once a turn the Copilot
-              runtime has already processed could not be recorded, naming the original failure as the
-              reason it will not be used again.
+              The session shall accept no further turn, and shall send none, once a turn it handed to
+              the Copilot runtime could not be recorded, naming the original failure as the reason it
+              will not be used again.
             justification: |
-              The send is the dividing line. Past it the runtime holds a turn the engine's transcript
-              does not, and on a first turn it has also consumed the seeded conversation record, which
-              will not be sent again. Neither is recoverable by taking another turn on that session,
-              and a host that responds to a refusal by retrying — the ordinary response to an
-              invalid-operation failure — would send a real turn against a conversation the engine no
-              longer describes, running the application's tools with their real side effects, once per
+              Handing the prompt over is the dividing line. Past it the runtime may hold a turn the
+              engine's transcript does not — a send that failed is as uncertain as a turn that came
+              back wrong, because this session cannot tell whether the prompt arrived — and on a first
+              turn the seeded conversation record has been consumed either way and will not be sent
+              again. Neither is recoverable by taking another turn on that session, and a host that
+              responds to a refusal by retrying — the ordinary response to an invalid-operation
+              failure — would send a real turn against a conversation the engine may no longer
+              describe, running the application's tools with their real side effects, once per
               attempt.
 
               Ending the session rather than only the turn is the honest consequence, and the engine
@@ -151,6 +153,7 @@ sections:
               history — because the consequence of each is identical.
             tests:
               - CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending
+              - CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
             title: >-
@@ -173,20 +176,16 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
             title: >-
               The session shall reject a missing message, a canceled turn and a turn on a released
-              session, sending nothing to the runtime in each case, and shall leave no partial record
-              of a turn the runtime failed.
+              session, sending nothing to the runtime in each case.
             justification: |
               A missing message is a defect in the composing application, refused where it was
               written. A canceled turn must cost no call at all, so no message reaches the runtime
               that the engine's transcript does not record. A released session refuses rather than
               reconnecting, because the engine releases a session precisely to discard the
-              conversation the provider held. A turn the runtime failed part-way leaves work in the
-              observer's buffer, and attributing it to the next turn would record work in a turn that
-              did not do it — so each turn starts by discarding whatever the last one left behind.
+              conversation the provider held.
             tests:
               - CopilotProviderSession_Send_NullMessage_Throws
               - CopilotProviderSession_Send_Canceled_SendsNothing
-              - CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack
               - CopilotProviderSession_Dispose_Twice_IsPermittedAndRejectsLaterTurns
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-ReleasesItsSessionNotTheClient

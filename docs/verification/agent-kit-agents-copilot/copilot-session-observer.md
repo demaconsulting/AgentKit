@@ -19,7 +19,7 @@ Core's `TranscriptEntry` is used as itself rather than stubbed. It is the contra
 produces, and substituting it would verify the substitute — in particular, its refusal of a tool
 entry with no identifier is exactly why this class skips one.
 
-**What is out of automated scope, stated honestly.** Three things.
+**What is out of automated scope, stated honestly.** Four things.
 
 - **The threading is not exercised.** The SDK documents that handlers are invoked serially, in
   arrival order, on a background thread, and never concurrently with each other on one session, so
@@ -31,6 +31,8 @@ entry with no identifier is exactly why this class skips one.
   event before it goes idle, or emits a compaction event when it compacts.
 - **The registration is not verified here.** That the handler reaches the session before it is
   created is `CopilotProviderSessionFactory`'s doing and is verified there.
+- **The per-turn usage answer is not verified here.** It is observable only through the refusal it
+  governs, which belongs to the provider session; see the per-turn usage scenario below.
 
 Unit tests reside in `CopilotSessionObserverTests.cs`, with the event builders in
 `FakeCopilotTurnChannel.cs`, both within the `DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
@@ -51,9 +53,9 @@ A unit test run passes when every scenario below passes without error or excepti
 explicitly asserted. Any usage figure not held as reported, any reading cleared by a turn boundary,
 any entry recorded out of arrival order, any entry recorded twice, any previous turn's work carried
 into the next, any nested agent's traffic recorded, any unidentified tool call recorded, any empty
-assistant message recorded, any failed tool recorded without its error, any compaction or truncation
-that fails to mark the history rewritten, or any exception escaping the handler constitutes a
-failure.
+assistant message recorded, any failed tool recorded without its error, any reported error surviving
+a turn boundary, any compaction or truncation that fails to mark the history rewritten, or any
+exception escaping the handler constitutes a failure.
 
 ### Test Scenarios
 
@@ -141,9 +143,30 @@ evidence available offline that a runtime which ignores the request to stop comp
 detected at all; whether a live runtime ever emits these events while AgentKit is driving it is
 stated as unverified in *AgentKitAgentsCopilot System Verification Design*.
 
+#### AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage: This Turn, Not the Session
+
+**Test**: `CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn`
+
+**This requirement's evidence sits one level up, and that is stated rather than disguised.** The
+per-turn answer is observable only through the refusal it governs, and the refusal is the provider
+session's; a test here could only read the property back after driving the events that set it, which
+would restate the implementation rather than falsify it. The scenario that does falsify it reports
+usage on a first turn and omits it on a second: the kept reading is non-null when the second turn is
+judged, so only a per-turn answer refuses it. A session-wide question would pass, occupancy would sit
+frozen at the first turn's figure while the conversation kept growing, and the engine would rotate
+later and later against a number that had stopped moving — which is the defect the sibling ChatClient
+adapter shipped with. It is described in full in *CopilotProviderSession Unit Verification Design*.
+
 #### AgentKitAgentsCopilot-CopilotSessionObserver-RemembersTheRuntimesError: The Cause of a Silent Turn
 
-**Test**: `CopilotSessionObserver_OnEvent_SessionError_IsRemembered`
+**Tests**:
 
-Asserts a session error's message is held, which is what lets the provider session's refusal of a
-silent turn name a cause an application can act on instead of reporting only that nothing came back.
+- `CopilotSessionObserver_OnEvent_SessionError_IsRemembered`
+- `CopilotSessionObserver_BeginTurn_ClearsTheReportedError`
+
+The first asserts a session error's message is held, which is what lets the provider session's refusal
+of a silent turn name a cause an application can act on instead of reporting only that nothing came
+back. The second asserts the message does not outlive the turn that reported it — while the usage
+reading beside it does — because an error carried into a later turn would name the wrong cause in the
+one message whose whole job is to name the right one, and would read as authoritative for saying the
+runtime reported it.

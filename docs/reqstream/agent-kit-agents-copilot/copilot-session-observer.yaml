@@ -88,14 +88,38 @@ sections:
               - CopilotSessionObserver_OnEvent_CompactionEvent_MarksHistoryRewritten
               - CopilotSessionObserver_OnEvent_UnrelatedEvent_IsIgnored
 
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage
+            title: >-
+              The observer shall answer whether the turn now in flight has reported its usage,
+              answering no from the moment a turn begins until a reading arrives within that turn.
+            justification: |
+              The kept reading is cumulative, so a question asked of it is a question about the
+              session rather than about the turn. A runtime that answered a later turn without
+              reporting would pass such a question on the previous turn's figure, leaving occupancy
+              frozen while the conversation kept growing and the engine rotating later and later
+              against a number that had stopped moving. That is the defect the sibling ChatClient
+              adapter shipped with, where an uncleared per-request figure did the same thing, and
+              this per-turn answer is what stops it returning on this adapter. The answer becomes
+              visible together with the reading it reports, so nothing can observe a turn that has
+              reported while its reading is still absent.
+            tests:
+              # Deliberately one level up. This answer is observable only through the refusal it
+              # governs, and the provider session is where that refusal is made; the verification
+              # chapter states that boundary rather than implying a test of this unit.
+              - CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn
+
           - id: AgentKitAgentsCopilot-CopilotSessionObserver-RemembersTheRuntimesError
             title: >-
               The observer shall remember the message of the most recent session error the runtime
-              reported.
+              reported, and shall discard it when a turn begins.
             justification: |
               A session that goes idle without answering has usually failed rather than had nothing to
               say, and the runtime says why in a separate event. Remembering it is what lets the
               refusal above name a cause an application can act on, instead of reporting only that
-              nothing came back.
+              nothing came back. It is discarded at each turn boundary for the same reason it is kept
+              at all: an error carried over from an earlier turn would name the wrong cause in the one
+              message whose whole job is to name the right one, and would read as authoritative
+              because the message says the runtime reported it.
             tests:
               - CopilotSessionObserver_OnEvent_SessionError_IsRemembered
+              - CopilotSessionObserver_BeginTurn_ClearsTheReportedError

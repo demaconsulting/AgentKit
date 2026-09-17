@@ -11,12 +11,19 @@ session configuration; the validation
 scenarios pin each rejected condition; and the null-client refusal is asserted through the public
 entry point, which validates before it would reach the Copilot CLI.
 
+**The two safety-critical guarantees — the derived allow-list and the default-safe permission
+handler — are evidenced by tests that live with this unit's callers, and are named in the scenarios
+below rather than copied into this unit's own test file.** Both are reached through this factory's
+single confinement block, so a test at either caller falsifies the derivation here; writing a third
+copy against the same code would add no evidence.
+
 Tools are built through the framework's own function factory, and permission requests and decisions
 are constructed directly from the SDK's plain types. No Copilot CLI, credential, or network access is
 used.
 
 Unit tests reside in `CopilotAgentFactoryTests.cs` within the
-`DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
+`DemaConsulting.AgentKit.Agents.Copilot.Tests` project; the cited caller-level tests reside in
+`AgentKitAgentsCopilotTests.cs` and `CopilotProviderSessionFactoryTests.cs` in the same project.
 
 ### Test Environment
 
@@ -28,12 +35,47 @@ Unit tests reside in `CopilotAgentFactoryTests.cs` within the
 ### Acceptance Criteria
 
 A unit test run passes when all ten scenarios below pass without error or exception beyond those
-explicitly asserted. Any invalid argument that is accepted, any host handler that is not installed
+explicitly asserted. Any allow-list that diverges from the published tools, any request approved that
+names no supplied tool, any invalid argument that is accepted, any host handler that is not installed
 verbatim, any instruction that is not carried onto the session's system message, any model
 selection that is not carried onto the session — or that is invented when the host named none — or
 any channel of runtime-injected capability left open constitutes a failure.
 
 ### Test Scenarios
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList: The Allow-List Is the Supplied Tools
+
+**Tests**: `AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools`,
+`CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools`
+
+The safety-critical scenario, and the reason the package exists. Both build a session configuration
+from a set of supplied tools and assert the available-tools allow-list is exactly the names of the
+published tool set, in the same order and of the same size — the two derived from one collection. A
+drift here would silently re-admit a built-in tool an application meant to withhold.
+
+**The evidence lives in the test files of the callers, deliberately, and is named here rather than
+duplicated.** The first is the system-level assertion in `AgentKitAgentsCopilotTests.cs`; the second
+is the same assertion on the configuration a rotation produces, in
+`CopilotProviderSessionFactoryTests.cs`. Both reach this unit's single derivation, and both were
+confirmed to falsify it: emptying the allow-list this factory assigns fails both. A third copy here
+would restate them against the same code.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler: Safe Without Asking
+
+**Tests**: `AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved`,
+`AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected`,
+`AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected`,
+`CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler`
+
+The handler this factory installs is invoked directly with the three requests that matter — one
+naming a supplied tool, one naming an unlisted custom tool, and a built-in `shell` request — and the
+decision it returns is asserted in each case: approve, reject, reject. The fourth repeats the listed
+and built-in cases against the configuration a rotation produces, where no host is present to
+adjudicate anything.
+
+As above, these tests live in the system and provider-session-factory test files because that is
+where the handler is reached from; they are cited here so this unit's evidence can be found rather
+than assumed.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList: A Malformed Tool List Is Refused
 

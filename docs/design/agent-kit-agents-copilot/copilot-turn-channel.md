@@ -89,19 +89,23 @@ producing one.
 
 **Purpose:** Release the session without releasing the client.
 
-**Algorithm:** Dispose the session, then ask the runtime to delete it, swallowing any failure of the
-delete.
+**Algorithm:** Dispose the session, then ask the runtime to delete it. Both calls are guarded:
+neither may throw out of disposal.
 
-**Why both.** Disposal alone is documented to *preserve* a session's state on disk so the
+**Why both calls.** Disposal alone is documented to *preserve* a session's state on disk so the
 conversation can be resumed later, which is the wrong outcome here: a rotated session is finished
 with by definition, and a long conversation would otherwise leave one preserved session behind per
 rotation. Deleting is the runtime's only irreversible removal, so it is asked for.
 
-**Why the delete is best-effort.** Disposal must not throw: it runs on the failure paths of a
-rotation and on the caller's own release, and a housekeeping call that could not be made is not a
-reason to fail either. The session itself is already released by then, so the worst outcome of a
-failed delete is recoverable disk state the runtime expires on its own. Dropping the delete entirely
-would be a one-line change if a maintainer judges the extra request not worth it.
+**Why neither may throw.** Disposal runs on the failure paths of a rotation and on the caller's own
+release, and neither is a place a failure can be acted on. The **release** is the more important of
+the two guards: it is not local teardown but a detach over the runtime's transport, so a connection
+already gone throws — which at shutdown is the ordinary case rather than an exotic one. Left
+unguarded it would replace a consolidation that had already succeeded with a detach failure, or mask
+the very exception a caller's catch block was preserving. The delete is best-effort for the same
+reason and costs less: the session is already released by then, so the worst outcome is recoverable
+disk state the runtime expires on its own. Dropping the delete entirely would be a one-line change
+if a maintainer judges the extra request not worth it.
 
 **Preconditions:** None.
 
@@ -113,12 +117,14 @@ would be a one-line change if a maintainer judges the extra request not worth it
 |------------------------------------|---------------------------------------------------|
 | Turn canceled by the caller        | `OperationCanceledException` propagates           |
 | Runtime failure during a turn      | Propagates to the provider session                |
+| Session release fails in transit   | Swallowed; the session is abandoned either way    |
 | Session deletion fails on release  | Swallowed; the session is already released        |
 
-The swallowed deletion failure is the one place in this package where an error is discarded rather
-than reported, and it is discarded for the reason `CompactingAgentSession` discards a failed release
-during a rotation: by that point the operation the caller asked for has already succeeded, and
-failing it would turn a housekeeping problem into a conversation-ending one.
+Both swallowed failures are discarded for the reason `CompactingAgentSession` discards a failed
+release during a rotation: by that point the operation the caller asked for has already succeeded,
+and failing it would turn a teardown problem into a conversation-ending one. Nothing else in this
+package discards an error — everywhere the adapter cannot know something it needs, it refuses and
+says so.
 
 ### Dependencies
 

@@ -28,6 +28,10 @@ sections:
           it compacts its own sessions on its own schedule. Supporting Copilot therefore means
           taking both of those back, and this is where that support is promised and shown to work
           end to end. Everything linked beneath it is how.
+
+          The offline scenarios linked here reach the adapter rather than the runtime, so the "on the
+          GitHub Copilot runtime" half of the promise is carried by a live run recorded with the
+          capability's verification scenarios — manual, and not re-run by the suite.
         children:
           - AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
           - AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
@@ -49,8 +53,9 @@ sections:
       - id: AgentKit-Provider-ChatClient
         title: >-
           AgentKit shall build and run a guarded agent on any Microsoft.Extensions.AI IChatClient
-          provider, and shall carry a conversation on it that outlives the provider's context
-          window.
+          provider, shall carry a conversation on it that outlives the provider's context window, and
+          shall deliver what a tool returned to the model intact, including an image the provider
+          would otherwise drop at the wire.
         tags: [system]
         justification: |
           Ollama, OpenAI and AI Foundry all reach an application as an IChatClient, so this is the
@@ -59,6 +64,13 @@ sections:
           conversation that outlasts the window. A chat client holds no conversation and publishes
           no window, so an application that wanted this without AgentKit would have to write the
           transcript mapping and the compaction seam itself, once per provider.
+
+          Content fidelity is a third promise rather than part of the first two. It is neither
+          confinement nor window survival: a provider reached this way preserves a tool-returned
+          image all the way through the framework and then drops it at the wire, after which the
+          model describes an image it never received and nothing reports an error. Only this family
+          needs the promise — the Copilot runtime delivers a tool's binary results itself — so it is
+          stated here rather than at both capabilities.
         children:
           - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
           - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled

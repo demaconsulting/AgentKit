@@ -197,53 +197,55 @@ a runtime failure as a model with nothing to say, and the engine would seed the 
 turn that never happened. The second is the boundary: a session that went idle with no answer and no
 error is still refused, and says so rather than naming a cause it does not have.
 
-That the named cause belongs to *this* turn no longer needs a scenario of its own, and cannot have
-one: the observer discards the last turn's reported error when a turn begins, and a turn that failed
-ends the session outright, so there is no second turn that could inherit a stale cause. The scenario
-that used to prove it across two turns has been replaced by the one below, which proves the stronger
-property that made it unreachable.
+That the named cause belongs to *this* turn needs no scenario here: the observer discards the last
+turn's reported error when a turn begins — asserted directly in *CopilotSessionObserver Unit
+Verification Design* — and a turn that failed ends the session outright, so there is no second turn
+on this session that could inherit a stale cause.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord: A Turn the Runtime Took Ends the Session
 
-**Test**: `CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending`
+**Tests**:
 
-Error path, and the one that distinguishes refusing from merely reporting. Scripts a first turn the
-runtime answers normally while reporting no usage — so the turn is refused *after* the runtime has
-already taken it — and then attempts a second turn that would otherwise have succeeded. The test
+- `CopilotProviderSession_Send_AfterATurnItCouldNotRecord_RefusesWithoutSending`
+- `CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack`
+
+Error paths, and the ones that distinguish refusing from merely reporting. The first scripts a turn
+the runtime answers normally while reporting no usage — so the turn is refused *after* the runtime
+has already taken it — and then attempts a second turn that would otherwise have succeeded. The test
 asserts three things together: the first refusal names the missing usage; the second attempt sends
 **nothing** to the runtime, compared against the prompt count taken immediately after the first
 refusal; and the second refusal names the original failure rather than inventing a fresh one.
 
-The prompt-count assertion is the scenario's whole value. Past the send the runtime holds a turn the
-engine's transcript does not, and on a first turn it has also consumed the seeded record, which will
-not be sent again. Retrying an `InvalidOperationException` is the ordinary host response, and a
+The prompt-count assertion is the scenario's whole value. Past the send the runtime may hold a turn
+the engine's transcript does not, and on a first turn it has also consumed the seeded record, which
+will not be sent again. Retrying an `InvalidOperationException` is the ordinary host response, and a
 session that reported the failure and then kept working would run the application's tools, with their
 real side effects, against a conversation the engine no longer describes — once per attempt. A test
 asserting only the exception type would pass against exactly that session.
 
-Scripting the failure as an unreported usage rather than as a rewrite is deliberate: it proves the
-rule is about *where the failure happened* rather than about which condition held, which is what makes
-one latch correct for both causes.
+The second scripts the **send itself** failing, which is the case that shows the guard opens at the
+send rather than after it: the channel throws, the failure reaches the caller carrying the runtime's
+own message, and the next turn is refused and reaches the runtime not at all. A session cannot tell
+whether a prompt it handed over arrived, so a failed send is as uncertain as a turn that came back
+wrong and ends the session the same way.
 
-#### AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments: Bad Arguments and Failed Turns
+Scripting the first failure as an unreported usage rather than as a rewrite is deliberate: it proves
+the rule is about *where the failure happened* rather than about which condition held, which is what
+makes one latch correct for every cause.
+
+#### AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments: Bad Arguments Are Refused
 
 **Tests**:
 
 - `CopilotProviderSession_Send_NullMessage_Throws`
 - `CopilotProviderSession_Send_Canceled_SendsNothing`
-- `CopilotProviderSession_Send_ChannelFails_EndsTheSessionAndHandsNothingBack`
 
 Error paths. A missing message is refused where the application wrote it. The cancellation scenario
 asserts not only the exception but that the runtime received no prompt at all, so a canceled turn
 costs no call and leaves no message the provider saw but the transcript does not record — and the
 scripted channel deliberately does **not** refuse a canceled turn of its own accord, so the assertion
-falsifies this class's own check rather than the fake's.
-
-The third scenario is the one that pins the ordering of the turn. A first turn produces tool traffic
-and then fails; a second turn then succeeds, and the test asserts the second turn's record holds its
-own work and nothing of the first. An implementation that cleared its buffer at the end of a turn
-rather than at the start would attribute the abandoned work to the next turn, which is a defect
-visible only across two turns.
+falsifies this class's own check rather than the fake's. A turn on a released session is refused too,
+which is asserted in the release scenario below.
 
 #### AgentKitAgentsCopilot-CopilotProviderSession-ReleasesItsSessionNotTheClient: Release Ends the Session, Not the Client
 

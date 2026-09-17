@@ -49,7 +49,8 @@ rather than a testable behavior, is documented in the _Microsoft.Agents.AI.GitHu
 the same collection.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig`,
-`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent`.
+`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent` — for the latter this is **proxy evidence**:
+the test builds the configuration the construction path consumes and never calls that path.
 
 #### AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
 
@@ -84,7 +85,9 @@ stream reports an assistant message and a usage reading.
 **Expected**: The answer reaches the caller, and the occupancy, limit and conversation split the
 engine accounts against are exactly the figures the runtime reported.
 
-**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`,
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle` — the
+lifecycle is reached only through AgentKit's own seam, so this shows AgentKit driving it correctly
+rather than the SDK implementing it — and
 `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents`.
 
 #### AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
@@ -96,7 +99,8 @@ consolidates, creates a replacement session and releases the one it replaced.
 consolidated record arrives on its first message, and the superseded session is released exactly
 once.
 
-**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`.
+**Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`, on the same
+above-the-seam terms as the scenario above.
 
 #### AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
 
@@ -110,15 +114,22 @@ default.
 
 ### Requirements Coverage
 
+Two entries below are qualified, and the qualification is part of the evidence rather than a footnote
+to it. `-AsAIAgent` names a test that never calls the construction path it asserts, and the two
+lifecycle scenarios exercise the lifecycle only through AgentKit's own seam: they show AgentKit uses
+these SDK features correctly, not that the SDK implements them. Both are established by running
+against the live runtime, which this suite does not do.
+
 - **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig`**:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
-- **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent`**:
+- **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent`** _(proxy evidence; the SDK path is not
+  called)_:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
 - **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc`**:
   AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved,
   AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected,
   AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
-- **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`**:
+- **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`** _(evidence above the seam only)_:
   AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy,
   AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
 - **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents`**:

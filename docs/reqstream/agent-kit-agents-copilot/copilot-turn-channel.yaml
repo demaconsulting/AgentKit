@@ -22,7 +22,9 @@ sections:
               seam is one interface with one method and a production implementation that forwards two
               calls, which is the smallest surface that makes everything above it reachable. Its
               correctness is established by the units built on it, which are exercised against a
-              channel that replays the runtime's own event types.
+              channel that replays the runtime's own event types. The tests listed below are
+              therefore tests of those units: they show the seam is sufficient and is used correctly,
+              and nothing reaches the production channel itself.
             tests:
               - CopilotProviderSession_Send_Answer_IsReturnedAndRecordedOnce
               - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
@@ -41,7 +43,10 @@ sections:
               would leave one preserved session behind per rotation — so the runtime is also asked to
               delete it. That request is best-effort: release runs on a rotation's failure paths and
               on the caller's own release, and a housekeeping call that could not be made is not a
-              reason to fail either of them.
+              reason to fail either of them. The tests listed below run against the scripted channel,
+              so they show the units above the seam release exactly one session and never the client;
+              that the production channel's release and delete take effect on a live runtime is not
+              among them.
             tests:
               - CopilotProviderSession_Dispose_DisposesTheRuntimeSession_AndNotTheClient
               - CopilotSummarizer_Consolidate_Fails_DisposesTheSession
@@ -57,6 +62,14 @@ sections:
               carries a cancellation token and the compacting session already flows it, so the
               application governs the deadline rather than this library inventing a number or offering
               a configuration knob nobody asked for.
+
+              No automated test can falsify this. The tests listed below assert that a
+              pre-canceled turn reaches the channel not at all, which would hold equally against a
+              channel that passed the SDK's sixty-second default — the very defect this requirement
+              exists to prevent. That the production channel states an infinite timeout, and that the
+              SDK treats it as no deadline, was established by reading the SDK's own implementation
+              and is reviewed rather than measured; the verification chapter carves it out of its own
+              acceptance criteria for the same reason.
             tests:
               - CopilotProviderSession_Send_Canceled_SendsNothing
               - CopilotSummarizer_Consolidate_Canceled_OpensNothing

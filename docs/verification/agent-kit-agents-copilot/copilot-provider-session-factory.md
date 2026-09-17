@@ -120,7 +120,12 @@ this configuration is at the system level.
 
 The first seeds from the shape a rotation actually produces — a consolidated record, a user message
 and an answer — and asserts the **entire** composed preamble as one exact string: the fixed opening
-line, each entry rendered to its transcript line in order, and the fixed closing line.
+line, each entry rendered to its transcript line in order, and the fixed closing line. It also
+asserts the configuration's system message is **equal to** the application's instructions — not that
+it contains them — so no copy of the record is left behind in the channel the engine charges as
+overhead. Equality is what makes that half meaningful: a containment check would pass against an
+implementation that appended the record after the instructions, which is precisely the design this
+one replaced.
 
 The next three are the boundaries. A seed with no history composes no record at all, so the first
 message of such a session is sent exactly as the caller wrote it and no record claims a conversation
@@ -136,28 +141,6 @@ is the one that shipped to review on the stateless path: a seeded tool result re
 provider's wire mapping discards without an error. Here the shape is unrepresentable — a labeled line
 inside one message cannot be dropped without dropping the message — but asserting the material is
 present and paired is what proves the rendering did not solve the problem by dropping it.
-
-#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel: Instructions Only
-
-**Tests**:
-
-- `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
-- `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
-- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
-- `CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord`
-
-The accounting, asserted rather than argued. The first test seeds a full rotation's history and
-asserts the configuration's system message is **equal to** the application's instructions — not that
-it contains them — and that it is still appended to the runtime's own prompt rather than replacing
-it. Equality is what makes the scenario meaningful: a containment check would pass against an
-implementation that appended the record after the instructions, which is precisely the design this
-one replaced.
-
-The remaining three close the boundaries from the other side. A seed with instructions and no history
-carries those instructions and no record opening anywhere in them. A seed with neither carries no
-system message at all. A seed with history and no instructions carries **no system message at all**
-while still composing its record, which is the sharpest statement of the rule: there is no
-arrangement of a seed under which the history reaches the configuration.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-CreatesSeededSessions: The Observer, Before the Session
 

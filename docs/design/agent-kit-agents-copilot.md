@@ -87,12 +87,13 @@ Two things can leave the runtime holding a conversation the engine's transcript 
 the runtime rewriting history itself, and a turn the runtime processed that the session could not
 record. The consequence is identical, so there is one rule and one latch.
 
-Past the send, the runtime has taken the turn. A failure after that point — no usage reported, no
-assistant message, a rewrite announced — leaves the runtime a turn ahead of the transcript; and on a
-first turn it has also consumed the seeded record, which will not be sent again. Neither is
-recoverable by retrying on that session, and retrying an `InvalidOperationException` is the ordinary
-host response, which would re-run the application's tools, with their real side effects, against a
-conversation the engine no longer describes.
+Once the prompt has been handed over, this session can no longer know what the runtime holds. A
+failure of the send itself, or after it — no usage reported, no assistant message, a rewrite
+announced — may leave the runtime a turn ahead of the transcript; and on a first turn the seeded
+record has been consumed either way and will not be sent again. Neither is recoverable by retrying
+on that session, and retrying an `InvalidOperationException` is the ordinary host response, which
+would re-run the application's tools, with their real side effects, against a conversation the
+engine may no longer describe.
 
 So the session latches unusable, naming the original failure, and refuses every later turn **before**
 sending it. The engine's answer to a session it cannot use is the one it already has: seed a
@@ -206,9 +207,9 @@ Isolating it in its own package is exactly what the dependency justifies: an app
 builds a Copilot agent never takes the dependency or its native runtime. The system references Core
 and `Microsoft.Agents.AI.GitHub.Copilot` and nothing else.
 
-## Structure
+## Architecture
 
-The system holds five units: the agent factory that ships today, and the four that carry a Core
+The system holds six units: the agent factory that ships today, and the five that carry a Core
 session over the runtime.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, derives the
@@ -231,6 +232,22 @@ session over the runtime.
   Core's consolidation prompt and releasing its session on every path.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
   production implementation that owns one runtime session.
+
+## External Interfaces
+
+The system's public API is three types, each taking a `CopilotClient` the host constructed, started
+and will dispose. Everything else in the package is internal.
+
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `CopilotAgentFactory.Create` | Inbound | Client, tools, model | Tools non-empty, uniquely named |
+| `CopilotProviderSessionFactory` | Outbound | Core session factory | One session per rotation |
+| `CopilotSummarizer` | Outbound | Core summarizer | Separate tool-free session |
+| `CopilotClient` | Inbound/Outbound | Copilot SDK | Host-owned; never disposed here |
+| Session event stream | Inbound | Copilot SDK events | Registered before session creation |
+
+The application supplies no context window: occupancy and limit come from the runtime's own event
+stream, as recorded in _Occupancy Comes From the Runtime_.
 
 ## Data Flow
 
@@ -274,6 +291,42 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
   `SessionConfig`, the session-config agent-construction path, the permission RPC, and the session
   event stream; see _Microsoft.Agents.AI.GitHub.Copilot Design_. Carries a RID-specific native
   runtime, as noted above.
+
+## Risk Control Measures
+
+Copilot arrives able to act on the machine it runs on, so this system's risk controls are the ones
+that take that capability back. All three are applied in one place — `CopilotAgentFactory`'s single
+confinement block — for every session the package builds, so no path can acquire capability another
+path withholds.
+
+- **The derived allow-list.** The session's available-tools allow-list is assigned from the same
+  collection published as the session's tools, so the two cannot drift apart and no built-in tool is
+  ever admitted. This is the segregation the package exists for; see _Purpose_.
+- **The default-safe permission handler.** With no host handler supplied, a request is approved only
+  when it names one of the supplied tools; everything else — including every built-in request — is
+  rejected without asking a user who could not adjudicate it.
+- **The closed injection channels.** The runtime's skills and its discovered custom instructions are
+  both closed on every session, because each would attach capability or direction the composing
+  application never granted.
+
+Two further measures protect the conversation rather than the machine: the runtime's own compaction
+threshold is held clear of the engine's rotation point, and a session whose conversation the engine
+can no longer account for is ended rather than reused. Both are argued above.
+
+## Design Constraints
+
+- **No ownership of the client**: the host constructs, starts and disposes the `CopilotClient`; this
+  system disposes only the sessions it creates
+- **One confinement path**: every session — agent, engine and consolidation — is built through one
+  derivation of the allow-list; a second builder would be the drift this package prevents
+- **No window from the application**: occupancy and limit come from the runtime, which is what makes
+  the session engine's accounting the runtime's own
+- **Isolated dependency**: `Microsoft.Agents.AI.GitHub.Copilot` and its RID-specific native runtime
+  reach an application only through this package
+- **Compliance**: all functionality must be traceable to requirements
+- **Quality**: zero warnings, full test coverage, complete documentation
+- **Portability**: compatible across supported .NET platforms, within the target frameworks and
+  runtime identifiers the Copilot SDK itself supports
 
 ## Document Conventions
 

@@ -18,12 +18,16 @@ sections:
               tools. Deriving it and the published tool set from one collection, in one place, makes
               the two impossible to drift apart. Only the session-config agent-construction path
               carries an allow-list, so it is the path used; the tool-list path would publish tools
-              without suppressing anything. The image-promoting decorator is deliberately absent: the
+              without suppressing anything. The derivation is reached from both callers of this
+              factory, so the tests that falsify it live with them rather than being copied here; the
+              verification chapter names them and says where they are. The image-promoting decorator
+              is deliberately absent: the
               Copilot runtime already delivers images from tool results to the model, so promoting
               them onto a user message would duplicate content the model already received. A future
               maintainer should not add it here.
             tests:
               - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+              - CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
             title: >-
@@ -35,11 +39,14 @@ sections:
               without asking: a supplied custom tool requested by its exact name is approved, and
               everything else — an unlisted custom tool, and every built-in request, none of which is
               a supplied custom tool — is rejected. The allow-list is captured once, so the handler
-              cannot approve a name the session did not publish.
+              cannot approve a name the session did not publish. The handler is reached from both
+              callers of this factory, so the tests that invoke it live with them rather than being
+              copied here; the verification chapter names them and says where they are.
             tests:
               - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
               - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
               - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+              - CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
             title: >-

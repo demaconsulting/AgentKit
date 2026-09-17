@@ -129,11 +129,12 @@ exactly what it is. Reading it contacts nothing and cannot fail.
 
 **Algorithm:** Reject a null message, a released session, a session already found unusable, and a
 canceled token. Tell the observer a turn is starting, which discards anything the last one left
-behind. Take the text to send — the caller's message, preceded by the seeded record where one is
-still pending — and send it through the channel, waiting for the session to become idle. Everything
-after that is `CompleteTurn`: in order, refuse three conditions; and only if none holds, build the
-turn from the runtime's answer and the entries the observer collected. Any failure out of
-`CompleteTurn` is recorded as the reason this session may no longer be used, and then rethrown.
+behind. Then, under one guard: take the text to send — the caller's message, preceded by the seeded
+record where one is still pending — send it through the channel, wait for the session to become
+idle, and hand what came back to `CompleteTurn`, which in order refuses three conditions and, only
+if none holds, builds the turn from the runtime's answer and the entries the observer collected. Any
+failure out of that guard — the send's own, or `CompleteTurn`'s — is recorded as the reason this
+session may no longer be used, and then rethrown.
 
 The three refusals are ordered because the first invalidates the others:
 
@@ -154,14 +155,16 @@ The three refusals are ordered because the first invalidates the others:
 Every refusal happens **before** anything is recorded, and the observer's entries are drained only
 on the successful path, so a refused turn leaves no half-recorded history behind.
 
-**The send is the dividing line, and a failure past it ends the session rather than the turn.** Once
-the runtime has processed the turn it holds one the engine's transcript does not — and on a first
-turn it has also consumed the seeded record, which will not be sent again. Neither is recoverable by
-retrying on this session, and retrying an `InvalidOperationException` is the ordinary host response,
-which would re-run the application's tools, with their real side effects, against a conversation the
-engine no longer describes. So the reason is latched and every later turn is refused before it is
-sent. See _A Session the Engine Cannot Account For Is Finished_ in _AgentKitAgentsCopilot System
-Design_.
+**The guard opens at the send, not after it, and a failure inside it ends the session rather than
+the turn.** Once the prompt has been handed to the runtime this session cannot tell whether it
+arrived, so a failure of the send is as uncertain as one after it: the runtime may hold a turn the
+engine's transcript does not — and on a first turn the seeded record has been consumed either way
+and will not be sent again. Neither is recoverable by retrying on this session, and retrying an
+`InvalidOperationException` is the ordinary host response, which would re-run the application's
+tools, with their real side effects, against a conversation the engine may no longer describe. So
+the reason is latched and every later turn is refused before it is sent. Cancellation arriving once
+the prompt is in flight is the same case and is latched the same way. See _A Session the Engine
+Cannot Account For Is Finished_ in _AgentKitAgentsCopilot System Design_.
 
 The answer reaches this method twice — as an event the observer collected and as the value the wait
 returned — and is recorded once, because `ProviderTurn` takes a trailing assistant entry whose text
@@ -173,7 +176,7 @@ unusable; cancellation has not been requested.
 **Postconditions:** On success, a `ProviderTurn` carrying the answer and the entries that led to it,
 and an occupancy reading the engine can rotate on; and the seeded record, if there was one, has been
 sent and will not be sent again. On a refusal raised before the send, the session is exactly as it
-was. On a failure raised after it, the session is finished and says why.
+was. On a failure of the send or of anything after it, the session is finished and says why.
 
 #### CompleteTurn(AssistantMessageEvent? answer)
 
@@ -182,10 +185,9 @@ was. On a failure raised after it, the session is finished and says why.
 **Algorithm:** Apply the three refusals above in order, then drain the observer's entries and build
 the `ProviderTurn`.
 
-Separated from the send so that everything the runtime has already seen sits in one place and the
-caller can treat every failure in it the same way — as the end of the session rather than the end of
-a turn. A condition checked on one side of that line and a condition checked on the other are not the
-same kind of failure, and keeping them in one method would make that impossible to see.
+Separated from the send so that everything the runtime has already answered sits in one place and
+reads as the three refusals it is. Both are inside the same guard, because both are past the point
+at which this session can still know what the runtime holds.
 
 **Preconditions:** The runtime has processed the turn.
 
@@ -263,7 +265,7 @@ sight that it is a clamp.
 | Session idle with no assistant message       | `InvalidOperationException` propagates          |
 | No usage reported for the turn               | `InvalidOperationException` propagates          |
 | Turn on a session finished by an earlier one | `InvalidOperationException` naming that failure |
-| Failure inside the turn                      | Propagates; the turn records nothing            |
+| Failure at or after the send                 | Session finished naming it; propagates          |
 
 None of the last five is a programming error, and none is softened. Each names a fact the engine
 cannot proceed without, and each is something an application can see and act on. The first of them
@@ -271,11 +273,13 @@ is the one that would otherwise be invisible: two compactors acting on one conve
 exception anywhere — the engine simply starts seeding replacements from a history the provider has
 discarded — so it is converted into a refusal that says so.
 
-The fourth of them is what the three before it become on the next attempt. Each of them is detected
-after the runtime has already processed the turn, so each leaves the runtime holding a turn the
-transcript does not; the session therefore latches unusable and names the original failure rather
-than reporting a fresh one. The failure surfaces twice — once where it happened, once on every later
-attempt — because a host that retries must be refused as clearly as the turn that failed.
+The last row covers a failed send and a cancellation arriving once the prompt is in flight; both
+leave the turn unrecorded. The "session finished by an earlier one" row is what all of these become
+on the next attempt. Each is detected at or after the point where the prompt was handed to the
+runtime, so each may leave the runtime holding a turn the transcript does not; the session therefore
+latches unusable and names the original failure rather than reporting a fresh one. The failure
+surfaces twice — once where it happened, once on every later attempt — because a host that retries
+must be refused as clearly as the turn that failed.
 
 ### Dependencies
 

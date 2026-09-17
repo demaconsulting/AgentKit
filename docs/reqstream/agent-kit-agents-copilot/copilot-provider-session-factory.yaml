@@ -51,6 +51,12 @@ sections:
               A seed with no history renders nothing at all, so the first message of such a session is
               sent exactly as the caller wrote it and a record around nothing never tells a model that
               a conversation happened when none had.
+
+              Where the record does not go follows from this rule rather than standing as a promise of
+              its own: it is composed for the first message, so the system message carries the
+              application's instructions alone. That was once a separate requirement and was deleted
+              deliberately — it stated internal placement rather than behavior an application can act
+              on — and the tests listed here assert it by equality.
             tests:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly

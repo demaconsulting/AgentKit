@@ -20,7 +20,8 @@ for one request and a figure left standing would freeze occupancy forever. Copil
 cumulative *session* state, so the latest reading is simply the truth and is **not** cleared per
 turn — a turn that reported none would otherwise be indistinguishable from a session that has never
 reported one, and the session above would refuse a turn it could perfectly well measure. What is
-cleared per turn is the entry buffer, which really is per-turn.
+cleared per turn is the state that really is per-turn: the entry buffer, the last reported error,
+and whether *this* turn reported its usage.
 
 **Thread safety.** The SDK invokes handlers serially, in arrival order, on a background thread, and
 never concurrently with each other on one session. So no handler can run while another is — but
@@ -37,9 +38,23 @@ for it.
   Invariant: emptied when a turn begins and when it is drained.
 - **`_latestUsage`** (`CopilotUsageReading?`) — The most recent reading, or null when the runtime has
   reported none. Invariant: never cleared — it is cumulative session state.
+- **`_usageReportedThisTurn`** (`bool`) — Whether a reading arrived during the turn now in flight.
+  Invariant: set with `_latestUsage` in one action, so a reader never sees a turn that has reported
+  while the reading is still absent; cleared when a turn begins.
 - **`_providerRewroteHistory`** (`bool`) — Whether the runtime has compacted or truncated the
   session. Invariant: once true, never false again; a rewrite cannot be undone.
-- **`_lastErrorMessage`** (`string?`) — The message of the last session error seen.
+- **`_lastErrorMessage`** (`string?`) — The message of the last session error seen. Invariant:
+  cleared when a turn begins, so a refusal names this turn's cause and not an earlier one's.
+
+Each field is published by a property of the same name that reads it under the lock: `LatestUsage`,
+`UsageReportedThisTurn`, `ProviderRewroteHistory` and `LastErrorMessage`.
+
+**Why a per-turn flag sits beside the cumulative reading.** The reading is deliberately kept across
+a turn boundary, so a check written against it asks whether the *session* has ever reported. A
+runtime that answered a later turn without reporting would pass such a check on the previous turn's
+figure, leaving occupancy frozen while the conversation kept growing and the engine rotating later
+and later against a number that had stopped moving. That is the defect the ChatClient adapter
+shipped with. The flag is the per-turn question, and `CopilotProviderSession` asks it.
 
 `CopilotUsageReading` is a small immutable snapshot of one usage event — the occupancy, the limit and
 the conversation's share, in the runtime's own `long` currency. It is a snapshot rather than a
@@ -54,7 +69,8 @@ keeps the wider currency so the narrowing happens in one visible place, in
 **Purpose:** Record one event from the session's stream.
 
 **Algorithm:** Match the event against the kinds this adapter has a use for and record the
-corresponding state change under the lock. A usage event becomes the latest reading. A tool
+corresponding state change under the lock. A usage event becomes the latest reading and marks the
+turn as having reported, both in one action so the two are never read out of step. A tool
 execution start becomes a tool-call entry rendered by name and arguments; its completion becomes a
 tool-result entry carrying the result's content, or the runtime's error message where the tool
 failed, or the empty string where it reported neither. An assistant message becomes an assistant
@@ -87,14 +103,19 @@ branch either records something well-formed or does nothing.
 
 **Purpose:** Start a turn, discarding anything the previous one left behind.
 
-**Algorithm:** Clear the entry buffer. Called before the prompt is sent, so what is drained
-afterwards is this turn's work and no other's. A turn that failed mid-flight leaves entries here;
-clearing at the start rather than at the end is what stops them being attributed to the next turn.
-The usage reading is deliberately not cleared — see *Purpose*.
+**Algorithm:** Clear the three per-turn fields under one lock: the entry buffer, the last reported
+error, and whether this turn has reported its usage. Called before the prompt is sent, so what is
+read afterwards belongs to this turn and no other's. A turn that failed mid-flight leaves entries
+and an error message here; clearing at the start rather than at the end is what stops them being
+attributed to the next turn — and the error matters most, because it is read only to name the cause
+when a turn goes idle without an answer, so a stale one would name the wrong cause in the one
+message whose whole job is to name the right one. The usage *reading* is deliberately not cleared —
+see *Purpose* and *Data Model*.
 
 **Preconditions:** None.
 
-**Postconditions:** The entry buffer is empty; every other field is unchanged.
+**Postconditions:** The entry buffer is empty, no error is remembered, and this turn has reported no
+usage; the kept reading and the rewritten-history flag are unchanged.
 
 #### DrainEntries()
 
