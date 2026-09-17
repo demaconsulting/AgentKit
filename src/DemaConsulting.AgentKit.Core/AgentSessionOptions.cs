@@ -79,8 +79,7 @@ public sealed class AgentSessionOptions
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="summarizer"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> contains a <see langword="null"/> entry, or the tool declarations
-    ///     are too large for a token count.
+    ///     <paramref name="tools"/> contains a <see langword="null"/> entry.
     /// </exception>
     public AgentSessionOptions(
         ISummarizer summarizer,

@@ -97,10 +97,11 @@ Nothing has been sent to the provider.
 window: a stateless provider receives the conversation with the request, so a session that has made
 no request occupies nothing — including immediately after a rotation, when the replacement holds a
 seed the provider has not seen yet, and whose own recorder has therefore recorded nothing. Otherwise
-report the recorded prompt size, clamped to the window, as both the tokens used and the conversation.
-The clamp exists because a provider that has already overrun its own window would otherwise produce a
-figure the usage shape refuses; being at the limit is the truthful reading in that case, and it is
-the one that rotates.
+report the recorded prompt size as both the tokens used and the conversation, including past the
+window. A provider that has overrun its own limit is the condition an application most needs to see,
+and reporting it as merely full would say nothing about whether the overrun was forty tokens or forty
+thousand. The rotation decision is the same either way, so a clamp buys nothing and costs the
+reporting.
 
 The whole reading is attributed to the conversation because a chat client reports no split between
 the system prompt, the tool declarations and the exchange. That credits the session with no overhead

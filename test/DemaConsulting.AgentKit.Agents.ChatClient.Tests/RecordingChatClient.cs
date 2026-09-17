@@ -40,6 +40,15 @@ internal sealed class RecordingChatClient : IChatClient
     private readonly Queue<ChatResponse> _scripted = new();
 
     /// <summary>
+    ///     The failures queued against request positions, so a test can make one turn fail.
+    /// </summary>
+    /// <remarks>
+    ///     A provider that fails mid-turn is the condition under which a session must record
+    ///     nothing, and it cannot be scripted with an answer.
+    /// </remarks>
+    private readonly Queue<Exception?> _failures = new();
+
+    /// <summary>
     ///     The answer given once the queue is empty, or <see langword="null"/> when there is none.
     /// </summary>
     private ChatResponse? _standing;
@@ -95,8 +104,10 @@ internal sealed class RecordingChatClient : IChatClient
     public RecordingChatClient Queue(ChatResponse response)
     {
         _scripted.Enqueue(response);
+        _failures.Enqueue(null);
         return this;
     }
+
 
     /// <summary>
     ///     Queues one textual answer reporting the given input tokens.
@@ -105,6 +116,19 @@ internal sealed class RecordingChatClient : IChatClient
     /// <param name="inputTokens">The input tokens the answer reports.</param>
     /// <returns>This client, so a script reads as one statement.</returns>
     public RecordingChatClient Queue(string text, long inputTokens) => Queue(Answer(text, inputTokens));
+
+    /// <summary>
+    ///     Queues a failure for the next request, so a test can make one turn fail mid-flight.
+    /// </summary>
+    /// <param name="failure">The exception the next request throws. Must not be <see langword="null"/>.</param>
+    /// <returns>This client, so calls can be chained.</returns>
+    public RecordingChatClient QueueFailure(Exception failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        _failures.Enqueue(failure);
+        return this;
+    }
 
     /// <summary>
     ///     Builds an answer carrying the given text and reporting the given input tokens.
@@ -146,6 +170,11 @@ internal sealed class RecordingChatClient : IChatClient
         CancellationToken cancellationToken = default)
     {
         _requests.Add(new RecordedRequest([.. messages], options));
+
+        if (_failures.Count > 0 && _failures.Dequeue() is { } failure)
+        {
+            return Task.FromException<ChatResponse>(failure);
+        }
 
         if (_scripted.Count > 0)
         {

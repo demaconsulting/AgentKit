@@ -10,7 +10,7 @@ namespace DemaConsulting.AgentKit.Core;
 ///     A slot is deliberately a single string rather than a structured record. What a consolidation
 ///     produces is prose written for the agent to rely on later, and imposing a structure on it
 ///     here would either constrain the summarizer or require this library to parse a model's
-///     output. The slot's job is to hold that prose and its cached size estimate.
+///     output. The slot's job is to hold that prose.
 ///     </para>
 ///     <para>
 ///     Instances are immutable after construction and safe for concurrent use.

@@ -135,8 +135,7 @@ public interface IAgentSession : IAsyncDisposable
     ///     Gets the context usage after the most recent turn.
     /// </summary>
     /// <remarks>
-    ///     Before the first turn this reports what the freshly seeded session occupies, which for a
-    ///     new conversation is the fixed overhead alone.
+    ///     Before the first turn this reports whatever the provider session says it holds, which for a provider that is sent the conversation with each request is nothing.
     /// </remarks>
     ContextUsage Usage { get; }
 

@@ -99,8 +99,8 @@ its length.
 Scripts input-token counts no estimate would arrive at, takes two turns, and asserts each reading is
 the figure reported for that turn, taken against the supplied window and attributed wholly to the
 conversation. The second scenario scripts a provider reporting more input than the window holds and
-asserts the reading is the window itself — the usage shape refuses anything larger, and being at the
-limit is both truthful and the reading that rotates.
+asserts the reading carries the overrun rather than being flattened to the window, because a session
+reporting full tells its caller nothing about how far past the limit it went.
 
 The third is the scenario that distinguishes the figure this class reports from the one it must not.
 A turn that calls a tool is two requests reporting two different prompt sizes, and the response the

@@ -116,7 +116,7 @@ public sealed class CompactingAgentSession : IAgentSession
     }
 
     /// <summary>
-    ///     Gets the engine's own account of the context: the fixed overhead, the coarse tiers of
+    ///     Gets the engine's own account of the context: the the coarse tiers of
     ///     consolidated slots, and the verbatim recent turns.
     /// </summary>
     /// <remarks>

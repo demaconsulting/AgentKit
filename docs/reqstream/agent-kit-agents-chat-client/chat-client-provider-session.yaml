@@ -56,12 +56,14 @@ sections:
               of what is being sent. The window cannot come from the same place - a chat client
               publishes no context window - so it is supplied once where the provider is configured
               and reported beside the figure thereafter. A provider that has already overrun its own
-              window is reported as full rather than beyond it: the usage shape refuses a figure
-              larger than the window, and being at the limit is both the truthful reading and the one
+              window is reported as it answered rather than clamped to the window, because clamping hides
+              exactly the condition an application most needs to see - a session reporting full tells
+              its caller nothing about whether the overrun was forty tokens or forty thousand, and
+              the rotation decision is the same either way.
               that rotates.
             tests:
               - ChatClientProviderSession_CurrentUsage_AfterTurn_ReportsTheProvidersInputTokens
-              - ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsFull
+              - ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsTheOverrun
               - ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-ZeroBeforeTheFirstTurn
@@ -82,7 +84,7 @@ sections:
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-RefusesUnreportedUsage
             title: >-
-              The unit shall refuse a turn after which no request it made has reported token usage,
+              The unit shall refuse a turn in which no request it made reported token usage,
               with a message naming the missing fact and what the application can do about it.
             justification: |
               Knowing when the window is filling is the one thing this library needs a token count
@@ -97,6 +99,7 @@ sections:
               session was already able to measure.
             tests:
               - ChatClientProviderSession_Send_ProviderReportsNoUsage_Throws
+              - ChatClientProviderSession_Send_ProviderStopsReportingUsage_RefusesThatTurn
 
           - id: AgentKitAgentsChatClient-ChatClientProviderSession-RecordsToolTraffic
             title: >-
@@ -148,3 +151,4 @@ sections:
             tests:
               - ChatClientProviderSession_Send_NullMessage_Throws
               - ChatClientProviderSession_Send_Canceled_ThrowsAndSendsNothing
+              - ChatClientProviderSession_Send_ProviderFails_LeavesNoGhostMessage

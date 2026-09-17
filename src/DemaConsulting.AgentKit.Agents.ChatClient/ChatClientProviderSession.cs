@@ -155,10 +155,12 @@ public sealed class ChatClientProviderSession : IProviderSession
                 return ContextUsage.FromProvider(0, WindowTokens, 0);
             }
 
-            // Clamped, because a provider that has already overrun its own window would otherwise
-            // produce a figure the usage shape refuses. Being at the limit is the truthful reading
-            // in that case, and it is the one that rotates.
-            var used = (int)Math.Min(reported, WindowTokens);
+            // Reported as it came back, including past the window. A provider that has overrun its
+            // own limit is the condition an application most needs to see, and clamping it to the
+            // window would report a session at exactly full whether it had overrun by forty tokens
+            // or by forty thousand. The rotation decision is the same either way; the reporting is
+            // not.
+            var used = (int)Math.Min(reported, int.MaxValue);
             return ContextUsage.FromProvider(used, WindowTokens, used);
         }
     }
@@ -170,17 +172,26 @@ public sealed class ChatClientProviderSession : IProviderSession
         ObjectDisposedException.ThrowIf(IsReleased, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        _messages.Add(new ChatMessage(ChatRole.User, message));
+        // Answer first, record second. The turn is sent as this conversation plus the new message
+        // without either joining it, so a provider that fails, times out or is cancelled mid-flight
+        // leaves this session exactly as it was - which is what the session contract promises a
+        // caller, and what the in-memory provider models. Appending before the call leaves a user
+        // message with no answer beside it, which the next turn would send again.
+        var outgoing = new List<ChatMessage>(_messages) { new(ChatRole.User, message) };
 
-        var response = await _client.GetResponseAsync(_messages, _options, cancellationToken)
+        // Cleared so the refusal below means what it says: that no request of *this* turn reported
+        // usage. Left standing, a provider that reported once and then stopped would freeze
+        // occupancy at that first figure, never reach the rotation threshold again, and grow the
+        // conversation without limit.
+        _recorder.Forget();
+
+        var response = await _client.GetResponseAsync(outgoing, _options, cancellationToken)
             .ConfigureAwait(false);
 
-        // Everything the provider produced joins the conversation, so the next turn sends again a
-        // history matching what it has already seen.
-        _messages.AddRange(response.Messages);
         // The turn is answered; the recorder underneath has the prompt size of the last request it
         // took to get there. A turn that reported none leaves nothing to rotate on, which is refused
-        // rather than guessed at.
+        // rather than guessed at - and refused before anything is recorded, so the session is
+        // unchanged.
         if (_recorder.LastPromptTokens is null)
         {
             throw new InvalidOperationException(
@@ -188,6 +199,11 @@ public sealed class ChatClientProviderSession : IProviderSession
                 + "when its context window is filling. Use a chat client that reports usage, or "
                 + "wrap this one in an implementation that does.");
         }
+
+        // The turn stands: the message and everything the provider produced join the conversation
+        // together, so the next turn sends a history matching what the provider has already seen.
+        _messages.AddRange(outgoing[^1..]);
+        _messages.AddRange(response.Messages);
 
         var entries = new List<TranscriptEntry>();
         foreach (var produced in response.Messages)

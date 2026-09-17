@@ -39,6 +39,18 @@ internal sealed class PromptSizeRecordingChatClient(IChatClient innerClient)
     /// </summary>
     public long? LastPromptTokens { get; private set; }
 
+    /// <summary>
+    ///     Forgets the recorded figure, so the next reading can only come from a request made after
+    ///     this call.
+    /// </summary>
+    /// <remarks>
+    ///     Called at the start of each turn. Without it the recorded figure outlives the turn that
+    ///     produced it, and a provider that reports usage once and then stops would hold occupancy
+    ///     frozen at that first reading - never reaching the rotation threshold again while the
+    ///     conversation grew without limit behind it.
+    /// </remarks>
+    public void Forget() => LastPromptTokens = null;
+
     /// <inheritdoc/>
     public override async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,

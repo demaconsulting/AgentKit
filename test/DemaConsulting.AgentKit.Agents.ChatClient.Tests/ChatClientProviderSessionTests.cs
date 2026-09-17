@@ -166,14 +166,19 @@ public class ChatClientProviderSessionTests
     }
 
     /// <summary>
-    ///     Proves a provider that has overrun its own window is reported as full rather than as a
-    ///     figure the usage shape refuses, because being at the limit is the truthful reading and the
-    ///     one that rotates.
+    ///     Proves a provider that has overrun its own window is reported as it answered rather than
+    ///     clamped to the window, so the overrun stays visible to an application.
     /// </summary>
+    /// <remarks>
+    ///     The usage shape accepts a figure past the window deliberately, and says why: clamping
+    ///     would hide exactly the condition an application most needs to see. A session reporting
+    ///     full whether it overran by forty tokens or by forty thousand tells its caller nothing.
+    ///     The rotation decision is the same either way, so nothing is bought by the clamp.
+    /// </remarks>
     [Fact]
-    public async Task ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsFull()
+    public async Task ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsTheOverrun()
     {
-        // Arrange: a client reporting more input than the window holds
+        // Arrange: a client reporting five times more input than the window holds
         var client = RecordingChatClient.Answering("answer", inputTokens: Window * 5);
         await using var session = await CreateSessionAsync(client, EmptySeed());
 
@@ -181,9 +186,77 @@ public class ChatClientProviderSessionTests
         await session.SendAsync("hello", TestContext.Current.CancellationToken);
         var usage = session.CurrentUsage;
 
-        // Assert: the reading is the window itself, which the usage shape accepts and a rotation acts on
-        Assert.Equal(Window, usage.UsedTokens);
-        Assert.Equal(Window, usage.ConversationTokens);
+        // Assert: the overrun is carried, not flattened to the window
+        Assert.Equal(Window * 5, usage.UsedTokens);
+        Assert.Equal(Window * 5, usage.ConversationTokens);
+        Assert.Equal(Window, usage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves a provider that reports usage once and then stops is refused on the turn that
+    ///     stopped, rather than carrying the earlier figure forward.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The refusal has to mean "no request of <em>this</em> turn reported usage", not "no request
+    ///     this session ever made reported any". Carried forward, a figure from turn one would hold
+    ///     occupancy frozen below the rotation threshold while the conversation grew behind it - the
+    ///     session would never rotate, and the provider would eventually truncate the history itself,
+    ///     which is the failure this library exists to prevent.
+    ///     </para>
+    ///     <para>
+    ///     The first turn is asserted to succeed so the test cannot pass by refusing everything.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSession_Send_ProviderStopsReportingUsage_RefusesThatTurn()
+    {
+        // Arrange: a client that reports usage on its first answer and none on its second
+        var client = new RecordingChatClient()
+            .Queue("first", inputTokens: 100)
+            .Queue(RecordingChatClient.AnswerWithoutUsage("second"));
+        await using var session = await CreateSessionAsync(client, EmptySeed());
+
+        // Act: the first turn reports, so it stands
+        await session.SendAsync("hello", TestContext.Current.CancellationToken);
+        Assert.Equal(100, session.CurrentUsage.ConversationTokens);
+
+        // Act: the second reports nothing, so it is refused rather than inheriting the first figure
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("again", TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a turn the provider fails leaves the session exactly as it was, with no message
+    ///     recorded for an answer that never came.
+    /// </summary>
+    /// <remarks>
+    ///     The session contract promises a caller that a provider which fails or cancels before
+    ///     taking the turn leaves the session untouched, and the in-memory provider models it
+    ///     deliberately. Recording the outgoing message before the call leaves it behind with no
+    ///     answer beside it, so the next turn sends it again - a message the engine has no record of,
+    ///     which the model may answer and the application is billed for.
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSession_Send_ProviderFails_LeavesNoGhostMessage()
+    {
+        // Arrange: a client that fails the first turn and answers the second
+        var client = new RecordingChatClient()
+            .QueueFailure(new TimeoutException("the provider did not answer"))
+            .Queue("answer", inputTokens: 100);
+        await using var session = await CreateSessionAsync(client, EmptySeed());
+
+        // Act: the first turn fails
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => session.SendAsync("lost", TestContext.Current.CancellationToken));
+
+        // Act: the next turn succeeds
+        await session.SendAsync("kept", TestContext.Current.CancellationToken);
+
+        // Assert: the failed turn's message was never sent again - the provider saw only the second
+        var sent = client.LastMessages;
+        Assert.DoesNotContain(sent, message => message.Text.Contains("lost", StringComparison.Ordinal));
+        Assert.Contains(sent, message => message.Text.Contains("kept", StringComparison.Ordinal));
     }
 
     /// <summary>
