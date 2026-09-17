@@ -151,7 +151,7 @@ conversation alive:
   patterns, with all containment decisions made on the normalized absolute location a path
   denotes
 - **Tool limits**: ceilings on bytes read, result size returned to the model, binary content
-  returned, attachments per turn, and how deep a chain of delegated agents may run (two levels
+  returned, and how deep a chain of delegated agents may run (two levels
   beneath the root agent by default; zero forbids delegation entirely), carried with the policy so
   every tool observes the same budget
 - **Guarded tool construction**: the only supported way to build a tool, so the safety conventions

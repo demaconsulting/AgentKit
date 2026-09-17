@@ -51,7 +51,7 @@ client and the window, a summarizer that runs outside the conversation, and the 
 ```csharp
 var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
 var summarizer = new ChatClientSummarizer(summaryClient);
-var options = new AgentSessionOptions(summarizer, instructions, tools);
+var options = new AgentSessionOptions(summarizer, instructions, [.. tools]);
 
 await using var session = await CompactingAgentSession.CreateAsync(options, providerSessions);
 

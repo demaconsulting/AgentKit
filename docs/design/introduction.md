@@ -152,6 +152,7 @@ software items, specifically:
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
+- **ApiMark** — public API surface tracking tool
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
   abstraction
@@ -209,12 +210,22 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is deliberately flat: its twenty units sit directly under the system with no
-intervening subsystems. Core is the contract package plus the session engine, and a subsystem layer
-would add artifacts — a requirements file, a design document, a verification document and a review
-set per subsystem — without reducing the number of units anyone has to review. Subsystems will be
-introduced when a system in this repository has enough units that architectural boundaries
-between them carry real information.
+`AgentKitCore` is flat: its twenty units sit directly under the system with no intervening
+subsystems. That is now a decision rather than a consequence of smallness, because the units do fall
+into two groups — the ten that guard a tool, and the ten that carry a session — and a boundary
+between them would carry real information.
+
+It is left flat because the information is already carried by the naming, which costs nothing, while
+a subsystem layer would cost a requirements file, a design document, a verification document and a
+review set for each of the two, without removing a single unit anyone has to review. The two groups
+also share the contract they exist to serve: a session seeds its provider with the tools a pack
+published, and `ImagePromotingChatClient` sits in the same package as the sessions whose providers it
+decorates. Splitting them into subsystems would draw a line through that relationship to document
+something a reader can already see in the file names.
+
+This is the point at which that judgment should be revisited. If Core takes a third group of units,
+or if either group grows enough that a reader cannot hold it in view, the boundary stops being free
+and the subsystem layer earns its artifacts.
 
 The repository contains four systems. `AgentKitCore` is the heart of the product and the one library
 guaranteed to be imported. It supplies the contract every other package builds on — the policy
@@ -227,7 +238,9 @@ construction is worth nothing if the agent cannot run long enough to use them: c
 in a package a developer has to discover is a packaging mistake rather than a design. The engine is
 provider-agnostic by design — the same rotation behavior on a provider that re-sends history each
 turn and on one that holds it server-side — and carries no provider dependency; its provider seam is
-the `IProviderSession` interface, which the adapters will implement in a later increment.
+the `IProviderSession` interface, which `AgentKitAgentsChatClient` implements for every provider
+reached as a chat client. `AgentKitAgentsCopilot` does not implement it yet, so a Copilot-backed
+application composes an agent rather than a compacting session.
 
 `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
@@ -246,7 +259,9 @@ depended upon by another capability package.
 turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
 justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
-Each is flat — one factory class — and the two share no code and never reference each other.
+`AgentKitAgentsCopilot` is one factory class. `AgentKitAgentsChatClient` holds five units: that
+factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy from
+the last request of a turn. Both are flat, and the two share no code and never reference each other.
 
 The `SoftwareStructureView.svg` above renders all four systems.
 
@@ -286,8 +301,9 @@ src/DemaConsulting.AgentKit.Core/
 └── ToolResult.cs               — text, content, structured data and denial results
 ```
 
-The folder is flat because the system is flat: each unit is one file directly under the project
-root, mirroring the software structure above. A future system organized into subsystems will
+The folder is flat because the system is flat: each unit is one file, except where an enumeration
+sits beside the type it describes, directly under the project root, mirroring the software structure
+above. A future system organized into subsystems will
 mirror those subsystems as folders containing their respective units.
 
 `AgentKitTools` has its own source tree under `src/DemaConsulting.AgentKit.Tools/`, organized into
