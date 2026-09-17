@@ -184,6 +184,46 @@ public class ChatClientProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a session's provider pipeline promotes a tool-returned image onto a user message,
+    ///     so a provider whose tool-result channel cannot carry one still sees it.
+    /// </summary>
+    /// <remarks>
+    ///     A session is as exposed to the silent-drop asymmetry as an agent is: the provider answers
+    ///     describing an image it never received, and nothing reports an error. This asserts the
+    ///     decorator is installed beneath the function-invocation loop, where it can observe the
+    ///     tool result.
+    /// </remarks>
+    [Fact]
+    public async Task ChatClientProviderSessionFactory_CreateAsync_ToolReturningAnImage_PromotesItOntoAUserMessage()
+    {
+        // Arrange: a tool returning image content, and a provider that calls it and then answers
+        var image = new DataContent("data:image/png;base64,iVBORw0KGgo="u8.ToArray(), "image/png");
+        var tool = AIFunctionFactory.Create(() => image, "capture");
+        var client = new RecordingChatClient()
+            .Queue(
+                RecordingChatClient.Answer(
+                    [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "capture", null)])],
+                    inputTokens: 100))
+            .Queue("a red square", inputTokens: 150);
+        var factory = new ChatClientProviderSessionFactory(client, Window);
+        var seed = new ProviderSessionSeed(null, [tool], []);
+
+        // Act: take a turn that runs the tool
+        await using var session = await factory.CreateAsync(seed, TestContext.Current.CancellationToken);
+        await session.SendAsync("what do you see", TestContext.Current.CancellationToken);
+
+        // Assert: the follow-up request carries the image on a user message, not only in the
+        // tool result the provider would have dropped
+        var followUp = client.Requests[1].Messages;
+        var promoted = followUp
+            .Where(message => message.Role == ChatRole.User)
+            .SelectMany(message => message.Contents)
+            .OfType<DataContent>()
+            .ToList();
+        Assert.Contains(promoted, part => part.HasTopLevelMediaType("image"));
+    }
+
+    /// <summary>
     ///     Proves a created session reads its own occupancy rather than one a previous session left
     ///     behind, which is what makes a replacement report occupying nothing until it has spoken.
     /// </summary>

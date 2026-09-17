@@ -82,11 +82,21 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
 
     /// <inheritdoc/>
     /// <remarks>
+    ///     <para>
     ///     The pipeline is built here rather than once at construction, because the recorder holds
     ///     the occupancy of one conversation. Shared between sessions it would hand a replacement
     ///     the figure its predecessor left behind - so a session that had sent nothing would report
     ///     a full window and rotate again immediately - and two sessions run at once would overwrite
     ///     each other's reading, which the concurrency this contract promises does not allow.
+    ///     </para>
+    ///     <para>
+    ///     <see cref="ImagePromotingChatClient"/> is installed unconditionally, for the same reason
+    ///     <see cref="ChatClientAgentFactory"/> installs it: a provider whose tool-result channel
+    ///     cannot carry an image drops one silently, and the model answers anyway. A session is as
+    ///     exposed to that as an agent is. It sits beneath the function-invocation loop so it
+    ///     observes the conversation after tool results have been appended, and above the recorder
+    ///     so the occupancy read includes any message it promoted.
+    ///     </para>
     /// </remarks>
     public Task<IProviderSession> CreateAsync(
         ProviderSessionSeed seed,
@@ -96,7 +106,7 @@ public sealed class ChatClientProviderSessionFactory : IProviderSessionFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         var recorder = new PromptSizeRecordingChatClient(_client);
-        var pipeline = new FunctionInvokingChatClient(recorder);
+        var pipeline = new FunctionInvokingChatClient(new ImagePromotingChatClient(recorder));
 
         return Task.FromResult<IProviderSession>(
             new ChatClientProviderSession(pipeline, recorder, seed, WindowTokens));

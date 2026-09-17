@@ -211,21 +211,20 @@ diagram or the prose below.
 ![Software Structure](SoftwareStructureView.svg)
 
 `AgentKitCore` is flat: its twenty units sit directly under the system with no intervening
-subsystems. That is now a decision rather than a consequence of smallness, because the units do fall
-into two groups — the ten that guard a tool, and the ten that carry a session — and a boundary
-between them would carry real information.
+subsystems. That is now a decision rather than a consequence of smallness, and the system design
+chapter records what those twenty units actually look like: three path-safety units, four
+tool-contract units, two pack-contract units, ten session units, and `ImagePromotingChatClient`,
+which stands apart from all of them.
 
-It is left flat because the information is already carried by the naming, which costs nothing, while
-a subsystem layer would cost a requirements file, a design document, a verification document and a
-review set for each of the two, without removing a single unit anyone has to review. The two groups
-also share the contract they exist to serve: a session seeds its provider with the tools a pack
-published, and `ImagePromotingChatClient` sits in the same package as the sessions whose providers it
-decorates. Splitting them into subsystems would draw a line through that relationship to document
-something a reader can already see in the file names.
+No single boundary divides that into coherent halves. A subsystem layer would therefore not draw one
+line but four or five, and each would cost a requirements file, a design document, a verification
+document and a review set without removing a single unit anyone has to review. The groups are
+already legible from the unit names and from the collaborations the system design chapter sets out,
+which costs nothing.
 
-This is the point at which that judgment should be revisited. If Core takes a third group of units,
-or if either group grows enough that a reader cannot hold it in view, the boundary stops being free
-and the subsystem layer earns its artifacts.
+This is the point at which that judgment should be revisited. If one of those groups grows enough
+that a reader cannot hold it in view, the boundary around it stops being free and earns its
+artifacts.
 
 The repository contains four systems. `AgentKitCore` is the heart of the product and the one library
 guaranteed to be imported. It supplies the contract every other package builds on — the policy

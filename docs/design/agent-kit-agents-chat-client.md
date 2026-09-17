@@ -64,8 +64,8 @@ both exist to make one `IChatClient` usable, and neither calls the other.
   list, the conversation resent on every turn, the transcript entries a turn produces, and the
   occupancy reported against a supplied window.
 - **ChatClientProviderSessionFactory (Unit)** — holds the client and the window, builds the pipeline
-  each session runs on, and creates a session from a seed at the start of a conversation and again
-  at every rotation.
+  each session runs on — the tool-calling loop over image promotion over the recorder — and creates a
+  session from a seed at the start of a conversation and again at every rotation.
 - **PromptSizeRecordingChatClient (Unit)** — sits beneath the tool-calling loop in that pipeline and
   records the prompt size of each individual request, so occupancy is the last request's prompt
   rather than usage summed across a tool-calling turn.

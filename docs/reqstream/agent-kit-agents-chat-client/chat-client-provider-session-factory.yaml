@@ -73,3 +73,17 @@ sections:
               - ChatClientProviderSessionFactory_Constructor_NonPositiveWindow_Throws
               - ChatClientProviderSessionFactory_CreateAsync_NullSeed_Throws
               - ChatClientProviderSessionFactory_CreateAsync_Canceled_Throws
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSessionFactory-PromotesToolReturnedImages
+            title: >-
+              The factory shall install image promotion in every session pipeline it builds.
+            justification: |
+              A provider whose tool-result channel cannot carry an image drops one at the wire and
+              answers anyway, describing an image it never received, with nothing in the exchange
+              reporting an error. A session is as exposed to that as an agent is, so the decorator is
+              installed here unconditionally for the same reason the agent factory installs it: a
+              guarantee an application can forget is not a guarantee. It sits beneath the
+              function-invocation loop, where it can observe the tool result it has to promote, and
+              above the recorder, so the occupancy read includes any message it promoted.
+            tests:
+              - ChatClientProviderSessionFactory_CreateAsync_ToolReturningAnImage_PromotesItOntoAUserMessage

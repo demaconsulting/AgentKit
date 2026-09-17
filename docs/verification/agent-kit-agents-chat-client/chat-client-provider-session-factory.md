@@ -119,3 +119,13 @@ refused where the application configured its provider — which is the only plac
 supplied, because the session's own constructor is internal; a missing seed is refused rather than
 turned into a session starting from nothing; and a canceled creation yields no session, so a canceled
 rotation leaves nothing unowned.
+
+#### AgentKitAgentsChatClient-ChatClientProviderSessionFactory-PromotesToolReturnedImages: A Returned Image Is Seen
+
+**Test**: `ChatClientProviderSessionFactory_CreateAsync_ToolReturningAnImage_PromotesItOntoAUserMessage`
+
+Takes a turn whose tool returns image content, and asserts the follow-up request carries that image on
+a user message rather than only in the tool result. The scenario is worth its own test because the
+defect it guards against is silent: a provider that cannot carry an image on its tool-result channel
+drops it at the wire and answers anyway, so every other assertion here — the tool ran, the result
+reached the transcript, the answer came back — holds just as well when the model never saw the image.
