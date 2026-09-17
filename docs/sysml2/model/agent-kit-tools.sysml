@@ -4,7 +4,7 @@ package AgentKitTools {
      * AgentKitTools is a general-purpose capability package of guarded tool families,
      * composed through the AgentKitCore contract. It is a peer of the other capability
      * packages an application may attach, depending on AgentKitCore but never depended
-     * upon by another capability package. Its tool families are added in later increments.
+     * upon by another capability package. It declares the tool families the package ships.
      */
 
     part def AgentKitToolsSystem {

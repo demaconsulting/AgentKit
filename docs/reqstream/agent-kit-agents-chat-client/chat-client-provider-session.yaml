@@ -1,0 +1,173 @@
+---
+# Software Unit Requirements for ChatClientProviderSession
+#
+# These requirements describe the design-level behavior of the ChatClientProviderSession unit.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: ChatClientProviderSession Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-SeedsAMessageList
+            title: >-
+              The unit shall turn a provider session seed into a message list carrying the
+              instructions as a leading system message, the seeded history in order, and the seeded
+              tools as tools rather than as conversation.
+            justification: |
+              A provider reached through a chat client keeps no conversation, so seeding a session is
+              starting a message list and nothing more. The instructions lead because that is where a
+              provider expects to find them, and the history follows in the order the compaction
+              engine produced it - most stable first - so the provider reads the conversation the
+              engine believes it holds. Tools are carried as request options because providers accept
+              capability separately from conversation, which is also why they are accounted for as
+              fixed overhead rather than as history. A seed carrying no instructions contributes no
+              system message, rather than an empty one a provider would have to interpret.
+            tests:
+              - ChatClientProviderSession_Send_Seed_ProducesInstructionsHistoryAndToolsInOrder
+              - ChatClientProviderSession_Send_SeedWithoutInstructions_SendsNoSystemMessage
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-SeedsNoToolRoleMessage
+            title: >-
+              The unit shall carry a seeded tool call and its result as labeled assistant text, and
+              shall place no message in a seeded history under the tool role.
+            justification: |
+              A tool-role message is addressed by call identifier on the wire, so one carrying only
+              text cannot be represented. The OpenAI family maps tool-role content to a message only
+              where it is function-result content and discards anything else without reporting an
+              error, so a text-only tool message leaves the model a conversation in which it called a
+              tool and was never told the answer - once per rotation, silently, and worst in the
+              verbatim tail, which is kept verbatim precisely because it is the freshest and most
+              load-bearing material. Function-call content is not the answer either: a rotation can
+              separate a call from its result, and a call replayed with no result behind it is a
+              pending call the provider is invited to answer again. Labeled text is understood by
+              every provider and can be dropped by none, and a seeded history is a record of what
+              happened rather than a live exchange, so a record is the honest shape for it.
+            tests:
+              - ChatClientProviderSession_Send_SeededToolResult_UsesNoToolRoleMessage
+              - ChatClientProviderSession_Send_Seed_ProducesInstructionsHistoryAndToolsInOrder
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-SendsTheWholeConversationEachTurn
+            title: >-
+              The unit shall accumulate the conversation itself and send the whole of it on every
+              turn, appending everything the provider produced.
+            justification: |
+              Ollama, OpenAI and AI Foundry all reach this library as a chat client and none of them
+              holds the conversation: every turn sends the whole message list again. The session is
+              therefore the only thing that remembers the exchange, so it appends both what it sent
+              and everything that came back, and the next turn sends again a history the provider has
+              already seen. A session that sent only the new message would present the provider with
+              an isolated turn and lose the conversation the compaction engine exists to preserve.
+            tests:
+              - ChatClientProviderSession_Send_SecondTurn_SendsTheWholeConversationAgain
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-ReportsProviderUsage
+            title: >-
+              The unit shall report the prompt size of the last request the turn made, taken against
+              the window supplied at construction, and shall carry an overrun of that window through
+              unclamped rather than flattening it to full.
+            justification: |
+              The tokens a provider counted for the prompt it was last sent are exactly the occupancy
+              a rotation decision needs, and they are the only figure in the provider's own currency.
+              They are deliberately not the input-token count carried on the response a turn returns:
+              a tool-using turn is several requests, and that response reports usage summed across
+              all of them, which read as occupancy would have a tool-using agent conclude its window
+              was full on its first turn and rotate on every turn after it. The prompt of the last
+              request is the conversation, because by then the tool calls and their results are part
+              of what is being sent. The window cannot come from the same place - a chat client
+              publishes no context window - so it is supplied once where the provider is configured
+              and reported beside the figure thereafter. A provider that has already overrun its own
+              window is reported as it answered rather than clamped to the window, because clamping hides
+              exactly the condition an application most needs to see - a session reporting full tells
+              its caller nothing about whether the overrun was forty tokens or forty thousand, and
+              the rotation decision is the same either way.
+            tests:
+              - ChatClientProviderSession_CurrentUsage_AfterTurn_ReportsTheProvidersInputTokens
+              - ChatClientProviderSession_CurrentUsage_ProviderOverrunsTheWindow_ReportsTheOverrun
+              - ChatClientProviderSessionFactory_CreateAsync_ToolUsingTurn_ReportsTheLastRequestsPromptNotTheSum
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-ZeroBeforeTheFirstTurn
+            title: >-
+              The unit shall report occupying nothing before its first turn, including immediately
+              after a rotation has seeded it.
+            justification: |
+              A stateless provider receives the conversation with the request, so a session that has
+              made no request occupies nothing of the provider's window however much it holds. That
+              is not a special case for a new conversation: it is the state every replacement session
+              is created in, holding a seed the provider has not seen yet. Reporting the seed's size
+              instead would charge the provider for something it was never sent, and would have the
+              engine rotate a session that has not yet spoken - which is also why the pipeline the
+              reading comes from belongs to one session rather than to the factory that made it.
+            tests:
+              - ChatClientProviderSession_CurrentUsage_BeforeFirstTurn_IsZero
+              - ChatClientProviderSessionFactory_CreateAsync_AfterAnEarlierSessionSpoke_TheReplacementOccupiesNothing
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-RefusesUnreportedUsage
+            title: >-
+              The unit shall refuse a turn in which no request it made reported token usage,
+              with a message naming the missing fact and what the application can do about it.
+            justification: |
+              Knowing when the window is filling is the one thing this library needs a token count
+              for, so estimating an absent figure would mean guessing forever at the single fact the
+              whole arrangement turns on. Every provider reached this way reports usage - Ollama
+              returns its prompt evaluation count and the hosted services report usage with every
+              response - so an absent figure means something is wrong that the application can see and
+              fix. Saying so, and naming the remedy, is more use than a number nobody can trust. A
+              provider that reports nothing is therefore caught on its first turn, which is the turn
+              an application can act on; a single later request reporting none, within a turn made of
+              several, leaves the last figure that was true standing rather than failing a turn the
+              session was already able to measure.
+            tests:
+              - ChatClientProviderSession_Send_ProviderReportsNoUsage_Throws
+              - ChatClientProviderSession_Send_ProviderStopsReportingUsage_RefusesThatTurn
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-RecordsToolTraffic
+            title: >-
+              The unit shall record a turn's tool calls and results as paired transcript entries
+              carrying the provider's own call identifier, and shall record an answer delivered
+              alongside a tool call exactly once.
+            justification: |
+              The transcript is what a rotation consolidates, so a tool call has to be recorded
+              beside the result that answered it, under the identifier the provider paired them with,
+              for the pair to survive consolidation together. A provider may deliver its answer on the
+              same message as a call it is making; recording that message's text as an assistant entry
+              there, when the turn's answer is recorded as the final entry anyway, would show the model
+              saying the same thing twice and bill the conversation for it twice.
+            tests:
+              - ChatClientProviderSession_Send_ToolCallAndResult_AreRecordedAsAPairCarryingTheCallId
+              - ChatClientProviderSession_Send_AnswerAlongsideAToolCall_IsNotRecordedTwice
+              - ChatClientProviderSession_Send_ToolCallWithoutArguments_RecordsTheBareCall
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-ReleasesWithoutDisposingTheClient
+            title: >-
+              The unit shall forget its conversation on release, mark itself spent, refuse later
+              turns, and leave the supplied chat client undisposed.
+            justification: |
+              The provider holds nothing to release, so releasing a session is forgetting the
+              conversation it accumulated and refusing to take another turn - a released session must
+              not quietly start a fresh conversation against the provider. The client is deliberately
+              left alone: it was supplied by the application, is shared by every session a rotation
+              creates, and outlives all of them, so a session that disposed it would make the first
+              rotation the last. Releasing twice is permitted, because a rotation and a disposal may
+              both reach the same session.
+            tests:
+              - ChatClientProviderSession_Dispose_MarksReleasedAndRejectsLaterTurns
+              - ChatClientProviderSession_Dispose_DoesNotDisposeTheSuppliedClient
+              - ChatClientProviderSession_Dispose_Twice_IsPermitted
+
+          - id: AgentKitAgentsChatClient-ChatClientProviderSession-RejectsInvalidArguments
+            title: >-
+              The unit shall reject a missing message and a canceled turn, sending nothing when it
+              refuses.
+            justification: |
+              Each is a defect in the composing application rather than a provider condition, so each
+              is refused where the application wrote it rather than discovered at the first
+              conversation. A canceled turn is refused before anything is sent, so cancellation costs
+              no call and leaves no message the provider saw but the transcript does not record. The
+              arguments a session is constructed from are checked by the factory instead, which is
+              the only thing that can construct one: an application configures a client and a window
+              there and reaches a constructor here through nothing else, so refusing them twice would
+              describe a path no application can take.
+            tests:
+              - ChatClientProviderSession_Send_NullMessage_Throws
+              - ChatClientProviderSession_Send_Canceled_ThrowsAndSendsNothing
+              - ChatClientProviderSession_Send_ProviderFails_LeavesNoGhostMessage

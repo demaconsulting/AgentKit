@@ -14,8 +14,10 @@ This user guide covers:
 - Installation of the library
 - What the library provides today, and how each part is used
 - The path policy, tool limits, naming, result and tool pack contracts
+- The session engine: how a conversation outlives the provider's context window
 - Three runnable samples: consuming the shipped tools (*document assistant*), an agent whose work
-  spans turns (*research assistant*), and writing your own guarded tools (*custom tools*)
+  spans turns and compacts its own context (*research assistant*), and writing your own guarded
+  tools (*custom tools*)
 
 # Continuous Compliance
 
@@ -63,9 +65,15 @@ lacks a documentation summary, so the reference is complete by construction.
 
 # What the Library Provides Today
 
-AgentKit Core is the contract package. It defines the safety model that every AgentKit tool, and
-every tool an application writes for itself, is built against. Ready-made guarded tool families
-ship in `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
+AgentKit Core is the contract package, and it carries two things. It defines the safety model that
+every AgentKit tool, and every tool an application writes for itself, is built against. It also
+carries the **session engine** — the part that keeps a long-running agent alive by compacting its
+own context, described under *Sessions* below. Neither is an add-on to the other: an agent that is
+safe by construction and runs out of context after twenty turns is not much use, and the two ship in
+one package for that reason.
+
+Ready-made guarded tool families ship in
+`DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
 agent families described under *Tool Families* below — so a consumer can attach shipped tools
 directly, or write its own tools against this contract.
 
@@ -335,6 +343,10 @@ function-invocation loop, and offers no option to disable it. A provider reached
 describes a picture it never received. The adapter makes that mistake impossible: because the
 decorator cannot be turned off, it cannot be forgotten. You do not wrap the client yourself.
 
+This package also carries the provider side of the session engine for the whole `IChatClient`
+family — `ChatClientProviderSession`, `ChatClientProviderSessionFactory` and `ChatClientSummarizer`.
+See *Sessions* below.
+
 ## The GitHub Copilot SDK
 
 `DemaConsulting.AgentKit.Agents.Copilot` builds an agent from a GitHub Copilot `CopilotClient`:
@@ -379,6 +391,174 @@ agent whose every tool call is denied.
 **Ownership**: the host owns the `CopilotClient` — whoever constructs and starts it disposes it. The
 factory builds the agent over the client without taking ownership of it and creates nothing
 disposable of its own.
+
+**No provider session yet.** This adapter builds an agent; it does not yet supply an
+`IProviderSession` for the Copilot runtime. A Copilot conversation therefore runs on that runtime's
+own session and is not compacted by AgentKit. Everything under *Sessions* below applies to the
+`IChatClient` family today.
+
+# Sessions
+
+## Why a Session Is Core
+
+A conversation eventually fills the provider's context window. What happens then is the provider's
+decision unless the application takes it — and the provider's decision differs by provider, is
+usually undocumented, and is never something an agent's author can reason about. AgentKit takes that
+decision, in the same package as the tool contract, because an agent that is safe by construction
+and forgets its own work after twenty turns is not much use.
+
+The session is an AgentKit-owned object. It keeps its own transcript **out of session**, never
+asking the live conversation to summarize itself — doing that spends the context the summary exists
+to reclaim, and provokes the provider's own compactor. When the conversation approaches the window,
+the session consolidates older history into records, creates a fresh provider session seeded with
+them, and only then disposes the one it replaced. Replacement is the only reduction both provider
+shapes support — one re-sends the history on every turn, the other holds it server-side — which is
+why the behavior is identical on either.
+
+## The Structure Is Counts, Not Tokens
+
+Imagine a notebook. The last few pages are the full story. Behind them are summary cards. When the
+notebook is nearly full, the oldest full pages are squashed onto one card. There is room for four
+cards; when a fifth is needed, all four are squashed onto one bigger card on the next shelf up.
+There are three shelves. When the top shelf is full and another card arrives, the oldest card goes
+in the bin. If the notebook keeps filling quickly, the cards get shorter, fewer full pages are kept,
+and the oldest card is binned sooner.
+
+That is the whole arrangement: a verbatim tail of recent turns, three tiers of at most four
+consolidated records each, and an oldest record discarded when the coarsest tier overflows. Nothing
+is weighed against a token budget, and no record is measured against a size it was asked to hit.
+
+**Tokens serve exactly one purpose: noticing that the window is filling.** The provider session
+answers one question — how full am I, out of how much — and the engine believes it. That is why
+there is no token estimator, no configurable budget, and no rule for deciding between two sources of
+truth.
+
+## Running a Session
+
+An application states three things: a summarizer, a provider-session factory, and how much recent
+history to keep word for word. Everything else is the library's.
+
+```csharp
+using DemaConsulting.AgentKit.Agents.ChatClient;
+using DemaConsulting.AgentKit.Core;
+
+// The window is a fact about the provider, so the provider side answers for it.
+var providerSessions = new ChatClientProviderSessionFactory(chatClient, windowTokens: 32768);
+
+// Consolidation runs outside the conversation it compacts, on a client of the application's
+// choosing. A smaller, cheaper model is usually right: consolidation is summarization, not
+// reasoning.
+var summarizer = new ChatClientSummarizer(summaryChatClient);
+
+var options = new AgentSessionOptions(
+    summarizer,
+    instructions: "You are a research assistant confined to the permitted locations.",
+    tools: [.. tools],
+    verbatimTurns: 20);
+
+await using var session = await CompactingAgentSession.CreateAsync(options, providerSessions);
+
+var turn = await session.SendAsync("Review every document in the corpus.");
+Console.WriteLine(turn.Text);
+```
+
+`AgentSessionOptions` requires only the summarizer, because compaction cannot happen without one and
+defaulting it would hand an application a session that silently never compacts. The instructions and
+tools are carried unchanged across every rotation — rotation replaces history, never capability.
+`verbatimTurns` is a **ceiling, not a floor**: the tail holds at most that many turns and holds
+fewer under pressure.
+
+The provider's context window is deliberately *not* configured here. It is a fact about the
+provider, so it belongs where the provider is constructed; carrying a second copy in the options
+invited the two to disagree, and left the session deciding which to believe.
+
+**Hand the factory the client that talks to your provider, not a pipeline.** It builds the pipeline
+itself: a prompt-size recorder directly around the client you supply, and the function-invocation
+loop above that. Both placements matter, and getting either wrong is silent. The recorder must sit
+underneath because a turn that calls tools is several requests, and the response the loop finally
+returns reports their input tokens *added together* — read as occupancy, that has a tool-using agent
+conclude its window is full on its first turn and rotate on every turn after it. The loop must sit
+above because a session declares its tools on every request, and a bare client will emit tool calls
+that nothing answers. Decorators of your own are welcome around the client you supply; do not add
+function invocation, which the factory installs.
+
+## Where the Window Comes From
+
+An `IChatClient` publishes no context window — the abstraction exposes a provider name, a provider
+URI and a default model identifier, and nothing about limits. So
+`ChatClientProviderSessionFactory` is told one, once, where the application configures its provider.
+
+Read it from the provider wherever the provider will say. Ollama publishes the loaded model's
+context length, and the loaded figure is the one the server enforces — which is often smaller than
+the maximum the model publishes. An application that sets the context length itself already knows
+the number it chose. For a hosted model the window is a published property of the model the
+application selected. The research-assistant sample reads it from Ollama and reports which of those
+sources it used; see *Sample: Research Assistant*.
+
+A provider that answers a turn without reporting token usage is **refused**, not estimated around.
+Knowing when the window is filling is the one thing the library needs a token count for, and
+guessing at it would mean guessing forever at the single fact the whole arrangement turns on.
+
+## What a Turn Reports
+
+Compaction is reported rather than hidden. An application that never looks is unaffected — the
+session keeps working either way — but an application that does look can act on what it sees.
+`AgentSessionResponse` carries five members:
+
+- **`Text`** — the provider's answer. Show it, or act on it.
+- **`Usage`** — occupancy after the turn: used, window, and the conversation's share of it. Watch it
+  climb, so the next rotation is comprehensible rather than sudden.
+- **`RotationOccurred`** — the session consolidated older history and replaced its provider session
+  during this turn. Log it, and read `CompactingAgentSession.ConsolidationCount` beside it:
+  summarizer calls are the dominant cost of this arrangement.
+- **`Level`** — how hard the session is compacting: `Low`, `Medium` or `High`. A level climbing to
+  `High` over several rotations is what a struggling long-running agent looks like.
+- **`MaterialDropped`** — a fully consolidated context still did not fit, so a record or a turn was
+  discarded outright. Act on it: it is the honest signal that compacting bought nothing.
+
+`Level` is session state rather than a setting: a session that keeps filling its window shortly
+after a rotation escalates, and one that runs a long stretch without filling relaxes. A higher level
+keeps a shorter verbatim tail and tells the summarizer to be terser.
+
+The answer in `Text` is produced **before** any compaction the turn triggers, by the session that
+was live when the message arrived. A caller therefore never waits on a summarizer before receiving
+an answer the session could already give.
+
+## Writing or Choosing a Summarizer
+
+`ISummarizer` is one method. `ChatClientSummarizer` implements it over any `IChatClient`, using the
+consolidation prompt the library publishes as `ConsolidationPrompt` and the terseness clause the
+session's current level selects. An application remains free to write its own — but it should not
+have to, which is why one ships.
+
+A summarizer must run **out of session** and must be stateless. The material arrives as an argument
+precisely so that consolidation does not happen inside the session being compacted. Give it a client
+that is not the one carrying the conversation.
+
+## Exercising a Session Without a Model
+
+`InMemoryProviderSession` and `InMemoryProviderSessionFactory` ship in Core rather than being
+confined to this library's tests. The compaction promise is only believable if it can be exercised
+end to end offline, and an application author writing their own summarizer, choosing a verbatim tail
+length, or deciding what to do about a reported rotation needs exactly the same ability:
+
+```csharp
+var factory = new InMemoryProviderSessionFactory(windowTokens: 8192);
+await using var session = await CompactingAgentSession.CreateAsync(options, factory);
+
+await session.SendAsync("first");
+
+// One entry per rotation, plus one for the original session, so a test can check what a rotation
+// actually carried forward — which records survived, and which verbatim turns.
+Console.WriteLine($"Provider sessions created: {factory.Sessions.Count}");
+Console.WriteLine($"Seeded history: {factory.Sessions[^1].Seed.History.Count} entries");
+```
+
+## Disposal
+
+An agent session owns a live provider session, which for some providers is server-side state that
+keeps being billed for until it is released. Disposing the agent session releases whichever provider
+session it currently holds — so `await using`, always.
 
 # References
 

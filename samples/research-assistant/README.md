@@ -42,8 +42,18 @@ shows how it *proceeds*.
 - **Delegation that cannot reach back.** A child agent reads one document and reports what it says.
   It has no task list, no memories, and no ability to write anything — by composition, not by
   convention. See [Safe delegation](#safe-delegation).
-- **Provider neutrality, again.** The same composition runs on the GitHub Copilot runtime or any
-  Ollama model. Nothing above the single factory-selection switch knows which.
+- **A conversation that outlives the context window.** On `--provider ollama` the conversation runs
+  on an AgentKit `CompactingAgentSession`: when the window fills, older history is consolidated into
+  tiered records, a fresh provider session is seeded with them, and the turn loop carries on. Every
+  turn prints what it occupies, whether it rotated, and whether compacting bought nothing and
+  history had to be dropped. See
+  [Context that outlives the window](#context-that-outlives-the-window).
+- **Provider neutrality, with one honest exception.** The same composition — the same policy, the
+  same packs, the same instructions — runs on the GitHub Copilot runtime or any Ollama model, and
+  nothing above the single factory-selection switch knows which. The exception is the session:
+  AgentKit ships a provider session for any `IChatClient` and none for the Copilot runtime, so the
+  Copilot conversation runs on that runtime's own session and does not compact. The startup banner
+  says which shape a run got.
 
 ## Running it
 
@@ -70,6 +80,105 @@ dotnet run -c Release --project samples/research-assistant -- \
 
 Omitting `--prompt` starts an interactive session that ends on `exit`, `quit`, Ctrl-C, or
 end-of-input. `--help` lists every option with its default.
+
+## Context that outlives the window
+
+This sample's subject is work that spans turns, and a conversation that spans enough turns runs out
+of context. On `--provider ollama` the conversation is therefore carried by an AgentKit
+**compacting session** rather than by a plain message list.
+
+An application states three things and nothing else:
+
+```csharp
+// 1. A provider-session factory carrying the client and the window. AgentKit refuses to guess a
+//    context window, so the application answers for it — here by asking Ollama.
+var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
+
+// 2. A summarizer, which runs OUTSIDE the conversation it compacts, on a client of its own.
+var summarizer = new ChatClientSummarizer(summaryClient);
+
+// 3. The options: what the agent is, what it may call, and how much recent history to keep word
+//    for word. Everything else about compaction is the library's, not a setting.
+var options = new AgentSessionOptions(summarizer, instructions, tools);
+
+await using var session = await CompactingAgentSession.CreateAsync(options, providerSessions);
+
+var turn = await session.SendAsync("Review every document in the corpus.");
+Console.WriteLine(turn.Text);
+```
+
+Each turn hands back four facts, and the sample acts on all four rather than only printing the
+answer:
+
+- **`Usage`** — prints the conversation's occupancy against the window, every turn, so the next
+  rotation is comprehensible rather than sudden.
+- **`RotationOccurred`** — prints the rotation with the running count of summarizer calls beside it,
+  because consolidation is the expensive part of the arrangement.
+- **`Level`** — prints how hard the session is compacting. A level climbing to `High` over several
+  rotations is what a struggling long-running agent looks like.
+- **`MaterialDropped`** — prints a warning. It is the one signal that compacting bought nothing and
+  history was discarded outright.
+
+```text
+  [session] conversation 24180 of 40960 tokens (overhead 0), compaction level Low
+  [session] rotated — older history consolidated. Rotations: 1. Summarizer calls so far: 1.
+```
+
+**The memories are not compacted, and that is the point of having them.** A rotation consolidates
+the *conversation*; the memory store is the application's, lives outside the session entirely, and
+survives every rotation intact. An agent whose window has turned over three times can still answer
+from what it filed on its first turn — which is precisely what `--recall-question` checks.
+
+### Where the window comes from
+
+An `IChatClient` publishes no context window, so AgentKit is told one once, where the provider is
+configured, and answers with it thereafter. This sample reads it from Ollama rather than hard-coding
+a number, and prefers the figure the server will actually enforce:
+
+1. `--context-window <tokens>`, if stated. It settles the question.
+2. The **loaded** model's context length, from the server's list of running models. This is what the
+   server enforces, and it is often smaller than the model's maximum.
+3. The model's **published** context length, from its metadata. A maximum, not a limit in force —
+   the banner says so.
+4. Failing all of that, Ollama's own default of 4096 tokens, announced as an assumption.
+
+The banner prints which of the four a run used, because a session told a window larger than the
+server enforces will not rotate until the provider has already truncated the conversation, and
+nothing downstream can detect that.
+
+### Where the consolidations go
+
+`--summary-model <name>` sends each consolidation to a different Ollama model. Consolidation is
+summarization rather than reasoning, so a smaller model is usually the right choice; without the
+flag the conversation's own model does the work, on a separate client. Either way it runs *outside*
+the session being compacted, because a consolidation sent through the live session would spend the
+very context it exists to reclaim.
+
+### What the sample still writes for itself
+
+One chat-client decorator sits beneath the session — `ToolCallReportingChatClient` — and it is there
+for a reason the library cannot serve:
+
+- **A session turn reports no tool activity.** The session records every call and result into the
+  transcript it later consolidates, and hands none of them back, so the reporting client reads them
+  from the conversation on its way to the provider instead. Watching the agent plan, file, recall and
+  delegate is the sample's whole demonstration, so it is worth the class.
+
+Two other decorators used to sit here and no longer do. The tool-calling loop and the occupancy
+figure are now AgentKit's, not the application's:
+
+- **The tool-calling loop is installed by `ChatClientProviderSessionFactory`.** A session declares
+  its tools to the model on every request, so a bare client emits tool calls that nothing answers.
+  The factory closes that loop itself, rather than leaving a composition that looks right and is
+  silently wrong.
+- **The occupancy figure is the last prompt, not the loop's summed usage.** A turn that calls six
+  tools is six requests, and the response the loop returns reports their input tokens added
+  together. Read as occupancy that made a tool-using agent appear to fill its window on its first
+  turn. The factory now records the size of each real prompt beneath the loop and reports the last
+  one, so the sample no longer writes a recorder and a repairer to undo it.
+
+On `--provider copilot` none of this applies: the runtime holds its own conversation, AgentKit ships
+no provider session for it, and nothing compacts.
 
 ## What the recall turn proves, and what the prompts cannot
 
@@ -371,4 +480,7 @@ where the one-line limit still earns its keep.
 The startup banner names the model when it can. With `--provider ollama` that is always possible.
 With `--provider copilot` and no `--model`, the runtime resolves a model at session time from what
 the signed-in user may use and reports nothing back, so the banner says the model is unknown rather
-than printing a placeholder — **pass `--model` for any run whose behavior you intend to cite.**
+than printing a placeholder — **pass `--model` for any run whose behavior you intend to cite.** The
+banner also names the conversation shape — a compacting session with its window and where that
+window came from, or a provider-managed session that does not compact — because a run that cannot
+compact and a run that simply never needed to look identical from a transcript of answers.

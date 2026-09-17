@@ -15,19 +15,20 @@ using OllamaSharp;
 namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 
 /// <summary>
-///     A built agent paired with the handle that releases whatever runtime resources it owns.
+///     A built conversation plan paired with the handle that releases whatever runtime resources it
+///     owns.
 /// </summary>
-/// <param name="Agent">The constructed agent, ready to create a session and run.</param>
+/// <param name="Conversation">The root conversation plan, ready to start and run.</param>
 /// <param name="Cleanup">The handle that releases the agent's runtime resources; disposed by the host.</param>
-/// <param name="RecallAgent">
-///     An agent carrying the memory family and nothing else, over the same store, or
-///     <see langword="null"/> when no recall question was asked. See
+/// <param name="Recall">
+///     A conversation on an agent carrying the memory family and nothing else, over the same store,
+///     or <see langword="null"/> when no recall question was asked. See
 ///     <see cref="AgentComposition.BuildRecallTools"/> for why it exists.
 /// </param>
 public sealed record AgentSetup(
-    AIAgent Agent,
+    ConversationPlan Conversation,
     IAsyncDisposable Cleanup,
-    AIAgent? RecallAgent = null);
+    ConversationPlan? Recall = null);
 
 /// <summary>
 ///     One provider's ability to build an agent, plus the handle that releases it.
@@ -40,15 +41,28 @@ public sealed record AgentSetup(
 ///     then uses it for both the root agent and every delegated one. Neither the composition below
 ///     nor the <c>agent_run</c> tool ever learns which provider is behind it.
 ///     </para>
+///     <para>
+///     <b>A second delegate answers "can this provider carry an AgentKit session?"</b> It can when
+///     AgentKit ships a provider session for it, which today means any <c>IChatClient</c>. A
+///     provider with none leaves it unset, and the conversation runs on that runtime's own session
+///     instead — which works, and does not compact. The difference is stated here rather than
+///     smoothed over, because a conversation that silently stops compacting is exactly the failure
+///     the session engine exists to prevent.
+///     </para>
 /// </remarks>
 /// <param name="CreateAgent">
 ///     Builds an agent from a tool list, system instructions and a name. Called once for the root
 ///     agent and once per delegated run.
 /// </param>
 /// <param name="Cleanup">The handle releasing the provider's client and transport.</param>
+/// <param name="PlanSession">
+///     Builds the compacting-session plan for a tool list and instructions, or
+///     <see langword="null"/> when AgentKit ships no provider session for this provider.
+/// </param>
 public sealed record ProviderBackend(
     Func<IList<AIFunction>, string, string, AIAgent> CreateAgent,
-    IAsyncDisposable Cleanup);
+    IAsyncDisposable Cleanup,
+    Func<IList<AIFunction>, string, CompactingSessionPlan>? PlanSession = null);
 
 /// <summary>
 ///     Composes the guarded tool set — task list, memories and delegation — and builds the provider
@@ -582,27 +596,40 @@ public static class AgentComposition
     }
 
     /// <summary>
-    ///     Builds the agent for this run, together with the handle releasing everything it owns.
+    ///     Builds the conversation plans for this run, together with the handle releasing
+    ///     everything they own.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     The order matters and is the shape of the whole sample: resolve the provider into a
     ///     single agent-building delegate, express delegation as a runner over that delegate,
-    ///     compose the tools around the runner, then build the root agent with the same delegate
-    ///     every child will be built with. After this method returns, nothing knows which provider
-    ///     was chosen.
+    ///     compose the tools around the runner, then build the root conversation with the same
+    ///     delegate every child will be built with. After this method returns, nothing knows which
+    ///     provider was chosen.
+    ///     </para>
+    ///     <para>
+    ///     <b>The tools and the instructions are stated once and reach both shapes unchanged.</b> A
+    ///     compacting session is seeded with them at creation and again at every rotation, and an
+    ///     agent is built with them; the same list serves either, which is what lets the provider
+    ///     choice stop mattering here.
     ///     </para>
     /// </remarks>
     /// <param name="options">The validated command-line options selecting provider, model and backend.</param>
     /// <param name="corpusRoot">The absolute corpus path: the anchor, granted read-only.</param>
     /// <param name="notesRoot">The absolute notes path, granted read-write.</param>
+    /// <param name="transcript">
+    ///     The machine-readable tool-call record, or <see langword="null"/> for none. Supplied here
+    ///     because a compacting session reveals tool activity only to the chat client beneath it,
+    ///     which is built in this method.
+    /// </param>
     /// <param name="cancellationToken">Cancels a slow provider start.</param>
-    /// <returns>The agent and its cleanup handle.</returns>
+    /// <returns>The conversation plans and their cleanup handle.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
     public static async Task<AgentSetup> CreateAgentAsync(
         CommandLineOptions options,
         string corpusRoot,
         string notesRoot,
+        TextWriter? transcript,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -612,7 +639,7 @@ public static class AgentComposition
         ProviderBackend backend;
         try
         {
-            backend = await CreateBackendAsync(options, corpusRoot, cancellationToken);
+            backend = await CreateBackendAsync(options, corpusRoot, transcript, cancellationToken);
         }
         catch
         {
@@ -645,16 +672,19 @@ public static class AgentComposition
             RunChildAsync);
 
         var instructions = BuildInstructions(corpusRoot, notesRoot, options.DelegationEnabled);
-        var agent = backend.CreateAgent(tools, instructions, AgentName);
+        var conversation = PlanConversation(backend, tools, instructions, AgentName);
 
-        // The recall agent is built only when one was asked for, from the same store and the same
-        // provider, carrying the memory family and nothing else. See BuildRecallTools.
-        var recallAgent = options.RecallQuestion is null
-            ? null
-            : backend.CreateAgent(
+        // The recall conversation is built only when one was asked for, from the same store and the
+        // same provider, carrying the memory family and nothing else. See BuildRecallTools.
+        ConversationPlan? recall = null;
+        if (options.RecallQuestion is not null)
+        {
+            recall = PlanConversation(
+                backend,
                 BuildRecallTools(corpusRoot, embeddings, memoryStore),
                 BuildRecallInstructions(),
                 RecallAgentName);
+        }
 
         // One handle releases everything, in reverse order of acquisition, so the host disposes a
         // single thing and never learns what was behind it.
@@ -664,26 +694,51 @@ public static class AgentComposition
             await embeddingCleanup.DisposeAsync();
         });
 
-        return new AgentSetup(agent, cleanup, recallAgent);
+        return new AgentSetup(conversation, cleanup, recall);
     }
+
+    /// <summary>
+    ///     Builds one conversation plan: the agent, and the compacting session when the provider
+    ///     supports one.
+    /// </summary>
+    /// <remarks>
+    ///     The agent is built either way. On a provider that carries an AgentKit session it is the
+    ///     thing a delegated child is started from rather than the thing the root conversation runs
+    ///     on, and building it costs nothing.
+    /// </remarks>
+    /// <param name="backend">The resolved provider backend.</param>
+    /// <param name="tools">The tools this conversation offers.</param>
+    /// <param name="instructions">The system instructions this conversation is seeded with.</param>
+    /// <param name="name">The agent name carried into transcripts and provider-side logging.</param>
+    /// <returns>The conversation plan.</returns>
+    private static ConversationPlan PlanConversation(
+        ProviderBackend backend,
+        IList<AIFunction> tools,
+        string instructions,
+        string name) =>
+        new(
+            backend.CreateAgent(tools, instructions, name),
+            backend.PlanSession?.Invoke(tools, instructions));
 
     /// <summary>
     ///     Resolves the provider into one agent-building delegate — the single provider switch.
     /// </summary>
     /// <param name="options">The options selecting the provider, model and credentials.</param>
     /// <param name="corpusRoot">The corpus, set as the Copilot runtime's working directory.</param>
+    /// <param name="transcript">The tool-call record the session path reports into, or <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
     /// <returns>The backend's agent factory and cleanup handle.</returns>
     /// <exception cref="CommandLineException">The options name an unsupported provider.</exception>
     private static async Task<ProviderBackend> CreateBackendAsync(
         CommandLineOptions options,
         string corpusRoot,
+        TextWriter? transcript,
         CancellationToken cancellationToken)
     {
         return options.Provider switch
         {
             AgentProvider.Copilot => await CreateCopilotBackendAsync(options, corpusRoot, cancellationToken),
-            AgentProvider.Ollama => CreateOllamaBackend(options),
+            AgentProvider.Ollama => await CreateOllamaBackendAsync(options, transcript, cancellationToken),
             _ => throw new CommandLineException($"Unsupported provider '{options.Provider}'."),
         };
     }
@@ -743,15 +798,52 @@ public static class AgentComposition
     }
 
     /// <summary>
-    ///     Builds the Ollama backend, reached over HTTP.
+    ///     Builds the Ollama backend, reached over HTTP, and the compacting session that runs on it.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     A generous timeout is set because a cold model's first request can be slow, and a
     ///     premature timeout would masquerade as a tool or model failure.
+    ///     </para>
+    ///     <para>
+    ///     <b>This is where an application states the three things a compacting session needs.</b>
+    ///     A provider-session factory carrying the client and the window, a summarizer that runs
+    ///     outside the conversation, and — supplied later, with the tools — the options. Nothing
+    ///     else about compaction is configured anywhere: the tiers, the slot counts, the rotation
+    ///     threshold and the escalation rules are the library's, not settings.
+    ///     </para>
+    ///     <para>
+    ///     <b>The window is read from the provider rather than chosen.</b> An <c>IChatClient</c>
+    ///     publishes no context window and AgentKit refuses to guess one, so the application must
+    ///     answer — and Ollama can be asked. See <see cref="OllamaContextWindow"/> for which of the
+    ///     two figures it reports is the one the server actually enforces.
+    ///     </para>
+    ///     <para>
+    ///     <b>The consolidation model is separate from the conversation model, deliberately.</b>
+    ///     <c>ChatClientSummarizer</c> documents why: a consolidation sent through the live session
+    ///     would spend the very context it exists to reclaim, and summarization is a cheaper job
+    ///     than reasoning. <c>--summary-model</c> is the flag that makes that choice; without it the
+    ///     conversation's own model does the work, on a client of its own.
+    ///     </para>
+    ///     <para>
+    ///     <b>The client handed to the session factory is the one that talks to Ollama.</b> AgentKit
+    ///     builds the pipeline: a prompt-size recorder directly around that client, and the
+    ///     tool-calling loop above it. The application used to have to write both of those
+    ///     placements itself — a recorder beneath the loop and a repairer above it — because the
+    ///     loop reports usage summed across its requests and a session reading that figure
+    ///     mis-measures every tool-using agent. It no longer does. What remains here is a
+    ///     <see cref="ToolCallReportingChatClient"/>, which exists only because a session turn
+    ///     reports no tool activity and the sample's whole demonstration is watching it.
+    ///     </para>
     /// </remarks>
-    /// <param name="options">The options carrying the Ollama host and model.</param>
-    /// <returns>The Ollama agent factory and a handle disposing the HTTP and API clients.</returns>
-    private static ProviderBackend CreateOllamaBackend(CommandLineOptions options)
+    /// <param name="options">The options carrying the Ollama host, models and any stated window.</param>
+    /// <param name="transcript">The tool-call record the session reports into, or <see langword="null"/>.</param>
+    /// <param name="cancellationToken">Cancels the window queries.</param>
+    /// <returns>The Ollama agent factory, session planner, and a handle disposing what they own.</returns>
+    private static async Task<ProviderBackend> CreateOllamaBackendAsync(
+        CommandLineOptions options,
+        TextWriter? transcript,
+        CancellationToken cancellationToken)
     {
         var http = new HttpClient
         {
@@ -761,19 +853,64 @@ public static class AgentComposition
 
         // Ollama needs a concrete model name on the wire, so an unstated --model resolves to the
         // sample's own default here rather than being pre-filled on the options.
-        var ollama = new OllamaApiClient(http, options.Model ?? CommandLineOptions.DefaultOllamaModel);
-        IChatClient chatClient = ollama;
+        var model = options.Model ?? CommandLineOptions.DefaultOllamaModel;
+        var ollama = new OllamaApiClient(http, model);
+
+        // The consolidation client is a second client over the same transport, so the summarizer
+        // can run on a different model without a second connection or a second timeout policy.
+        var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
+
+        // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
+        // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a
+        // session turn does not do for itself.
+        var sessionClient = new ToolCallReportingChatClient(
+            ollama,
+            call =>
+            {
+                ToolTrace.PrintCall(call);
+                ToolTrace.Record(transcript, call);
+            },
+            (result, call) => ToolTrace.PrintResult(result, call, MemoryPack.FamilyPrefix));
 
         var cleanup = new AsyncDisposableAction(() =>
         {
-            ollama.Dispose();
+            // Disposing the reporting client releases the Ollama client beneath it; the transport
+            // is the sample's and is released last.
+            sessionClient.Dispose();
+            summaryClient.Dispose();
             http.Dispose();
             return ValueTask.CompletedTask;
         });
 
+        // Built before the first awaited call, so a failure reaching Ollama - the host being down
+        // is the ordinary case, not an exotic one - releases the transports through the same handle
+        // the caller would have used. Disposing a second list assembled in a catch block would be
+        // the list that drifts.
+        ContextWindow window;
+        try
+        {
+            window = await OllamaContextWindow.ReadAsync(
+                ollama,
+                model,
+                options.ContextWindow,
+                cancellationToken);
+        }
+        catch
+        {
+            await cleanup.DisposeAsync();
+            throw;
+        }
+
+        var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
+        var summarizer = new ChatClientSummarizer(summaryClient);
+
         return new ProviderBackend(
-            (tools, instructions, name) => ChatClientAgentFactory.Create(chatClient, tools, instructions, name: name),
-            cleanup);
+            (tools, instructions, name) => ChatClientAgentFactory.Create(ollama, tools, instructions, name: name),
+            cleanup,
+            (tools, instructions) => new CompactingSessionPlan(
+                new AgentSessionOptions(summarizer, instructions, [.. tools]),
+                providerSessions,
+                window));
     }
 
     /// <summary>

@@ -1,0 +1,66 @@
+---
+# Software Unit Requirements for ChatClientSummarizer
+#
+# These requirements describe the design-level behavior of the ChatClientSummarizer unit.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: ChatClientSummarizer Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-ChatClientSummarizer-SendsTheConsolidationPrompt
+            title: >-
+              The summarizer shall send the composed consolidation prompt as a single user message
+              through the client it was given, and shall return what comes back as the consolidated
+              record.
+            justification: |
+              Compaction cannot happen without a summarizer, so requiring every application to write
+              one left the promise with a hole in it: the part of compaction that decides what
+              survives was the part nobody was given. This is that part, and it uses the consolidation
+              prompt this library publishes rather than a prompt of its own, so the record a rotation
+              produces is the one the library's own levels asked for. An application remains free to
+              write its own implementation - the contract is one method - but it should not have to.
+            tests:
+              - ChatClientSummarizer_Consolidate_SendsTheComposedConsolidationPrompt
+              - ChatClientSummarizer_Consolidate_ReturnsTheRecordTheModelProduced
+
+          - id: AgentKitAgentsChatClient-ChatClientSummarizer-CarriesNoToolsOrHistory
+            title: >-
+              The summarizer shall offer no tools and carry no history between consolidations.
+            justification: |
+              A consolidation is a pure function from the material to a record of it, which is what
+              lets a rotation be replayed and reasoned about. Offering tools would let the step act
+              rather than summarize, and carrying history would make each record depend on what the
+              same summarizer had been asked before - so the same material would consolidate
+              differently depending on which sessions had shared the summarizer, and a record could
+              come to contain material the rotation never handed over.
+            tests:
+              - ChatClientSummarizer_Consolidate_OffersNoTools
+              - ChatClientSummarizer_Consolidate_SecondCall_CarriesNoHistoryFromTheFirst
+
+          - id: AgentKitAgentsChatClient-ChatClientSummarizer-EmptyAnswerIsAnEmptyRecord
+            title: >-
+              The summarizer shall return an empty answer as an empty record rather than raise it as
+              a failure.
+            justification: |
+              The session engine treats a consolidation it could not obtain as material to keep rather
+              than material to lose, so a model that declines to answer costs the rotation its saving
+              and nothing else. A model declining is a thing that happens rather than a defect to
+              escalate, and turning it into an exception would fail the turn the application asked for
+              over a step the engine has already made safe.
+            tests:
+              - ChatClientSummarizer_Consolidate_EmptyAnswer_ReturnsEmpty
+
+          - id: AgentKitAgentsChatClient-ChatClientSummarizer-RejectsInvalidArguments
+            title: >-
+              The summarizer shall reject a missing client and a missing request, and shall send
+              nothing for a canceled consolidation.
+            justification: |
+              A summarizer with no client to send through, or a consolidation with no request, is a
+              defect in the composing application, refused where it was written. A canceled
+              consolidation sends nothing, so cancellation costs no call to what is usually a
+              separate, separately billed model.
+            tests:
+              - ChatClientSummarizer_Constructor_NullClient_Throws
+              - ChatClientSummarizer_Consolidate_NullRequest_Throws
+              - ChatClientSummarizer_Consolidate_Canceled_ThrowsAndSendsNothing

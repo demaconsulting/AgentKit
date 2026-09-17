@@ -4,7 +4,6 @@
     <Project Path="src/DemaConsulting.AgentKit.Tools/DemaConsulting.AgentKit.Tools.csproj" />
     <Project Path="src/DemaConsulting.AgentKit.Agents.ChatClient/DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
     <Project Path="src/DemaConsulting.AgentKit.Agents.Copilot/DemaConsulting.AgentKit.Agents.Copilot.csproj" />
-    <Project Path="src/DemaConsulting.AgentKit.Sessions/DemaConsulting.AgentKit.Sessions.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/document-assistant/DemaConsulting.AgentKit.Samples.DocumentAssistant.csproj" />
@@ -16,7 +15,6 @@
     <Project Path="test/DemaConsulting.AgentKit.Tools.Tests/DemaConsulting.AgentKit.Tools.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/DemaConsulting.AgentKit.Agents.ChatClient.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Agents.Copilot.Tests/DemaConsulting.AgentKit.Agents.Copilot.Tests.csproj" />
-    <Project Path="test/DemaConsulting.AgentKit.Sessions.Tests/DemaConsulting.AgentKit.Sessions.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests/DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Samples.CustomTools.Tests/DemaConsulting.AgentKit.Samples.CustomTools.Tests.csproj" />
     <Project Path="test/DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests/DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests.csproj" />

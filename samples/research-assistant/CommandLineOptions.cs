@@ -168,6 +168,40 @@ public sealed class CommandLineOptions
     public string EmbeddingModel { get; init; } = DefaultOllamaEmbeddingModel;
 
     /// <summary>
+    ///     Gets the model each context consolidation is sent to, or <see langword="null"/> to use
+    ///     the conversation's own model. Set by <c>--summary-model</c>; Ollama only.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Named separately because consolidation is summarization rather than reasoning, and a
+    ///     smaller model is usually the right choice for it — the same reason the embedding model is
+    ///     named separately from the chat model. It is also a different <em>conversation</em>: a
+    ///     consolidation runs outside the session being compacted, so sending it to another model
+    ///     changes nothing the agent can observe.
+    ///     </para>
+    ///     <para>
+    ///     Unused on the Copilot runtime, which carries its own session and never reaches the
+    ///     compaction engine.
+    ///     </para>
+    /// </remarks>
+    public string? SummaryModel { get; init; }
+
+    /// <summary>
+    ///     Gets the context window the compacting session accounts against, or
+    ///     <see langword="null"/> to read it from the provider. Set by <c>--context-window</c>.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     An <c>IChatClient</c> publishes no context window, so AgentKit is told one once, where
+    ///     the provider is configured, and answers with it thereafter. The sample reads it from
+    ///     Ollama rather than asking for it — see <see cref="OllamaContextWindow"/> — and this flag
+    ///     exists for the case the reading gets wrong: a server that has loaded the model with a
+    ///     context length smaller than the model publishes, which nothing else reveals.
+    ///     </para>
+    /// </remarks>
+    public int? ContextWindow { get; init; }
+
+    /// <summary>
     ///     Gets the GitHub token to authenticate the Copilot runtime with, or
     ///     <see langword="null"/> to use whatever the machine is already logged in as.
     /// </summary>
@@ -258,8 +292,8 @@ public sealed class CommandLineOptions
     /// <exception cref="ArgumentNullException"><paramref name="args"/> is <see langword="null"/>.</exception>
     /// <exception cref="CommandLineException">
     ///     An argument is unknown, a flag is missing its value, <c>--provider</c> or
-    ///     <c>--embeddings</c> names something unrecognized, or the required <c>--corpus</c> is
-    ///     absent.
+    ///     <c>--embeddings</c> names something unrecognized, <c>--context-window</c> is not a
+    ///     positive number, or the required <c>--corpus</c> is absent.
     /// </exception>
     public static CommandLineOptions Parse(string[] args)
     {
@@ -278,6 +312,8 @@ public sealed class CommandLineOptions
         var host = DefaultOllamaHost;
         string? model = null;
         var embeddingModel = DefaultOllamaEmbeddingModel;
+        string? summaryModel = null;
+        int? contextWindow = null;
         string? githubToken = null;
         string? transcript = null;
         string? recallQuestion = null;
@@ -315,6 +351,14 @@ public sealed class CommandLineOptions
 
                 case "--embedding-model":
                     embeddingModel = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--summary-model":
+                    summaryModel = TakeValue(args, ref index, arg);
+                    break;
+
+                case "--context-window":
+                    contextWindow = ParseContextWindow(TakeValue(args, ref index, arg));
                     break;
 
                 case "--github-token":
@@ -360,6 +404,8 @@ public sealed class CommandLineOptions
             Host = host,
             Model = model,
             EmbeddingModel = embeddingModel,
+            SummaryModel = summaryModel,
+            ContextWindow = contextWindow,
             GitHubToken = githubToken,
             Transcript = transcript,
             Prompts = prompts,
@@ -486,6 +532,29 @@ public sealed class CommandLineOptions
     };
 
     /// <summary>
+    ///     Parses a stated context window, rejecting anything a session could not be accounted
+    ///     against.
+    /// </summary>
+    /// <remarks>
+    ///     A window that is not a positive number is refused here rather than carried to the
+    ///     provider-session factory, which would reject it with a message about an argument the
+    ///     user never wrote.
+    /// </remarks>
+    /// <param name="value">The token following <c>--context-window</c>.</param>
+    /// <returns>The window in tokens.</returns>
+    /// <exception cref="CommandLineException"><paramref name="value"/> is not a positive integer.</exception>
+    private static int ParseContextWindow(string value)
+    {
+        if (!int.TryParse(value, out var tokens) || tokens <= 0)
+        {
+            throw new CommandLineException(
+                $"The --context-window value '{value}' is not a positive number of tokens.");
+        }
+
+        return tokens;
+    }
+
+    /// <summary>
     ///     Builds the help text describing every flag, its default, and the things worth trying.
     /// </summary>
     /// <returns>The multi-line help text.</returns>
@@ -498,6 +567,13 @@ public sealed class CommandLineOptions
          single document to a child agent the application registered, and writes its conclusions
          into a separate notes folder. It composes the todo, memory and agent tool families onto one
          policy — the three families that make an agent capable of work that spans turns.
+
+         On --provider ollama the conversation runs on an AgentKit compacting session, so it
+         outlives the model's context window: when the window fills, older history is consolidated
+         into tiered records, a fresh provider session is seeded with them, and the turn loop
+         carries on. Each turn reports its occupancy, whether it rotated, and whether compacting
+         bought nothing and history had to be dropped. On --provider copilot the runtime carries its
+         own session and none of that happens, because AgentKit ships no provider session for it.
 
          The memory family needs an embedding backend, and choosing one is the application's job,
          not AgentKit's. This sample offers an offline generator of its own (no server, no model
@@ -522,6 +598,14 @@ public sealed class CommandLineOptions
                                      behavior you intend to cite.
            --embedding-model <name>  Ollama embedding model (default: {DefaultOllamaEmbeddingModel};
                                      --embeddings ollama only).
+           --summary-model <name>    Ollama model each context consolidation is sent to (default:
+                                     the conversation's own model). Consolidation is summarization
+                                     rather than reasoning, so a smaller model is usually right.
+           --context-window <tokens> Context window the compacting session accounts against
+                                     (default: read from Ollama — the loaded model's length where
+                                     one is loaded, else the model's published maximum). State it
+                                     when the server loaded the model with a smaller length than
+                                     the model publishes, which nothing else reveals.
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
                                      GITHUB_TOKEN environment variable, else the logged-in user).
            --transcript <path>       Append a machine-readable record of every tool call to a file.

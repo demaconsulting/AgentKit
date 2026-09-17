@@ -42,6 +42,28 @@ constituent software items, specifically:
   capability-gated family, and the host capabilities a pack may require
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
+- **AgentSession (Unit)** — The session contract an application programs against, and what one turn
+  reports back about the answer, the usage, the rotation, the compaction level, and any dropped
+  material
+- **AgentSessionOptions (Unit)** — What an application configures about one session, including the
+  maximum number of most-recent turns kept verbatim
+- **ContextUsage (Unit)** — The one usage shape every provider session answers with: how full the
+  context is, out of how much
+- **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, grouped into
+  whole turns so a tool call is never separated from its result
+- **ContextLayout (Unit)** — The whole context as the session engine accounts for it: the verbatim
+  tail, the rings of consolidated slots, and the coarsest-first seed
+- **RotationEngine (Unit)** — The deterministic aging function: consolidate older turns into a
+  tier-one slot, cascade a full tier into the next, and report the consolidations and any material a
+  failed consolidation left unrecorded
+- **Summarizer (Unit)** — The injected out-of-session consolidation contract, the request that
+  carries the consolidation instruction, and the documented default prompt
+- **ProviderSession (Unit)** — The whole interface between the compaction engine and a provider
+  adapter: the seed, the turn, the session that answers for its own window, and the factory
+- **InMemoryProviderSession (Unit)** — A provider session that contacts nothing, so the engine can
+  be exercised end to end without a live model
+- **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
+  rotations and provider-session disposal
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -82,36 +104,6 @@ constituent software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
-- **AgentKitSessions (System)** — The provider-agnostic agent session engine: an AgentKit-owned
-  conversation that keeps its own transcript out of session and compacts a full context by
-  rotating into a fresh provider session seeded with tiered, consolidated history
-- **AgentSession (Unit)** — The session contract an application programs against, and what one turn
-  reports back about the answer, the usage, the rotation, the compaction level, and any dropped
-  material
-- **AgentSessionOptions (Unit)** — What an application configures about one session, and the fixed
-  overhead measured from it
-- **CompactionPolicy (Unit)** — The one setting an application controls: the maximum number of
-  most-recent turns kept verbatim
-- **ContextUsage (Unit)** — The one usage shape every provider session answers with: how full the
-  context is, out of how much, and whether the adapter measured that or estimated it
-- **TokenEstimator (Unit)** — The deterministic character-ratio arithmetic every figure no provider
-  reported rests on
-- **SessionTranscript (Unit)** — The append-only verbatim history kept out of session, grouped into
-  whole turns so a tool call is never separated from its result
-- **ContextLayout (Unit)** — The whole context as this system accounts for it: the verbatim tail, the
-  rings of consolidated slots, and the coarsest-first seed
-- **RotationEngine (Unit)** — The deterministic aging function: consolidate older turns into a
-  tier-one slot, cascade a full tier into the next, and report the level, the consolidations and any
-  material a failed consolidation left unrecorded
-- **Summarizer (Unit)** — The injected out-of-session consolidation contract, the request that
-  carries the consolidation instruction, and the documented default prompt
-- **ProviderSession (Unit)** — The whole interface between the compaction engine and a provider
-  adapter: the seed, the turn, the session that answers for its own window, and the factory
-- **InMemoryProviderSession (Unit)** — A provider session that contacts nothing, so the engine can
-  be exercised end to end without a live model
-- **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
-  rotations and provider-session disposal
-
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool

@@ -71,21 +71,29 @@ try
         : new StreamWriter(options.Transcript, append: false);
 
     // Build the agent (the one provider-specific step) and always release its runtime resources.
+    // The transcript writer is handed in because a compacting session reveals its tool activity
+    // only to the chat client beneath it, which the composition builds.
     var setup = await AgentComposition.CreateAgentAsync(
         options,
         corpusRoot,
         notesRoot,
+        transcript,
         cancellation.Token);
     await using (setup.Cleanup)
     {
-        await ChatLoop.RunAsync(setup.Agent, options, transcript, cancellation.Token);
+        // Printed here rather than in the banner above, because which conversation shape this run
+        // gets — and, for a compacting one, the window it is accounted against — is only known once
+        // the provider has been asked.
+        Console.WriteLine($"Session:    {setup.Conversation.Describe()}");
+
+        await ChatLoop.RunAsync(setup, options, transcript, cancellation.Token);
 
         // The recall turn runs last, because it can only demonstrate anything once the earlier
         // turns have filled the store it shares.
-        if (setup.RecallAgent is not null && options.RecallQuestion is not null)
+        if (setup.Recall is not null && options.RecallQuestion is not null)
         {
             await ChatLoop.RunRecallAsync(
-                setup.RecallAgent,
+                setup.Recall,
                 options.RecallQuestion,
                 transcript,
                 cancellation.Token);

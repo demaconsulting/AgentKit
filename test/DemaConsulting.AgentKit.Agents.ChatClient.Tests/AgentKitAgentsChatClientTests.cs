@@ -95,6 +95,83 @@ public class AgentKitAgentsChatClientTests
     }
 
     /// <summary>
+    ///     Proves the package carries a Core session over an ordinary chat client: the session
+    ///     answers, and the occupancy it reports is the provider's own count taken against the window
+    ///     the application stated where it configured its provider.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_Session_AnswersAndReportsTheProvidersOccupancy()
+    {
+        // Arrange: a chat client answering with a count no estimate would arrive at, and a session
+        // over it through the adapter this package ships
+        var provider = RecordingChatClient.Answering("the answer", inputTokens: 321);
+        var factory = new ChatClientProviderSessionFactory(provider, windowTokens: 8000);
+        var options = new AgentSessionOptions(
+            new ChatClientSummarizer(RecordingChatClient.Answering("record", inputTokens: 10)),
+            instructions: "be brief");
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: take one turn
+        var response = await session.SendAsync("what changed?", TestContext.Current.CancellationToken);
+
+        // Assert: the answer came back, and the session's account of the window is the provider's
+        // figure against the stated window rather than anything this library computed
+        Assert.Equal("the answer", response.Text);
+        Assert.Equal(321, session.Usage.ConversationTokens);
+        Assert.Equal(8000, session.Usage.WindowTokens);
+    }
+
+    /// <summary>
+    ///     Proves the whole arrangement holds together over a chat client: the provider's own usage
+    ///     drives the rotation, the consolidation goes out through a separate client, the record it
+    ///     produces seeds the replacement session, and that replacement reports occupying nothing
+    ///     until it has sent something.
+    /// </summary>
+    /// <remarks>
+    ///     This is the scenario the session adapter exists for, and it is asserted end to end rather
+    ///     than assumed from the unit behaviors: a chat client reporting a full window is the only
+    ///     thing driving it, and the marker the summarizing client returns is found in the
+    ///     conversation the provider is later sent.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement()
+    {
+        // Arrange: a provider reporting a conversation well past the rotation threshold of its
+        // window on every turn, and a separate client performing the consolidations
+        var provider = RecordingChatClient.Answering("the answer", inputTokens: 800);
+        var summarizing = RecordingChatClient.Answering("CONSOLIDATED-RECORD", inputTokens: 40);
+        var factory = new ChatClientProviderSessionFactory(provider, windowTokens: 1000);
+        var options = new AgentSessionOptions(
+            new ChatClientSummarizer(summarizing),
+            instructions: "be brief",
+            verbatimTurns: 2);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: hold a short conversation, every turn of which finds the window filling
+        AgentSessionResponse? last = null;
+        for (var turn = 0; turn < 4; turn++)
+        {
+            last = await session.SendAsync($"question {turn}", TestContext.Current.CancellationToken);
+        }
+
+        // Assert: the session rotated on what the provider reported, the consolidation went through
+        // the summarizing client, the record it produced reached the provider as seeded history, and
+        // the replacement reports occupying nothing because it has not been sent anything yet
+        Assert.NotNull(last);
+        Assert.True(last.RotationOccurred, "A provider reporting a filling window must provoke a rotation.");
+        Assert.True(session.RotationCount > 0);
+        Assert.NotEmpty(summarizing.Requests);
+        Assert.Contains(
+            provider.Requests,
+            request => request.Messages.Any(
+                message => message.Text.Contains("CONSOLIDATED-RECORD", StringComparison.Ordinal)));
+        Assert.Equal(0, session.Usage.UsedTokens);
+        Assert.Equal(1000, session.Usage.WindowTokens);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name, for exercising the factory.
     /// </summary>
     /// <param name="name">The tool name.</param>

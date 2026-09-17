@@ -1,0 +1,58 @@
+---
+# Software Unit Requirements for Summarizer
+#
+# These requirements describe the design-level behavior of the Summarizer unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: Summarizer Requirements
+        requirements:
+          - id: AgentKitCore-Summarizer-InjectedContract
+            title: >-
+              The unit shall define an injected, stateless consolidation contract that receives the
+              material to consolidate, an aggressiveness clause and the target tier, and never a length.
+            justification: |
+              The summarizer is injected so the rotation engine can be tested without a model: a test
+              supplies a deterministic fake, production supplies a model-backed implementation, and
+              nothing in the engine knows which it has. The request carries a plain-language instruction
+              telling the summarizer how tersely to consolidate rather than a token count, because a
+              model cannot be asked to hit an output size.
+            tests:
+              - ConsolidationRequest_Construct_CarriesTierMaterialAndInstruction
+
+          - id: AgentKitCore-Summarizer-ConsolidationPrompt
+            title: >-
+              The unit shall publish a consolidation prompt that treats the material as peers, licenses
+              collapsing repetition, names the specific categories that must survive, and appends the
+              per-level aggressiveness clause.
+            justification: |
+              Under batch-then-clear consolidation the pieces of material are peers, so there is no
+              previous record being folded into and the prompt drops that framing. It explicitly
+              licenses collapsing repetition, because deduplication is what makes a consolidation buy
+              room, while keeping its strength: preserving specific named facts, decisions, errors and
+              outstanding work. Each compaction level selects its own aggressiveness clause, and the
+              clause is never a number handed to the model.
+
+              It is published rather than kept inside the package because the prompt is the mechanism
+              this library guarantees, not a setting the application governs. A summarizer is supplied
+              by the application, so hiding the prompt would leave every author to reinvent the one
+              part of compaction that decides what survives - and to reinvent it without the evidence
+              that shaped it. An author remains free to write their own; they should not be forced to.
+            tests:
+              - ConsolidationPrompt_Compose_HasNoPreviousRecordSection
+              - ConsolidationPrompt_Instruction_LicensesCollapsingRepetition
+              - ConsolidationPrompt_InstructionFor_SelectsPerLevelClause
+
+          - id: AgentKitCore-Summarizer-RejectsMalformedRequest
+            title: >-
+              The unit shall reject a tier index below one, blank material, a blank instruction, and a
+              null request to compose.
+            justification: |
+              The verbatim tail is tier zero and is never consolidated into, so a result belongs to tier
+              one or greater. There is nothing to consolidate without material and no aggressiveness
+              without an instruction, so a blank of either is refused before a request exists.
+            tests:
+              - ConsolidationRequest_Construct_TierBelowOne_Throws
+              - ConsolidationRequest_Construct_Blank_Throws
+              - ConsolidationPrompt_Compose_Null_Throws

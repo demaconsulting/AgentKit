@@ -1,0 +1,62 @@
+---
+# Software Unit Requirements for PromptSizeRecordingChatClient
+#
+# These requirements describe the design-level behavior of the PromptSizeRecordingChatClient unit.
+
+sections:
+  - title: AgentKitAgentsChatClient Requirements
+    sections:
+      - title: PromptSizeRecordingChatClient Requirements
+        requirements:
+          - id: AgentKitAgentsChatClient-PromptSizeRecordingChatClient-RecordsEachRequestsPrompt
+            title: >-
+              The unit shall record the prompt size each individual request reported and keep the
+              most recent one, so a turn made of several requests is read as the last prompt rather
+              than as their sum.
+            justification: |
+              A turn is not one request. When the model calls tools, the function-invoking layer
+              above this unit answers them and asks again, as many times as the model keeps calling
+              tools, and the response it finally returns carries usage aggregated across every
+              request it made. Read as occupancy that figure is wrong in the direction that does
+              harm: a tool-using agent - which is every agent this library exists for - would
+              conclude its window was full on its first turn, rotate on every turn after it, compact
+              harder each time, and eventually discard history to reclaim room it never occupied.
+              What a session actually needs is how much of the window the conversation occupies, and
+              that is the prompt of the last request the turn made: by then the tool calls and their
+              results are part of the conversation being sent. Sitting beneath the function-invoking
+              layer is what makes each request visible separately.
+            tests:
+              - PromptSizeRecordingChatClient_GetResponse_SeveralRequests_KeepsTheMostRecentPrompt
+              - PromptSizeRecordingChatClient_GetResponse_BeneathToolInvocation_KeepsTheLastPromptWhileTheTurnReportsTheSum
+
+          - id: AgentKitAgentsChatClient-PromptSizeRecordingChatClient-ReportsNothingUntilOneIsReported
+            title: >-
+              The unit shall report no figure until a request has reported one, and shall leave the
+              figure it holds standing when a later request reports none.
+            justification: |
+              Reporting no figure is not the same as reporting nothing occupied, and only the first
+              is true before a request has been made; a session reads the difference to tell a
+              conversation that has not started from one that occupies none of the window. A later
+              request reporting no usage leaves the last figure that was true in place rather than
+              clearing it, because a tool-calling turn makes several requests and a provider need
+              not report usage on every one of them - clearing it there would make a session that
+              had been told the truth refuse the turn that followed. A provider that reports usage
+              on no request at all still leaves nothing recorded, which is the condition the session
+              refuses rather than estimates around.
+            tests:
+              - PromptSizeRecordingChatClient_LastPromptTokens_BeforeAnyRequest_IsNull
+              - PromptSizeRecordingChatClient_GetResponse_RequestReportingNoUsage_KeepsThePreviousReading
+
+          - id: AgentKitAgentsChatClient-PromptSizeRecordingChatClient-RecordsStreamedUsage
+            title: >-
+              The unit shall take the prompt size from the usage a streamed answer carries, and
+              shall pass every update through unchanged.
+            justification: |
+              A streaming provider reports usage as one more update in the sequence rather than on a
+              response, so a decorator that read only responses would record nothing for a streamed
+              answer and leave a session unable to tell when its window was filling. Passing the
+              updates through untouched is the other half of the same obligation: this unit observes
+              a conversation rather than participating in it, and one that consumed what it read
+              would leave its caller with an answer missing its content.
+            tests:
+              - PromptSizeRecordingChatClient_GetStreamingResponse_RecordsTheStreamedUsageAndPassesUpdatesThrough

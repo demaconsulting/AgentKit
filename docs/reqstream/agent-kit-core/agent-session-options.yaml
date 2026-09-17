@@ -1,0 +1,63 @@
+---
+# Software Unit Requirements for AgentSessionOptions
+#
+# These requirements describe the design-level behavior of the AgentSessionOptions unit.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: AgentSessionOptions Requirements
+        requirements:
+          - id: AgentKitCore-AgentSessionOptions-CarriesConfiguration
+            title: >-
+              The options shall carry what an application configured - the summarizer, the
+              instructions, the tools and the verbatim tail length - and shall require only the
+              summarizer, defaulting the rest.
+            justification: |
+              The options are the one place an application states what its session is. Only the
+              summarizer is required, because compaction cannot happen without one and defaulting it
+              would give a session that silently never compacts; everything else defaults. The
+              provider's context window is deliberately not among them: it is a fact about the
+              provider, so it belongs where the provider is constructed, and a second copy here gave
+              one fact two sources and the session a rule for deciding which to believe.
+            tests:
+              - AgentSessionOptions_Construct_CarriesConfiguration
+              - AgentSessionOptions_Construct_Defaults
+
+          - id: AgentKitCore-AgentSessionOptions-VerbatimTurns
+            title: >-
+              The options shall carry the one compaction control an application configures, the
+              maximum number of most-recent turns kept verbatim, as a positive count, and shall
+              publish the default an application receives when it configures none.
+            justification: |
+              Compaction is configured in counts, not tokens. The round-robin structure keeps a fixed
+              number of recent turns verbatim and, behind them, a fixed number of tiers each holding a
+              fixed number of consolidated slots. The counts that give the structure its shape are
+              internal constants, because an application has no basis for choosing them and no symptom
+              telling it a choice was wrong. The only number an author can reason about is how much
+              recent history to keep untouched, so that is the one control the options carry. The
+              published default of twenty recent turns is a maximum rather than a quota - a session
+              under pressure keeps fewer - and is a starting point suited to an ordinary
+              conversational agent; publishing it lets an author establish that no host configuration
+              was applied.
+            tests:
+              - AgentSessionOptions_Construct_Defaults
+              - AgentSessionOptions_Construct_CarriesConfiguration
+
+          - id: AgentKitCore-AgentSessionOptions-RejectsMalformedConfiguration
+            title: >-
+              The options shall reject a null summarizer, a null tool declaration, and a verbatim tail
+              length that is not positive.
+            justification: |
+              Each is a defect in the host's configuration code, surfaced where the application wrote
+              it. A null summarizer would give a session that never compacts, and a null declaration
+              cannot be carried. A tail of zero turns would keep no recent history verbatim and would
+              rotate everything the moment it arrived, which is not a session an application could
+              reason about, so it is surfaced rather than clamped. What the options do not do is
+              predict, in advance and in a currency they cannot measure, whether an arrangement will
+              settle: the structure answers pressure with counts and reports how hard it is working,
+              rather than refusing a configuration before a session has sent anything.
+            tests:
+              - AgentSessionOptions_Construct_NullSummarizer_Throws
+              - AgentSessionOptions_Construct_NullTool_Throws
+              - AgentSessionOptions_Construct_NonPositiveVerbatimTurns_Throws

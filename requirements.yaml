@@ -19,6 +19,16 @@ includes:
   - docs/reqstream/agent-kit-core/tool-pack-builder.yaml
   - docs/reqstream/agent-kit-core/tool-pack.yaml
   - docs/reqstream/agent-kit-core/tool-result.yaml
+  - docs/reqstream/agent-kit-core/agent-session.yaml
+  - docs/reqstream/agent-kit-core/agent-session-options.yaml
+  - docs/reqstream/agent-kit-core/context-usage.yaml
+  - docs/reqstream/agent-kit-core/session-transcript.yaml
+  - docs/reqstream/agent-kit-core/context-layout.yaml
+  - docs/reqstream/agent-kit-core/rotation-engine.yaml
+  - docs/reqstream/agent-kit-core/summarizer.yaml
+  - docs/reqstream/agent-kit-core/provider-session.yaml
+  - docs/reqstream/agent-kit-core/in-memory-provider-session.yaml
+  - docs/reqstream/agent-kit-core/compacting-agent-session.yaml
   - docs/reqstream/agent-kit-core/platform-requirements.yaml
   - docs/reqstream/agent-kit-tools.yaml
   - docs/reqstream/agent-kit-tools/image.yaml
@@ -66,24 +76,14 @@ includes:
   - docs/reqstream/agent-kit-tools/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-chat-client.yaml
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-agent-factory.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/chat-client-provider-session-factory.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/prompt-size-recording-chat-client.yaml
+  - docs/reqstream/agent-kit-agents-chat-client/chat-client-summarizer.yaml
   - docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-copilot.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
   - docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml
-  - docs/reqstream/agent-kit-sessions.yaml
-  - docs/reqstream/agent-kit-sessions/agent-session.yaml
-  - docs/reqstream/agent-kit-sessions/agent-session-options.yaml
-  - docs/reqstream/agent-kit-sessions/compaction-policy.yaml
-  - docs/reqstream/agent-kit-sessions/context-usage.yaml
-  - docs/reqstream/agent-kit-sessions/token-estimator.yaml
-  - docs/reqstream/agent-kit-sessions/session-transcript.yaml
-  - docs/reqstream/agent-kit-sessions/context-layout.yaml
-  - docs/reqstream/agent-kit-sessions/rotation-engine.yaml
-  - docs/reqstream/agent-kit-sessions/summarizer.yaml
-  - docs/reqstream/agent-kit-sessions/provider-session.yaml
-  - docs/reqstream/agent-kit-sessions/in-memory-provider-session.yaml
-  - docs/reqstream/agent-kit-sessions/compacting-agent-session.yaml
-  - docs/reqstream/agent-kit-sessions/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/apimark.yaml
   - docs/reqstream/ots/reqstream.yaml

@@ -364,3 +364,242 @@ sections:
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult
         tests:
           - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
+
+      - id: AgentKitCore-Session-LongRunningConversation
+        title: >-
+          The library shall provide an agent session that accepts messages, returns the provider's
+          answers, and continues to function after the conversation exceeds the provider's context
+          window.
+        tags: [system]
+        justification: |
+          A guarded tool set is of no use to an agent that cannot run long enough to use it. Without a
+          session lifecycle that survives a full context window, a long-running agent is impossible,
+          and a kit of agent tools cannot fulfil the purpose it was built for. The session is the unit
+          an application programs against: it accepts a message, returns an answer, and remains usable
+          turn after turn regardless of how much conversation has accumulated behind it.
+        children:
+          - AgentKitCore-AgentSession-SessionContract
+          - AgentKitCore-CompactingAgentSession-AnswersTurns
+          - AgentKitCore-CompactingAgentSession-RejectsBlankMessage
+          - AgentKitCore-CompactingAgentSession-DisposesProviderSession
+          - AgentKitCore-CompactingAgentSession-ReleasesProviderSessionItCannotAdopt
+          - AgentKitCore-AgentSession-RejectsMalformedTurnReport
+          - AgentKitCore-AgentSessionOptions-CarriesConfiguration
+        tests:
+          - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
+
+      - id: AgentKitCore-Compaction-ByRotation
+        title: >-
+          The library shall reduce a full context by consolidating older history, creating a fresh
+          provider session seeded with the preserved content, and only then disposing the session it
+          replaced.
+        tags: [system]
+        justification: |
+          Two provider shapes must behave identically: one re-sends the whole history on every turn,
+          the other keeps it server-side. Editing history in place works only for the first, and there
+          is no supported way to retract a turn from the second. Rotation - replace the session, seed
+          the replacement - is the only reduction mechanism both support, so it is the one the library
+          implements. Disposing the session it replaces is part of the mechanism: for a provider
+          holding the conversation server-side, disposal is what actually discards it. It happens last,
+          once the replacement exists and has been adopted, so a failure anywhere earlier leaves the
+          session still able to answer.
+        children:
+          - AgentKitCore-RotationEngine-ConsolidatesIntoTierOne
+          - AgentKitCore-ContextLayout-SeedsMostStableFirst
+          - AgentKitCore-ProviderSession-AdapterInterface
+          - AgentKitCore-CompactingAgentSession-RotatesAtThreshold
+          - AgentKitCore-ContextLayout-Immutable
+          - AgentKitCore-RotationEngine-Deterministic
+          - AgentKitCore-ProviderSession-RecordsWhatATurnProduced
+          - AgentKitCore-ProviderSession-RejectsMalformedSeedOrTurn
+        tests:
+          - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
+
+      - id: AgentKitCore-Compaction-TieredRetention
+        title: >-
+          The library shall retain context as a round-robin structure - the most recent turns
+          verbatim, and behind them a fixed number of tiers each a ring of a fixed number of
+          consolidated slots - consolidating a given turn once per tier and only at rotation.
+        tags: [system]
+        justification: |
+          A single rolling summary is a downward ratchet: each pass re-summarizes the previous summary,
+          so detail is lost repeatedly rather than once, and measured recall collapses after a handful
+          of rotations. A round-robin structure decays resolution with age by construction and nothing
+          is weighed: a turn is consolidated into a tier-one slot, then into a coarser tier only when
+          the finer one fills - once per tier, three times in its whole life. Aging only at rotation,
+          and consolidating a full tier batch-then-clear as peers, is what keeps the context strictly
+          append-only between rotations, which preserves a provider's prompt cache.
+        children:
+          - AgentKitCore-AgentSessionOptions-VerbatimTurns
+          - AgentKitCore-ContextLayout-TierModel
+          - AgentKitCore-RotationEngine-ConsolidatesFullTiers
+          - AgentKitCore-RotationEngine-ConsolidatesOncePerTier
+          - AgentKitCore-AgentSessionOptions-RejectsMalformedConfiguration
+          - AgentKitCore-SessionTranscript-SplitsAtTurnBoundary
+        tests:
+          - AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext
+
+      - id: AgentKitCore-Compaction-BoundedByConstruction
+        title: >-
+          The library shall answer a context that fills again quickly by compacting harder, and at its
+          tersest by discarding its oldest consolidated material - or its oldest verbatim turn when no
+          consolidated material remains - deciding all of it by counts of turns and slots rather than
+          by judging a context it has not yet sent.
+        tags: [system]
+        justification: |
+          An arrangement configured in counts cannot be bounded in tokens in advance, because a
+          summarizer's output lands at its natural length rather than a size it was asked for.
+          Measuring what a rotation has just built is no better: nothing has been sent, so no
+          provider has counted it, and the library counts nothing of its own - the provider session
+          is the only source of a token figure, and it answers only for what it already holds. What
+          the session has instead is a count it already keeps - how many turns passed before the
+          window filled again. A window that refills within k turns of a rotation is answered one
+          compaction level terser; at the tersest level there is nowhere further to go, so the
+          oldest slot of the coarsest tier holding one is discarded, which is the ring of rule four
+          brought forward because the context is filling faster than the ring's own schedule empties
+          it; m quiet turns relax the level again, with m greater than k so the two cannot both
+          hold. Where consolidation never succeeds at all there is no slot to discard, so the same
+          move falls through to the oldest verbatim turn - never the newest, which the session must
+          still be able to answer - and that fall-through is what makes the bound hold rather than
+          merely usually hold. A token figure is read for one purpose only, noticing that the window
+          is filling, and everything structural is a count.
+        children:
+          - AgentKitCore-CompactingAgentSession-AdaptsLevelUnderPressure
+          - AgentKitCore-CompactingAgentSession-BoundsTheContextWhenConsolidationNeverSucceeds
+          - AgentKitCore-AgentSessionOptions-RejectsMalformedConfiguration
+        tests:
+          - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
+          - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
+          - CompactingAgentSession_DivergentTokenizer_KeepsAnsweringAndTerminates
+          - CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher
+          - CompactingAgentSession_AfterAQuietStretch_RelaxesTheCompactionLevel
+
+      - id: AgentKitCore-Compaction-OutOfSessionSummarizer
+        title: >-
+          The library shall consolidate history through an injected summarizer called outside the live
+          session, receiving the material as a body of peers to reduce.
+        tags: [system]
+        justification: |
+          Asking a live session to summarize itself spends that session's own context on the summary
+          and triggers the provider's built-in compactor, which defeats the purpose. The library keeps
+          its own transcript and hands the material to a separate, stateless call. Under batch-then-clear
+          consolidation the pieces of material are peers - there is no previous record being folded into
+          - and the summarizer is free to collapse repetition across them, which is what makes a
+          consolidation buy room. Injecting the summarizer is what lets the whole engine be exercised
+          deterministically without a model.
+        children:
+          - AgentKitCore-Summarizer-InjectedContract
+          - AgentKitCore-Summarizer-ConsolidationPrompt
+          - AgentKitCore-SessionTranscript-KeptOutOfSession
+          - AgentKitCore-SessionTranscript-RendersLabeledMaterial
+          - AgentKitCore-Summarizer-RejectsMalformedRequest
+          - AgentKitCore-RotationEngine-RejectsMalformedConsolidation
+          - AgentKitCore-RotationEngine-NormalizesBlankRecords
+        tests:
+          - AgentKitSessions_AfterManyRotations_EarlyDetailIsStillCarriedInContext
+
+      - id: AgentKitCore-Compaction-ToolPairsIndivisible
+        title: >-
+          The library shall never separate a tool call from its result when deciding what remains
+          verbatim.
+        tags: [system, reliability]
+        justification: |
+          A boundary falling between a call and its result leaves the seeded history beginning with a
+          result whose call is gone. Some providers reject that outright, and a model presented with it
+          cannot tell what was asked. Because the unit of the verbatim tail and of every boundary is a
+          whole turn - the message, the answer and all intervening tool traffic - a call and its result
+          cannot be separated, which retires the earlier design's rule that had to snap a boundary.
+        children:
+          - AgentKitCore-SessionTranscript-KeepsToolTrafficWithItsTurn
+          - AgentKitCore-SessionTranscript-PairedEntries
+        tests:
+          - SessionTranscript_AppendTurn_GroupsEntriesAsOneTurn
+
+      - id: AgentKitCore-Compaction-SaturationDetection
+        title: >-
+          The library shall report how hard it is compacting - the compaction level - and whether a
+          rotation had to drop history outright, rather than rotating repeatedly and silently for no
+          gain.
+        tags: [system, reliability]
+        justification: |
+          An agent whose context holds no redundancy left will keep crossing the rotation threshold,
+          spending summarizer tokens and buying nothing, and without a signal that failure is invisible.
+          The compaction level is that signal: it climbs as the session shortens its verbatim tail and
+          asks for a terser summary, and it is reported on every turn. Dropped material is the honest
+          signal that history was discarded rather than reduced - because the tersest level was already
+          in force when the window filled again and the oldest slot went in the bin, or because a
+          consolidation came back with nothing and its material had to stay where it was. Deciding
+          what to do about it - warn, stop, split the task, start fresh - depends on what the
+          application is for and is deliberately left to the application.
+        children:
+          - AgentKitCore-RotationEngine-MovesAtLeastOneTurn
+          - AgentKitCore-AgentSession-ReportsCompaction
+        tests:
+          - CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial
+
+      - id: AgentKitCore-ContextUsage-ProviderNeutral
+        title: >-
+          The library shall take how full the context is, and out of how much, from the provider
+          session itself, and shall never mix a figure from one source into a comparison with
+          another.
+        tags: [system]
+        justification: |
+          Providers disagree about what they will reveal: a GitHub Copilot session reports current and
+          limit token counts, an Ollama client publishes the context length it was loaded with, and a
+          provider reached through an IChatClient reports neither. The adapter is the only place that
+          can answer honestly for its own provider, so the adapter is what answers - reading the
+          figures from a native API, holding a window it was told once where the provider was
+          configured, or estimating and owning that choice. The engine itself performs no token
+          arithmetic at all, so there is nothing of its own for a provider's figure to be mixed with,
+          which is a stronger guarantee than recording where each figure came from and trusting that
+          two origins are never compared. Carrying a second copy of the window beside the session gave
+          one fact two sources and the engine a rule for choosing between them, and a rule for
+          choosing between two numbers is a rule that will one day choose the wrong one. One source is
+          also what keeps every comparison in one currency: the window, the overhead credited against
+          it and the conversation measured against the threshold all come back together from the same
+          reading, so nothing is ever subtracted from a figure counted by somebody else.
+        children:
+          - AgentKitCore-ContextUsage-UsageShape
+          - AgentKitCore-ContextUsage-DefaultsToAllConversation
+          - AgentKitCore-CompactingAgentSession-TakesTheWindowFromTheProvider
+          - AgentKitCore-ProviderSession-AnswersForItsOwnWindow
+          - AgentKitCore-ContextUsage-ReportsOverFullHonestly
+          - AgentKitCore-ContextUsage-RejectsMeaninglessFigures
+        tests:
+          - AgentKitSessions_WindowComesFromTheProvider_NarrowCompactsWhereWideDoesNot
+
+      - id: AgentKitCore-Verification-WithoutALiveModel
+        title: >-
+          The library shall provide an in-memory provider session so that a session's full lifecycle,
+          including rotation, can be exercised without contacting a provider.
+        tags: [system]
+        justification: |
+          The promise this system makes - that a long-running agent keeps the detail that matters - is
+          only believable if it can be demonstrated, and a demonstration that needs a live model is
+          neither deterministic nor repeatable in a build. An application author writing a summarizer,
+          choosing a verbatim tail length, or acting on the reported compaction level needs the same
+          ability, so the in-memory session is shipped rather than confined to this library's own tests.
+        children:
+          - AgentKitCore-InMemoryProviderSession-ContactsNothing
+          - AgentKitCore-InMemoryProviderSession-RecordsRotationEvidence
+          - AgentKitCore-InMemoryProviderSession-AnswersForItsOwnWindow
+          - AgentKitCore-InMemoryProviderSession-RefusesMalformedUse
+        tests:
+          - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering
+
+      - id: AgentKitCore-Session-BuiltOnExtensionsAi
+        title: >-
+          The library shall express the tools a session carries as Microsoft.Extensions.AI AIFunction
+          instances.
+        tags: [system]
+        justification: |
+          The session carries the tool set an application already composed, and AgentKit's tool currency
+          throughout is the AIFunction abstraction that Microsoft.Extensions.AI.Abstractions publishes.
+          Using the same currency here means a session accepts exactly what a tool pack produces, with
+          no conversion layer between them. The requirement records the repository's reliance on that
+          off-the-shelf abstraction and links its OTS requirements to the system root; see OTS
+          Integration Design (docs/design/ots.md).
+        children:
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory
+        tests:
+          - AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering

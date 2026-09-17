@@ -16,6 +16,16 @@ input-files:
   - docs/design/agent-kit-core/tool-pack-builder.md
   - docs/design/agent-kit-core/tool-pack.md
   - docs/design/agent-kit-core/tool-result.md
+  - docs/design/agent-kit-core/agent-session.md
+  - docs/design/agent-kit-core/agent-session-options.md
+  - docs/design/agent-kit-core/context-usage.md
+  - docs/design/agent-kit-core/session-transcript.md
+  - docs/design/agent-kit-core/context-layout.md
+  - docs/design/agent-kit-core/rotation-engine.md
+  - docs/design/agent-kit-core/summarizer.md
+  - docs/design/agent-kit-core/provider-session.md
+  - docs/design/agent-kit-core/in-memory-provider-session.md
+  - docs/design/agent-kit-core/compacting-agent-session.md
   - docs/design/agent-kit-tools.md
   - docs/design/agent-kit-tools/image.md
   - docs/design/agent-kit-tools/image/image-media-types.md
@@ -61,21 +71,12 @@ input-files:
   - docs/design/agent-kit-tools/agent/agent-pack.md
   - docs/design/agent-kit-agents-chat-client.md
   - docs/design/agent-kit-agents-chat-client/chat-client-agent-factory.md
+  - docs/design/agent-kit-agents-chat-client/chat-client-provider-session.md
+  - docs/design/agent-kit-agents-chat-client/chat-client-provider-session-factory.md
+  - docs/design/agent-kit-agents-chat-client/prompt-size-recording-chat-client.md
+  - docs/design/agent-kit-agents-chat-client/chat-client-summarizer.md
   - docs/design/agent-kit-agents-copilot.md
   - docs/design/agent-kit-agents-copilot/copilot-agent-factory.md
-  - docs/design/agent-kit-sessions.md
-  - docs/design/agent-kit-sessions/agent-session.md
-  - docs/design/agent-kit-sessions/agent-session-options.md
-  - docs/design/agent-kit-sessions/compaction-policy.md
-  - docs/design/agent-kit-sessions/context-usage.md
-  - docs/design/agent-kit-sessions/token-estimator.md
-  - docs/design/agent-kit-sessions/session-transcript.md
-  - docs/design/agent-kit-sessions/context-layout.md
-  - docs/design/agent-kit-sessions/rotation-engine.md
-  - docs/design/agent-kit-sessions/summarizer.md
-  - docs/design/agent-kit-sessions/provider-session.md
-  - docs/design/agent-kit-sessions/in-memory-provider-session.md
-  - docs/design/agent-kit-sessions/compacting-agent-session.md
   - docs/design/ots.md
   - docs/design/ots/apimark.md
   - docs/design/ots/buildmark.md
