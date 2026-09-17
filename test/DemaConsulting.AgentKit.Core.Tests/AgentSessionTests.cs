@@ -13,7 +13,7 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_CarriesTheTurnResult()
     {
-        var usage = ContextUsage.FromEstimate(100, 1000);
+        var usage = ContextUsage.FromProvider(100, 1000);
 
         var response = new AgentSessionResponse(
             "answer", usage, rotationOccurred: true, CompactionLevel.High, materialDropped: true);
@@ -32,7 +32,7 @@ public class AgentSessionTests
     [Fact]
     public void AgentSessionResponse_Construct_DefaultsToLowAndNotDropped()
     {
-        var response = new AgentSessionResponse("answer", ContextUsage.FromEstimate(1, 1000), rotationOccurred: false);
+        var response = new AgentSessionResponse("answer", ContextUsage.FromProvider(1, 1000), rotationOccurred: false);
 
         Assert.Equal(CompactionLevel.Low, response.Level);
         Assert.False(response.MaterialDropped);
@@ -45,7 +45,7 @@ public class AgentSessionTests
     public void AgentSessionResponse_Construct_NullArgument_Throws()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new AgentSessionResponse(null!, ContextUsage.FromEstimate(1, 1000), false));
+            new AgentSessionResponse(null!, ContextUsage.FromProvider(1, 1000), false));
         Assert.Throws<ArgumentNullException>(() =>
             new AgentSessionResponse("answer", null!, false));
     }
@@ -58,6 +58,6 @@ public class AgentSessionTests
     public void AgentSessionResponse_Construct_UndefinedLevel_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new AgentSessionResponse("answer", ContextUsage.FromEstimate(1, 1000), false, (CompactionLevel)99));
+            new AgentSessionResponse("answer", ContextUsage.FromProvider(1, 1000), false, (CompactionLevel)99));
     }
 }

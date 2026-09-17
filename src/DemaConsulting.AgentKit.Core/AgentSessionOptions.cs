@@ -35,7 +35,7 @@ namespace DemaConsulting.AgentKit.Core;
 ///             summarizer,
 ///             instructions: "You are a research assistant confined to the permitted locations.",
 ///             tools: tools,
-///             compaction: new CompactionPolicy(verbatimTurns: 12));
+///             verbatimTurns: 12);
 ///     }
 ///     </code>
 /// </example>

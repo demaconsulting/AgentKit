@@ -13,7 +13,7 @@ public partial class AgentKitSessionsTests
     /// </summary>
     /// <param name="tokens">The tokens the message should occupy.</param>
     /// <returns>A message string.</returns>
-    private static string Msg(int tokens) => new('m', tokens * TokenEstimator.CharactersPerToken);
+    private static string Msg(int tokens) => new('m', tokens * SessionTestData.CharactersPerToken);
 
     /// <summary>
     ///     Proves a conversation that runs well past a small window keeps answering, rotating
@@ -23,7 +23,7 @@ public partial class AgentKitSessionsTests
     public async Task AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering()
     {
         var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 400);
-        var options = new AgentSessionOptions(new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 4));
+        var options = new AgentSessionOptions(new FakeSummarizer(0.2), verbatimTurns: 4);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         for (var turn = 0; turn < 40; turn++)
@@ -44,7 +44,7 @@ public partial class AgentKitSessionsTests
     {
         var summarizer = new FakeSummarizer(MarkerPreserving);
         var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(30), windowTokens: 1000);
-        var options = new AgentSessionOptions(summarizer, compaction: new CompactionPolicy(verbatimTurns: 5));
+        var options = new AgentSessionOptions(summarizer, verbatimTurns: 5);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         await session.SendAsync("Remember MARKER0 which is important.", TestContext.Current.CancellationToken);
@@ -83,7 +83,7 @@ public partial class AgentKitSessionsTests
             var factory = new InMemoryProviderSessionFactory(
                 SessionTestData.SizedResponder(15), windowTokens: windowTokens);
             var options = new AgentSessionOptions(
-                new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 3));
+                new FakeSummarizer(0.2), verbatimTurns: 3);
             await using var session = await CompactingAgentSession.CreateAsync(
                 options, factory, TestContext.Current.CancellationToken);
 

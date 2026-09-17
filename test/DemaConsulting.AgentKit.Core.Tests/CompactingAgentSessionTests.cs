@@ -12,7 +12,7 @@ public class CompactingAgentSessionTests
     /// </summary>
     /// <param name="tokens">The tokens the message should occupy.</param>
     /// <returns>A message string.</returns>
-    private static string Msg(int tokens) => new('m', tokens * TokenEstimator.CharactersPerToken);
+    private static string Msg(int tokens) => new('m', tokens * SessionTestData.CharactersPerToken);
 
     /// <summary>
     ///     Proves a session answers turns and returns the provider's answer.
@@ -71,17 +71,29 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves a session prefers a provider's own usage figure when it reports one.
+    ///     Proves the usage a session reports is the provider session's own figure, unaltered.
     /// </summary>
+    /// <remarks>
+    ///     The engine performs no token arithmetic. A session that recomputed, adjusted or blended
+    ///     the figure would be reintroducing a second source of truth for one fact — the thing this
+    ///     design removed — and the mismatch would only show up as rotating at the wrong moment.
+    /// </remarks>
     [Fact]
-    public async Task CompactingAgentSession_Usage_PrefersProviderReport()
+    public async Task CompactingAgentSession_Usage_IsTheProviderSessionsOwnFigure()
     {
+        // Arrange: a session against a provider that answers for a known window
         var factory = new InMemoryProviderSessionFactory(windowTokens: 1000);
         await using var session = await CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken);
 
-        await session.SendAsync("hello", TestContext.Current.CancellationToken);
+        // Act: take a turn, which is when the session reads the provider
+        var response = await session.SendAsync("hello", TestContext.Current.CancellationToken);
 
-        Assert.Equal(ContextUsageOrigin.Provider, session.Usage.Origin);
+        // Assert: every figure is the live provider session's own
+        var provider = factory.Sessions[0].CurrentUsage;
+        Assert.Equal(provider.WindowTokens, session.Usage.WindowTokens);
+        Assert.Equal(provider.UsedTokens, session.Usage.UsedTokens);
+        Assert.Equal(provider.ConversationTokens, session.Usage.ConversationTokens);
+        Assert.Same(session.Usage, response.Usage);
     }
 
     /// <summary>
@@ -94,7 +106,7 @@ public class CompactingAgentSessionTests
         var factory = new InMemoryProviderSessionFactory(
             SessionTestData.SizedResponder(15), windowTokens: 300);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 2));
+            new FakeSummarizer(0.2), verbatimTurns: 2);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         for (var turn = 0; turn < 20; turn++)
@@ -113,13 +125,13 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     A liveness property: a session survives a provider whose tokenizer diverges from this
-    ///     library's estimate. At one, two and three times divergence it keeps answering and
+    ///     A liveness property: a session survives a provider that charges several times what the
+    ///     turns it is given would suggest. At one, two and three times it keeps answering and
     ///     terminates rather than churning silently or throwing — the exact condition the old design
-    ///     failed on. The divergence-dependent behavior (rotating more often, escalating higher, and
-    ///     dropping material under a tighter budget) is asserted by the two tests above.
+    ///     failed on. The rate-dependent behavior (rotating more often and escalating higher) is
+    ///     asserted separately.
     /// </summary>
-    /// <param name="multiplier">The provider's tokenizer multiplier relative to the estimate.</param>
+    /// <param name="multiplier">The provider's tokenizer multiplier relative to the baseline count.</param>
     [Theory]
     [InlineData(1.0)]
     [InlineData(2.0)]
@@ -128,7 +140,7 @@ public class CompactingAgentSessionTests
     {
         var factory = new DivergentTokenizerProviderSessionFactory(multiplier, windowTokens: 400, SessionTestData.SizedResponder(15));
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.2), verbatimTurns: 8);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         var answered = 0;
@@ -143,18 +155,17 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves that when the window is too small to hold a full structure, the drop-until-it-fits
-    ///     rule escalates to the highest level and reports material dropped — the honest signal that
-    ///     compaction bought nothing. This is a session-level Rule-5 test: a genuinely undersized
-    ///     window forces the drop, so it uses a non-divergent provider that counts with this
-    ///     library's own estimator. Divergence is proven separately, by the two tests below.
+    ///     Proves that when the window is too small to hold a structure the session can compact into,
+    ///     it escalates to the highest level and then reports material dropped — the honest signal
+    ///     that compaction bought nothing. This is the session-level rule 5: at the tersest level
+    ///     there is nowhere further to go, so the oldest card goes in the bin.
     /// </summary>
     [Fact]
     public async Task CompactingAgentSession_TightWindow_EscalatesToHighAndReportsDroppedMaterial()
     {
         var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 100);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.5), compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.5), verbatimTurns: 8);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         var responses = new List<AgentSessionResponse>();
@@ -168,12 +179,12 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves divergence is handled by Rule 2 in the provider's own currency: a provider whose
-    ///     tokenizer reports more tokens for the same history crosses the rotation threshold sooner,
-    ///     so at two and three times divergence the session rotates strictly more often and escalates
+    ///     Proves rule 2 is answered in the provider's own currency: a provider whose tokenizer
+    ///     reports more tokens for the same history crosses the rotation threshold sooner, so at two
+    ///     and three times the baseline rate the session rotates strictly more often and escalates
     ///     strictly higher than at one times, where nothing forces a rotation at all. This is the
-    ///     divergence-dependent observable; reverting every run to one times collapses all three rows
-    ///     to zero rotations at the relaxed level and fails both strict chains.
+    ///     rate-dependent observable; reverting every run to one times collapses all three rows to
+    ///     zero rotations at the relaxed level and fails both strict chains.
     /// </summary>
     [Fact]
     public async Task CompactingAgentSession_DivergentTokenizer_RotatesMoreOftenAndEscalatesHigher()
@@ -218,7 +229,7 @@ public class CompactingAgentSessionTests
         var factory = new InMemoryProviderSessionFactory(
             SessionTestData.SizedResponder(15), windowTokens: 300);
         var options = new AgentSessionOptions(
-            FakeSummarizer.Blank(), compaction: new CompactionPolicy(verbatimTurns: 3));
+            FakeSummarizer.Blank(), verbatimTurns: 3);
         await using var session = await CompactingAgentSession.CreateAsync(
             options, factory, TestContext.Current.CancellationToken);
 
@@ -259,7 +270,7 @@ public class CompactingAgentSessionTests
             windowTokens: 2000);
         var options = new AgentSessionOptions(
             new FakeSummarizer(0.05),
-            compaction: new CompactionPolicy(verbatimTurns: 2));
+            verbatimTurns: 2);
         await using var session = await CompactingAgentSession.CreateAsync(
             options, factory, TestContext.Current.CancellationToken);
 
@@ -297,11 +308,11 @@ public class CompactingAgentSessionTests
 
     /// <summary>
     ///     Drives a <see cref="CompactingAgentSession"/> over a fixed run of equally sized turns
-    ///     against a divergent-tokenizer provider and reports the divergence-dependent observables:
-    ///     how many times it rotated, the highest compaction level it reached, and whether any turn
-    ///     reported material dropped.
+    ///     against a provider counting at a multiple of the baseline rate, and reports the
+    ///     rate-dependent observables: how many times it rotated, the highest compaction level it
+    ///     reached, and whether any turn reported material dropped.
     /// </summary>
-    /// <param name="multiplier">The provider's tokenizer multiplier relative to this library's estimate.</param>
+    /// <param name="multiplier">The provider's tokenizer multiplier relative to the baseline count.</param>
     /// <param name="providerWindow">The window the provider reports as its own.</param>
     /// <param name="cancellationToken">A token to observe for cancellation.</param>
     /// <returns>The rotation count, the highest level seen, and whether any turn dropped material.</returns>
@@ -312,7 +323,7 @@ public class CompactingAgentSessionTests
     {
         var factory = new DivergentTokenizerProviderSessionFactory(multiplier, providerWindow, SessionTestData.SizedResponder(15));
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 8));
+            new FakeSummarizer(0.2), verbatimTurns: 8);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, cancellationToken);
 
         var maxLevel = CompactionLevel.Low;
@@ -352,34 +363,46 @@ public class CompactingAgentSessionTests
     }
 
     /// <summary>
-    ///     Proves a creation whose provider usage throws releases the provider and rethrows the
-    ///     original failure unchanged when the release succeeds.
+    ///     Proves a creation whose provider usage throws releases the provider and reports the
+    ///     original failure unchanged.
     /// </summary>
     [Fact]
-    public async Task CompactingAgentSession_Create_UsageThrowsButReleased_RethrowsOriginal()
+    public async Task CompactingAgentSession_Create_UsageThrows_ReleasesAndRethrowsOriginal()
     {
+        // Arrange: an adapter whose usage report is arithmetically impossible
         var factory = new ScriptedProviderSessionFactory(_ => new UsageThrowingProviderSession(throwOnDispose: false));
 
+        // Act: create the session
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken));
 
-        Assert.IsNotType<AgentSessionCreationException>(failure);
+        // Assert: the adapter's own failure reaches the caller unwrapped, and nothing was orphaned
+        Assert.Equal("The adapter reported an impossible split.", failure.Message);
         Assert.True(((UsageThrowingProviderSession)factory.Created[0]).IsDisposed);
     }
 
     /// <summary>
-    ///     Proves a creation whose provider usage throws and whose release then fails carries the
-    ///     unreleased provider session on the failure, so the retryable state is reachable.
+    ///     Proves a creation whose provider usage throws and whose release then <em>also</em> fails
+    ///     still reports the creation failure, rather than the disposal failure that followed it.
     /// </summary>
+    /// <remarks>
+    ///     The release is attempted and its outcome deliberately not acted on. Letting the disposal
+    ///     failure surface instead would replace the fault the caller can act on — the adapter's
+    ///     impossible usage split — with the consequence of it, and the provider is left to reclaim
+    ///     the session when it expires either way.
+    /// </remarks>
     [Fact]
-    public async Task CompactingAgentSession_Create_UsageThrowsAndReleaseFails_CarriesRetainedSession()
+    public async Task CompactingAgentSession_Create_UsageThrowsAndReleaseFails_ReportsTheCreationFailure()
     {
+        // Arrange: an adapter that fails twice over - on usage, and again on release
         var factory = new ScriptedProviderSessionFactory(_ => new UsageThrowingProviderSession(throwOnDispose: true));
 
-        var failure = await Assert.ThrowsAsync<AgentSessionCreationException>(() =>
+        // Act: create the session
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CompactingAgentSession.CreateAsync(new AgentSessionOptions(new FakeSummarizer()), factory, TestContext.Current.CancellationToken));
 
-        Assert.NotNull(failure.RetainedProviderSession);
+        // Assert: the creation failure is what the caller is told about, not the swallowed IOException
+        Assert.Equal("The adapter reported an impossible split.", failure.Message);
     }
 
     /// <summary>
@@ -394,7 +417,7 @@ public class CompactingAgentSessionTests
             seed => new InMemoryProviderSession(seed, SessionTestData.SizedResponder(15), 100),
             _ => bad);
         var options = new AgentSessionOptions(
-            new FakeSummarizer(0.2), compaction: new CompactionPolicy(verbatimTurns: 2));
+            new FakeSummarizer(0.2), verbatimTurns: 2);
         await using var session = await CompactingAgentSession.CreateAsync(options, factory, TestContext.Current.CancellationToken);
 
         // Drive turns until a rotation is attempted; adopting the bad replacement throws.

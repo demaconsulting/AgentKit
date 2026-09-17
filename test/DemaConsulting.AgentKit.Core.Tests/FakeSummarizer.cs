@@ -56,21 +56,7 @@ internal sealed class FakeSummarizer : ISummarizer
     /// <param name="tokens">The tokens every answer occupies.</param>
     /// <returns>A summarizer producing answers of a fixed size.</returns>
     public static FakeSummarizer Fixed(int tokens) =>
-        new(_ => new string('s', tokens * TokenEstimator.CharactersPerToken));
-
-    /// <summary>
-    ///     Creates a summarizer that returns more than it was given, for proving rule 5 terminates
-    ///     even when consolidation buys nothing.
-    /// </summary>
-    /// <returns>A summarizer whose answer is longer than its material.</returns>
-    public static FakeSummarizer Expanding() =>
-        new(request => request.Material + request.Material);
-
-    /// <summary>
-    ///     Creates a summarizer that echoes its material unchanged.
-    /// </summary>
-    /// <returns>A summarizer whose answer is its material.</returns>
-    public static FakeSummarizer Echoing() => new(request => request.Material);
+        new(_ => new string('s', tokens * SessionTestData.CharactersPerToken));
 
     /// <summary>
     ///     Creates a summarizer that returns a blank answer, which the engine must normalize to

@@ -29,22 +29,53 @@ public class ContextLayoutTests
     }
 
     /// <summary>
-    ///     Proves a tier is a ring: it reports full at its complement, hands back its oldest slot,
-    ///     and drops its oldest.
+    ///     Proves a tier holds its slots oldest first and hands back a new tier for every change,
+    ///     so a rotation can compare a before and after.
     /// </summary>
     [Fact]
-    public void Tier_RingOperations_Hold()
+    public void Tier_AppendAndDropOldest_KeepOldestFirstAndLeaveTheOriginal()
     {
+        // Arrange: a tier filled to its complement, oldest first
         var tier = Tier.Empty;
         for (var index = 0; index < ContextLayout.SlotsPerTier; index++)
         {
-            Assert.False(tier.IsFull);
+            Assert.Equal(index, tier.Count);
             tier = tier.Append(new Slot($"s{index}"));
         }
 
-        Assert.True(tier.IsFull);
-        Assert.Equal("s0", tier.Oldest.Content);
-        Assert.Equal("s1", tier.DropOldest().Oldest.Content);
+        // Act: drop the oldest slot
+        var dropped = tier.DropOldest();
+
+        // Assert: the ring order is oldest first, the drop removes that end, and the tier it was
+        // taken from is unchanged
+        Assert.Equal(ContextLayout.SlotsPerTier, tier.Count);
+        Assert.Equal("s0", tier.Slots[0].Content);
+        Assert.Equal($"s{ContextLayout.SlotsPerTier - 1}", tier.Slots[^1].Content);
+        Assert.Equal(ContextLayout.SlotsPerTier - 1, dropped.Count);
+        Assert.Equal("s1", dropped.Slots[0].Content);
+        Assert.False(tier.IsEmpty);
+    }
+
+    /// <summary>
+    ///     Proves dropping from an empty tier is refused rather than answered with another empty
+    ///     tier, so a cascade that reached for a slot that was never there says so.
+    /// </summary>
+    [Fact]
+    public void Tier_DropOldest_Empty_Throws()
+    {
+        // Act / Assert: there is no oldest slot to hand back
+        Assert.Throws<InvalidOperationException>(() => Tier.Empty.DropOldest());
+    }
+
+    /// <summary>
+    ///     Proves a null slot is refused rather than appended, since a tier of holes would seed a
+    ///     fresh session from nothing.
+    /// </summary>
+    [Fact]
+    public void Tier_Append_Null_Throws()
+    {
+        // Act / Assert: the hole is refused where it was written
+        Assert.Throws<ArgumentNullException>(() => Tier.Empty.Append(null!));
     }
 
     /// <summary>
@@ -53,10 +84,11 @@ public class ContextLayoutTests
     [Fact]
     public void ContextLayout_Create_IsEmpty()
     {
-        var layout = ContextLayout.Create(systemTokens: 10, toolDeclarationTokens: 20);
+        // Arrange / Act: the layout a session starts from
+        var layout = ContextLayout.Create();
 
-        Assert.Equal(10, layout.SystemTokens);
-        Assert.Equal(20, layout.ToolDeclarationTokens);
+        // Assert: nothing is held, and there is nothing to seed a provider session with
+        Assert.Equal(ContextLayout.TierCount, layout.Tiers.Count);
         Assert.Equal(0, layout.Tail.TurnCount);
         Assert.All(layout.Tiers, tier => Assert.True(tier.IsEmpty));
         Assert.Empty(layout.BuildSeed());
@@ -105,17 +137,30 @@ public class ContextLayoutTests
     }
 
     /// <summary>
-    ///     Proves the estimated conversation size counts the seeded slots, their framing and the
-    ///     tail, and the total adds the fixed overhead.
+    ///     Proves the verbatim tail can be replaced without disturbing the tiers, and that the
+    ///     layout it was taken from is unchanged.
     /// </summary>
+    /// <remarks>
+    ///     This is what makes the rotation engine a pure function a test can compare a before and
+    ///     after of: a mutator that edited in place would leave every caller holding the same
+    ///     object.
+    /// </remarks>
     [Fact]
-    public void ContextLayout_EstimatedTokens_CountSeedAndOverhead()
+    public void ContextLayout_WithTail_ReplacesTheTailAndLeavesTheOriginal()
     {
-        var tail = SessionTestData.TranscriptOf(1, tokensEach: 40);
-        var layout = SessionTestData.LayoutOf(tail, SessionTestData.TierOf(SessionTestData.SlotOfTokens(20, "s")));
+        // Arrange: a layout carrying one slot and one turn
+        var original = SessionTestData.LayoutOf(
+            SessionTranscript.Empty.AppendTurn([TranscriptEntry.User("first")]),
+            SessionTestData.TierOf(new Slot("record")));
 
-        Assert.True(layout.EstimatedConversationTokens > 0);
-        Assert.Equal(layout.EstimatedConversationTokens, layout.TotalEstimatedTokens);
+        // Act: replace the tail
+        var replaced = original.WithTail(
+            original.Tail.AppendTurn([TranscriptEntry.User("second")]));
+
+        // Assert: the new layout carries the new tail and the same tiers; the old one is untouched
+        Assert.Equal(2, replaced.Tail.TurnCount);
+        Assert.Equal(1, original.Tail.TurnCount);
+        Assert.Equal("record", replaced.Tiers[0].Slots[0].Content);
     }
 
     /// <summary>
@@ -124,10 +169,11 @@ public class ContextLayoutTests
     [Fact]
     public void ContextLayout_WithTiers_Malformed_Throws()
     {
-        var layout = ContextLayout.Create(0, 0);
-
-        Assert.Throws<ArgumentException>(() => layout.WithTiers(SessionTranscript.Empty, [Tier.Empty]));
+        // Act / Assert: a layout of the wrong shape is refused rather than built
+        Assert.Throws<ArgumentNullException>(() => ContextLayout.WithTiers(null!, [Tier.Empty, Tier.Empty, Tier.Empty]));
+        Assert.Throws<ArgumentNullException>(() => ContextLayout.WithTiers(SessionTranscript.Empty, null!));
+        Assert.Throws<ArgumentException>(() => ContextLayout.WithTiers(SessionTranscript.Empty, [Tier.Empty]));
         Assert.Throws<ArgumentException>(() =>
-            layout.WithTiers(SessionTranscript.Empty, [Tier.Empty, null!, Tier.Empty]));
+            ContextLayout.WithTiers(SessionTranscript.Empty, [Tier.Empty, null!, Tier.Empty]));
     }
 }

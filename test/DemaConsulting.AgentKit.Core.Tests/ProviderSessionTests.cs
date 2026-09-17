@@ -93,4 +93,30 @@ public class ProviderSessionTests
         Assert.Throws<ArgumentException>(() => new TranscriptEntry(TranscriptEntryKind.UserMessage, "hi", "c1"));
         Assert.Throws<ArgumentOutOfRangeException>(() => new TranscriptEntry((TranscriptEntryKind)99, "x"));
     }
+
+    /// <summary>
+    ///     Proves every kind of entry renders as one mechanically labeled line, so consolidation
+    ///     material says who said what and a tool result names the call it answers.
+    /// </summary>
+    /// <remarks>
+    ///     The summarizer is a stateless call that receives text, so this rendering is the whole of
+    ///     what it learns about the shape of the history. The labels are fixed rather than prose
+    ///     precisely so the same history always renders to the same string, which is what lets a
+    ///     test assert on it exactly.
+    /// </remarks>
+    [Fact]
+    public void TranscriptEntry_ToTranscriptLine_IsDeterministicAndLabeled()
+    {
+        // Arrange / Act / Assert: each kind carries its own label, and a pair carries its identifier
+        Assert.Equal("USER: hello", TranscriptEntry.User("hello").ToTranscriptLine());
+        Assert.Equal("ASSISTANT: hi", TranscriptEntry.Assistant("hi").ToTranscriptLine());
+        Assert.Equal("TOOL CALL [c1]: call", TranscriptEntry.ToolCall("c1", "call").ToTranscriptLine());
+        Assert.Equal("TOOL RESULT [c1]: result", TranscriptEntry.ToolResult("c1", "result").ToTranscriptLine());
+        Assert.Equal("RECORD: earlier", TranscriptEntry.ContextRecord("earlier").ToTranscriptLine());
+
+        // Assert: the rendering is a pure function of the entry, so the same entry renders the same
+        // way every time
+        var entry = TranscriptEntry.User("hello");
+        Assert.Equal(entry.ToTranscriptLine(), entry.ToTranscriptLine());
+    }
 }

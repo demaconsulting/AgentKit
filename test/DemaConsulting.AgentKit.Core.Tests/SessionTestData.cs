@@ -5,13 +5,44 @@ namespace DemaConsulting.AgentKit.Core.Tests;
 ///     approximate.
 /// </summary>
 /// <remarks>
-///     Every decision the compaction engine makes is a comparison of a count — turns or estimated
-///     tokens — so a test that cannot state a transcript's size exactly cannot state which branch it
-///     is exercising. These builders invert the token estimate — a whole number of characters per
-///     token, plus a flat per-entry allowance — so a test can ask for a turn of a chosen size.
+///     <para>
+///     The engine counts turns and never tokens; the only thing that counts tokens is the provider
+///     session, which answers for its own window. So a size stated here is a size the <em>provider
+///     double</em> will charge, and these builders invert the accounting
+///     <see cref="InMemoryProviderSession"/> performs — a whole number of characters to the token,
+///     plus a flat per-entry allowance for framing — so a test can ask for a turn of a chosen cost
+///     and state exactly which branch it is exercising.
+///     </para>
+///     <para>
+///     The two figures are restated here rather than read from the session under test, which keeps
+///     its accounting private. A builder that derived its sizes from the code it is sizing input
+///     for could not tell a changed size from a changed count.
+///     </para>
 /// </remarks>
 internal static class SessionTestData
 {
+    /// <summary>
+    ///     The characters the provider double treats as one token.
+    /// </summary>
+    public const int CharactersPerToken = 4;
+
+    /// <summary>
+    ///     The tokens the provider double charges for one entry beyond the characters it carries.
+    /// </summary>
+    public const int PerEntryTokens = 4;
+
+    /// <summary>
+    ///     Counts the tokens the provider double charges for one entry, framing included.
+    /// </summary>
+    /// <param name="entry">The entry to count. Must not be <see langword="null"/>.</param>
+    /// <returns>The entry's cost in the provider double's own accounting.</returns>
+    public static int EntryTokens(TranscriptEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return (entry.Text.Length + CharactersPerToken - 1) / CharactersPerToken + PerEntryTokens;
+    }
+
     /// <summary>
     ///     Builds a user entry occupying approximately the requested number of tokens.
     /// </summary>
@@ -20,7 +51,7 @@ internal static class SessionTestData
     /// <returns>A user entry of about <paramref name="tokens"/> tokens.</returns>
     public static TranscriptEntry UserOfTokens(int tokens, string tag)
     {
-        var characters = Math.Max(tag.Length, (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken);
+        var characters = Math.Max(tag.Length, (tokens - PerEntryTokens) * CharactersPerToken);
         return TranscriptEntry.User(tag.PadRight(characters, '.'));
     }
 
@@ -44,7 +75,7 @@ internal static class SessionTestData
     /// <returns>An assistant entry of about <paramref name="tokens"/> tokens.</returns>
     public static TranscriptEntry AssistantOfTokens(int tokens, string tag)
     {
-        var characters = Math.Max(tag.Length, (tokens - TokenEstimator.PerEntryOverheadTokens) * TokenEstimator.CharactersPerToken);
+        var characters = Math.Max(tag.Length, (tokens - PerEntryTokens) * CharactersPerToken);
         return TranscriptEntry.Assistant(tag.PadRight(characters, '.'));
     }
 
@@ -66,18 +97,6 @@ internal static class SessionTestData
     }
 
     /// <summary>
-    ///     Builds a slot carrying a record of a chosen token size.
-    /// </summary>
-    /// <param name="tokens">The tokens the record occupies.</param>
-    /// <param name="tag">A short marker identifying the slot.</param>
-    /// <returns>A slot of about <paramref name="tokens"/> tokens.</returns>
-    public static Slot SlotOfTokens(int tokens, string tag)
-    {
-        var characters = Math.Max(tag.Length, tokens * TokenEstimator.CharactersPerToken);
-        return new Slot(tag.PadRight(characters, '.'));
-    }
-
-    /// <summary>
     ///     Builds a tier holding the supplied slots, oldest first.
     /// </summary>
     /// <param name="slots">The slots, oldest first.</param>
@@ -94,7 +113,7 @@ internal static class SessionTestData
     }
 
     /// <summary>
-    ///     Builds a layout with no fixed overhead, carrying the supplied tail and tiers.
+    ///     Builds a layout carrying the supplied tail and tiers.
     /// </summary>
     /// <param name="tail">The verbatim tail.</param>
     /// <param name="tiers">The three coarse tiers, tier one first.</param>
@@ -107,7 +126,7 @@ internal static class SessionTestData
             filled[index] = index < tiers.Length ? tiers[index] : Tier.Empty;
         }
 
-        return ContextLayout.Create(0, 0).WithTiers(tail, filled);
+        return ContextLayout.WithTiers(tail, filled);
     }
 
     /// <summary>

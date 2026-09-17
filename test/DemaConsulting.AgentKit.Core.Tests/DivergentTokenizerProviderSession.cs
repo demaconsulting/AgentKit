@@ -1,21 +1,22 @@
 namespace DemaConsulting.AgentKit.Core.Tests;
 
 /// <summary>
-///     A provider session whose reported usage counts its history at a configurable multiple of this
-///     library's own estimate, so a provider's count of a rotated seed can diverge from ours.
+///     A provider session whose reported usage counts its history at a configurable multiple of the
+///     rate <see cref="InMemoryProviderSession"/> charges, so a test can run one conversation
+///     against providers that count the same history differently.
 /// </summary>
 /// <remarks>
 ///     <para>
-///     <b>This fake exists to close a blind spot that hid four separate defects.</b> Every other
-///     provider fake either ignores the rotated seed or counts it with this library's own estimator,
-///     so none can produce a provider whose count of a rotated seed differs from ours — the exact
-///     condition under which the old, prediction-in-mixed-currency design failed. This one applies a
-///     tokenizer multiplier to the seed and everything since, so at a multiplier of two or three the
-///     provider reports twice or three times what the estimator does, which is ordinary for JSON and
-///     code.
+///     <b>The engine believes whatever a provider session reports, and this is how that is put under
+///     load.</b> The engine performs no token arithmetic of its own: it asks how full the session is
+///     and out of how much, and acts on the answer. A provider that charges two or three times as
+///     much for the same history — ordinary for JSON and code against a tokenizer tuned for prose —
+///     must therefore reach its threshold sooner and compact harder, with nothing but the adapter's
+///     own count distinguishing the runs.
 ///     </para>
 ///     <para>
-///     Any test of the drop-until-it-fits rule that does not use this fake is not testing it.
+///     It reports totals only, with no split broken out, which is the shape an adapter uses when its
+///     provider will not say how much of the window the system prompt and tool declarations occupy.
 ///     </para>
 /// </remarks>
 internal sealed class DivergentTokenizerProviderSession : IProviderSession
@@ -26,7 +27,7 @@ internal sealed class DivergentTokenizerProviderSession : IProviderSession
     private readonly Func<string, ProviderTurn> _responder;
 
     /// <summary>
-    ///     The factor applied to this library's estimate to obtain the provider's own count.
+    ///     The factor applied to the baseline count to obtain this provider's own count.
     /// </summary>
     private readonly double _multiplier;
 
@@ -41,7 +42,7 @@ internal sealed class DivergentTokenizerProviderSession : IProviderSession
     /// <param name="seed">What the session starts from.</param>
     /// <param name="responder">Produces the turn for a given message.</param>
     /// <param name="windowTokens">The window this session reports.</param>
-    /// <param name="multiplier">The factor applied to the estimate to obtain the reported count.</param>
+    /// <param name="multiplier">The factor applied to the baseline count to obtain the reported count.</param>
     public DivergentTokenizerProviderSession(
         ProviderSessionSeed seed,
         Func<string, ProviderTurn> responder,
@@ -77,21 +78,20 @@ internal sealed class DivergentTokenizerProviderSession : IProviderSession
 
     /// <inheritdoc/>
     /// <remarks>
-    ///     Reports the provider's own count as the multiplier applied to this library's estimate of
-    ///     the whole history, with no overhead broken out — the totals-only shape a provider that
-    ///     cannot split its counts uses.
+    ///     Reports the multiplier applied to the baseline count of the whole history, with no
+    ///     overhead broken out — the totals-only shape a provider that cannot split its counts uses.
     /// </remarks>
     public ContextUsage CurrentUsage
     {
         get
         {
-            var estimate = 0;
+            var baseline = 0;
             foreach (var entry in _history)
             {
-                estimate += entry.EstimatedTokens;
+                baseline += SessionTestData.EntryTokens(entry);
             }
 
-            var reported = (int)Math.Round(estimate * _multiplier);
+            var reported = (int)Math.Round(baseline * _multiplier);
             return ContextUsage.FromProvider(reported, WindowTokens, reported);
         }
     }
@@ -127,7 +127,7 @@ internal sealed class DivergentTokenizerProviderSession : IProviderSession
 ///     Creates <see cref="DivergentTokenizerProviderSession"/> instances at a fixed tokenizer
 ///     multiplier and remembers every one it made.
 /// </summary>
-/// <param name="multiplier">The factor the sessions apply to the estimate to obtain their count.</param>
+/// <param name="multiplier">The factor the sessions apply to the baseline count to obtain their own.</param>
 /// <param name="windowTokens">The window the sessions report.</param>
 /// <param name="responder">
 ///     Produces the turn for a given message. <see langword="null"/> selects an acknowledging

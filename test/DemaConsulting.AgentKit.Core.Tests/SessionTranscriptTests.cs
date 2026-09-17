@@ -70,8 +70,8 @@ public class SessionTranscriptTests
     }
 
     /// <summary>
-    ///     Proves the oldest turn can be dropped, which is the last resort of the drop-until-it-fits
-    ///     rule, and that dropping from an empty transcript is refused.
+    ///     Proves the oldest turn can be dropped, which is the last resort under sustained pressure,
+    ///     and that dropping from an empty transcript is refused.
     /// </summary>
     [Fact]
     public void SessionTranscript_DropOldestTurn_RemovesTheOldest()
@@ -82,20 +82,5 @@ public class SessionTranscriptTests
 
         Assert.Equal(2, dropped.TurnCount);
         Assert.Throws<InvalidOperationException>(() => SessionTranscript.Empty.DropOldestTurn());
-    }
-
-    /// <summary>
-    ///     Proves rendering is deterministic and labeled, and refuses a null entry.
-    /// </summary>
-    [Fact]
-    public void SessionTranscript_Render_IsDeterministicAndLabeled()
-    {
-        var rendered = SessionTranscript.Render([
-            TranscriptEntry.User("hello"),
-            TranscriptEntry.Assistant("hi"),
-        ]);
-
-        Assert.Equal("USER: hello\nASSISTANT: hi", rendered);
-        Assert.Throws<ArgumentException>(() => SessionTranscript.Render([null!]));
     }
 }
