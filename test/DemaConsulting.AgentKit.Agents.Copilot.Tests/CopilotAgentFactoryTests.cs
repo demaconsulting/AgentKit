@@ -172,7 +172,7 @@ public class CopilotAgentFactoryTests
     /// <summary>
     ///     Proves the agent path leaves the Copilot runtime's own compaction alone. This is the one
     ///     deliberate asymmetry between the two configuration paths: a plain agent has no AgentKit
-    ///     compactor behind it, so switching the runtime's off would remove protection rather than
+    ///     compactor behind it, so moving the runtime's threshold would remove protection rather than
     ///     prevent a conflict.
     /// </summary>
     [Fact]
@@ -190,13 +190,19 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
-    ///     Proves the engine path switches the runtime's own compaction off. Copilot compacts at
-    ///     eighty percent of its window by default, which is where AgentKit rotates; two compactors
-    ///     reading one occupancy signal would fight, and the engine's transcript would silently stop
-    ///     describing what the provider holds.
+    ///     Proves the engine path holds the runtime's own compaction off until well past the point
+    ///     the engine rotates.
     /// </summary>
+    /// <remarks>
+    ///     The threshold is the assertion that matters, because the flag does not work: measured
+    ///     against SDK 1.0.11, a session created with <c>Enabled = false</c> compacted as soon as
+    ///     the threshold was crossed, exactly as one created with it true. The threshold is honored,
+    ///     and it is what keeps the two compactors apart — the engine rotates at 0.70, and the
+    ///     runtime's default of 0.80 leaves only a tenth of the window between them, which one turn
+    ///     returning a large tool result can cross in a single step.
+    /// </remarks>
     [Fact]
-    public void CopilotAgentFactory_BuildEngineSessionConfig_DisablesTheRuntimesCompaction()
+    public void CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation()
     {
         // Arrange / Act
         var config = CopilotAgentFactory.BuildEngineSessionConfig(
@@ -204,9 +210,12 @@ public class CopilotAgentFactoryTests
             instructions: null,
             model: null);
 
-        // Assert
+        // Assert: the honored setting is raised clear of the engine's own rotation point, and the
+        // flag is still stated so the intent survives if the runtime ever respects it
         Assert.NotNull(config.InfiniteSessions);
         Assert.False(config.InfiniteSessions.Enabled);
+        Assert.NotNull(config.InfiniteSessions.BackgroundCompactionThreshold);
+        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
     }
 
     /// <summary>

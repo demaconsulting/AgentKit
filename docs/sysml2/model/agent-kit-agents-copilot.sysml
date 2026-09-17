@@ -9,8 +9,9 @@ package AgentKitAgentsCopilot {
      * the one provider this project's continuous integration can reach. The session adapter
      * seeds a rotation's history into the session's system message, because Copilot offers no
      * history channel; takes its occupancy and its window from the runtime's own reporting
-     * rather than from any figure the application supplies; and disables the runtime's own
-     * compaction so two compactors never act on one conversation. It carries the
+     * rather than from any figure the application supplies; and holds the runtime's own
+     * compaction threshold clear of the engine's rotation point so two compactors never act on
+     * one conversation. It carries the
      * Microsoft.Agents.AI.GitHub.Copilot dependency, and its RID-specific native runtime, that
      * must be kept out of Core.
      */

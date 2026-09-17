@@ -61,31 +61,43 @@ never below one token. And it reaches the model through the instructions channel
 conversation, so the model may weight it differently from turns it lived through; that cannot be
 verified without a live run and is recorded as unverified rather than asserted.
 
-## The Runtime's Own Compaction Is Disabled
+## The Runtime's Own Compaction Is Held Clear of Rotation
 
 Copilot compacts its own sessions: its infinite-session configuration defaults to enabled, with
-background compaction at 0.80 of the window and buffer exhaustion at 0.95. AgentKit rotates at a
-threshold of the same order, against the same occupancy signal. This is therefore not a theoretical
-conflict.
+background compaction at 0.80 of the window and buffer exhaustion at 0.95. AgentKit rotates at 0.70
+of the window, against the same occupancy signal. This is therefore not a theoretical conflict.
 
-Left on, both compactors would act on one conversation. The runtime would rewrite history underneath
-a session whose transcript the engine believes it owns, and the occupancy the engine reads afterwards
-would move for reasons it cannot see — so the engine would seed a replacement from a history the
-provider has already discarded, and the two accounts of the conversation would diverge silently.
-Every session the engine drives is therefore created with the runtime's compaction switched off.
-**A future maintainer must not "helpfully" turn it back on.**
+Left at those defaults, both compactors would act on one conversation. The runtime would rewrite
+history underneath a session whose transcript the engine believes it owns, and the occupancy the
+engine reads afterwards would move for reasons it cannot see — so the engine would seed a replacement
+from a history the provider has already discarded, and the two accounts of the conversation would
+diverge silently. Ten percentage points is not a margin: a single turn returning a large tool result
+can carry a session from below the engine's rotation point to past the runtime's compaction threshold
+in one step.
+
+Every session the engine drives is therefore created with the runtime's background-compaction
+threshold raised to 0.95, a quarter of the window clear of the engine's rotation point.
+**A future maintainer must not lower it back toward the engine's own threshold.**
+
+**Asking the runtime to stop does not work, and nothing here depends on it.** The session
+configuration also carries the infinite-session enablement flag set false, which states the intent
+and costs nothing, but the runtime ignores it. Measured against the live runtime, a session created
+with the flag false compacted as soon as its threshold was crossed, exactly as a session created with
+the flag true did; a session whose threshold was not crossed did not compact whatever the flag said.
+The threshold is the honored setting, so the threshold is the one relied on. The measurement itself
+is recorded in _AgentKitAgentsCopilot System Verification Design_.
+
+**The threshold is deliberately not raised to 1.0.** The runtime's last-resort behavior is worth
+keeping for the case where something extraordinary happens, so a rewrite remains possible rather than
+impossible. The session observer watches for the runtime's own compaction and truncation events, and
+the provider session refuses the next turn if one arrives — before a turn is sent as well as after
+one returns — naming the cause. That converts a silent divergence into a diagnosable failure, which
+is the convention this library already follows wherever it cannot know something it needs.
 
 **The agent path is deliberately asymmetric.** A plain Copilot agent has no AgentKit compactor behind
-it, so disabling the runtime's would remove protection rather than prevent a conflict. The agent path
-leaves the setting untouched, and a test pins each side of the asymmetry so neither can be tidied
-into the other by accident.
-
-**Whether the runtime honors the request is not verifiable offline.** The SDK carries the setting to
-the wire unchanged, which is all this library can establish without a live connection. So the request
-is not trusted on its own: the session observer watches for the runtime's own compaction and
-truncation events, and the provider session refuses the next turn if one arrives, naming the cause.
-That converts a silent divergence into a diagnosable failure, which is the convention this library
-already follows wherever it cannot know something it needs.
+it, so changing the runtime's compaction there would remove protection rather than prevent a
+conflict. The agent path leaves the setting untouched, and a test pins each side of the asymmetry so
+neither can be tidied into the other by accident.
 
 ## Occupancy Comes From the Runtime
 
@@ -167,8 +179,9 @@ session over the runtime.
   refuses a turn that reported no usage or whose history the runtime rewrote, records tool traffic
   as identified pairs, reports the runtime's occupancy, and owns and releases its session.
 - **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: composes the instructions
-  and the rendered record, reuses the one confinement path, disables the runtime's compaction,
-  registers the observer before the session is created, and guards the ownership window.
+  and the rendered record, reuses the one confinement path, holds the runtime's compaction clear of
+  the engine's rotation point, registers the observer before the session is created, and guards the
+  ownership window.
 - **CopilotSessionObserver (Unit)** — watches the runtime's event stream and holds the latest usage
   reading, the current turn's entries, and whether the runtime rewrote history.
 - **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using
@@ -183,7 +196,7 @@ CompactingAgentSession
         │  seed (instructions, tools, history)
         ▼
 CopilotProviderSessionFactory ──► CopilotAgentFactory.BuildEngineSessionConfig
-        │                                   (allow-list, skills off, handler, compaction off)
+        │                                   (allow-list, skills off, handler, compaction held clear)
         │  SessionConfig (+ observer as OnEvent)
         ▼
 CopilotTurnChannel ──► CopilotSession (runtime)

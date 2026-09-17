@@ -7,9 +7,9 @@ class.
 
 `CopilotProviderSessionFactory` decides everything about a Copilot session at the moment it is
 created, because that is the only moment Copilot accepts configuration — the confinement, the model,
-the disabled runtime compaction, the registered event handler and the seeded conversation record. All
-of it is therefore verified by asserting on the `SessionConfig` the factory produced, which is a
-plain constructable object requiring no client and no credential.
+the raised runtime compaction threshold, the registered event handler and the seeded conversation
+record. All of it is therefore verified by asserting on the `SessionConfig` the factory produced,
+which is a plain constructable object requiring no client and no credential.
 
 The assertions are made through `BuildProviderSessionConfig`, an internal seam exposed for exactly
 this reason — the same reason `CopilotAgentFactory.BuildSessionConfig` is exposed. The ownership and
@@ -29,12 +29,14 @@ owns. Modeling the opener as refusing instead would make the window unreachable,
 untestable.
 
 **What is out of automated scope, stated honestly.** No live session is created, so nothing here
-proves the runtime accepts the configuration, applies the allow-list, or honors the request to
-disable its own compaction — the last of which is called out in *AgentKitAgentsCopilot System
-Verification Design* as unverifiable offline. What is proven is that the configuration this factory
-hands to the runtime is the one the design says it should be, on every session a rotation creates.
-Whether a model reading a record in its instructions channel weights it as it would weight the
-conversation it replaces is likewise unverifiable offline, and is stated as such rather than implied.
+proves the runtime accepts the configuration or applies the allow-list. How the runtime treats the
+infinite-session configuration is not left open, however: it was settled by manual measurement and is
+recorded in *AgentKitAgentsCopilot System Verification Design*, which reports that the enablement flag
+is ignored and the background-compaction threshold is honored. That is why the scenario below asserts
+the threshold rather than the flag. What is proven here is that the configuration this factory hands
+to the runtime is the one the design says it should be, on every session a rotation creates. Whether
+a model reading a record in its instructions channel weights it as it would weight the conversation it
+replaces is unverifiable offline, and is stated as such rather than implied.
 
 Unit tests reside in `CopilotProviderSessionFactoryTests.cs`, with the scripted runtime in
 `FakeCopilotTurnChannel.cs`, both within the `DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
@@ -54,7 +56,8 @@ Unit tests reside in `CopilotProviderSessionFactoryTests.cs`, with the scripted 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any allow-list that diverges from the seeded tools, any session built with the
 runtime's skills enabled or its custom instructions admitted, any session built without the
-default-safe permission handler, any session built with the runtime's own compaction left enabled,
+default-safe permission handler, any session built with the runtime's own compaction left at the
+runtime's default threshold,
 any seeded record rendered in the wrong order or with an entry lost, any record fenced around an
 empty history, any session created without the event handler registered, any session opened for a
 creation that was already canceled, or any opened session left unreleased when the creation failed
@@ -84,14 +87,16 @@ Invokes the handler the configuration carries with a request naming a seeded too
 request, and asserts the first is approved and the second rejected. There is no host present to
 adjudicate a prompt on a session the engine drives, so the default must be safe without asking.
 
-#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-DisablesRuntimeCompaction: The Runtime's Compactor Is Off
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation: A Quarter-Window Margin
 
 **Test**: `CopilotProviderSessionFactory_BuildSessionConfig_DisablesTheRuntimesOwnCompaction`
 
-Asserts the configuration carries the infinite-session setting explicitly disabled rather than left
-at the runtime's default, which is enabled with background compaction at eighty percent of the
-window — where AgentKit also rotates. The corresponding assertion that *every* session of a rotating
-conversation carries it is at the system level.
+Asserts the configuration carries the infinite-session setting deliberately, with a
+background-compaction threshold above 0.90 rather than the runtime's default of 0.80 — where AgentKit
+rotates at 0.70, a tenth of the window below it. The threshold is what is asserted because it is what
+the runtime honors; the enablement flag is asserted alongside it only because the configuration still
+states the intent. The corresponding assertion that *every* session of a rotating conversation carries
+this configuration is at the system level.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-SeedsHistoryIntoTheSystemMessage: The Record, Exactly
 

@@ -37,8 +37,10 @@ AgentKitAgentsCopilot package only, deliberately kept out of Core.
   the runtime's own compaction and truncation events. A handler registered on the session
   configuration is installed before the create request is issued, which is what makes the first
   turn's events observable
-- **The infinite-session configuration** — switched off on every session AgentKit's own engine
-  drives, so the runtime's compactor and AgentKit's do not act on one conversation
+- **The infinite-session configuration** — its background-compaction threshold raised clear of
+  AgentKit's rotation point on every session AgentKit's own engine drives, so the runtime's compactor
+  and AgentKit's do not act on one conversation. Its enablement flag is set false alongside, as a
+  statement of intent; the runtime does not honor it and nothing depends on it
 
 ### Integration Pattern
 
@@ -47,9 +49,10 @@ AgentKitAgentsCopilot package only, deliberately kept out of Core.
 `AvailableTools` is derived from the same collection as `Tools`, installs a permission handler, and
 builds the agent through the session-config construction path with `ownsClient` left false. The same
 factory builds the configuration for every session the compaction engine drives, adding only the
-disabled infinite-session setting; `CopilotProviderSessionFactory` then registers the event handler
-and creates the session, and `CopilotSummarizer` creates a tool-free one per consolidation. The host
-owns the client's lifetime; each session AgentKit creates is AgentKit's and is released and deleted.
+raised infinite-session compaction threshold; `CopilotProviderSessionFactory` then registers the event
+handler and creates the session, and `CopilotSummarizer` creates a tool-free one per consolidation.
+The host owns the client's lifetime; each session AgentKit creates is AgentKit's and is released and
+deleted.
 
 The SDK's session and client types are **sealed with non-public constructors and no virtual
 members**, so neither can be faked in a test. AgentKit therefore reaches them through one internal

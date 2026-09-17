@@ -207,10 +207,11 @@ public sealed class CopilotProviderSession : IProviderSession
 
         var answer = await _channel.SendAndWaitAsync(message, cancellationToken).ConfigureAwait(false);
 
-        // Checked first, because it invalidates everything else. AgentKit asks the runtime not to
-        // compact or truncate a session its own engine drives; if it did so anyway, the transcript
-        // the engine believes it owns no longer describes what the provider holds, and every figure
-        // below is about a conversation that no longer exists.
+        // Checked first, because it invalidates everything else. AgentKit raises the runtime's
+        // compaction threshold clear of the engine's rotation point on a session its own engine
+        // drives; if it compacted or truncated anyway, the transcript the engine believes it owns
+        // no longer describes what the provider holds, and every figure below is about a
+        // conversation that no longer exists.
         ThrowIfHistoryRewritten();
 
         // The runtime went idle without producing an assistant message. Recording an empty answer

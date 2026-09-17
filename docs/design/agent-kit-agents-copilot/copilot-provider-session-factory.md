@@ -159,16 +159,17 @@ or nothing, with no session left behind on the runtime.
 
 **Algorithm:** Compose the system message from the instructions and the seeded history, hand it with
 the seeded tools to `CopilotAgentFactory.BuildEngineSessionConfig` — which derives the allow-list,
-closes the runtime's injection channels, installs the default-safe permission handler and disables
-the runtime's own compaction — and then set the event handler.
+closes the runtime's injection channels, installs the default-safe permission handler and raises the
+runtime's own compaction threshold clear of the engine's rotation point — and then set the event
+handler.
 
 The whole confinement comes from the agent factory rather than from here. A second allow-list
 derivation is the drift this package exists to prevent, so there is not one; see _CopilotAgentFactory
 Unit Design_.
 
 Exposed as a seam so a test can assert what a rotation actually configures — the derived allow-list,
-the disabled runtime compaction, the registered observer and the rendered record — without a live
-client, for the same reason `BuildSessionConfig` is exposed.
+the raised runtime compaction threshold, the registered observer and the rendered record — without a
+live client, for the same reason `BuildSessionConfig` is exposed.
 
 **Preconditions:** `seed` is not null; its tools carry no duplicate names.
 

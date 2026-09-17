@@ -90,8 +90,11 @@ sections:
               turn, which the SDK documents and which AgentKit depends on. Every one of these event
               types is constructable, so AgentKit's tests drive the SDK's own event objects through
               the adapter's own matching, offline; what remains out of automated scope is whether a
-              live runtime emits them when expected, and in particular whether it honors a request to
-              disable its own compaction.
+              live runtime emits them when expected. What a live run did settle, against SDK 1.0.11,
+              is that the runtime ignores the infinite-session enablement flag and honors only the
+              background-compaction threshold: a session created with the flag set false still
+              compacted once its threshold was crossed, and did not compact when it was not. AgentKit
+              therefore relies on the threshold and on these announcements, not on the flag.
             tags: [ots]
             tests:
               - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy

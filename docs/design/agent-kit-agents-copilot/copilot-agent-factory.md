@@ -35,7 +35,7 @@ The factory constructs a `SessionConfig` carrying:
 | `SkipCustomInstructions` | `true`                                   | withholds runtime-discovered instructions     |
 | `SystemMessage`          | the supplied instructions, when any      | governs a confined agent as the host intended |
 | `Model`                  | the supplied model name, when any        | backs the session with the chosen model       |
-| `InfiniteSessions`       | disabled, **engine paths only**          | stops two compactors fighting                 |
+| `InfiniteSessions`       | raised threshold, **engine paths only**  | stops two compactors fighting                 |
 
 ### Key Methods
 
@@ -77,15 +77,19 @@ model name is not validated: only the runtime knows which models the signed-in u
 **Throws:** `ArgumentNullException` when `tools` is null or contains a null entry;
 `ArgumentException` when `tools` is empty or two tools share a name.
 
-It leaves `InfiniteSessions` untouched, so a plain agent keeps the runtime's own compaction. See
-_Session Configuration Is Built on One Path_ below.
+It leaves `InfiniteSessions` untouched, so a plain agent keeps the runtime's own compaction at the
+runtime's own threshold. See _Session Configuration Is Built on One Path_ below.
 
 #### BuildEngineSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, string? model)
 
 Internal seam producing the `SessionConfig` for a session whose context AgentKit's own session engine
 manages — a compacting conversation, or a consolidation. It applies exactly the same confinement as
 the agent path, through the same private helper, and then sets one further property: the Copilot
-runtime's infinite-session compaction is **disabled**.
+runtime's background-compaction threshold is raised to **0.95**, a quarter of the window clear of the
+engine's rotation point at 0.70. The infinite-session enablement flag is also set false, but only as
+a statement of intent — the runtime ignores it, and nothing on this path depends on it. See _The
+Runtime's Own Compaction Is Held Clear of Rotation_ in _AgentKitAgentsCopilot System Design_ for the
+measurement behind that.
 
 It differs from the agent path in one further respect: it accepts an **empty** tool list. A
 consolidation runs on a session that must offer no tools at all, which is a correct engine-driven
@@ -100,7 +104,7 @@ confinement this factory can express rather than the weakest.
 
 Private helper: the single place a `SessionConfig` is constructed in this package. Both seams above
 reach it, which is what keeps the confinement, the model choice and the system message on one path;
-they differ only in which tool lists they accept and in whether they disable the runtime's own
+they differ only in which tool lists they accept and in whether they adjust the runtime's own
 compaction afterwards.
 
 #### ApplyConfinement(SessionConfig config, IList&lt;AIFunction&gt; tools, handler? onPermissionRequest)
@@ -139,15 +143,20 @@ The two public-facing seams differ in exactly two respects, both deliberate:
 | | `BuildSessionConfig` (agent) | `BuildEngineSessionConfig` (session engine) |
 | --- | --- | --- |
 | Empty tool list | refused | accepted |
-| Runtime's own compaction | left untouched | disabled |
+| Runtime's own compaction | left untouched | threshold raised to 0.95 |
 | Allow-list, skills, custom instructions, handler, model, system message | identical | identical |
 
 **The compaction asymmetry is the one a maintainer is most likely to "tidy", and must not.** A
 session the engine drives has an AgentKit compactor behind it, and two compactors reading the same
 occupancy signal would fight: the runtime would rewrite history underneath a session whose transcript
-the engine believes it owns. A plain agent has no AgentKit compactor behind it, so disabling the
+the engine believes it owns. A plain agent has no AgentKit compactor behind it, so changing the
 runtime's there would remove the only protection that session has when its window fills. A test pins
 each side.
+
+**The threshold is the setting that carries this, not the enablement flag.** Both are set on the
+engine path, but only the threshold is honored by the runtime; the flag states the intent and nothing
+depends on it. The measurement establishing that is recorded in _AgentKitAgentsCopilot System
+Verification Design_.
 
 ### Ownership and Disposal Contract
 

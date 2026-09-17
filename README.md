@@ -101,9 +101,10 @@ provider session. Today that means any `IChatClient`, through
   Copilot runtime: a provider session over one Copilot session, the factory that produces one at
   every rotation, and a summarizer that consolidates on a separate tool-free session. Copilot
   reports its own occupancy and its own context window, so unlike every other adapter this one is
-  never told a window — and because Copilot compacts its own sessions by default, every session
-  AgentKit drives is created with that switched off so the two compactors never act on one
-  conversation.
+  never told a window — and because Copilot compacts its own sessions by default, at a threshold
+  barely above the one AgentKit rotates at, every session AgentKit drives is created with the
+  runtime's compaction threshold raised clear of that rotation point so the two compactors never act
+  on one conversation.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 

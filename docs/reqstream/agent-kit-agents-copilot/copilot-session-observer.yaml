@@ -76,12 +76,13 @@ sections:
               runtime dispatches a compaction or a truncation event, and shall not report it rewritten
               otherwise.
             justification: |
-              AgentKit asks the runtime not to compact or truncate a session its own engine drives,
-              but whether that request is honored cannot be established without a live connection. The
-              runtime announces both behaviors, so the request need not be trusted on its own:
-              observing the announcement is what turns a silent divergence between the engine's
-              transcript and the conversation the provider holds into a fact the session above can
-              refuse on.
+              AgentKit holds the runtime's compaction threshold clear of the rotation point on every
+              session its own engine drives, which is a margin rather than a guarantee: the runtime's
+              last-resort behavior is deliberately left in place, and the infinite-session flag that
+              would ask it to stop altogether is not honored. The runtime announces both behaviors,
+              so neither the margin nor the flag has to be trusted on its own: observing the
+              announcement is what turns a silent divergence between the engine's transcript and the
+              conversation the provider holds into a fact the session above can refuse on.
             tests:
               - CopilotSessionObserver_OnEvent_TruncationEvent_MarksHistoryRewritten
               - CopilotSessionObserver_OnEvent_CompactionEvent_MarksHistoryRewritten

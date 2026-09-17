@@ -35,14 +35,15 @@ substituting them would verify the substitute.
 
 **What is out of automated scope, stated honestly.** A live run against the Copilot runtime is not
 automated: no assertion here needs a network, a credential or a model's non-determinism. Two
-behaviors follow from that and are stated rather than implied. **Whether a live runtime honors the
-request to disable its own compaction is unverified** — what is verified is that a session which sees
-the runtime compact or truncate refuses the next turn, naming the cause. And **whether a live runtime
-emits its usage event before the session goes idle is unverified** — what is verified is that a turn
-reporting no usage is refused rather than reported with a stale or invented figure. The argument
-checks in the internal constructor are not exercised directly either: an application reaches this
-class only through the factory, so they are a guard on an internal contract rather than behavior an
-application can trip.
+behaviors follow from that and are stated rather than implied. **Whether a live conversation ever
+crosses the raised compaction threshold before the engine rotates it is unverified** — the threshold
+is a margin rather than a guarantee, and what is verified is that a session which sees the runtime
+compact or truncate refuses the next turn, naming the cause. And **whether a live runtime emits its
+usage event before the session goes idle is unverified** — what is verified is that a turn reporting
+no usage is refused rather than reported with a stale or invented figure. The argument checks in the
+internal constructor are not exercised directly either: an application reaches this class only
+through the factory, so they are a guard on an internal contract rather than behavior an application
+can trip.
 
 Unit tests reside in `CopilotProviderSessionTests.cs`, with the scripted runtime in
 `FakeCopilotTurnChannel.cs`, both within the `DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
@@ -149,10 +150,10 @@ to make.
 Error path, and the one guarding a defect that is otherwise invisible. Scripts a turn during which
 the runtime truncates the history itself — the runtime then answers normally and reports its
 occupancy, so **every other assertion in this file would pass**. The test asserts the turn is refused
-and that the message names both the truncation and the fact that the request to disable the runtime's
-compaction was not honored, because that is what an application would need to act on. Without this
-scenario, two compactors acting on one conversation would produce no exception anywhere: the engine
-would simply start seeding replacements from a history the provider had discarded.
+and that the message names both the truncation and the infinite-session configuration the session was
+created with, because that is what an application would need to act on. Without this scenario, two
+compactors acting on one conversation would produce no exception anywhere: the engine would simply
+start seeding replacements from a history the provider had discarded.
 
 The second proves the refusal is raised *before* the next turn is sent, by asserting the runtime
 received no further prompt. That distinction is the whole value of the latch: detecting the first

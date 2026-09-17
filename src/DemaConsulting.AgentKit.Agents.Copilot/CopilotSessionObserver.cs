@@ -99,11 +99,12 @@ internal sealed class CopilotSessionObserver
     ///     Gets a value indicating whether the runtime has rewritten this session's history.
     /// </summary>
     /// <remarks>
-    ///     True once the runtime has compacted or truncated the conversation. AgentKit asks for that
-    ///     to be switched off on every session its engine drives, so this being true means the
-    ///     request was not honored — and that the transcript the engine believes it owns no longer
-    ///     matches what the provider holds. Never returns to false: a rewrite cannot be undone, and
-    ///     a session that has diverged once stays diverged.
+    ///     True once the runtime has compacted or truncated the conversation. AgentKit holds the
+    ///     runtime's compaction threshold clear of the engine's rotation point on every session its
+    ///     engine drives, so this being true means the runtime rewrote history anyway — and that the
+    ///     transcript the engine believes it owns no longer matches what the provider holds. Never
+    ///     returns to false: a rewrite cannot be undone, and a session that has diverged once stays
+    ///     diverged.
     /// </remarks>
     internal bool ProviderRewroteHistory
     {
@@ -182,8 +183,8 @@ internal sealed class CopilotSessionObserver
                 Record(() => _entries.Add(TranscriptEntry.Assistant(content)));
                 break;
 
-            // Any of the three means the runtime reshaped the conversation itself, which is exactly
-            // what AgentKit asked it not to do on a session its own engine compacts.
+            // Any of the three means the runtime reshaped the conversation itself, on a session its
+            // own engine compacts and whose compaction threshold AgentKit raised to keep it out.
             case SessionCompactionStartEvent:
             case SessionCompactionCompleteEvent:
             case SessionTruncationEvent:

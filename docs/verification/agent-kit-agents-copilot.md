@@ -34,12 +34,32 @@ simulated.
   or file-editing tool at execution time is therefore outside automated scope. The offline evidence
   is that the allow-list-carrying session configuration is built correctly and that the permission
   handler adjudicates as required — the two places where the suppression is decided.
-- **Whether the runtime honors a request to disable its own infinite-session compaction is
-  unverified.** The SDK is observed to carry the setting to the wire unchanged, which is as far as an
-  offline check reaches. The design does not rely on the request being honored: the session observer
-  watches for the runtime's own compaction and truncation events, and the provider session refuses
-  the next turn if either arrives. What the tests prove is that the request is made on every session
-  and that the refusal fires; what only a live run can settle is whether the refusal ever needs to.
+- **Whether the runtime honors a request to disable its own infinite-session compaction is verified,
+  by manual measurement against the live runtime, and the answer is no.** Three sessions were run on
+  SDK 1.0.11, on one model (`gpt-5.4-mini`), each filled with the same roughly fifty thousand tokens:
+
+  | Session configuration | Compaction events observed |
+  | --- | --- |
+  | `Enabled = false`, background threshold 0.05 — crossed | **2 — it compacted anyway** |
+  | `Enabled = false`, background threshold 0.50 — not crossed | 0 |
+  | `Enabled = false` alone, at the runtime's default threshold of 0.80 — never reached | 0 |
+
+  The enablement flag is ignored and the background-compaction threshold is honored: a session
+  compacts exactly when its threshold is crossed, whatever the flag says. AgentKit therefore raises
+  the threshold to 0.95 on every session its engine drives, a quarter of the window clear of the
+  engine's rotation point at 0.70, and relies on that. The flag is still set, as a statement of
+  intent and in case the runtime ever begins honoring it, but nothing depends on it. The events
+  observed were `SessionCompactionStartEvent` and `SessionCompactionCompleteEvent`, which are the
+  event types the adapter's observer already matches on — so the detection path is confirmed working
+  against the live runtime too. This measurement is not automated and is not re-run by the suite: it
+  is a property of the runtime, recorded here because the design depends on it.
+- **Whether a live conversation ever crosses 0.95 before the engine rotates it at 0.70 is
+  unverified.** The threshold is a margin, not a guarantee, and the runtime's last-resort behavior is
+  deliberately left in place. The session observer watches for the runtime's own compaction and
+  truncation events, and the provider session refuses the next turn if either arrives — before a turn
+  is sent as well as after one returns. What the tests prove is that the raised threshold is carried
+  on every session and that the refusal fires; what only a live run can settle is whether the refusal
+  ever needs to.
 - **Whether the model weights a seeded record carried in the instructions channel as it would weight
   the conversation it replaces is unverified**, and unverifiable offline. The tests prove the record
   is rendered, ordered and fenced exactly as designed, and that every entry kind a rotation produces
@@ -136,14 +156,19 @@ consolidated record, and the superseded session was released exactly once while 
 not. It also asserts the replacement reports nothing occupied — a replacement that inherited its
 predecessor's figure would cross the threshold again on adoption and rotate forever.
 
-### Session: The Runtime's Own Compaction Is Off on Every Session
+### Session: The Engine's Compaction Configuration Is Carried on Every Session
 
 **Test**: `AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds`
 
 Runs a conversation that rotates, so a first session and a replacement are both created, and asserts
-**both** carry the disabled infinite-session setting. Asserting only the first would leave a rotation
-free to hand the conversation back to the runtime's compactor, which is precisely the divergence this
-setting exists to prevent and precisely the kind of defect a single-session assertion would miss.
+**both** carry the engine path's infinite-session configuration rather than the runtime's default.
+Asserting only the first would leave a rotation free to hand the conversation back to the runtime's
+compactor at the runtime's own threshold, which is precisely the divergence this configuration exists
+to prevent and precisely the kind of defect a single-session assertion would miss. The value that
+configuration carries — a background-compaction threshold well above the engine's rotation point — is
+asserted at the unit level, in _CopilotAgentFactory Unit Verification Design_ and
+_CopilotProviderSessionFactory Unit Verification Design_, because it is set in one place for all
+three engine paths.
 
 ## Acceptance Criteria
 
@@ -152,4 +177,4 @@ those explicitly asserted. Any allow-list that diverges from the published tools
 that is rejected, any unlisted or built-in request that is approved on either path, any occupancy
 figure that is not the one the runtime reported, any rotation that fails to seed the consolidated
 record, any superseded session left unreleased, or any session created with the runtime's own
-compaction left enabled constitutes a failure.
+compaction left at the runtime's default threshold constitutes a failure.

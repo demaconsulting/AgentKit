@@ -86,11 +86,17 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves the runtime's own compaction is switched off on every session the factory builds.
-    ///     Copilot compacts at eighty percent of its window by default, which is where AgentKit
-    ///     rotates; left on, both would act on one conversation and the engine's transcript would
-    ///     diverge from what the provider holds.
+    ///     Proves every session the factory builds carries the engine path's infinite-session
+    ///     configuration rather than the runtime's default, so the runtime's compaction threshold
+    ///     stays clear of the point AgentKit rotates at.
     /// </summary>
+    /// <remarks>
+    ///     Copilot compacts at eighty percent of its window by default and AgentKit rotates at
+    ///     seventy, so left at the default both would act on one conversation and the engine's
+    ///     transcript would diverge from what the provider holds. The threshold is what the runtime
+    ///     honors; the enablement flag beside it is asserted only because the configuration still
+    ///     states the intent.
+    /// </remarks>
     [Fact]
     public void CopilotProviderSessionFactory_BuildSessionConfig_DisablesTheRuntimesOwnCompaction()
     {
@@ -100,6 +106,7 @@ public class CopilotProviderSessionFactoryTests
         // Assert
         Assert.NotNull(config.InfiniteSessions);
         Assert.False(config.InfiniteSessions.Enabled);
+        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
     }
 
     /// <summary>

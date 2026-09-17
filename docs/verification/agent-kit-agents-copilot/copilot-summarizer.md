@@ -22,8 +22,9 @@ for something other than what every other provider is asked for. Comparing again
 publishes".
 
 **Two properties are asserted through the configuration rather than the answer**, because that is
-where they are decided: the session carries no tools and an empty allow-list, and the runtime's own
-compaction is disabled. Both are invisible from the record that comes back.
+where they are decided: the session carries no tools and an empty allow-list, and it carries the
+engine path's infinite-session configuration rather than the runtime's default. Both are invisible
+from the record that comes back.
 
 **What is out of automated scope, stated honestly.** No live consolidation is performed, so nothing
 here proves a Copilot model produces a useful record from the prompt — that is a quality judgment a
@@ -49,9 +50,10 @@ Unit tests reside in `CopilotSummarizerTests.cs`, with the scripted runtime in
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any prompt that is not the composed consolidation prompt, any consolidation
 session carrying a tool or a non-empty allow-list, any session built with the runtime's own
-compaction left enabled, any session reused between consolidations, any session left unreleased on
-either the successful or the failing path, any empty answer turned into an exception or into invented
-text, or any session opened for a consolidation that was already canceled constitutes a failure.
+compaction left at the runtime's default, any session reused between consolidations, any session left
+unreleased on either the successful or the failing path, any empty answer turned into an exception or
+into invented text, or any session opened for a consolidation that was already canceled constitutes a
+failure.
 
 ### Test Scenarios
 
@@ -81,9 +83,11 @@ conversation's own confinement was reasoned about. This is also the scenario tha
 tool-free configuration path exists and is used — the agent path refuses an empty tool list, and a
 summarizer that had quietly fallen back to it would carry whatever tools it was given.
 
-The second asserts the runtime's own compaction is disabled here too: a consolidation is one prompt
-and one answer, and a runtime that reshaped the material mid-consolidation would produce a record of
-something other than what it was given.
+The second asserts a consolidation session takes the engine path's infinite-session configuration too,
+rather than the runtime's default: a consolidation is one prompt and one answer, and a runtime that
+reshaped the material mid-consolidation would produce a record of something other than what it was
+given. The threshold that configuration carries is asserted where it is set, in _CopilotAgentFactory
+Unit Verification Design_.
 
 #### AgentKitAgentsCopilot-CopilotSummarizer-RunsOutsideTheCompactedSession: A Session of Its Own, Each Time
 

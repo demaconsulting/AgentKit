@@ -32,13 +32,13 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     </para>
 ///     <para>
 ///     <b>The two paths differ in exactly one respect, deliberately.</b>
-///     <see cref="BuildEngineSessionConfig"/> switches the Copilot runtime's own infinite-session
-///     compaction <em>off</em>; <see cref="BuildSessionConfig"/> leaves it alone. A session the
-///     AgentKit engine drives has an AgentKit compactor behind it, and two compactors reading the
-///     same occupancy signal would fight — see <see cref="BuildEngineSessionConfig"/> for the full
-///     argument. A plain Copilot agent has no AgentKit compactor behind it, so disabling the
-///     runtime's would remove protection rather than prevent a conflict. Do not "tidy" the
-///     asymmetry away.
+///     <see cref="BuildEngineSessionConfig"/> raises the Copilot runtime's own compaction threshold
+///     clear of the session engine's rotation point; <see cref="BuildSessionConfig"/> leaves the
+///     runtime's compaction alone. A session the AgentKit engine drives has an AgentKit compactor
+///     behind it, and two compactors reading the same occupancy signal would fight — see
+///     <see cref="BuildEngineSessionConfig"/> for the full argument. A plain Copilot agent has no
+///     AgentKit compactor behind it, so changing the runtime's would remove protection rather than
+///     prevent a conflict. Do not "tidy" the asymmetry away.
 ///     </para>
 ///     <para>
 ///     <b>Permission handling is default-safe.</b> When no handler is supplied, the factory
@@ -75,6 +75,21 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// </remarks>
 public static class CopilotAgentFactory
 {
+    /// <summary>
+    ///     The share of the context window at which the Copilot runtime is allowed to compact a
+    ///     session AgentKit's engine drives.
+    /// </summary>
+    /// <remarks>
+    ///     Raised well above the engine's own rotation point so the engine always acts first. The
+    ///     runtime's default is 0.80 and the engine rotates at 0.70, which leaves a tenth of the
+    ///     window between them — close enough that a single turn returning a large tool result can
+    ///     cross it in one step. It is not set to 1.0: the runtime's last-resort behavior is worth
+    ///     keeping for the case where something extraordinary happens, and this engine refuses a
+    ///     session the runtime has rewritten rather than silently continuing, so the outcome is
+    ///     diagnosable either way.
+    /// </remarks>
+    private const double RuntimeCompactionThreshold = 0.95;
+
     /// <summary>
     ///     Builds an agent from a Copilot client and a supplied tool list, with the runtime's
     ///     built-in tools suppressed.
@@ -198,9 +213,9 @@ public static class CopilotAgentFactory
     ///     </para>
     ///     <para>
     ///     This is the <em>agent</em> path. It deliberately leaves <c>InfiniteSessions</c> untouched,
-    ///     so the Copilot runtime keeps compacting a plain agent's session as it always has: nothing
-    ///     else is watching that session's window. The session-engine path,
-    ///     <see cref="BuildEngineSessionConfig"/>, switches it off for the opposite reason.
+    ///     so the Copilot runtime keeps compacting a plain agent's session as it always has, at its own
+    ///     threshold: nothing else is watching that session's window. The session-engine path,
+    ///     <see cref="BuildEngineSessionConfig"/>, raises that threshold for the opposite reason.
     ///     </para>
     /// </remarks>
     /// <param name="tools">The tools to publish and allow.</param>
@@ -232,25 +247,32 @@ public static class CopilotAgentFactory
     /// <summary>
     ///     Builds the session configuration for a session whose context AgentKit's own session
     ///     engine manages: the same confinement the agent path receives, plus the Copilot runtime's
-    ///     own compaction switched off.
+    ///     own compaction threshold raised clear of the engine's rotation point.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>Why the runtime's compaction is switched off here.</b> Copilot compacts its own
-    ///     session: <c>InfiniteSessionConfig</c> defaults to enabled, with background compaction at
-    ///     0.80 of the window and buffer exhaustion at 0.95. AgentKit's session engine rotates at a
-    ///     threshold of the same order, against the same occupancy signal. Left on, both compactors
-    ///     would act on one conversation: Copilot would rewrite history underneath a session whose
-    ///     transcript the engine believes it owns, and the occupancy the engine reads afterwards
-    ///     would move for reasons it cannot see — so the engine would seed a replacement from a
-    ///     history the provider no longer holds, and the two accounts of the conversation would
-    ///     diverge silently. The engine is the one compactor here, so the runtime's is switched off
-    ///     rather than tuned. <b>A future maintainer must not "helpfully" turn it back on.</b>
+    ///     <b>Why the runtime's compaction is held off here.</b> Copilot compacts its own session:
+    ///     <c>InfiniteSessionConfig</c> defaults to enabled, with background compaction at 0.80 of
+    ///     the window and buffer exhaustion at 0.95. AgentKit's session engine rotates at 0.70,
+    ///     against the same occupancy signal. Left at that default, both compactors would act on one
+    ///     conversation: Copilot would rewrite history underneath a session whose transcript the
+    ///     engine believes it owns, and the occupancy the engine reads afterwards would move for
+    ///     reasons it cannot see — so the engine would seed a replacement from a history the
+    ///     provider no longer holds, and the two accounts of the conversation would diverge
+    ///     silently. A tenth of the window is not a margin: one turn returning a large tool result
+    ///     can cross it in a single step. <b>A future maintainer must not lower the threshold back
+    ///     toward the engine's own.</b>
     ///     </para>
     ///     <para>
-    ///     <b>Whether the runtime honors the request is not verifiable offline.</b> The SDK carries
-    ///     the setting to the wire unchanged, which is all this library can establish without a live
-    ///     connection. So the request is not trusted on its own:
+    ///     <b>The threshold is what the runtime honors; the enablement flag is not.</b> Measured
+    ///     against the live runtime on SDK 1.0.11, a session created with <c>Enabled = false</c>
+    ///     compacted as soon as its threshold was crossed, exactly as one created with it true did.
+    ///     The flag is still set, because it states the intent and costs nothing if the runtime ever
+    ///     begins honoring it, but nothing here depends on it.
+    ///     </para>
+    ///     <para>
+    ///     <b>The threshold is deliberately not 1.0, so a rewrite stays possible.</b> The runtime's
+    ///     last-resort behavior is worth keeping, so the margin is a margin rather than a guarantee:
     ///     <see cref="CopilotSessionObserver"/> watches for the runtime's own compaction and
     ///     truncation events, and <see cref="CopilotProviderSession"/> refuses the next turn if one
     ///     arrives. That turns a silent divergence into a diagnosable failure.
@@ -272,7 +294,10 @@ public static class CopilotAgentFactory
     ///     The Copilot model to back the session, or <see langword="null"/>/blank to leave
     ///     <c>SessionConfig.Model</c> unset so the runtime applies its own default.
     /// </param>
-    /// <returns>The configured session, with the runtime's own compaction disabled.</returns>
+    /// <returns>
+    ///     The configured session, with the runtime's own compaction threshold raised clear of the
+    ///     engine's rotation point.
+    /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
     /// </exception>
@@ -286,7 +311,22 @@ public static class CopilotAgentFactory
 
         var config = CreateSessionConfig(tools, instructions, onPermissionRequest: null, model);
 
-        config.InfiniteSessions = new InfiniteSessionConfig { Enabled = false };
+        // Enabled = false does not work, and is set anyway: measured against SDK 1.0.11, a session
+        // created with it still compacted as soon as the threshold was crossed, identically to one
+        // created with it true. It is kept because it states the intent and costs nothing if the
+        // runtime ever starts honoring it - but nothing may depend on it.
+        //
+        // The threshold is honored, and is what actually holds the runtime off. It is raised rather
+        // than the flag being trusted: AgentKit rotates at 0.70 of the window, so the runtime's
+        // default of 0.80 leaves only a tenth of the window between the two. One turn returning a
+        // large tool result can cross that gap in a single step, and then the runtime rewrites a
+        // history this engine believes it owns. At 0.95 the margin is a quarter of the window, and
+        // the runtime's own last-resort behavior is still there if something extraordinary happens.
+        config.InfiniteSessions = new InfiniteSessionConfig
+        {
+            Enabled = false,
+            BackgroundCompactionThreshold = RuntimeCompactionThreshold,
+        };
 
         return config;
     }
@@ -298,7 +338,7 @@ public static class CopilotAgentFactory
     ///     The single place a <see cref="SessionConfig"/> is constructed in this package. Both
     ///     public-facing builders reach it, which is what keeps the confinement, the model choice
     ///     and the system message on one path; they differ only in which tool lists they accept and
-    ///     in whether they disable the runtime's own compaction afterwards.
+    ///     in whether they adjust the runtime's own compaction afterwards.
     /// </remarks>
     /// <param name="tools">The validated tools to publish and allow.</param>
     /// <param name="instructions">The system instructions, if any.</param>

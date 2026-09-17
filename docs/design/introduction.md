@@ -153,8 +153,8 @@ software items, specifically:
   records the runtime's tool traffic, reports the runtime's own occupancy, and refuses a turn it
   cannot account for
 - **CopilotProviderSessionFactory (Unit)** — Creates one seeded Copilot session per rotation,
-  rendering the seeded history into the session's system message and disabling the runtime's own
-  compaction
+  rendering the seeded history into the session's system message and holding the runtime's own
+  compaction clear of the engine's rotation point
 - **CopilotSessionObserver (Unit)** — Watches the runtime's event stream for the usage reading, the
   turn's tool traffic, and any sign the runtime rewrote history itself
 - **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,

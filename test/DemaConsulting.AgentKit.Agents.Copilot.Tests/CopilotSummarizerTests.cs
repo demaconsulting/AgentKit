@@ -60,9 +60,10 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
-    ///     Proves the runtime's own compaction is switched off on a consolidation session too. A
-    ///     consolidation is one prompt and one answer; a runtime that reshaped the material
-    ///     mid-consolidation would produce a record of something other than what it was given.
+    ///     Proves a consolidation session carries the engine path's infinite-session configuration
+    ///     too, rather than the runtime's default. A consolidation is one prompt and one answer; a
+    ///     runtime that reshaped the material mid-consolidation would produce a record of something
+    ///     other than what it was given.
     /// </summary>
     [Fact]
     public async Task CopilotSummarizer_Consolidate_DisablesTheRuntimesOwnCompaction()

@@ -176,12 +176,12 @@ sections:
         tests:
           - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
 
-      - id: AgentKitAgentsCopilot-SelfCompaction-Disabled
+      - id: AgentKitAgentsCopilot-SelfCompaction-HeldClearOfRotation
         title: >-
           The library shall create every Copilot session its own session engine drives with the
-          runtime's infinite-session compaction disabled, shall leave the runtime's compaction
-          untouched on the plain agent path, and shall refuse further turns on a session the runtime
-          compacted or truncated anyway.
+          runtime's compaction threshold raised clear of the engine's rotation point, shall leave the
+          runtime's compaction untouched on the plain agent path, and shall refuse further turns on a
+          session the runtime compacted or truncated anyway.
         tags: [system]
         justification: |
           The Copilot runtime compacts its own sessions by default, at a threshold of the same order
@@ -189,16 +189,26 @@ sections:
           acting on one conversation is not a theoretical conflict: the runtime would rewrite history
           underneath a session whose transcript the engine believes it owns, and the occupancy the
           engine reads afterwards would move for reasons it cannot see — so the engine would seed a
-          replacement from a history the provider no longer holds. The engine is the one compactor on
-          the sessions it drives, so the runtime's is switched off there. The asymmetry is
-          deliberate: a plain Copilot agent has no AgentKit compactor behind it, so disabling the
-          runtime's would remove protection rather than prevent a conflict. Whether the runtime
-          honors the request cannot be established without a live connection, so the request is not
-          trusted on its own — the runtime announces its own compaction and truncation, and a session
-          that sees either refuses the next turn, which makes a silent divergence a diagnosable
-          failure.
+          replacement from a history the provider no longer holds.
+
+          Asking the runtime to stop does not work. Measured against SDK 1.0.11, a session created
+          with the infinite-session flag set false compacted as soon as its threshold was crossed,
+          identically to one created with the flag true; a session whose threshold was not crossed
+          did not compact whatever the flag said. The threshold is the honored setting, so it is the
+          one relied on. The flag is still set, because it states the intent and costs nothing if the
+          runtime ever begins honoring it, but nothing depends on it.
+
+          The threshold is raised rather than merely left alone because the runtime's default of 0.80
+          sits a tenth of the window above the engine's rotation at 0.70, and one turn returning a
+          large tool result can cross that gap in a single step. It is not raised to 1.0: the
+          runtime's last-resort behavior is worth keeping, and a session that sees a compaction or
+          truncation announced refuses the next turn — before it is sent as well as after one
+          returns — so the outcome is diagnosable rather than silent either way.
+
+          The asymmetry is deliberate: a plain Copilot agent has no AgentKit compactor behind it, so
+          changing the runtime's would remove protection rather than prevent a conflict.
         children:
-          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DisablesRuntimeCompaction
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation
           - AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory
           - AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone

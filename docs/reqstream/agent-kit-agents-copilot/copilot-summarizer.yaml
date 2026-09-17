@@ -29,16 +29,18 @@ sections:
             title: >-
               The summarizer shall create each consolidation session with no tools, an empty
               allow-list, the runtime's skills disabled, its custom instructions skipped, and the
-              runtime's own compaction disabled.
+              runtime's own compaction threshold raised clear of the session engine's rotation point.
             justification: |
               A consolidation is a pure function from material to a record of it: there is nothing for
               a tool to do, and a tool that could act would be acting outside everything the
               conversation's own confinement was reasoned about. An empty tool list derives an empty
               allow-list and a permission handler that approves nothing, which is the strongest
-              confinement this package can express rather than the weakest. The runtime's own
-              compaction is disabled for the same reason it is on a conversation session: a runtime
-              that reshaped the material mid-consolidation would produce a record of something other
-              than what it was given.
+              confinement this package can express rather than the weakest. The runtime's compaction
+              is held clear for the same reason it is on a conversation session: a runtime that
+              reshaped the material mid-consolidation would produce a record of something other than
+              what it was given. The consolidation session takes the engine configuration whole,
+              from the same builder, rather than a variant of it — a second configuration path is the
+              drift this package exists to prevent.
             tests:
               - CopilotSummarizer_Consolidate_CarriesNoToolsAndAnEmptyAllowList
               - CopilotSummarizer_Consolidate_DisablesTheRuntimesOwnCompaction

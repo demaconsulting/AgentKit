@@ -144,17 +144,23 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone
             title: >-
-              The factory shall disable the Copilot runtime's own infinite-session compaction on
-              every session built for AgentKit's session engine, and shall leave it untouched on every
-              session built for a plain agent.
+              The factory shall raise the Copilot runtime's own compaction threshold clear of the
+              session engine's rotation point on every session built for that engine, and shall leave
+              the runtime's compaction untouched on every session built for a plain agent.
             justification: |
               A session the engine drives has an AgentKit compactor behind it, and two compactors
               reading the same occupancy signal would fight: the runtime would rewrite history
               underneath a session whose transcript the engine believes it owns. A plain agent has no
-              AgentKit compactor behind it, so disabling the runtime's there would remove the only
+              AgentKit compactor behind it, so changing the runtime's there would remove the only
               protection that session has when its window fills. The asymmetry is therefore deliberate
               and is asserted on both paths, so that neither can be "tidied" into the other without a
               test saying so.
+
+              The threshold is what the engine path raises, because the threshold is the setting the
+              runtime honors. Measured against SDK 1.0.11, a session created with the infinite-session
+              flag set false compacted as soon as its threshold was crossed, exactly as one created
+              with the flag true did. The flag is still set and states the intent, but nothing depends
+              on it; the assertion that carries this requirement is the one on the threshold.
             tests:
               - CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched
-              - CopilotAgentFactory_BuildEngineSessionConfig_DisablesTheRuntimesCompaction
+              - CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation

@@ -28,9 +28,11 @@ confinement this package can express rather than the weakest — and it is why
 `CopilotAgentFactory.BuildEngineSessionConfig` accepts an empty list where the agent path refuses
 one.
 
-**The runtime's own compaction is disabled on this session too.** A consolidation is one prompt and
-one answer; there is nothing to compact, and a runtime that reshaped the material mid-consolidation
-would produce a record of something other than what it was given.
+**The runtime's own compaction is held clear of the rotation point on this session too.** A
+consolidation is one prompt and one answer; there is nothing to compact, and a runtime that reshaped
+the material mid-consolidation would produce a record of something other than what it was given. The
+configuration comes whole from `CopilotAgentFactory.BuildEngineSessionConfig`, so a consolidation
+session is configured exactly as a conversation session is.
 
 **Ownership.** The `CopilotClient` is the host's and is disposed by the host; every session this
 summarizer creates is its own and is released by it.

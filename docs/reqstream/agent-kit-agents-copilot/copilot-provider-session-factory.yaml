@@ -80,18 +80,32 @@ sections:
               - CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler
               - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
 
-          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DisablesRuntimeCompaction
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation
             title: >-
-              The factory shall create every session with the Copilot runtime's own infinite-session
-              compaction disabled.
+              The factory shall create every session with the Copilot runtime's own compaction
+              threshold raised clear of the session engine's rotation point.
             justification: |
               The runtime compacts its own sessions by default, at a threshold of the same order as
-              AgentKit's rotation threshold and against the same occupancy signal. Left on, both
-              compactors would act on one conversation: the runtime would rewrite history underneath a
-              session whose transcript the engine believes it owns, and the occupancy the engine reads
-              afterwards would move for reasons it cannot see. The engine is the one compactor on this
-              path, so the runtime's is switched off on every session a rotation creates rather than
-              on the first one only.
+              AgentKit's rotation threshold and against the same occupancy signal. Left at that
+              default, both compactors would act on one conversation: the runtime would rewrite
+              history underneath a session whose transcript the engine believes it owns, and the
+              occupancy the engine reads afterwards would move for reasons it cannot see.
+
+              The threshold is what decides this, because it is the setting the runtime honors.
+              Measured against SDK 1.0.11, a session created with the infinite-session flag set false
+              compacted as soon as its threshold was crossed, exactly as a session created with the
+              flag true did; a session whose threshold was not crossed did not compact whatever the
+              flag said. The flag is still set, because it states the intent and costs nothing if the
+              runtime ever begins honoring it, but nothing depends on it.
+
+              The engine rotates at 0.70 of the window and the runtime's default is 0.80, which
+              leaves only a tenth of the window between them — a gap one turn returning a large tool
+              result can cross in a single step. Raised to 0.95, the margin is a quarter of the
+              window instead. It is raised on every session a rotation creates rather than on the
+              first one only, because a long conversation must not become less protected the longer
+              it runs. It is not raised to 1.0: the runtime's last-resort behavior is worth keeping,
+              and a session that sees a compaction announced refuses the next turn, so the outcome is
+              diagnosable rather than silent.
             tests:
               - CopilotProviderSessionFactory_BuildSessionConfig_DisablesTheRuntimesOwnCompaction
               - AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds

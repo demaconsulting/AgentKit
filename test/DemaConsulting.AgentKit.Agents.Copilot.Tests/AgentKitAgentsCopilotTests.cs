@@ -195,9 +195,11 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
-    ///     Proves every session AgentKit's engine drives on Copilot is created with the runtime's own
-    ///     compaction disabled — the first and every replacement — so no rotation can silently hand
-    ///     the conversation back to the runtime's compactor.
+    ///     Proves every session AgentKit's engine drives on Copilot is created with the engine
+    ///     path's infinite-session configuration — the first and every replacement — so no rotation
+    ///     can silently hand the conversation back to the runtime's compactor at the runtime's own
+    ///     threshold. The value that configuration carries is asserted where it is set, in
+    ///     <c>CopilotAgentFactoryTests</c>.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds()

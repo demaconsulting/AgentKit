@@ -585,7 +585,8 @@ public sealed class CommandLineOptions
          carries on. Each turn reports its occupancy, whether it rotated, and whether compacting
          bought nothing and history had to be dropped. The two differ only in where the figures come
          from: Ollama is told its window, while Copilot reports both its occupancy and its limit, and
-         is asked to leave its own compaction switched off so the two do not both rewrite one history.
+         has its own compaction threshold raised clear of AgentKit's rotation point so the two do not
+         both rewrite one history.
 
          The memory family needs an embedding backend, and choosing one is the application's job,
          not AgentKit's. This sample offers an offline generator of its own (no server, no model

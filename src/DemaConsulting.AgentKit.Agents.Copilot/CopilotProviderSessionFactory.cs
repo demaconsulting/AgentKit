@@ -212,14 +212,14 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 
     /// <summary>
     ///     Builds the session configuration one seed produces: the confinement, the runtime's own
-    ///     compaction disabled, the observer registered, and the seeded history rendered into the
-    ///     system message.
+    ///     compaction threshold raised clear of the engine's rotation point, the observer
+    ///     registered, and the seeded history rendered into the system message.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     Exposed as a seam so a test can assert what a rotation actually configures — the derived
-    ///     allow-list, the disabled runtime compaction, the registered observer and the rendered
-    ///     record — without a live <see cref="CopilotClient"/>.
+    ///     allow-list, the raised runtime compaction threshold, the registered observer and the
+    ///     rendered record — without a live <see cref="CopilotClient"/>.
     ///     </para>
     ///     <para>
     ///     <b>Why the history goes into the system message.</b> Copilot's session configuration

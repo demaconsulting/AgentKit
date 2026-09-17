@@ -31,10 +31,12 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     nothing, which is the strongest confinement this package can express.
 ///     </para>
 ///     <para>
-///     <b>The runtime's own compaction is disabled on this session too.</b> A consolidation is one
-///     prompt and one answer; there is nothing to compact, and a runtime that reshaped the material
-///     mid-consolidation would produce a record of something other than what it was given. See
-///     <c>CopilotAgentFactory.BuildEngineSessionConfig</c>.
+///     <b>The runtime's own compaction is held clear of the engine's rotation point on this session
+///     too.</b> A consolidation is one prompt and one answer; there is nothing to compact, and a
+///     runtime that reshaped the material mid-consolidation would produce a record of something
+///     other than what it was given. The configuration comes whole from
+///     <c>CopilotAgentFactory.BuildEngineSessionConfig</c>, so a consolidation session is configured
+///     exactly as a conversation session is.
 ///     </para>
 ///     <para>
 ///     <b>Ownership.</b> The <see cref="CopilotClient"/> is the host's and is disposed by the host;

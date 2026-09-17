@@ -29,13 +29,15 @@ shapes directly and offline.
 session lifecycle calls reach an authenticated Copilot CLI, which is not available in a unit test and
 which this repository deliberately does not require; their offline evidence is that the
 allow-list-carrying `SessionConfig` they consume is built correctly and that every session AgentKit
-opens is released on every path. And **whether the runtime honors a request to disable its own
-infinite-session compaction cannot be established offline**: the SDK is observed to carry the setting
-to the wire unchanged, and the adapter watches for the runtime's own compaction and truncation events
-so that a violation is refused rather than silently absorbed. Both boundaries are recorded in the
-_AgentKitAgentsCopilot System Verification Design_. The SDK's RID-specific native runtime, a
-deployment property rather than a testable behavior, is documented in the
-_Microsoft.Agents.AI.GitHub.Copilot Design_.
+opens is released on every path. And **whether a live runtime dispatches each event when expected
+cannot be established offline**: the SDK is observed to carry the configuration to the wire unchanged,
+and the adapter watches for the runtime's own compaction and truncation events so that a rewrite is
+refused rather than silently absorbed. How the SDK treats the infinite-session configuration is no
+longer open: manual measurement against the live runtime showed the enablement flag is ignored and
+the background-compaction threshold is honored, so AgentKit raises the threshold and does not rely on
+the flag. The numbers are recorded in the _AgentKitAgentsCopilot System Verification Design_, which
+also records both boundaries above. The SDK's RID-specific native runtime, a deployment property
+rather than a testable behavior, is documented in the _Microsoft.Agents.AI.GitHub.Copilot Design_.
 
 ### Test Scenarios
 
@@ -99,7 +101,9 @@ session is released exactly once.
 
 **Scenario**: A run that rotates once, so a first session and a replacement are both created.
 
-**Expected**: Both are created with the SDK's infinite-session compaction disabled.
+**Expected**: Both are created with the engine path's infinite-session configuration — the
+background-compaction threshold raised clear of AgentKit's rotation point — rather than the SDK's
+default.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents`.
 

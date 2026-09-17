@@ -100,17 +100,19 @@ sections:
               The session shall refuse a turn once the Copilot runtime has compacted or truncated the
               session's history itself, naming that cause.
             justification: |
-              Every session the engine drives is created with the runtime's own compaction disabled.
-              Whether the runtime honors that cannot be established without a live connection, so the
-              request is not trusted on its own: a runtime that rewrote the history anyway has left
-              the engine's transcript describing a conversation the provider no longer holds, and
-              every occupancy figure afterwards is about that vanished conversation. Refusing turns a
-              silent divergence into a diagnosable failure, which is the convention this library
-              already follows where it cannot know something it needs. The refusal is raised before a
-              turn is sent as well as after one returns: detecting the first rewrite is unavoidably
-              after the fact, but a later turn that reached the runtime would let the model run the
-              application's tools, with their side effects, against a conversation the engine no
-              longer describes - and a host retrying the failure would do it again each time.
+              Every session the engine drives is created with the runtime's own compaction threshold
+              raised clear of the engine's rotation point, so the engine always acts first. That is a
+              margin rather than a guarantee, and the runtime's last-resort behavior is deliberately
+              left in place, so a rewrite remains possible: a runtime that rewrote the history anyway
+              has left the engine's transcript describing a conversation the provider no longer holds,
+              and every occupancy figure afterwards is about that vanished conversation. Refusing
+              turns a silent divergence into a diagnosable failure, which is the convention this
+              library already follows where it cannot know something it needs. The refusal is raised
+              before a turn is sent as well as after one returns: detecting the first rewrite is
+              unavoidably after the fact, but a later turn that reached the runtime would let the
+              model run the application's tools, with their side effects, against a conversation the
+              engine no longer describes - and a host retrying the failure would do it again each
+              time.
             tests:
               - CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn
               - CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn

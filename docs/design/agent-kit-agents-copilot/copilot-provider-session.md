@@ -116,10 +116,11 @@ if none holds, build the turn from the runtime's answer and the entries the obse
 
 The three refusals are ordered because the first invalidates the others:
 
-1. **The runtime rewrote this session's history.** Every session the engine drives is created with
-   the runtime's own compaction disabled; if it compacted or truncated anyway, the engine's
-   transcript describes a conversation the provider no longer holds, and every figure below is about
-   that vanished conversation. See _The Runtime's Own Compaction Is Disabled_ in
+1. **The runtime rewrote this session's history.** Every session the engine drives is created with the
+   runtime's own compaction threshold raised clear of the engine's rotation point, which is a margin
+   rather than a guarantee; if it compacted or truncated anyway, the engine's transcript describes a
+   conversation the provider no longer holds, and every figure below is about that vanished
+   conversation. See _The Runtime's Own Compaction Is Held Clear of Rotation_ in
    _AgentKitAgentsCopilot System Design_.
 2. **The session went idle without producing an assistant message.** The runtime's wait returns
    nothing in that case, which means the turn failed rather than that the model had nothing to say.

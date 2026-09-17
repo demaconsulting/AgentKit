@@ -118,15 +118,21 @@ emptiness did not relax everything else.
 #### AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone: The Deliberate Asymmetry
 
 **Tests**: `CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched`,
-`CopilotAgentFactory_BuildEngineSessionConfig_DisablesTheRuntimesCompaction`
+`CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation`
 
 Both sides of the asymmetry are asserted, because it is the one a maintainer is most likely to
 "tidy" into consistency. The agent path leaves the runtime's infinite-session setting at whatever a
 freshly constructed session configuration carries — a plain agent has no AgentKit compactor behind
-it, so disabling the runtime's would remove the only protection that session has when its window
-fills. The engine path sets it explicitly disabled — a session the engine drives has an AgentKit
-compactor behind it, and two compactors reading one occupancy signal would fight.
+it, so changing the runtime's would remove the only protection that session has when its window
+fills. The engine path raises the runtime's background-compaction threshold above 0.90 — a session
+the engine drives has an AgentKit compactor behind it, the engine rotates at 0.70, and the runtime's
+default of 0.80 leaves only a tenth of the window between two compactors reading one occupancy
+signal.
 
-Whether a live runtime honors the disabling is unverified here and is recorded as such in
-_AgentKitAgentsCopilot System Verification Design_; what these scenarios establish is that the
-request is made on exactly the sessions it should be and on no others.
+**The threshold is asserted rather than the enablement flag, and that is the point of the scenario.**
+Manual measurement against the live runtime established that the flag is ignored and the threshold is
+honored; the numbers are recorded in _AgentKitAgentsCopilot System Verification Design_. The flag is
+asserted too, because the configuration still states the intent, but a change that kept the flag and
+dropped the threshold would leave the two compactors a tenth of a window apart and is what this
+scenario is here to catch. What remains unverified is whether a live conversation ever crosses the
+raised threshold before the engine rotates it.
