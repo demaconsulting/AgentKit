@@ -575,12 +575,13 @@ public sealed class CommandLineOptions
          into a separate notes folder. It composes the todo, memory and agent tool families onto one
          policy — the three families that make an agent capable of work that spans turns.
 
-         On --provider ollama the conversation runs on an AgentKit compacting session, so it
+         On either provider the conversation runs on an AgentKit compacting session, so it
          outlives the model's context window: when the window fills, older history is consolidated
          into tiered records, a fresh provider session is seeded with them, and the turn loop
          carries on. Each turn reports its occupancy, whether it rotated, and whether compacting
-         bought nothing and history had to be dropped. On --provider copilot the runtime carries its
-         own session and none of that happens, because AgentKit ships no provider session for it.
+         bought nothing and history had to be dropped. The two differ only in where the figures come
+         from: Ollama is told its window, while Copilot reports both its occupancy and its limit, and
+         is asked to leave its own compaction switched off so the two do not both rewrite one history.
 
          The memory family needs an embedding backend, and choosing one is the application's job,
          not AgentKit's. This sample offers an offline generator of its own (no server, no model
