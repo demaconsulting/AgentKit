@@ -2,11 +2,11 @@ package AgentKitAgentsChatClient {
     doc
     /*
      * AgentKitAgentsChatClient builds a Microsoft Agent Framework agent from any
-     * Microsoft.Extensions.AI IChatClient and a supplied tool list, installing AgentKit
-     * Core's image-promoting decorator on every agent it builds so a tool-returned image
-     * reaches the model on a provider that would otherwise drop it. It also carries an
+     * Microsoft.Extensions.AI IChatClient and a supplied tool list. It also carries an
      * AgentKit Core session over that same IChatClient - the one adapter serving the whole
-     * stateless provider family - and the summarizer a rotation consolidates through. It
+     * stateless provider family - and the summarizer a rotation consolidates through. Core's
+     * image-promoting decorator is installed on every agent and every session it builds, so a
+     * tool-returned image reaches the model on a provider that would otherwise drop it. It
      * carries the Microsoft.Agents.AI runtime dependency that must be kept out of Core.
      */
 

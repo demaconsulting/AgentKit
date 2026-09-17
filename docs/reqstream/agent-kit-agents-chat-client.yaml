@@ -27,8 +27,9 @@ sections:
 
       - id: AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
         title: >-
-          The library shall install the image-promoting decorator on every agent it builds, beneath
-          the function-invocation loop, and shall provide no option to omit it.
+          The library shall install the image-promoting decorator on every agent and every provider
+          session it builds, beneath the function-invocation loop, and shall provide no option to omit
+          it.
         tags: [system, security]
         justification: |
           A provider reached through an IChatClient preserves an image a tool returns all the way
@@ -37,9 +38,12 @@ sections:
           therefore breaks images silently. This library exists to make that omission impossible: it
           wraps the supplied client in the image-promoting decorator unconditionally, beneath the
           loop where a tool-returned image exists to be promoted, and exposes no parameter to
-          disable it. A caller cannot forget what a caller cannot turn off.
+          disable it. A caller cannot forget what a caller cannot turn off. A session is exposed to
+          the same silent drop as an agent, so both paths carry the decorator; a guarantee that held
+          on only one of them would fail exactly where a long conversation made it matter most.
         children:
           - AgentKitAgentsChatClient-ChatClientAgentFactory-DecoratorAlwaysInstalled
+          - AgentKitAgentsChatClient-ChatClientProviderSessionFactory-PromotesToolReturnedImages
         tests:
           - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
           - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage

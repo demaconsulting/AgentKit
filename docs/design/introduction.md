@@ -129,8 +129,8 @@ software items, specifically:
 - **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
   the registered packs rather than from the parent's tool list
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
-  `IChatClient`, installing the image-promoting decorator on every agent unconditionally, and
-  carries a Core session over that same `IChatClient`
+  `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
+  image-promoting decorator unconditionally on both
 - **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
   image-promoting decorator and builds a `ChatClientAgent`
 - **ChatClientProviderSession (Unit)** — One Core session over an `IChatClient`: the seeded message
