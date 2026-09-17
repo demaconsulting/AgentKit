@@ -89,7 +89,7 @@ adjudicate a prompt on a session the engine drives, so the default must be safe 
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation: A Quarter-Window Margin
 
-**Test**: `CopilotProviderSessionFactory_BuildSessionConfig_DisablesTheRuntimesOwnCompaction`
+**Test**: `CopilotProviderSessionFactory_BuildSessionConfig_HoldsTheRuntimesOwnCompactionClearOfRotation`
 
 Asserts the configuration carries the infinite-session setting deliberately, with a
 background-compaction threshold above 0.90 rather than the runtime's default of 0.80 — where AgentKit

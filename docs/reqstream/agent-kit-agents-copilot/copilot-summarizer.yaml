@@ -43,7 +43,7 @@ sections:
               drift this package exists to prevent.
             tests:
               - CopilotSummarizer_Consolidate_CarriesNoToolsAndAnEmptyAllowList
-              - CopilotSummarizer_Consolidate_DisablesTheRuntimesOwnCompaction
+              - CopilotSummarizer_Consolidate_HoldsTheRuntimesOwnCompactionClearOfRotation
 
           - id: AgentKitAgentsCopilot-CopilotSummarizer-RunsOutsideTheCompactedSession
             title: >-

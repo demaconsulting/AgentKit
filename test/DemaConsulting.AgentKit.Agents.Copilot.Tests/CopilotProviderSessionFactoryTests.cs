@@ -98,7 +98,7 @@ public class CopilotProviderSessionFactoryTests
     ///     states the intent.
     /// </remarks>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_DisablesTheRuntimesOwnCompaction()
+    public void CopilotProviderSessionFactory_BuildSessionConfig_HoldsTheRuntimesOwnCompactionClearOfRotation()
     {
         // Arrange / Act
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));

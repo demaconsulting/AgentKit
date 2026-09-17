@@ -282,10 +282,12 @@ public sealed class CopilotProviderSession : IProviderSession
 
         throw new InvalidOperationException(
             "The Copilot runtime compacted or truncated this session's history, which AgentKit's "
-            + "session engine believes it owns. The session was created with the runtime's "
-            + "infinite-session compaction disabled, so that request was not honored. The "
-            + "engine's transcript and the conversation the runtime holds have diverged, and "
-            + "this session cannot be used further.");
+            + "session engine believes it owns. The engine's transcript and the conversation the "
+            + "runtime holds have diverged, and this session cannot be used further. The session was "
+            + "created with the runtime's compaction threshold raised well above the point the engine "
+            + "rotates at, so reaching it means the conversation grew past the engine's own rotation "
+            + "without rotating - most likely one turn returning far more material than a turn "
+            + "usually does.");
     }
 
     /// <summary>

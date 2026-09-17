@@ -97,7 +97,7 @@ session is released exactly once.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle`.
 
-#### AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds
+#### AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
 
 **Scenario**: A run that rotates once, so a first session and a replacement are both created.
 
@@ -122,4 +122,4 @@ default.
   AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
 - **`AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents`**:
   AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy,
-  AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds
+  AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds

@@ -57,9 +57,9 @@ into tiered records, a fresh provider session is seeded with them, and the turn 
 sample prints what each turn occupies, whether it rotated, how hard it is compacting, and — the one
 signal that matters most — whether compacting bought nothing and history had to be dropped. The
 memory store lives outside the session and survives every rotation, which is why the recall turn
-still works after one. On `--provider copilot` the runtime holds its own conversation and nothing
-compacts, because AgentKit ships no provider session for it; the startup banner says which shape a
-run got.
+still works after one. Both providers run on a compacting session; on `--provider copilot` the
+runtime reports its own window, and `--context-window` becomes a ceiling that lowers it so a
+rotation is reachable at all. The startup banner says which shape a run got.
 
 Read this if your agent's work spans turns, or if you are about to give an agent the ability to
 start another one.

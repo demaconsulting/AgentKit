@@ -98,4 +98,4 @@ sections:
             tags: [ots]
             tests:
               - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
-              - AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds
+              - AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds

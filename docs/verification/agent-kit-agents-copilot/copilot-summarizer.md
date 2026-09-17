@@ -74,7 +74,7 @@ and cheaper model than the conversation — which is the point of naming it sepa
 **Tests**:
 
 - `CopilotSummarizer_Consolidate_CarriesNoToolsAndAnEmptyAllowList`
-- `CopilotSummarizer_Consolidate_DisablesTheRuntimesOwnCompaction`
+- `CopilotSummarizer_Consolidate_HoldsTheRuntimesOwnCompactionClearOfRotation`
 
 Asserts the configuration carries no published tools, an empty allow-list, disabled skills and
 skipped custom instructions. A consolidation is a pure function from material to a record of it;

@@ -213,7 +213,7 @@ sections:
           - AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory
           - AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone
         tests:
-          - AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds
+          - AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
 
       - id: AgentKitAgentsCopilot-Consolidation-OutOfSession
         title: >-

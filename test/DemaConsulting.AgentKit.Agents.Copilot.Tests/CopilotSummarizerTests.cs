@@ -66,7 +66,7 @@ public class CopilotSummarizerTests
     ///     other than what it was given.
     /// </summary>
     [Fact]
-    public async Task CopilotSummarizer_Consolidate_DisablesTheRuntimesOwnCompaction()
+    public async Task CopilotSummarizer_Consolidate_HoldsTheRuntimesOwnCompactionClearOfRotation()
     {
         // Arrange
         var runtime = Runtime("a record");

@@ -158,7 +158,7 @@ predecessor's figure would cross the threshold again on adoption and rotate fore
 
 ### Session: The Engine's Compaction Configuration Is Carried on Every Session
 
-**Test**: `AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds`
+**Test**: `AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds`
 
 Runs a conversation that rotates, so a first session and a replacement are both created, and asserts
 **both** carry the engine path's infinite-session configuration rather than the runtime's default.

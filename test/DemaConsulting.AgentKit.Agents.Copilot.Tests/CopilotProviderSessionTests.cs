@@ -286,7 +286,7 @@ public class CopilotProviderSessionTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => session.SendAsync("a question", TestContext.Current.CancellationToken));
         Assert.Contains("truncated", error.Message, StringComparison.Ordinal);
-        Assert.Contains("infinite-session compaction disabled", error.Message, StringComparison.Ordinal);
+        Assert.Contains("compaction threshold raised well above", error.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

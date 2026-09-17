@@ -202,7 +202,7 @@ public class AgentKitAgentsCopilotTests
     ///     <c>CopilotAgentFactoryTests</c>.
     /// </summary>
     [Fact]
-    public async Task AgentKitAgentsCopilot_Session_RuntimeCompactionIsDisabledOnEverySessionItBuilds()
+    public async Task AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds()
     {
         // Arrange: a run that rotates once, so both a first session and a replacement are created
         var runtime = new FakeCopilotRuntime(index => index == 0
