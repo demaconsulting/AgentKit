@@ -122,9 +122,9 @@ this configuration is at the system level.
 - `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
 - `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
-- `CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord`
-- `CopilotProviderSessionFactory_BuildSessionConfig_HistoryImitatingTheFence_CannotEscapeTheRecord`
-- `CopilotProviderSessionFactory_BuildSessionConfig_SeededToolResult_IsRenderedAsALabeledRecord`
+- `CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord`
+- `CopilotProviderSessionFactory_Preamble_HistoryImitatingTheFence_CannotEndTheRecordEarly`
+- `CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord`
 
 The first seeds from the shape a rotation actually produces — a consolidated record, a user message
 and an answer — and asserts the **entire** composed preamble as one exact string: the opening fence
@@ -162,7 +162,7 @@ present and paired is what proves the rendering did not solve the problem by dro
 - `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
 - `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
-- `CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord`
+- `CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord`
 
 The trust boundary, asserted rather than argued. The first test seeds a full rotation's history and
 asserts the configuration's system message is **equal to** the application's instructions — not that

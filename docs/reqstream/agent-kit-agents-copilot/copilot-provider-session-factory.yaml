@@ -58,9 +58,9 @@ sections:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
               - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
-              - CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord
-              - CopilotProviderSessionFactory_BuildSessionConfig_HistoryImitatingTheFence_CannotEscapeTheRecord
-              - CopilotProviderSessionFactory_BuildSessionConfig_SeededToolResult_IsRenderedAsALabeledRecord
+              - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
+              - CopilotProviderSessionFactory_Preamble_HistoryImitatingTheFence_CannotEndTheRecordEarly
+              - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-KeepsTheRecordOutOfTheSystemChannel
             title: >-
@@ -86,7 +86,7 @@ sections:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
               - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
-              - CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord
+              - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
             title: >-

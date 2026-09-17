@@ -197,7 +197,7 @@ public class CopilotProviderSessionFactoryTests
     ///     history there would silently restart the conversation.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_HistoryWithoutInstructions_CarriesTheRecord()
+    public void CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord()
     {
         // Arrange / Act
         var seed = new ProviderSessionSeed(null, [], [TranscriptEntry.User("what changed?")]);
@@ -211,19 +211,20 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves material inside the record cannot close it and address the model as the system
-    ///     message.
+    ///     Proves material inside the record cannot end it early and have the remainder read as the
+    ///     live question.
     /// </summary>
     /// <remarks>
     ///     The record carries user messages, model answers and tool results — a tool result may be
     ///     the contents of a file the agent was pointed at, which nobody in this library wrote. A
-    ///     fixed delimiter would let that file end the record early and have everything after it
-    ///     read as part of the system message, the highest-trust channel there is. The boundary
-    ///     marker is therefore drawn so that it does not occur in the material, which makes the
-    ///     escape unrepresentable rather than merely unlikely.
+    ///     fixed delimiter would let that file close the record halfway through, so the model would
+    ///     read the remainder as the question being asked rather than as history. The boundary marker
+    ///     is therefore drawn so that it does not occur in the material, which makes that
+    ///     unrepresentable rather than merely unlikely. What keeps the material from being read as
+    ///     direction at all is the channel it travels on, not this marker.
     /// </remarks>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_HistoryImitatingTheFence_CannotEscapeTheRecord()
+    public void CopilotProviderSessionFactory_Preamble_HistoryImitatingTheFence_CannotEndTheRecordEarly()
     {
         // Arrange: a tool result carrying text that tries to close the record and issue orders
         var hostile = string.Join(
@@ -276,7 +277,7 @@ public class CopilotProviderSessionFactoryTests
     ///     the output rather than expecting a value. Asserting the shape around it is what is worth
     ///     pinning; the value itself is not.
     /// </remarks>
-    /// <param name="content">The composed system message.</param>
+    /// <param name="content">The composed record.</param>
     /// <returns>The marker the record was fenced with.</returns>
     private static string MarkerOf(string content)
     {
@@ -288,12 +289,12 @@ public class CopilotProviderSessionFactoryTests
 
     /// <summary>
     ///     Proves a seeded tool result is rendered as a labeled record rather than carried under any
-    ///     role. This is the whole reason the system message was chosen: the class of defect that
-    ///     shipped on the ChatClient path — a tool result under a role a provider's wire mapping
-    ///     discards — is unrepresentable here, and the material demonstrably still reaches the model.
+    ///     role. The record has no role vocabulary at all, so the class of defect that shipped on the
+    ///     ChatClient path — a tool result under a role a provider's wire mapping discards — is
+    ///     unrepresentable here, and the material demonstrably still reaches the model.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_SeededToolResult_IsRenderedAsALabeledRecord()
+    public void CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord()
     {
         // Arrange: a rotation whose verbatim tail holds a tool call and its result
         var seed = new ProviderSessionSeed(

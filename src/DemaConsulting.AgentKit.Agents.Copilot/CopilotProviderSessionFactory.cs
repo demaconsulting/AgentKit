@@ -62,7 +62,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 {
     /// <summary>
-    ///     The text introducing the seeded conversation record in the system message.
+    ///     The text introducing the seeded conversation record on the session's first message.
     /// </summary>
     /// <remarks>
     ///     Explicit about what the block is: a record to refer to, not fresh instructions to follow.
@@ -77,7 +77,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         + "line bearing the marker {0}. ===";
 
     /// <summary>
-    ///     The text closing the seeded conversation record in the system message.
+    ///     The text closing the seeded conversation record on the session's first message.
     /// </summary>
     internal const string RecordClosing = "=== END CONVERSATION RECORD {0} ===";
 
@@ -235,46 +235,34 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <summary>
     ///     Builds the session configuration one seed produces: the confinement, the runtime's own
     ///     compaction threshold raised clear of the engine's rotation point, the observer
-    ///     registered, and the seeded history rendered into the system message.
+    ///     registered, and the application's instructions as the system message.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     Exposed as a seam so a test can assert what a rotation actually configures — the derived
-    ///     allow-list, the raised runtime compaction threshold, the registered observer and the
-    ///     rendered record — without a live <see cref="CopilotClient"/>.
+    ///     allow-list, the raised runtime compaction threshold and the registered observer — without
+    ///     a live <see cref="CopilotClient"/>.
     ///     </para>
     ///     <para>
-    ///     <b>Why the history goes into the system message.</b> Copilot's session configuration
-    ///     carries no history or messages field of any kind, so a rotation that must seed a
-    ///     rewritten history has to put it somewhere else. The system message is the only channel
-    ///     the runtime offers that exists at session-creation time, is carried verbatim, and has no
-    ///     role vocabulary — which is decisive, because the class of defect that shipped on the
-    ///     ChatClient path was a seeded tool result rendered under a role a provider's wire mapping
-    ///     silently discards. Here that is unrepresentable: the record is text in the instructions
-    ///     channel, and no provider can drop part of it without dropping the instructions.
+    ///     <b>The seeded history is not configured here.</b> Copilot's session configuration carries
+    ///     no history or messages field of any kind, so a rotation that must seed a rewritten history
+    ///     has to put it somewhere else — and the system message, which this method does set, is the
+    ///     wrong place for it. The record contains tool results, which may be the contents of a file
+    ///     the agent was pointed at. See <see cref="ComposeHistoryPreamble"/> for where it goes and
+    ///     why. What this method configures is the application's own instructions, unchanged, exactly
+    ///     as the plain agent path configures them.
     ///     </para>
     ///     <para>
-    ///     <b>What was rejected, and why.</b> Sending the record as a priming message before the real
-    ///     one costs a round trip and a billed answer per rotation, the model responds to it, and the
-    ///     record then lives in Copilot's conversation where the runtime's own truncation can drop it
-    ///     — leaving the engine believing it holds history the provider has discarded.
-    ///     <c>MessageOptions.Attachments</c> carries only file-like and GitHub references, several of
-    ///     which the runtime may omit with a stated reason, and an attachment the runtime may omit is
-    ///     precisely the silent-divergence channel this must not use. <c>ResumeSessionConfig</c>
-    ///     resumes <em>Copilot's own</em> stored history for an existing session id, which would
-    ///     resurrect the history a rotation exists to discard. And
+    ///     <b>What was rejected, and why.</b> <c>MessageOptions.Attachments</c> carries only file-like
+    ///     and GitHub references, several of which the runtime may omit with a stated reason, and an
+    ///     attachment the runtime may omit is precisely the silent-divergence channel this must not
+    ///     use. <c>ResumeSessionConfig</c> resumes <em>Copilot's own</em> stored history for an
+    ///     existing session id, which would resurrect the history a rotation exists to discard. And
     ///     <c>SystemMessageMode.Customize</c> writes into the runtime's own prompt sections, which
     ///     replaces part of the runtime's system prompt and forks the single configuration path the
-    ///     safety argument depends on.
-    ///     </para>
-    ///     <para>
-    ///     <b>Two consequences, stated rather than hidden.</b> The record is charged to the runtime's
-    ///     system-token count, so it appears as fixed overhead and the session rotates progressively
-    ///     <em>earlier</em> as records accumulate — the safe direction, and well-defined at the limit
-    ///     because Core's rotation threshold is never below one token. And it reaches the model
-    ///     through the instructions channel rather than the conversation, so the model may weight it
-    ///     differently from turns it lived through; that is not verifiable without a live run, and is
-    ///     recorded here as unverified rather than asserted.
+    ///     safety argument depends on. A priming message sent on its own was rejected too, for
+    ///     costing a round trip and a billed answer per rotation — which is why the record is
+    ///     prepended to a message the engine was already sending rather than sent by itself.
     ///     </para>
     /// </remarks>
     /// <param name="seed">What the new session must start from. Must not be <see langword="null"/>.</param>
@@ -369,20 +357,24 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     <b>The record is untrusted text and this is what keeps it inside its block.</b> Its
-    ///     entries are user messages, model answers and tool results — a tool result may be the
-    ///     contents of a file the agent was pointed at, which nobody in this library wrote. With a
-    ///     fixed delimiter, material containing that delimiter would close the record early, and
-    ///     whatever followed would be read as part of the <em>system</em> message: the highest-trust
-    ///     channel there is. A document saying it is the end of the record and then giving fresh
-    ///     instructions would be obeyed as though this library had written them.
+    ///     <b>This is a clarity mechanism, not the containment one.</b> What keeps untrusted material
+    ///     from being read as direction is the channel it travels on — see
+    ///     <see cref="ComposeHistoryPreamble"/>. The marker's job is smaller: to mark where the
+    ///     account of what already happened ends and the question being asked begins.
     ///     </para>
     ///     <para>
-    ///     Re-drawing until the marker is absent from the material makes that unrepresentable rather
-    ///     than unlikely: the closing line cannot be produced by the content, because a marker the
-    ///     content contains is never used. Escaping the material instead was rejected — it would
-    ///     alter the transcript a model reads, and a near-miss of a fixed delimiter can still read to
-    ///     a model as a boundary even when it no longer matches exactly.
+    ///     It is still drawn per record rather than fixed, because the material can contain anything
+    ///     — a tool result may be the contents of a file the agent was pointed at. A fixed delimiter
+    ///     appearing inside the record would tell the model the record had ended halfway through it,
+    ///     so the model would read the remainder as the live question. That is a correctness problem
+    ///     rather than a security one now, but it is just as real, and re-drawing until the marker is
+    ///     absent makes it unrepresentable rather than unlikely: the closing line cannot be produced
+    ///     by the content, because a marker the content contains is never used.
+    ///     </para>
+    ///     <para>
+    ///     Escaping the material instead was rejected — it would alter the transcript a model reads,
+    ///     and a near-miss of a fixed delimiter can still read to a model as a boundary even when it
+    ///     no longer matches exactly.
     ///     </para>
     /// </remarks>
     /// <param name="record">The rendered history the marker must not collide with.</param>
