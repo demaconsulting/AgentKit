@@ -23,9 +23,27 @@ sections:
               on.
 
               Deliberately not claimed here: that the query APIs which fetch those reports behave
-              as expected over the wire. Nothing offline can evidence that, and it arrives with the
-              captured live payloads - see the AgentKitAgentsOllama verification design.
+              as expected over the wire. That is a separate promise about the library's own request
+              shaping and deserialization, and it is claimed by AgentKit-OTS-OllamaSharp-Queries
+              beneath this one.
             tags: [ots]
             tests:
               - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
               - OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead
+
+          - id: AgentKit-OTS-OllamaSharp-Queries
+            title: >-
+              OllamaSharp shall fetch a server's loaded-model and model-metadata reports over the
+              Ollama HTTP API.
+            justification: |
+              The report types are only useful if the client can obtain them, and the obtaining is
+              the library's: AgentKit implements no Ollama wire protocol, names no endpoint and
+              parses no response. AgentKit's tests drive the real client against an HTTP server
+              replaying payloads captured verbatim from a live Ollama server, so the library's own
+              request shaping and its own deserialization execute rather than being asserted back
+              from a hand-built double - which is what this evidence had to wait for, and is what
+              a double could never have shown.
+            tags: [ots]
+            tests:
+              - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
+              - OllamaContextWindow_ReadAsync_NothingLoaded_ReportsThePublishedMaximum

@@ -132,7 +132,7 @@ The following OTS items are also covered:
 - **xUnit** — unit-testing framework
 
 This verification documentation covers the same software items as the design documentation. It also
-opens with a product-capability chapter, covering the two provider capabilities that are
+opens with a product-capability chapter, covering the three provider capabilities that are
 requirements of the product rather than of any one package.
 
 Version applicability: This verification design applies to all versions of the AgentKit.

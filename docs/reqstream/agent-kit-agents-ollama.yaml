@@ -9,13 +9,12 @@
 # here that stops contributing to one is reported as an orphan rather than standing on
 # its own.
 #
-# They are named as children of AgentKit-Provider-ChatClient (docs/reqstream/agent-kit.yaml)
-# rather than of a capability of their own. That capability's promise is a conversation that
-# outlives the provider's context window, and its own child
-# AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider justifies being told a window
-# by citing Ollama as the layer where one is readable. This is that layer. An
-# AgentKit-Provider-Ollama capability is deliberately deferred until the package's live-payload
-# evidence exists; when it is stated, these two children move to it and nothing else changes.
+# They are named as children of AgentKit-Provider-Ollama (docs/reqstream/agent-kit.yaml). That
+# capability promises a guarded agent on a model served by Ollama with a conversation that outlives
+# the window the server actually enforces; the agent and the compacting session come from
+# AgentKit-Provider-ChatClient, because Ollama reaches an application as an IChatClient, and what
+# this package adds is the discovery of the window that session must be told. These requirements
+# are that discovery.
 
 sections:
   - title: AgentKitAgentsOllama Requirements
@@ -65,5 +64,6 @@ sections:
         children:
           - AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
           - AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
+          - AgentKitAgentsOllama-OllamaContextWindow-ToleratesADeclinedQuery
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource

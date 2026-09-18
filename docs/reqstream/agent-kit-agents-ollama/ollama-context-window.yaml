@@ -101,6 +101,23 @@ sections:
             tests:
               - OllamaContextWindow_Select_NothingReported_AssumesTheOllamaDefault
 
+          - id: AgentKitAgentsOllama-OllamaContextWindow-ToleratesADeclinedQuery
+            title: >-
+              The unit shall report a window from the next source down when the server declines to
+              answer a query.
+            justification: |
+              Both server queries are conveniences, and a server declines them for ordinary
+              reasons - an older build, a proxy in front of it, a model that has never been
+              pulled. An application that could not start because it could not read an optional
+              number would be worse than one that says which number it assumed, so a declined
+              query has to cost a rung of the ladder rather than the run. This is what makes the
+              reading safe to call unconditionally where a provider is configured, which is the
+              only place a caller can call it.
+            tests:
+              - OllamaContextWindow_ReadAsync_RunningModelsQueryFails_ReportsThePublishedMaximum
+              - OllamaContextWindow_ReadAsync_ModelMetadataQueryFails_ReportsTheEnforcedLength
+              - OllamaContextWindow_ReadAsync_NeitherQueryAnswers_AssumesTheOllamaDefault
+
           - id: AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
             title: >-
               The unit shall reject a request that names no model.

@@ -1416,6 +1416,9 @@ reviews:
       # Payloads captured verbatim from a live server, and the tests that judge the precedence
       # against them rather than against objects a test author shaped.
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowFixtureTests.cs"
+      # The reading path, driven through the real Ollama client against a loopback HTTP server
+      # replaying the same captured payloads.
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowReadTests.cs"
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/*.json"
 
   # OTS-ApiMark Review (one per OTS item)

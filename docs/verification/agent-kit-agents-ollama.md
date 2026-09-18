@@ -16,20 +16,21 @@ The precedence is verified rather than trusted because its failure mode is silen
 window larger than the server enforces keeps going until the provider has already truncated the
 conversation, and nothing downstream reports an error or can detect it afterwards.
 
-Every test in this system runs offline. The precedence is a pure function of what the server
-reported, so hand-built loaded-model and model-metadata values exercise it completely without a
-server, a network, or a mocking framework — this repository uses none, and every test double in it
-is hand-written.
+Most tests in this system run with nothing started. The precedence is a pure function of what the
+server reported, so hand-built and captured loaded-model and model-metadata values exercise it
+completely. The unit-level reading tests are the exception: they start an HTTP server on loopback,
+replay the captured payloads from it, and drive the real Ollama client against it. No outbound
+network access is made and no Ollama server is contacted — the only server involved is started by
+the test and stops with it — but this is where the repository's first mocking library is used, and
+why. See *OllamaContextWindow Unit Verification Design*.
 
-**What is out of automated scope, stated honestly.** `ReadAsync` — the reading of the server — is
-**not covered by the automated suite**. Verifying it means running the real Ollama client against
-real HTTP responses, so that the library's own parsing executes rather than this project's
-assumptions about it being asserted back. That requires two things this change does not have: an
-HTTP mocking library, which the repository currently carries none of, and response payloads captured
-from a live Ollama server rather than invented. Until both exist, the reading path's behavior is
-deliberately unclaimed: no requirement is written against it, and the tolerance it implements for a
-server that declines a query is evidenced by inspection only. The precedence beneath it, which is
-where a wrong window would actually come from, is fully covered.
+**What the system-level scope is, stated honestly.** The system scenario below exercises the
+precedence, which is where a wrong window would actually come from. It does not read a server; the
+reading of one, including a server that declines a query, is verified at the unit level against
+payloads captured verbatim from a live Ollama 0.34.1 server. What is not automated is a run
+against a *live* server: the captured payloads are replayed rather than re-fetched, so a future
+Ollama that changed the shape of either report would not be detected until the payloads were
+captured again.
 
 System tests reside in `AgentKitAgentsOllamaTests.cs` within the
 `DemaConsulting.AgentKit.Agents.Ollama.Tests` project.
@@ -38,9 +39,12 @@ System tests reside in `AgentKitAgentsOllamaTests.cs` within the
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Ollama server is contacted and **no network access is used**
+- **External services**: None. No Ollama server is contacted and **no outbound network access is
+  made**; the unit-level reading tests start their own HTTP server on loopback and stop it with the
+  test
 - **File system**: None
-- **Mocking**: None; the server's reports are hand-built `OllamaSharp` values
+- **Mocking**: None at this level; the server's reports are hand-built `OllamaSharp` values. The
+  unit level uses WireMock.Net to replay captured payloads over loopback HTTP
 - **Isolation**: The test constructs its own reports; no state is shared
 
 ## Acceptance Criteria

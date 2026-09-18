@@ -191,10 +191,14 @@ The following OTS items are also covered:
 - **WeasyPrint** — HTML-to-PDF conversion tool
 - **xUnit** — unit-testing framework
 
-The document also opens with a product-capability chapter. AgentKit's two provider capabilities —
-GitHub Copilot support and `IChatClient` support — are requirements of the product rather than of any
-one package, so they correspond to no software item and appear nowhere in the software-item tree; the
-chapter records which system delivers each and what it rests on.
+The document also opens with a product-capability chapter. AgentKit's three provider capabilities —
+GitHub Copilot support, `IChatClient` support, and support for a model served by Ollama — are
+requirements of the product rather than of any one package, so they correspond to no software item
+and appear nowhere in the software-item tree; the chapter records which system delivers each and what
+it rests on. The Ollama capability is delivered through the same `IChatClient` adapter as the second,
+because that is how Ollama reaches an application — there is no Ollama session, agent or summarizer —
+and what `AgentKitAgentsOllama` adds beneath it is the discovery of the context window that adapter
+must be told.
 
 Version applicability: This design applies to all versions of the AgentKit.
 

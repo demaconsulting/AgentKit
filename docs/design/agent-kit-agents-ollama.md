@@ -112,9 +112,11 @@ is not treated as a failure — it stops the read rather than yielding an assume
   application's, configured and owned by it, and is never disposed here.
 - **Thread safety**: the reported window is immutable and `Select` holds no state, so both are safe
   for concurrent use; `ReadAsync` is as safe as the client it was handed.
-- **Regulatory**: the unit's requirements trace to the `AgentKit-Provider-ChatClient` capability
-  rather than to an Ollama capability of its own, which is deferred until live-payload evidence
-  exists; see *AgentKit Product Capability Design*.
+- **Regulatory**: the system's requirements trace to the `AgentKit-Provider-Ollama` capability,
+  which promises a guarded agent on a model served by Ollama carrying a conversation past the
+  window that server enforces; the agent and the session half of that promise are delivered by
+  AgentKitAgentsChatClient, and this system supplies the window figure. See *AgentKit Product
+  Capability Design*.
 
 ## Document Conventions
 

@@ -70,23 +70,57 @@ sections:
           image all the way through the framework and then drops it at the wire, after which the
           model describes an image it never received and nothing reports an error. Only this family
           needs the promise — the Copilot runtime delivers a tool's binary results itself — so it is
-          stated here rather than at both capabilities.
+          stated here rather than at every capability.
         children:
           - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
           - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
-          # The Ollama package's mechanisms sit here rather than under a capability of their own.
-          # Being told a window is this capability's mechanism, and this is the layer where one is
-          # readable - which the OccupancyFromTheProvider child above already cites Ollama for. An
-          # AgentKit-Provider-Ollama capability is deferred until the package's live-payload
-          # evidence exists; stating it moves these two links and changes nothing else.
-          - AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
-          - AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
           - AgentKit-OTS-MicrosoftAgentsAI-Agent
           - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
         tests:
           - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
           - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
+          - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+
+      - id: AgentKit-Provider-Ollama
+        title: >-
+          AgentKit shall run a guarded agent on a model served by Ollama, and shall carry a
+          conversation on it that outlives the context window that Ollama server actually enforces.
+        tags: [system]
+        justification: |
+          An author running a model on their own Ollama server should get what AgentKit promises
+          anywhere else: an agent that can use only the tools the application granted it, and a
+          conversation that does not end when the window fills. Ollama reaches that author as an
+          IChatClient, so the agent and the compacting session here are
+          AgentKit-Provider-ChatClient's - there is no Ollama session, agent or summarizer, and
+          shipping one would be a second implementation of what already works. This is stated as a
+          capability of its own because that capability cannot keep the second half of its promise
+          on Ollama unaided.
+
+          A compacting session has to be told a window, because an IChatClient publishes none, and
+          on Ollama the number that matters is not the one the model advertises. Ollama loads a
+          model with a context length of its own choosing, smaller than the published maximum by
+          default - four times smaller in the payloads this project captured from a live server. A
+          session sized against the maximum keeps going until the server has already discarded the
+          start of the conversation, and nothing downstream reports an error or can detect it
+          afterwards. What AgentKit adds for Ollama is that the window the server will actually
+          enforce is discovered rather than guessed, which is what makes "outlives the window" a
+          promise about a real limit here instead of a hopeful one.
+
+          Confinement and rotation are demonstrated on the IChatClient family by
+          AgentKit-Provider-ChatClient's own scenario, cited below because Ollama is a member of
+          that family and nothing about that half is Ollama-specific. The scenarios that belong to
+          this capability are the ones that read the enforced window back out of what an Ollama
+          server actually sent - including over HTTP, through the real Ollama client, against
+          payloads captured verbatim from a live server.
+        children:
+          - AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
+          - AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
+          - AgentKit-OTS-OllamaSharp-Queries
+        tests:
+          - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
+          - OllamaContextWindow_Select_RealPayloads_PrefersTheLoadedLengthOverThePublishedMaximum
+          - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement

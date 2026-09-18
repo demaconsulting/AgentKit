@@ -48,6 +48,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- WireMock.Net: the repository's first mocking library, taken so the reading path can be
+         driven through the real OllamaApiClient over HTTP against the captured fixtures. A
+         hand-faked IOllamaApiClient would assert this project's beliefs about OllamaSharp back at
+         it rather than test them, which has already cost one shipped defect here. Test-only; no
+         runtime dependency is added to any shipped package. -->
+    <PackageReference Include="WireMock.Net" Version="2.15.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies -->
