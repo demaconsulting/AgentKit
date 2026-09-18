@@ -79,4 +79,11 @@
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Ollama\DemaConsulting.AgentKit.Agents.Ollama.csproj" />
   </ItemGroup>
 
+  <!-- Payloads captured verbatim from a live Ollama server (0.34.1). Embedded rather than
+       hand-written so the precedence is exercised against what the server actually sends,
+       including the shape of the metadata dictionary, which is where our assumption was wrong. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures\*.json" />
+  </ItemGroup>
+
 </Project>
