@@ -451,6 +451,30 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves an assistant message carrying no text is refused, like one that never arrived.
+    /// </summary>
+    /// <remarks>
+    ///     The observer already declines to record an empty assistant message as an entry, so
+    ///     accepting one here would produce a turn with no text and no entries and record it as a
+    ///     success — then seed it forward as though the model had answered. Silence expressed as an
+    ///     empty message is the same silence as no message at all.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotProviderSession_Send_AssistantMessageWithNoText_IsRefused()
+    {
+        // Arrange: a turn that reports usage and answers with an empty assistant message
+        var runtime = Runtime(Turn(
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant(string.Empty)));
+        await using var session = await OpenAsync(runtime);
+
+        // Act / Assert
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.SendAsync("a question", TestContext.Current.CancellationToken));
+        Assert.Contains("without producing an assistant message", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a stated ceiling lowers the window the session accounts against.
     /// </summary>
     /// <remarks>

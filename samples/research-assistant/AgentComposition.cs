@@ -806,36 +806,38 @@ public static class AgentComposition
         try
         {
             await client.StartAsync(cancellationToken);
+
+            var providerSessions = new CopilotProviderSessionFactory(
+                client,
+                options.Model,
+                options.ContextWindow);
+            var summarizer = new CopilotSummarizer(client, options.SummaryModel);
+
+            return new ProviderBackend(
+                (tools, instructions, name) =>
+                    CopilotAgentFactory.Create(client, tools, instructions, name: name, model: options.Model),
+                cleanup,
+                (tools, instructions) => new CompactingSessionPlan(
+                    new AgentSessionOptions(summarizer, instructions, [.. tools]),
+                    providerSessions,
+
+                    // Stated only when the host set a ceiling, and recorded as a ceiling rather than as
+                    // the window. It can only lower what the session accounts against, so the runtime's
+                    // own figure governs wherever it is lower - and that is not known until the first
+                    // turn reports it. A banner calling this the window would state a number that may
+                    // never be true.
+                    Window: options.ContextWindow is { } ceiling
+                        ? new ContextWindow(ceiling, ContextWindowSource.Ceiling)
+                        : null));
         }
         catch
         {
-            // Do not leak a partially started client if StartAsync (or cancellation) fails.
+            // Everything after the client is started is inside the guard, not just the start itself.
+            // The factory validates its ceiling, so a non-positive window throws here - and a catch
+            // that covered only StartAsync would leave a started client alive with nothing holding it.
             await cleanup.DisposeAsync();
             throw;
         }
-
-        var providerSessions = new CopilotProviderSessionFactory(
-            client,
-            options.Model,
-            options.ContextWindow);
-        var summarizer = new CopilotSummarizer(client, options.SummaryModel);
-
-        return new ProviderBackend(
-            (tools, instructions, name) =>
-                CopilotAgentFactory.Create(client, tools, instructions, name: name, model: options.Model),
-            cleanup,
-            (tools, instructions) => new CompactingSessionPlan(
-                new AgentSessionOptions(summarizer, instructions, [.. tools]),
-                providerSessions,
-
-                // Stated only when the host set a ceiling, and recorded as a ceiling rather than as
-                // the window. It can only lower what the session accounts against, so the runtime's
-                // own figure governs wherever it is lower - and that is not known until the first
-                // turn reports it. A banner calling this the window would state a number that may
-                // never be true.
-                Window: options.ContextWindow is { } ceiling
-                    ? new ContextWindow(ceiling, ContextWindowSource.Ceiling)
-                    : null));
     }
 
     /// <summary>

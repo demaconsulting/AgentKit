@@ -50,9 +50,10 @@ in a real model and changing nothing else. Second, **how a child agent is contai
 delegated agent may draw on are listed explicitly and exclude the task list and the memory store, so
 a child cannot reach its parent's plan or record even by accident.
 
-It is also the sample that **uses the session engine**. On `--provider ollama` the conversation runs
-on a `CompactingAgentSession` built from `ChatClientProviderSessionFactory` and
-`ChatClientSummarizer`, so it outlives the model's context window: older history is consolidated
+It is also the sample that **uses the session engine**, on either provider. The conversation runs
+on a `CompactingAgentSession` — built from `ChatClientProviderSessionFactory` and
+`ChatClientSummarizer` on Ollama, and from `CopilotProviderSessionFactory` and `CopilotSummarizer`
+on Copilot — so it outlives the model's context window: older history is consolidated
 into tiered records, a fresh provider session is seeded with them, and the turn loop carries on. The
 sample prints what each turn occupies, whether it rotated, how hard it is compacting, and — the one
 signal that matters most — whether compacting bought nothing and history had to be dropped. The

@@ -16,9 +16,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     AgentKit's and is released when the engine finishes with it.
 ///     </para>
 ///     <para>
-///     <b>There is no window parameter, unlike the ChatClient factory.</b> Copilot reports its own
+///     <b>No window is required, unlike the ChatClient factory.</b> Copilot reports its own
 ///     occupancy and its own limit, so the application is not asked for a figure the provider
-///     already knows. See <see cref="CopilotProviderSession.CurrentUsage"/>.
+///     already knows. A ceiling may be supplied, which only ever lowers what a session accounts
+///     against; one above the runtime's own limit is ignored. See
+///     <see cref="CopilotProviderSession.CurrentUsage"/>.
 ///     </para>
 ///     <para>
 ///     <b>There is no permission-handler parameter either.</b> A session created here is driven by
@@ -155,7 +157,11 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// </remarks>
     /// <param name="opener">Opens one runtime session per rotation.</param>
     /// <param name="model">The model to name on each session, or <see langword="null"/> for the runtime's default.</param>
-    /// <param name="maxWindowTokens"></param>
+    /// <param name="maxWindowTokens">
+    ///     A ceiling on the window each session accounts against, or <see langword="null"/> to
+    ///     account against whatever the runtime reports. Only ever lowers: a ceiling above the
+    ///     runtime's own limit is ignored. Must be at least 1 when supplied.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
     internal CopilotProviderSessionFactory(CopilotChannelOpener opener, string? model, int? maxWindowTokens = null)
     {

@@ -42,7 +42,7 @@ shows how it *proceeds*.
 - **Delegation that cannot reach back.** A child agent reads one document and reports what it says.
   It has no task list, no memories, and no ability to write anything — by composition, not by
   convention. See [Safe delegation](#safe-delegation).
-- **A conversation that outlives the context window.** On `--provider ollama` the conversation runs
+- **A conversation that outlives the context window.** On either provider the conversation runs
   on an AgentKit `CompactingAgentSession`: when the window fills, older history is consolidated into
   tiered records, a fresh provider session is seeded with them, and the turn loop carries on. Every
   turn prints what it occupies, whether it rotated, and whether compacting bought nothing and
@@ -87,8 +87,8 @@ end-of-input. `--help` lists every option with its default.
 ## Context that outlives the window
 
 This sample's subject is work that spans turns, and a conversation that spans enough turns runs out
-of context. On `--provider ollama` the conversation is therefore carried by an AgentKit
-**compacting session** rather than by a plain message list.
+of context. The conversation is therefore carried by an AgentKit **compacting session** rather than
+by a plain message list, on both providers.
 
 An application states three things and nothing else:
 

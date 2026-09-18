@@ -114,7 +114,11 @@ public sealed class CopilotProviderSession : IProviderSession
     /// </remarks>
     /// <param name="channel">The runtime session this instance takes ownership of.</param>
     /// <param name="observer">The observer registered on that session before it was created.</param>
-    /// <param name="maxWindowTokens"></param>
+    /// <param name="maxWindowTokens">
+    ///     A ceiling on the window this session accounts against, or <see langword="null"/> to
+    ///     account against whatever the runtime reports. Only ever lowers: a ceiling above the
+    ///     runtime's own limit is ignored. Must be at least 1 when supplied.
+    /// </param>
     /// <param name="historyPreamble">
     ///     The seeded conversation record to carry ahead of the first message, or
     ///     <see langword="null"/> when the seed held no history.
@@ -286,8 +290,11 @@ public sealed class CopilotProviderSession : IProviderSession
 
         // The runtime went idle without producing an assistant message. Recording an empty answer
         // would hide a runtime failure as a model that had nothing to say, so the error the session
-        // reported - when it reported one - is named instead.
-        if (answer?.Data is not { } data)
+        // reported - when it reported one - is named instead. A message carrying no text is the same
+        // silence expressed differently, and is judged the same way: the observer already declines to
+        // record one as an entry, so accepting it here would produce a turn with no text and no
+        // entries, seeded forward as though the model had answered.
+        if (answer?.Data is not { Content: { Length: > 0 } content })
         {
             var reported = _observer.LastErrorMessage;
             throw new InvalidOperationException(
@@ -314,7 +321,7 @@ public sealed class CopilotProviderSession : IProviderSession
                 + "be compacted.");
         }
 
-        return new ProviderTurn(data.Content ?? string.Empty, _observer.DrainEntries());
+        return new ProviderTurn(content, _observer.DrainEntries());
     }
 
     /// <inheritdoc/>
