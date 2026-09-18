@@ -40,6 +40,24 @@ public class OllamaContextWindowTests
     }
 
     /// <summary>
+    ///     Proves a stated window of zero is treated as none, so an application that passed an
+    ///     unset option straight through is not told its conversation has no room.
+    /// </summary>
+    [Fact]
+    public void OllamaContextWindow_Select_StatedWindowOfZero_IsTreatedAsUnstated()
+    {
+        // Arrange: the server reports the model as loaded
+        var running = new[] { Loaded(Model, 8192) };
+
+        // Act: zero is stated, as an unset option commonly arrives
+        var window = OllamaContextWindow.Select(0, running, published: null, Model);
+
+        // Assert: the server's figure, not a window of zero
+        Assert.Equal(8192, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
+    }
+
+    /// <summary>
     ///     Proves the loaded model's length is preferred over the model's published maximum,
     ///     because it is the one the server will actually enforce.
     /// </summary>
@@ -74,6 +92,39 @@ public class OllamaContextWindowTests
         // Assert: matched anyway
         Assert.Equal(16384, window.Tokens);
         Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
+    }
+
+    /// <summary>
+    ///     Proves the model is found under either name a loaded-model report carries, so a report
+    ///     that omits one of them still yields the length the server is enforcing.
+    /// </summary>
+    [Fact]
+    public void OllamaContextWindow_Select_ModelNamedUnderEitherReportedField_IsMatched()
+    {
+        // Arrange: two reports, each naming the model in only one of the two fields
+        var underName = new[]
+        {
+            new RunningModel { Name = Model, ModelName = null, ContextLength = 8192 },
+        };
+        var underModelName = new[]
+        {
+            new RunningModel { Name = null!, ModelName = Model, ContextLength = 16384 },
+        };
+
+        // Act
+        var fromName = OllamaContextWindow.Select(stated: null, underName, published: null, Model);
+        var fromModelName = OllamaContextWindow.Select(
+            stated: null,
+            underModelName,
+            published: null,
+            Model);
+
+        // Assert: matched either way, each reporting the length its own report carried
+        Assert.Multiple(
+            () => Assert.Equal(8192, fromName.Tokens),
+            () => Assert.Equal(OllamaContextWindowSource.LoadedModel, fromName.Source),
+            () => Assert.Equal(16384, fromModelName.Tokens),
+            () => Assert.Equal(OllamaContextWindowSource.LoadedModel, fromModelName.Source));
     }
 
     /// <summary>
@@ -135,7 +186,10 @@ public class OllamaContextWindowTests
             Info = new ModelInfo
             {
                 Architecture = "llama",
-                ExtraInfo = new Dictionary<string, object> { ["llama.block_count"] = 32 },
+                ExtraInfo = new Dictionary<string, object>
+                {
+                    ["llama.block_count"] = JsonSerializer.SerializeToElement(32),
+                },
             },
         };
 
@@ -143,6 +197,39 @@ public class OllamaContextWindowTests
         var window = OllamaContextWindow.Select(stated: null, running: null, published, Model);
 
         // Assert: the assumed default rather than nothing
+        Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
+    }
+
+    /// <summary>
+    ///     Proves a published context length the metadata does not carry as a usable number falls
+    ///     through to the next source rather than becoming a window.
+    /// </summary>
+    /// <param name="metadataJson">The value the metadata carried, as JSON.</param>
+    [Theory]
+    [InlineData("\"40960\"")]
+    [InlineData("9999999999")]
+    public void OllamaContextWindow_Select_PublishedLengthNotAUsableNumber_FallsThrough(
+        string metadataJson)
+    {
+        // Arrange: metadata carrying a context length that is not a token count - text, and a
+        // figure beyond the range one can hold
+        var published = new ShowModelResponse
+        {
+            Info = new ModelInfo
+            {
+                Architecture = "llama",
+                ExtraInfo = new Dictionary<string, object>
+                {
+                    ["llama.context_length"] = JsonSerializer.Deserialize<JsonElement>(metadataJson),
+                },
+            },
+        };
+
+        // Act
+        var window = OllamaContextWindow.Select(stated: null, running: null, published, Model);
+
+        // Assert: the conservative default rather than an invented figure
         Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
         Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
     }
@@ -201,7 +288,8 @@ public class OllamaContextWindowTests
                 Architecture = architecture,
                 ExtraInfo = new Dictionary<string, object>
                 {
-                    [architecture + ".context_length"] = contextLength,
+                    [architecture + ".context_length"] =
+                        JsonSerializer.SerializeToElement(contextLength),
                 },
             },
         };

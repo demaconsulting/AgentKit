@@ -15,7 +15,8 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 ///     the shipped Ollama package's discovery vocabulary. It carries one member the package can
 ///     never produce — <see cref="Ceiling"/>, which belongs to the Copilot path — so keeping it here
 ///     is what lets the package publish only what Ollama discovery can actually report, and what
-///     keeps the Copilot path free of any dependency on the Ollama package.
+///     keeps the Copilot path from ever naming an Ollama type: the conversion lives on
+///     <c>ContextWindow.From</c>, which that path never calls.
 ///     </para>
 /// </remarks>
 public enum ContextWindowSource

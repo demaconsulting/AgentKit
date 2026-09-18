@@ -43,7 +43,7 @@ sections:
           - AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
           - AgentKitAgentsOllama-OllamaContextWindow-MatchesAnUntaggedModelName
           - AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
-          - AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLengthWhateverItsJsonShape
+          - AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLength
           - AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
           - AgentKit-OTS-OllamaSharp-ModelReports
         tests:

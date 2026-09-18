@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OllamaSharp.Models;
 
 namespace DemaConsulting.AgentKit.Agents.Ollama.Tests;
@@ -37,7 +38,10 @@ public class AgentKitAgentsOllamaTests
             Info = new ModelInfo
             {
                 Architecture = "qwen3",
-                ExtraInfo = new Dictionary<string, object> { ["qwen3.context_length"] = 262144 },
+                ExtraInfo = new Dictionary<string, object>
+                {
+                    ["qwen3.context_length"] = JsonSerializer.SerializeToElement(262144),
+                },
             },
         };
 

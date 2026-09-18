@@ -1462,7 +1462,6 @@ reviews:
       - "docs/design/ots/microsoft-extensions-ai-abstractions.md"           # OTS integration design
       - "docs/verification/ots/microsoft-extensions-ai-abstractions.md"    # OTS verification
 
-  # OTS-Pandoc Review (one per OTS item)
   # OTS-OllamaSharp Review (one per OTS item)
   - id: OTS-OllamaSharp
     title: Review that OllamaSharp Provides Required Functionality

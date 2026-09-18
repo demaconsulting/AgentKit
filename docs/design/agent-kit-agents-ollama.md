@@ -8,9 +8,9 @@ be accounted against, and which of the figures a server can report that came fro
 ## Purpose
 
 Ollama is reached through AgentKitAgentsChatClient, because an Ollama client is an `IChatClient`.
-One thing about Ollama that generic adapter cannot supply: an `IChatClient` publishes no context
-window, so `ChatClientProviderSessionFactory` is told one — and the application has to obtain it
-from somewhere.
+There is one thing about Ollama that the generic adapter cannot supply: an `IChatClient` publishes
+no context window, so `ChatClientProviderSessionFactory` must be told one — and the application has
+to obtain it from somewhere.
 
 Getting it wrong is costly in a specific direction. Too low, and the session rotates earlier than it
 needed to, which costs summarizer calls. Too high, and it rotates *after* the server has already

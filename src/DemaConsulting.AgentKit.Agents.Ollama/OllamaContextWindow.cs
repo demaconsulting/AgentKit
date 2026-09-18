@@ -239,9 +239,8 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     ///     Reads the published context length from a model's metadata.
     /// </summary>
     /// <remarks>
-    ///     The value arrives as whatever the JSON carried, so every plausible numeric shape is
-    ///     accepted rather than one being assumed; an unreadable value yields zero and the next
-    ///     source down is used.
+    ///     The value is whatever the metadata carried, so it is converted rather than cast; an
+    ///     unreadable value yields zero and the next source down is used.
     /// </remarks>
     /// <param name="published">The model metadata, or <see langword="null"/>.</param>
     /// <returns>The published context length, or zero when it could not be read.</returns>
@@ -267,42 +266,19 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     ///     Converts a metadata value to a token count.
     /// </summary>
     /// <remarks>
-    ///     A JSON number deserialized into <see cref="object"/> may arrive as a
-    ///     <see cref="JsonElement"/>, as an integer, or as text, depending on how the response was
-    ///     materialized. Converting rather than casting is what keeps this from being a silent zero
-    ///     whenever a serializer changes its mind.
+    ///     Ollama's model metadata arrives as JSON extension data, so every value in it is a
+    ///     <see cref="JsonElement"/> whatever the server put there. Only a number that fits a token
+    ///     count is taken: text, a fraction, or a figure beyond the range all yield zero, so the
+    ///     next source down is used rather than a session being sized by something that was never a
+    ///     context length.
     /// </remarks>
     /// <param name="value">The metadata value, which may be <see langword="null"/>.</param>
     /// <returns>The token count, or zero when the value is not a usable number.</returns>
-    private static int AsTokenCount(object? value)
-    {
-        switch (value)
-        {
-            case null:
-                return 0;
-
-            case JsonElement element:
-                return element.ValueKind == JsonValueKind.Number
-                       && element.TryGetInt32(out var fromJson)
-                    ? fromJson
-                    : 0;
-
-            case int integer:
-                return integer;
-
-            case long wide:
-                return wide is > 0 and <= int.MaxValue ? (int)wide : 0;
-
-            case double real:
-                return real is > 0 and <= int.MaxValue ? (int)real : 0;
-
-            case string text:
-                return int.TryParse(text, out var parsed) ? parsed : 0;
-
-            default:
-                return 0;
-        }
-    }
+    private static int AsTokenCount(object? value) =>
+        value is JsonElement { ValueKind: JsonValueKind.Number } element
+        && element.TryGetInt32(out var tokens)
+            ? tokens
+            : 0;
 
     /// <summary>
     ///     Returns a model name with an explicit tag, so two spellings of one model compare equal.

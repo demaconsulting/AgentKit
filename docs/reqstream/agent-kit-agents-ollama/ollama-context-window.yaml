@@ -58,31 +58,35 @@ sections:
             tests:
               - OllamaContextWindow_Select_DifferentModelLoaded_DoesNotBorrowItsWindow
 
-          - id: AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLengthWhateverItsJsonShape
+          - id: AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLength
             title: >-
-              The unit shall read a model's published context length whichever numeric form the
-              server's metadata carries it in.
+              The unit shall report the context length a model publishes when the server reports
+              that model as not loaded.
             justification: |
-              Model metadata arrives as loosely typed values, so the same published length can
-              present as a JSON number, an integer, or text depending on how the response was
-              materialized. Accepting only one of those forms would turn a perfectly good reading
-              into a silent fall-through to the assumed default whenever a serializer changed its
-              mind, which is a regression no test of the precedence alone would catch.
+              A model that is not loaded has no enforced length to read, and the length it publishes
+              is then the only figure the server offers. Falling past it to the conservative default
+              would account a session against a fraction of a window the server would have honored,
+              costing summarizer calls on every long conversation for a figure that was available
+              all along. It is reported as the maximum it is, so a caller can see the server may
+              load the model below it.
             tests:
               - OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
             title: >-
               The unit shall fall through to the next source when a model's metadata carries no
-              context length for its architecture.
+              context length it can read for that model's architecture.
             justification: |
-              Metadata that names an architecture but says nothing about its window is a plausible
-              response rather than an error, and there is no window in it. Reporting zero, or
-              reporting some neighboring metadata value as though it were a window, would hand a
-              session a figure it could not be accounted against; falling through to the
-              conservative default is the only answer that remains usable.
+              Metadata that names an architecture but says nothing about its window, and metadata
+              carrying a value that is not a token count - text, a fraction, a figure beyond the
+              range one can hold - are both plausible responses rather than errors, and there is no
+              window in either. Reporting zero, rounding, or reporting some neighboring metadata
+              value as though it were a window would hand a session a figure it could not be
+              accounted against; falling through to the conservative default is the only answer that
+              remains usable.
             tests:
               - OllamaContextWindow_Select_MetadataWithoutAContextLength_FallsThrough
+              - OllamaContextWindow_Select_PublishedLengthNotAUsableNumber_FallsThrough
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
             title: >-

@@ -110,11 +110,13 @@ missing architecture, or a missing key all yield zero.
 
 #### AsTokenCount(object? value)
 
-**Purpose:** Convert a loosely typed metadata value into a token count.
+**Purpose:** Convert a metadata value into a token count.
 
-**Algorithm:** Accept a `JsonElement` holding a number, an `int`, an in-range `long` or `double`, or
-parsable text. Anything else yields zero. Converting rather than casting is what keeps this from
-becoming a silent zero whenever a serializer materializes the value differently.
+**Algorithm:** Accept a `JsonElement` holding a number that fits a token count; anything else —
+text, a fraction, a figure beyond the range, or a value of another type entirely — yields zero.
+Ollama carries model metadata as JSON extension data, so a `JsonElement` is what every value in it
+is; checking the kind rather than casting is what makes an unreadable value a fall-through instead
+of a throw.
 
 #### Tagged(string model)
 
@@ -149,7 +151,7 @@ window from a lower-precedence source that names itself honestly.
 
 - **OllamaSharp** — supplies `IOllamaApiClient`, `RunningModel`, `ShowModelRequest`,
   `ShowModelResponse` and `ModelInfo`; see *OllamaSharp Design*.
-- **System.Text.Json** — supplies `JsonElement`, one of the shapes a metadata value arrives in.
+- **System.Text.Json** — supplies `JsonElement`, the shape every model-metadata value arrives in.
 
 ### Callers
 

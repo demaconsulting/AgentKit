@@ -7,7 +7,8 @@ This document describes the unit-level verification strategy for the `OllamaCont
 `OllamaContextWindow` is verified through unit tests over `Select`, the pure function holding the
 whole precedence. Each test hands it real `OllamaSharp` values — a `RunningModel` carrying the
 length a server loaded a model with, a `ShowModelResponse` carrying an architecture and its
-published length — and asserts both the figure chosen and the source reported for it.
+published length as the `JsonElement` Ollama's metadata deserializes into — and asserts both the
+figure chosen and the source reported for it.
 
 Nothing is mocked, and nothing needs to be. `Select` contacts nothing, so the real types are used as
 themselves; this repository carries no mocking library and every test double in it is hand-written.
@@ -41,8 +42,9 @@ Unit tests reside in `OllamaContextWindowTests.cs` within the
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any stated window overruled, any published maximum preferred over a loaded
 length, any bare model name failing to match the tag the server resolved it to, any other model's
-length borrowed, any readable published length missed, any zero or invented figure returned where a
-source was unusable, or any invalid argument accepted rather than refused constitutes a failure.
+length borrowed, any published length the metadata carries as a usable number missed, any value that
+is not one reported as a window, any zero or invented figure returned where a source was unusable,
+or any invalid argument accepted rather than refused constitutes a failure.
 
 ### Test Scenarios
 
@@ -80,13 +82,14 @@ Error path. With some other model loaded and the named model publishing a maximu
 maximum is reported rather than the loaded model's length. A borrowed window would be specific, look
 measured, and be wrong — the worst of the available failures.
 
-#### AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLengthWhateverItsJsonShape: A JSON Number Is Read
+#### AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLength: The Published Maximum Is Read
 
 **Test**: `OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead`
 
-Boundary condition on value shape. The published length is supplied as the `JsonElement` a
-serializer actually materializes it into, and is read. Accepting only one numeric form would turn a
-good reading into a silent fall-through whenever a serializer changed its mind.
+Normal operation on the third rung of the ladder. With nothing loaded, the length the model
+publishes — supplied as the `JsonElement` the server's metadata deserializes into — is reported,
+sourced as the published maximum. Falling past a figure the server did offer would size every long
+conversation on this model against the conservative default instead.
 
 #### AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength: Falls Through
 
@@ -95,6 +98,15 @@ good reading into a silent fall-through whenever a serializer changed its mind.
 Error path. Metadata naming an architecture but carrying only unrelated keys yields the assumed
 default rather than zero or a neighboring value. Zero is a figure no session could be accounted
 against, and a neighboring value would be a window invented from something that is not one.
+
+#### AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength: An Unreadable Value Falls Through
+
+**Test**: `OllamaContextWindow_Select_PublishedLengthNotAUsableNumber_FallsThrough`
+
+Error path on the value rather than the key. Metadata carrying a context length as text, or as a
+figure beyond what a token count can hold, yields the assumed default. Reading such a value as a
+window — or rounding one into existence — would hand a session a figure that was never a context
+length, and it would look measured.
 
 #### AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported: The Conservative Default
 
@@ -112,3 +124,15 @@ already discarded.
 Error path. A request naming no model raises `ArgumentNullException` where the composing application
 wrote it, rather than matching nothing and returning the assumed default — which would be
 indistinguishable from a server that had not answered.
+
+#### Supporting Corner Cases (Deliberately Unlinked)
+
+**Tests**:
+
+- `OllamaContextWindow_Select_StatedWindowOfZero_IsTreatedAsUnstated`
+- `OllamaContextWindow_Select_ModelNamedUnderEitherReportedField_IsMatched`
+
+A stated window of zero is an unset option rather than a claim, so it must not short-circuit the
+ladder into a window of zero; and a loaded-model report that names the model in only one of its two
+name fields must still match. Both are defensive checks on inputs the precedence tolerates rather
+than promises about, so neither is linked to a requirement.
