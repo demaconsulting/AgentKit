@@ -39,7 +39,9 @@ this unit publishes only what discovery can report, and presentation stays with 
 
 ### Data Model
 
-- **`Tokens`** (`int`) — the window the conversation is accounted against. Invariant: positive.
+- **`Tokens`** (`int`) — the window the conversation is accounted against. Invariant: positive,
+  enforced at construction so it holds for every instance that can exist rather than only for the
+  ones this unit produced.
 - **`Source`** (`OllamaContextWindowSource`) — where that figure came from. Invariant: one of the
   three members below.
 - **`AssumedTokens`** (`const int`, 4096) — Ollama's own default context length, the conservative
@@ -121,6 +123,7 @@ a server that never answers is precisely the case this tolerance exists for.
 | Condition | Handling |
 | ----------- | ---------- |
 | Null or empty `client` or `model` | `ArgumentException` family propagates to the caller |
+| Construction with a window of zero or less | `ArgumentOutOfRangeException` propagates to the caller |
 | The server query fails | Treated as "not reported"; the conservative default is used |
 | The server never answers | The client's own timeout ends the query; treated as "not reported" |
 | Cancellation during the query | `OperationCanceledException` propagates; no window is returned |
@@ -137,7 +140,8 @@ conservative window that names itself honestly.
 ### Callers
 
 An application calls `ReadAsync` where it configures its Ollama provider, and hands `Tokens` to
-`ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. Where the
-application states a window rather than discovering one, it composes the same figure onto its chat
-client through `OllamaContextSizingChatClient`; see *OllamaContextSizingChatClient Unit Design*.
+`ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. It composes
+that same figure onto its chat client through `OllamaContextSizingChatClient` whichever rung
+produced it — a window that was only read is no more durable than one that was only claimed — see
+*OllamaContextSizingChatClient Unit Design*.
 The research-assistant sample is the worked example. Nothing within this system calls this unit.

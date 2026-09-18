@@ -209,6 +209,30 @@ public class OllamaContextWindowTests
     }
 
     /// <summary>
+    ///     Proves a window of zero or fewer tokens is refused at construction, so the type's
+    ///     documented promise that the figure is positive holds for every instance that can exist.
+    /// </summary>
+    /// <remarks>
+    ///     The reading's own paths cannot produce such a window — every rung guards its figure — so
+    ///     this is about the public record rather than the ladder. Without the guard a caller could
+    ///     construct an instance contradicting the type's own documentation, leaving the invariant
+    ///     to whichever consumer happened to re-check it.
+    /// </remarks>
+    /// <param name="tokens">The window no session could use.</param>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void OllamaContextWindow_Construct_WindowOfZeroOrLess_Throws(int tokens)
+    {
+        // Act / Assert: refused where it was written, rather than dividing by it later
+        var error = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new OllamaContextWindow(tokens, OllamaContextWindowSource.Stated));
+
+        Assert.Equal("Tokens", error.ParamName);
+    }
+
+    /// <summary>
     ///     Builds a loaded-model report.
     /// </summary>
     /// <param name="name">The model name the server reports.</param>

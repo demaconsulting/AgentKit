@@ -307,28 +307,30 @@ cannot — what window the instance is actually running:
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
 
 var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
-var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 
 `window.Source` says which figure it is: the loaded instance's length, which is what the server
 enforces, or a conservative default named as assumed. Report it rather than hiding it — an
 assumption shown as a measurement is how a session ends up sized on something nothing guarantees.
 
-If you would rather choose the size than discover it, ask the server for one. Compose the same
-figure onto every client that talks to the model, and state it to the reading, so the window you
-account against is the window the instance runs:
+Compose the decorator whichever figure you got. A window that was only *read* is no more durable
+than one that was only claimed: Ollama does not remember the length an instance was loaded at, so an
+evicted model reloads at the server's default while the session goes on accounting against the old
+number. Asking for the figure makes it true.
+
+To choose the size rather than discover it, state it to the same call — nothing else changes:
 
 ```csharp
-using DemaConsulting.AgentKit.Agents.Ollama;
-using Microsoft.Extensions.AI;
-
 const int windowTokens = 32768;
 
-IChatClient chatClient = new OllamaContextSizingChatClient(ollamaClient, windowTokens);
 var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
-var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 
 The size rides on *every* request, not only the first: Ollama reloads a model when a request names a

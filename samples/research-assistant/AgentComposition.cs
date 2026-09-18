@@ -868,9 +868,10 @@ public static class AgentComposition
     ///     client that talks to the conversation's model is composed with
     ///     <see cref="OllamaContextSizingChatClient"/>, so each request asks Ollama to run the model
     ///     at that length and the figure becomes true by construction rather than hoped for. That
-    ///     covers the summarizer as well as the conversation, because without <c>--summary-model</c>
-    ///     the two share a model and an un-annotated consolidation would resize the instance beneath
-    ///     a session still accounting against the old figure. See
+    ///     covers the summarizer when it was given the conversation's own model name, because the
+    ///     two then share an instance and an un-annotated consolidation would resize it beneath a
+    ///     session still accounting against the old figure. A <c>--summary-model</c> naming
+    ///     something else is left unsized: its window is its own and nothing here measured it. See
     ///     <see cref="ContextWindow.PinnedLength"/> for why a figure that was only read is no more
     ///     durable than one that was only claimed.
     ///     </para>
@@ -914,7 +915,8 @@ public static class AgentComposition
 
         // The consolidation client is a second client over the same transport, so the summarizer
         // can run on a different model without a second connection or a second timeout policy.
-        var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
+        var summaryModel = options.SummaryModel ?? model;
+        var summaryClient = new OllamaApiClient(http, summaryModel);
 
         var cleanup = new AsyncDisposableAction(() =>
         {
@@ -958,12 +960,18 @@ public static class AgentComposition
             ? new OllamaContextSizingChatClient(ollama, conversationLength)
             : ollama;
 
-        // Without --summary-model the summarizer runs on the conversation's own model, so an
-        // un-annotated consolidation would reload the instance at Ollama's default and silently
-        // resize it beneath a session still accounting against the pinned figure.
-        IChatClient summaryChatClient = pinned is { } summaryLength
-            ? new OllamaContextSizingChatClient(summaryClient, summaryLength)
-            : summaryClient;
+        // The summarizer is sized only when it was given the same model name, because that is the
+        // case the sizing protects: one instance serving both, where an un-annotated consolidation
+        // would reload it at Ollama's default and resize it beneath a session still accounting
+        // against the pinned figure. A --summary-model naming a different model has its own window
+        // that nothing here measured, and asking it to run at this model's figure would be a guess
+        // dressed as a request. Spelling counts: a --summary-model that names the conversation's
+        // model differently - qwen3 against qwen3:latest - forgoes the sizing rather than growing
+        // this sample a copy of the tag matching that belongs to the package.
+        IChatClient summaryChatClient =
+            pinned is { } summaryLength && string.Equals(summaryModel, model, StringComparison.Ordinal)
+                ? new OllamaContextSizingChatClient(summaryClient, summaryLength)
+                : summaryClient;
 
         // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
         // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a

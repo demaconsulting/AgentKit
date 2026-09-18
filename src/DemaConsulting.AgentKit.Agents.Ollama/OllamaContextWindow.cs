@@ -81,12 +81,37 @@ public enum OllamaContextWindowSource
 ///     // Hand window.Tokens to the provider-session factory the compacting session runs on, and
 ///     // report window.Source so an assumed default is never shown as a measured limit.
 ///     Console.WriteLine($"{window.Tokens} tokens, from {window.Source}");
+///
+///     // Then ask the server for that same figure on every request, so it stays true. A window
+///     // that was only read is not durable: Ollama does not remember the length an instance was
+///     // loaded at, so an evicted model reloads at the server's default while the session goes on
+///     // accounting against the old number. Wrap a summarizer sharing this model the same way.
+///     IChatClient sized = new OllamaContextSizingChatClient(client, window.Tokens);
 ///     </code>
 /// </example>
 /// <param name="Tokens">The window in tokens. Always positive.</param>
 /// <param name="Source">Where the figure was obtained.</param>
+/// <exception cref="ArgumentOutOfRangeException">
+///     <paramref name="Tokens"/> is zero or less, which no window could be.
+/// </exception>
 public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource Source)
 {
+    /// <summary>
+    ///     The window in tokens. Always positive.
+    /// </summary>
+    /// <remarks>
+    ///     Enforced at construction rather than only along the paths <see cref="Select"/> takes, so
+    ///     the promise holds for every instance that can exist rather than only for the ones this
+    ///     type produced. Without it a caller could construct an instance contradicting this very
+    ///     sentence, leaving the invariant to whichever consumer happened to re-check it.
+    /// </remarks>
+    public int Tokens { get; } = Tokens > 0
+        ? Tokens
+        : throw new ArgumentOutOfRangeException(
+            nameof(Tokens),
+            Tokens,
+            "A context window must be a positive number of tokens.");
+
     /// <summary>
     ///     The context length Ollama loads a model with when nothing configures otherwise.
     /// </summary>

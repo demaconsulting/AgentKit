@@ -507,35 +507,39 @@ Read it from the provider wherever the provider will say. On Ollama,
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
 
 var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
-var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 
 It reports where the figure came from as well as what it is, because they are not interchangeable.
 `LoadedModel` is the length the running instance is using, which is what will actually be enforced.
-`Stated` means you supplied it — and, if you composed the decorator below, asked the server to run
-at it. `Assumed` means no instance could be asked and a conservative default was used. Show the
-source alongside the number: an assumption presented as a measurement is how a session ends up
-sized on something nothing guarantees.
+`Stated` means you supplied it. `Assumed` means no instance could be asked and a conservative
+default was used. Show the source alongside the number: an assumption presented as a measurement is
+how a session ends up sized on something nothing guarantees.
+
+Compose `OllamaContextSizingChatClient` whichever of the three you got. A window that was only
+*read* is no more durable than one that was only claimed — Ollama does not remember the length an
+instance was loaded at, so an evicted model reloads at the server's default while the session goes
+on accounting against the old number — and an assumed figure was never known to be right in the
+first place, because Ollama's default depends on available memory and on `OLLAMA_CONTEXT_LENGTH`.
+Asking for the number in hand is what makes it true, and it forces no load that the first chat
+request would not force anyway.
 
 What a model *file* publishes as its maximum is deliberately never reported. It describes what the
 file could support, not what the instance is running: one live server published 262,144 tokens for a
 model it was running at 4,096. Accounting against the larger figure would keep a session talking
 long after the server had begun discarding the start of the conversation.
 
-If you would rather choose the window than discover it, ask the server for one. Compose
-`OllamaContextSizingChatClient` around every client that talks to the model, and state the same
-figure to the reading:
+To choose the window rather than discover it, state it to the same call — nothing else changes:
 
 ```csharp
-using DemaConsulting.AgentKit.Agents.Ollama;
-using Microsoft.Extensions.AI;
-
 const int windowTokens = 32768;
 
-IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, windowTokens);
 var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
 var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 

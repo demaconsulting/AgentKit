@@ -42,6 +42,7 @@ sections:
           - AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
           - AgentKitAgentsOllama-OllamaContextWindow-NeverConsultsAPublishedMaximum
           - AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
+          - AgentKitAgentsOllama-OllamaContextWindow-RefusesAWindowNoSessionCouldUse
           - AgentKit-OTS-OllamaSharp-ModelReports
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource

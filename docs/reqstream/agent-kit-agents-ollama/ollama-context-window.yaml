@@ -115,3 +115,18 @@ sections:
               default, which would look like a server that had not answered.
             tests:
               - OllamaContextWindow_Select_ModelNameThatNamesNothing_Throws
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-RefusesAWindowNoSessionCouldUse
+            title: >-
+              The unit shall reject a context window of zero or fewer tokens, whoever constructs
+              one.
+            justification: |
+              The type documents this figure as positive, and it is a public record - so a caller
+              can construct an instance that contradicts the type's own documentation. The reading's
+              own paths cannot produce one, and the consumers a bad window would reach do re-check
+              it, but an invariant that holds only because every consumer re-checks is a habit
+              rather than a guarantee, and it leaves the documentation saying something the type
+              does not enforce. Refusing it where it is claimed is what makes the promise true, and
+              it refuses the value at the line that wrote it rather than somewhere further on.
+            tests:
+              - OllamaContextWindow_Construct_WindowOfZeroOrLess_Throws

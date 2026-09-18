@@ -57,8 +57,9 @@ review-set without removing anything anyone has to review.
   names the chosen context length on every request it forwards, so the instance the server runs is
   the one the session accounts against.
 
-The two meet only in the application that composes them, and only through one integer: the size the
-application chose is handed to the decorator and stated to the reading, which is why the reading
+The two meet only in the application that composes them, and only through one integer: the window the
+application ends up with — stated by it, or read back from the running instance, or assumed — is
+handed to the decorator and, where it was stated, to the reading as well, which is why the reading
 reports such a figure as `Stated` without asking the server about it.
 
 The split inside `OllamaContextWindow` is the other design decision worth naming: reading the server
@@ -81,8 +82,8 @@ that can be subtly and silently wrong — is exercisable without a server.
   optional, and the chat requests the application sends, which carry the chosen context length.
 
 The window is delivered as a plain integer on the returned record, so a host hands it to
-`ChatClientProviderSessionFactory` directly. The decorator presents only `IChatClient`. No type of
-this system's appears in the session the application goes on to build.
+`ChatClientProviderSessionFactory` directly. The decorator presents only `IChatClient`. None of this
+system's types appear in the session the application goes on to build.
 
 ## Dependencies
 
@@ -103,9 +104,11 @@ which loses conversation history with no error raised anywhere. Four measures bo
 - **A published maximum is never used.** The only figure the system will report from the server is
   one describing the running instance. What the model file could support is not asked for at all,
   so it cannot leak into the account through any path.
-- **A stated size is asked for on every request.** A size the application states is put on each
-  request the conversation sends, so the instance is loaded at it and reloaded at it, and the
-  reported `Stated` figure is true rather than merely asserted.
+- **The reported size is asked for on every request.** Whichever rung produced it, the window the
+  application will account against is put on each request the conversation sends, so the instance is
+  loaded at it and reloaded at it, and the reported figure is true rather than merely asserted. A
+  figure that was only read is no more durable than one that was only claimed: Ollama does not
+  remember the length an instance was loaded at.
 - **The fallback is conservative and is named as assumed.** When nothing can be read the reported
   figure errs low, and its source says it was not measured, so a host can present or refuse it.
 - **A loaded model that is not the named one is never used.** A window borrowed from another model
@@ -116,14 +119,17 @@ writes nothing, and holds no state between calls.
 
 ## Data Flow
 
-One integer, chosen by the application, travels two ways; where it was not chosen, the running
-instance is asked instead:
+One integer reaches the session factory, and the same integer is put on every chat request. Where the
+application stated it, the reading short-circuits; where it did not, the running instance is asked:
 
 ```text
-stated size ──┬──▶ sizing decorator ──▶ every chat request names the context length
-              └──▶ ReadAsync (short-circuits) ──▶ (tokens, Stated) ──▶ session factory
+stated size ──▶ ReadAsync (short-circuits) ──▶ (tokens, Stated) ──┐
+                                                                  ├──▶ session factory
+no stated size ──▶ model name ──▶ list running models ──▶ Select ─┘
+                                        │
+                                        └──▶ (tokens, LoadedModel | Assumed)
 
-no stated size ──▶ model name ──▶ list running models ──▶ loaded? ──▶ Select ──▶ (tokens, source)
+(tokens, any source) ──▶ sizing decorator ──▶ every chat request names the context length
 ```
 
 The running-models query may fail; a failure contributes nothing and the conservative default is

@@ -105,7 +105,8 @@ an application needs to see, and this unit has no fallback of its own to offer.
 ### Callers
 
 An application composes this decorator around its Ollama client where it configures its provider,
-using the same figure it states to `OllamaContextWindow.ReadAsync`. Every client that talks to the
-conversation's model is composed this way, including a summarizer sharing that model, because an
-un-annotated request from any of them resizes the same instance. The research-assistant sample is
-the worked example. Nothing within this system calls this unit.
+using the window `OllamaContextWindow.ReadAsync` returned — whichever rung produced it, not only a
+figure the application stated. Every client that talks to the conversation's model is composed this
+way, including a summarizer sharing that model, because an un-annotated request from any of them
+resizes the same instance. The research-assistant sample is the worked example. Nothing within this
+system calls this unit.

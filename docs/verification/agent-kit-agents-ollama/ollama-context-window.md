@@ -177,6 +177,18 @@ and returning the assumed default — which would be indistinguishable from a se
 answered. The empty case is the one that mattered: it became `":latest"`, matched nothing, and
 returned a plausible figure.
 
+#### AgentKitAgentsOllama-OllamaContextWindow-RefusesAWindowNoSessionCouldUse: A Window No Session Could Use Is Refused
+
+**Test**: `OllamaContextWindow_Construct_WindowOfZeroOrLess_Throws`
+
+Error path, on the public record rather than the ladder. Zero, minus one and `int.MinValue` are each
+rejected with `ArgumentOutOfRangeException` naming `Tokens`. The reading's own paths cannot produce
+such a window — every rung guards its figure — so this scenario exists because the record is public
+and a caller can construct an instance that contradicts the type's own documentation. The consumers
+a bad window would reach do re-check it, but an invariant that holds only because every consumer
+re-checks is a habit rather than a guarantee. Refusing it where it is claimed is what makes the
+documented promise true of every instance that can exist.
+
 #### Supporting Corner Cases (Deliberately Unlinked)
 
 **Tests**:

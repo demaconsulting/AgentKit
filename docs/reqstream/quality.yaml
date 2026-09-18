@@ -143,3 +143,4 @@ sections:
           - AgentKitTools_XmlDocExamplesCompile
           - AgentKitAgentsCopilot_XmlDocExamplesCompile
           - AgentKitAgentsChatClient_XmlDocExamplesCompile
+          - AgentKitAgentsOllama_XmlDocExamplesCompile
