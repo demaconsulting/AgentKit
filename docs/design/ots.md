@@ -35,7 +35,7 @@ inside the package.
 | Microsoft.Agents.AI                  | Runtime library defining `AIAgent` and `ChatClientAgent`             |
 | Microsoft.Agents.AI.GitHub.Copilot   | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |
 | Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency  |
-| OllamaSharp                          | Ollama client library: loaded-model and model-metadata reports       |
+| OllamaSharp                          | Ollama client library: loaded-model report, context-length option    |
 | Pandoc                               | Converts Markdown documentation to HTML                              |
 | ReqStream                            | Enforces requirements-to-test traceability                           |
 | ReviewMark                           | Enforces file review coverage and currency                           |

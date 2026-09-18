@@ -60,6 +60,24 @@ public enum ContextWindowSource
 public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
 {
     /// <summary>
+    ///     The length to ask the server to run at on every request, or <see langword="null"/> when
+    ///     the figure is not a window to ask for.
+    /// </summary>
+    /// <remarks>
+    ///     Every window the Ollama path can produce is asked for, including an assumed one. A figure
+    ///     merely read from a running instance is not durable — Ollama does not remember the length
+    ///     an instance was loaded at, the default keep-alive is minutes, and an evicted model
+    ///     reloads at the server's default while the session goes on rotating against the old
+    ///     number. An assumed figure is not durable either, and is not even known to be right:
+    ///     Ollama's default is chosen from available memory or set server-wide, so it is not the
+    ///     4,096 assumed here. Asking for the number in hand makes it true by construction in both
+    ///     cases, which is the whole point of the exercise; it forces no load a first chat request
+    ///     would not force anyway. Only a ceiling is withheld, because it is an upper bound on
+    ///     another provider's window rather than a window, and it never reaches the Ollama path.
+    /// </remarks>
+    public int? PinnedLength => Source is ContextWindowSource.Ceiling ? null : Tokens;
+
+    /// <summary>
     ///     Describes the window and its provenance in one line for the startup banner.
     /// </summary>
     /// <returns>A sentence naming the number and how it was arrived at.</returns>
@@ -69,13 +87,14 @@ public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
             $"{Tokens} tokens (stated with --context-window, and asked of the server on every "
             + "request)",
         ContextWindowSource.LoadedModel =>
-            $"{Tokens} tokens (read from the loaded model, so this is what the server enforces)",
+            $"{Tokens} tokens (read from the loaded model, and asked of the server on every request "
+            + "so the instance stays at it)",
         ContextWindowSource.Ceiling =>
             $"at most {Tokens} tokens (a --context-window ceiling; the runtime reports its own "
             + "window every turn and the lower of the two governs)",
         _ =>
-            $"{Tokens} tokens (assumed: no model was loaded to ask, and this is Ollama's own "
-            + "default; pass --context-window to run at a size of your choosing)",
+            $"{Tokens} tokens (assumed: no model was loaded to ask, so this is Ollama's own default "
+            + "asked for on every request; pass --context-window to run at a size of your choosing)",
     };
 
     /// <summary>

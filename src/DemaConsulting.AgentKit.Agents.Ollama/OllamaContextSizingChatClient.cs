@@ -36,6 +36,14 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     with sibling clients, so mutating it would leak this decorator's choice outward.
 ///     </para>
 ///     <para>
+///     <b>Disposing this decorator disposes the client it wraps.</b> That is the delegating client's
+///     ownership rule, and it matters here because the wrapped client is typically shared — the same
+///     Ollama client is the natural one to read the window from, and a summarizer often runs over a
+///     sibling of it. A composition that releases this decorator while still holding the inner client
+///     for other work has released that work's transport too. Where the inner client outlives the
+///     decorator, dispose the inner client directly and let the decorator be collected.
+///     </para>
+///     <para>
 ///     The class holds no mutable state of its own and is as safe for concurrent use as the client
 ///     it wraps.
 ///     </para>
@@ -43,7 +51,8 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 /// <example>
 ///     <code>
 ///     // One figure, chosen by the application, used twice: asked of the server on every request,
-///     // and handed to the session that accounts against it.
+///     // and handed to the session that accounts against it. The Ollama client is shared between
+///     // the two, so it is disposed directly rather than through the decorator.
 ///     var ollama = new OllamaApiClient(new Uri("http://localhost:11434"), "qwen3:8b");
 ///     IChatClient client = new OllamaContextSizingChatClient(ollama, 8192);
 ///     var window = await OllamaContextWindow.ReadAsync(
@@ -80,7 +89,8 @@ public sealed class OllamaContextSizingChatClient : DelegatingChatClient
     ///     reported at the line that made it rather than at a request some time later.
     /// </remarks>
     /// <param name="innerClient">
-    ///     The client this decorator forwards to. Must not be <see langword="null"/>.
+    ///     The client this decorator forwards to, and disposes when this decorator is disposed. Must
+    ///     not be <see langword="null"/>.
     /// </param>
     /// <param name="contextLength">
     ///     The context length to ask the server for, in tokens. Must be greater than zero.

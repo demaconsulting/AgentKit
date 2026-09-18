@@ -54,23 +54,35 @@ public class OllamaContextSizingChatClientTests
     }
 
     /// <summary>
-    ///     Proves a request the caller gave no options for still asks for the context length.
+    ///     Proves options carrying no property bag at all still ask for the context length.
     /// </summary>
+    /// <remarks>
+    ///     A caller that sets, say, only a temperature leaves <c>AdditionalProperties</c> null. That is
+    ///     the one shape where the decorator has options to copy but no bag to write into, so it is
+    ///     the arrangement no other test here produces: the request above supplies no options, and the
+    ///     precedence test supplies a bag already holding a value.
+    /// </remarks>
     [Fact]
-    public async Task OllamaContextSizingChatClient_GetResponseAsync_NoCallerOptions_StillCarriesTheContextLength()
+    public async Task OllamaContextSizingChatClient_GetResponseAsync_CallerOptionsWithoutProperties_StillCarriesTheContextLength()
     {
-        // Arrange
+        // Arrange: options the caller set something else on, leaving no property bag
         var recorder = new RecordingChatClient();
         using var client = new OllamaContextSizingChatClient(recorder, ContextLength);
+        var callerOptions = new ChatOptions { Temperature = 0.5f };
 
-        // Act: no options at all, as a bare request carries
+        // Act
         await client.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "hello")],
-            options: null,
+            callerOptions,
             TestContext.Current.CancellationToken);
 
-        // Assert: options were created to carry the size
-        Assert.Equal(ContextLength, ContextLengthOf(Assert.Single(recorder.Requests)));
+        // Assert: a bag was created to carry the size, and what the caller did set survived
+        var sent = Assert.Single(recorder.Requests);
+        Assert.Equal(ContextLength, ContextLengthOf(sent));
+        Assert.Equal(0.5f, sent?.Temperature);
+
+        // Assert: the caller's own options were left as they were handed over
+        Assert.Null(callerOptions.AdditionalProperties);
     }
 
     /// <summary>

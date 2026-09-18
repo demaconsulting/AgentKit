@@ -42,6 +42,8 @@ constituent software items, specifically:
   capability-gated family, and the host capabilities a pack may require
 - **ToolPackBuilder (Unit)** — Capability-gated composition of tool packs into the tool list an
   application offers a model
+- **ImagePromotingChatClient (Unit)** — Makes an image a tool returned visible to a provider whose
+  tool-result channel cannot carry one, by promoting it onto a following user message
 - **AgentSession (Unit)** — The session contract an application programs against, and what one turn
   reports back about the answer, the usage, the rotation, the compaction level, and any dropped
   material
@@ -95,23 +97,83 @@ constituent software items, specifically:
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
+- **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
+  agent writes down, advances and closes out, published as one pack
+- **TodoStore (Unit)** — Holds one agent's flat task list, allocated per composition so that a
+  delegated agent cannot reach its parent's list
+- **TodoListTool (Unit)** — Publishes the `todo_list` tool
+- **TodoSetTool (Unit)** — Publishes the `todo_set` tool
+- **TodoRemoveTool (Unit)** — Publishes the `todo_remove` tool
+- **TodoPack (Unit)** — Publishes the todo family as one pack, and the instruction an application
+  must give an agent for the family to be used at all
+- **Memory (Subsystem)** — The memory tool family: a searchable record of what an agent has learned,
+  each memory a short embedded descriptor with a richer never-embedded payload and its provenance,
+  published as one pack
+- **MemoryOptions (Unit)** — The author's near-duplicate threshold and recall count
+- **MemoryStore (Unit)** — The memory and match records, the substitutable persistence contract for
+  memories and its default in-process implementation
+- **MemoryFileTool (Unit)** — Publishes the `memory_file` tool
+- **MemoryRecallTool (Unit)** — Publishes the `memory_recall` tool
+- **MemoryUpdateTool (Unit)** — Publishes the `memory_update` tool
+- **MemoryReviseTool (Unit)** — Publishes the `memory_revise` tool
+- **MemoryForgetTool (Unit)** — Publishes the `memory_forget` tool
+- **MemoryPack (Unit)** — Publishes the memory family as one pack, taking the embedding generator,
+  the author's controls and optional substitute persistence from the composing application
+- **Agent (Subsystem)** — The agent tool family: delegation of a task to another agent the
+  application registered by name, published as one capability-gated pack
+- **AgentProfile (Unit)** — One named child agent the application is willing to have started: its
+  instructions, the tool names it admits, and any narrowing of its path grants
+- **AgentRunTool (Unit)** — Publishes the `agent_run` tool, and defines the request bundle the
+  host's runner is handed for one delegated agent, carrying tools composed from the child's own
+  state
+- **AgentPack (Unit)** — Publishes the agent family as one pack, and composes a child's tools from
+  the registered packs rather than from the parent's tool list
 - **AgentKitAgentsChatClient (System)** — Builds a Microsoft Agent Framework agent from any
-  `IChatClient`, installing the image-promoting decorator on every agent unconditionally
+  `IChatClient`, and carries a Core session over that same `IChatClient`, installing the
+  image-promoting decorator unconditionally on both
 - **ChatClientAgentFactory (Unit)** — The static factory that wraps the supplied client in the
   image-promoting decorator and builds a `ChatClientAgent`
+- **ChatClientProviderSession (Unit)** — One Core session over an `IChatClient`: the seeded message
+  list, the conversation resent on every turn, and the occupancy reported against a supplied window
+- **ChatClientProviderSessionFactory (Unit)** — Holds the client and the window, builds the pipeline
+  each session runs on, and creates a session from a seed at the start of a conversation and again
+  at every rotation
+- **PromptSizeRecordingChatClient (Unit)** — Records the prompt size of each individual request
+  beneath the tool-calling loop, so occupancy is the last request's prompt rather than usage summed
+  across a tool-calling turn
+- **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
+  application's choosing, out of the session being compacted
 - **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
   Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools
+  allow-list from the supplied tools, and carries an AgentKit session over the same runtime
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
-- **AgentKitAgentsOllama (System)** — Reports the context window an Ollama server will enforce for a
-  model, and which figure that came from
+- **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
+  carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
+  the runtime's own occupancy, and ends the session on a turn it cannot account for
+- **CopilotProviderSessionFactory (Unit)** — Creates one seeded Copilot session per rotation,
+  configuring the system message with the application's instructions alone, composing the seeded
+  history into a fenced record for the first message to carry, and holding the runtime's own
+  compaction clear of the engine's rotation point
+- **CopilotSessionObserver (Unit)** — Watches the runtime's event stream for the usage reading, the
+  turn's tool traffic, and any sign the runtime rewrote history itself
+- **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
+  out of the session being compacted
+- **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
+  what makes everything above it testable without a live Copilot runtime
+- **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
+  the window the Ollama instance is actually using, by asking the server for a size and by reading
+  back what a running instance reports
 - **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
   the reading of the server, and the pure precedence function that chooses among what it reported
+- **OllamaContextSizingChatClient (Unit)** — The decorator that names the application's chosen
+  context length on every request, so the instance Ollama runs is the one the session accounts
+  against
 
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
+- **ApiMark** — public API surface tracking tool
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
   abstraction
@@ -119,8 +181,8 @@ The following OTS items are also covered:
   `SessionConfig`, and the permission RPC
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
-- **OllamaSharp** — the Ollama client library providing the loaded-model and model-metadata reports
-  carrying a server's context lengths
+- **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
+  instance's context length, and the carriage of a context-length option onto the wire
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool

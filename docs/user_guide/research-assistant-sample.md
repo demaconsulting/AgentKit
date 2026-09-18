@@ -71,10 +71,12 @@ every rotation intact — which is why the `--recall-question` turn still answer
 
 **On `--provider ollama` the window is made true rather than assumed.** An
 `IChatClient` publishes no context window, so the application has to answer for it. The sample
-prefers, in order: a window stated with `--context-window`, which it also *asks the server for* on
-every request, so the instance Ollama runs is the one the session accounts against; the length the
-**loaded** instance reports, which is what the Ollama server is actually enforcing; and finally
-Ollama's own default, announced as an assumption. What the model file publishes as its maximum is
+prefers, in order: a window stated with `--context-window`; the length the **loaded** instance
+reports, which is what the Ollama server is currently enforcing; and finally Ollama's own default,
+announced as an assumption. Whichever it lands on, the sample then *asks the server for* that size
+on every request, so the instance Ollama runs is the one the session accounts against — a figure
+that was only read is no more durable than one that was only claimed, because an evicted model
+reloads at the server's default. What the model file publishes as its maximum is
 never used — it describes the file, not the instance, and against a live server the two differed by
 a factor of thirty-two in the direction that loses history. The startup banner names which of the
 three a run used, because a session told a window larger than the instance is running will not

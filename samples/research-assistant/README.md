@@ -138,12 +138,16 @@ An `IChatClient` publishes no context window, so AgentKit is told one once, wher
 configured, and answers with it thereafter. This sample makes that figure true rather than guessing
 it, preferring in order:
 
-1. `--context-window <tokens>`, if stated. It settles the question — and the sample asks the server
-   for it, naming the size on every request the conversation sends, so the instance Ollama runs is
-   the one being accounted against.
+1. `--context-window <tokens>`, if stated. It settles the question.
 2. The length the **loaded** instance reports, from the server's list of running models. This is
-   what the server is actually enforcing.
+   what the server is currently enforcing.
 3. Failing that, Ollama's own default of 4096 tokens, announced as an assumption.
+
+Whichever of the three a run lands on, the sample then **asks the server for it**, naming the size
+on every request the conversation sends, so the instance Ollama runs is the one being accounted
+against. A figure that was only read is no more durable than one that was only claimed: Ollama does
+not remember the length an instance was loaded at, so an evicted model reloads at the server's
+default while the session goes on accounting against the old number.
 
 What the model *file* publishes as its maximum is deliberately not used. It describes the file, not
 the instance: one live server published 262,144 tokens for a model it was running at 4,096.

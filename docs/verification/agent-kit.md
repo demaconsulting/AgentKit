@@ -21,10 +21,12 @@ remaining scenarios show.
 All three capabilities are verified without a provider. No credential is used, no Copilot CLI is
 started and no Ollama server is contacted; the Copilot runtime is reached through the package's own
 internal turn-channel seam and the `IChatClient` family through a recording chat client. The Ollama
-scenarios are the closest of the three to a live provider: they replay payloads captured verbatim
-from a live Ollama 0.34.1 server, and two of them go over HTTP through the real Ollama client
-against a server the test starts on loopback and stops with it, so the client's own request shaping
-and deserialization execute. One fact about this capability is nonetheless a manual measurement
+scenarios are the closest of the three to a live provider: two of them go over HTTP through the real
+Ollama client against a server the test starts on loopback and stops with it, so the client's own
+request shaping and deserialization execute — one replaying payloads captured verbatim from a live
+Ollama 0.34.1 server, the other reading back the body the request was sent with. The precedence
+itself is a pure function and is exercised on hand-built loaded-model values. One fact about this
+capability is nonetheless a manual measurement
 rather than a scenario — that a real Ollama server loads a model at the `num_ctx` a request names —
 and it is recorded in *OllamaContextWindow Unit Verification Design* with the figures it was taken
 from. The scope boundaries this leaves —

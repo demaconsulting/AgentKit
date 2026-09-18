@@ -28,7 +28,7 @@ tool executed correctly). Each item's individual verification document
 | Microsoft.Agents.AI                  | AgentKit integration tests building an agent from an IChatClient            |
 | Microsoft.Agents.AI.GitHub.Copilot   | AgentKit integration tests building the session config and handler          |
 | Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools              |
-| OllamaSharp                          | AgentKit offline tests reading a server's reported context lengths          |
+| OllamaSharp                          | AgentKit tests: real client on loopback; reports read, num_ctx on the wire  |
 | Pandoc                               | Pipeline evidence: FileAssert assertions on each generated HTML document    |
 | ReqStream                            | Self-validation CLI suite plus pipeline evidence via --enforce traceability |
 | ReviewMark                           | Self-validation CLI suite plus pipeline evidence via review plan/report     |

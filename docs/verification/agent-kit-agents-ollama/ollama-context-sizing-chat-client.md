@@ -63,13 +63,15 @@ composition, and any request body reaching the server without the size constitut
 **Tests**:
 
 - `OllamaContextSizingChatClient_GetResponseAsync_EveryRequest_CarriesTheStatedContextLength`
-- `OllamaContextSizingChatClient_GetResponseAsync_NoCallerOptions_StillCarriesTheContextLength`
+- `OllamaContextSizingChatClient_GetResponseAsync_CallerOptionsWithoutProperties_StillCarriesTheContextLength`
 
 Normal operation, and the promise the unit exists for. Two successive requests are sent and both
 recorded requests are asserted to name the chosen context length; a second scenario sends a request
-with no caller settings at all and asserts the size is named anyway. A decorator that sized only the
-opening request would pass the second scenario and fail the first, which is precisely why the first
-counts rather than merely checking that sizing happens.
+whose caller settings carry no property bag — the one shape where there are settings to copy but
+nothing to write into — and asserts the size is named anyway, the caller's own setting survives, and
+the caller's object is left as it was handed over. A decorator that sized only the opening request
+would pass the second scenario and fail the first, which is precisely why the first counts rather
+than merely checking that sizing happens.
 
 #### AgentKitAgentsOllama-OllamaContextSizingChatClient-StreamedRequestsAreNamedToo: Streaming Behaves Identically
 
@@ -124,8 +126,7 @@ Normal operation through the real Ollama client. The decorator wraps a real `Oll
 pointed at a loopback server, an ordinary exchange is held, and the request body the server received
 is parsed and asserted to carry the chosen context length in its options block. This is the only
 evidence that the option is translated onto the wire at all, and the whole "stated is true by
-construction" claim rests on it — which is why it was written and passing before the published
-maximum was removed from the precedence.
+construction" claim rests on it.
 
 #### Composition Guard (Deliberately Unlinked)
 

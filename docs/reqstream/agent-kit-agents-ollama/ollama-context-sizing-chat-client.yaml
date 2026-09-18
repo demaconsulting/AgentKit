@@ -19,12 +19,13 @@ sections:
               beneath a session that is still accounting against the old figure - a failure nothing
               in the exchange reports. Naming it every time is what makes the window a session
               accounts against true for the whole conversation rather than only at the start. A
-              request the caller gave no options for is still a request, so it names the size too.
+              request the caller gave no options for is still a request, and so is one whose options
+              carry no property bag at all, so both name the size too.
             tests:
               - >-
                 OllamaContextSizingChatClient_GetResponseAsync_EveryRequest_CarriesTheStatedContextLength
               - >-
-                OllamaContextSizingChatClient_GetResponseAsync_NoCallerOptions_StillCarriesTheContextLength
+                OllamaContextSizingChatClient_GetResponseAsync_CallerOptionsWithoutProperties_StillCarriesTheContextLength
 
           - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-StreamedRequestsAreNamedToo
             title: >-

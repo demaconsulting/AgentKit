@@ -78,11 +78,12 @@ code — the context window an instance is running, which the chat-client adapte
 an `IChatClient` publishes none — and that code is what makes the capability demonstrable. The
 evidence a capability requires is the whole promise shown, and the half that belongs to Ollama has
 two parts: reading what a server actually sent, and asking a server for a size and seeing the
-request carry it. The package's suite replays payloads captured verbatim from a live Ollama 0.34.1
-server through the precedence directly and over HTTP through the real Ollama client, and reads the
-requested size back off the body an ordinary chat request was sent with. The other half, an agent
-confined to its tools carrying a conversation past the window, is the chat-client capability's and
-is cited from there rather than re-demonstrated, because on Ollama it is the same delivery.
+request carry it. The package's suite exercises the precedence on hand-built loaded-model values,
+replays payloads captured verbatim from a live Ollama server over HTTP through the real Ollama
+client for the reading of one, and reads the requested size back off the body an ordinary chat
+request was sent with. The other half, an agent confined to its tools carrying a conversation past
+the window, is the chat-client capability's and is cited from there rather than re-demonstrated,
+because on Ollama it is the same delivery.
 
 `AgentKit-Provider-Ollama` is worded to say only that. It claims a guarded agent on a model **served
 by** Ollama, not an Ollama implementation, and its justification names the chat-client capability as

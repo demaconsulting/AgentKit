@@ -110,7 +110,9 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     ///     propagated rather than swallowed.
     /// </remarks>
     /// <param name="client">The Ollama client to ask. Must not be <see langword="null"/>.</param>
-    /// <param name="model">The model the conversation runs on. Must not be <see langword="null"/>.</param>
+    /// <param name="model">
+    ///     The model the conversation runs on. Must not be <see langword="null"/> or empty.
+    /// </param>
     /// <param name="stated">
     ///     The window the application stated, or <see langword="null"/> when none was. A value of
     ///     zero or less is treated as unstated.
@@ -120,6 +122,7 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="client"/> or <paramref name="model"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="model"/> is empty.</exception>
     /// <exception cref="OperationCanceledException">
     ///     <paramref name="cancellationToken"/> was canceled during the query.
     /// </exception>
@@ -161,10 +164,11 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     /// <param name="running">The models the server reports as loaded, or <see langword="null"/>.</param>
     /// <param name="model">
     ///     The model name to match a loaded model against, tagged or bare. Must not be
-    ///     <see langword="null"/>.
+    ///     <see langword="null"/> or empty.
     /// </param>
     /// <returns>The chosen window and its source. Never <see langword="null"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="model"/> is empty.</exception>
     public static OllamaContextWindow Select(
         int? stated,
         IEnumerable<RunningModel>? running,
