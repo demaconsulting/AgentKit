@@ -50,6 +50,13 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
 ```
 
+If you target Ollama, add one more. Ollama is an ordinary `IChatClient` provider in every other
+respect, but it is the one that will tell you the context window it will enforce:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # reads Ollama's context window
+```
+
 ## API Documentation
 
 Detailed API documentation for all public types and members is distributed in the `api/` folder
@@ -495,10 +502,27 @@ An `IChatClient` publishes no context window — the abstraction exposes a provi
 URI and a default model identifier, and nothing about limits. So
 `ChatClientProviderSessionFactory` is told one, once, where the application configures its provider.
 
-Read it from the provider wherever the provider will say. Ollama publishes the loaded model's
-context length, and the loaded figure is the one the server enforces — which is often smaller than
-the maximum the model publishes. An application that sets the context length itself already knows
-the number it chose. For a hosted model the window is a published property of the model the
+Read it from the provider wherever the provider will say. On Ollama,
+`DemaConsulting.AgentKit.Agents.Ollama` does the asking:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
+var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+```
+
+It reports where the figure came from as well as what it is, because the two Ollama can give are not
+interchangeable. `LoadedModel` is the length the server loaded that model with, and is what will
+actually be enforced. `PublishedModel` is the maximum the model advertises, which the server may
+have loaded it well below — so if a run reports that one and the conversation truncates earlier than
+expected, state the real figure. `Stated` means you supplied it and nothing was measured, and
+`Assumed` means nothing could be read at all and a conservative default was used. Show the source
+alongside the number: a maximum presented as the limit in force is how a session ends up rotating
+after the server has already discarded the start of the conversation.
+
+An application that sets the context length itself already knows the number it chose. For a hosted
+model the window is a published property of the model the
 application selected. The research-assistant sample reads it from Ollama and reports which of those
 sources it used; see *Sample: Research Assistant*.
 

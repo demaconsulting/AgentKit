@@ -25,7 +25,8 @@ no structure — it records which system delivers which capability and what each
 - **`AgentKit-Provider-GitHubCopilot`** — delivered by AgentKitAgentsCopilot over AgentKitCore's
   session engine, resting on the `Microsoft.Agents.AI.GitHub.Copilot` SDK.
 - **`AgentKit-Provider-ChatClient`** — delivered by AgentKitAgentsChatClient over the same session
-  engine, resting on `Microsoft.Agents.AI`.
+  engine, resting on `Microsoft.Agents.AI`. AgentKitAgentsOllama contributes the window figure that
+  capability must be told on one member of the family; see *Which Providers Get a Capability* below.
 
 The two promises both capabilities share come from two places. Confinement is the adapter's: on
 Copilot it is the
@@ -56,7 +57,21 @@ fact is gone and the traceability it existed for now hangs from the capability t
 
 A provider gets a capability of its own when a shipped package carries code for it, because that
 code is also what makes the capability demonstrable. Ollama, OpenAI and AI Foundry are reached
-through `AgentKit-Provider-ChatClient` and are not claimed individually: no shipped package holds
-anything specific to any of them. Where such a piece does exist — the Ollama context-window
-discovery in the research-assistant sample — it lives in a sample, which is not a software item and
-carries no requirement.
+through `AgentKit-Provider-ChatClient`; OpenAI and AI Foundry are not claimed individually, because
+no shipped package holds anything specific to either.
+
+Ollama is the case in transition. `AgentKitAgentsOllama` is a shipped package carrying Ollama-specific
+code — the context window a server will enforce, which the chat-client adapter cannot read because
+an `IChatClient` publishes none — so by the rule above Ollama has earned a capability. It does not
+have one yet. The evidence a capability requires is the whole promise demonstrated, and half of this
+one is the reading of a live server, which the package's automated suite does not cover: doing so
+needs response payloads captured from a real Ollama server rather than invented, and those do not
+exist. Claiming the capability before that evidence does would be the thing this chapter exists to
+prevent.
+
+So the package's two mechanism requirements hang from `AgentKit-Provider-ChatClient` meanwhile.
+That is not a placeholder: being told a window is that capability's mechanism, and its own child
+`AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider` already justifies being told one
+by citing Ollama as the layer where a window is readable. This package is that layer. When the
+captured payloads arrive and `AgentKit-Provider-Ollama` is stated, the two links move to it and
+nothing else changes.

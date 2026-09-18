@@ -162,6 +162,11 @@ software items, specifically:
   out of the session being compacted
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
   what makes everything above it testable without a live Copilot runtime
+- **AgentKitAgentsOllama (System)** — Reports the context window an Ollama server will enforce for a
+  model, and which figure that came from, so a compacting session over an Ollama `IChatClient` is
+  told a window it can trust
+- **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
+  the reading of the server, and the pure precedence function that chooses among what it reported
 
 The following OTS items are also covered:
 
@@ -174,6 +179,8 @@ The following OTS items are also covered:
   `SessionConfig`, the permission RPC, the session lifecycle and the session event stream
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
+- **OllamaSharp** — the Ollama client library providing the loaded-model and model-metadata reports
+  carrying a server's context lengths
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool
@@ -245,7 +252,7 @@ This is the point at which that judgment should be revisited. If one of those gr
 that a reader cannot hold it in view, the boundary around it stops being free and earns its
 artifacts.
 
-The repository contains four systems. `AgentKitCore` is the heart of the product and the one library
+The repository contains five systems. `AgentKitCore` is the heart of the product and the one library
 guaranteed to be imported. It supplies the contract every other package builds on — the policy
 primitives that bound where a tool may act, the single guarded construction path, the result
 constructors and the pack contract — and, alongside them, the provider-agnostic session engine that
@@ -285,11 +292,19 @@ that factory, a provider session, its factory, a summarizer, and the recorder th
 from the last request of a turn. Both are flat, and the two share no code and never reference each
 other.
 
-The `SoftwareStructureView.svg` above renders all four systems.
+`AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
+session. It exists for the single thing Ollama needs that the chat-client adapter cannot supply —
+the context window a server will actually enforce for a model, which an `IChatClient` publishes
+nowhere and which is only readable through Ollama's own APIs. It is a package of its own because
+that reading needs `OllamaSharp`, and the chat-client adapter serves every provider in its family
+and must stay free of any one of them. One unit, no dependency on Core, and nothing of its own
+appears in the session an application goes on to build.
+
+The `SoftwareStructureView.svg` above renders all five systems.
 
 The demonstration samples under `samples/` are not among them. They are runnable examples rather
 than deliverables, belong to no software package, and are excluded from the software-item tree for
-the reasons given under Scope above; the structure view renders only the four shipped systems.
+the reasons given under Scope above; the structure view renders only the five shipped systems.
 
 ## Folder Layout
 
@@ -403,6 +418,13 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
+```
+
+`AgentKitAgentsOllama` is a single-file tree, because it is a single unit:
+
+```text
+src/DemaConsulting.AgentKit.Agents.Ollama/
+└── OllamaContextWindow.cs            — the discovered window, its source, the reading and the precedence
 ```
 
 The demonstration samples live under `samples/`, one folder per sample. They are not software

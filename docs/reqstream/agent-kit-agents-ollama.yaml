@@ -1,0 +1,69 @@
+---
+# Software System Requirements for AgentKit Ollama Agents
+#
+# These requirements describe the externally visible behavior of the library
+# from the perspective of its consumers, without specifying implementation details.
+#
+# They are mechanisms rather than capabilities, so - like the ChatClient adapter's
+# requirements - they carry no 'system' tag: a capability is the root, and a mechanism
+# here that stops contributing to one is reported as an orphan rather than standing on
+# its own.
+#
+# They are named as children of AgentKit-Provider-ChatClient (docs/reqstream/agent-kit.yaml)
+# rather than of a capability of their own. That capability's promise is a conversation that
+# outlives the provider's context window, and its own child
+# AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider justifies being told a window
+# by citing Ollama as the layer where one is readable. This is that layer. An
+# AgentKit-Provider-Ollama capability is deliberately deferred until the package's live-payload
+# evidence exists; when it is stated, these two children move to it and nothing else changes.
+
+sections:
+  - title: AgentKitAgentsOllama Requirements
+    requirements:
+      - id: AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
+        title: >-
+          The library shall report the context window a conversation on an Ollama model should be
+          accounted against, preferring a window the application stated, then the length the server
+          loaded that model with, then the model's published maximum, and shall report which of
+          those the figure came from.
+        justification: |
+          A chat client publishes no context window, so a compacting session is told one where the
+          provider is configured - and getting that number wrong is costly in a specific direction.
+          Too low wastes summarizer calls; too high means the session rotates after the server has
+          already discarded the start of the conversation, losing history with nothing reporting an
+          error. Ollama will answer, but the two figures it can give are not interchangeable: a
+          model publishes the length it was trained for, and the server loads it with a length of
+          its own choosing, smaller by default. The loaded figure is the one that will actually be
+          enforced, so it is preferred, and a window the application stated outranks both because an
+          application that set the context length itself already knows what it chose. Reporting the
+          source alongside the figure is what lets a host present a published maximum as a maximum
+          rather than as the limit in force.
+        children:
+          - AgentKitAgentsOllama-OllamaContextWindow-StatedWindowWins
+          - AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
+          - AgentKitAgentsOllama-OllamaContextWindow-MatchesAnUntaggedModelName
+          - AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
+          - AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLengthWhateverItsJsonShape
+          - AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
+          - AgentKit-OTS-OllamaSharp-ModelReports
+        tests:
+          - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
+
+      - id: AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
+        title: >-
+          The library shall report a conservative context window, named as assumed, when neither a
+          loaded model nor published metadata yields one.
+        justification: |
+          A server can decline to answer - an older build, a proxy in front of it, a model that has
+          never been loaded - and an application that could not start because it could not read an
+          optional number would be worse than one that says which number it assumed. The figure
+          chosen is deliberately the low one: assuming less than the truth makes a session rotate
+          earlier than it needed to, which costs summarizer calls, while assuming more makes it
+          rotate after the provider has already discarded the beginning of the conversation, which
+          loses history silently. Naming it as assumed rather than reporting it as read is what
+          keeps a caller from being handed an invented number presented as measured.
+        children:
+          - AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
+          - AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
+        tests:
+          - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource

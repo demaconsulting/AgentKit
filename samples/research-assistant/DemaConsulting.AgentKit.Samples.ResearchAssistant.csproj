@@ -29,8 +29,9 @@
     <NoWarn>$(NoWarn);GHCP001;MAAI001</NoWarn>
   </PropertyGroup>
 
-  <!-- Project References: the sample composes the shipped Core + Tools packages and both agent
-       adapters. The GitHub Copilot SDK is NOT referenced directly; it flows in transitively at the
+  <!-- Project References: the sample composes the shipped Core + Tools packages, both agent
+       adapters, and the Ollama adapter that reads the context window the server will enforce. The
+       GitHub Copilot SDK is NOT referenced directly; it flows in transitively at the
        version pinned by Microsoft.Agents.AI.GitHub.Copilot, whose bundled runtime asset is verified
        to launch and serve a turn. A direct reference would win over the transitive one and let the
        SDK drift away from the version its parent was built and tested against. -->
@@ -39,11 +40,13 @@
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.ChatClient\DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Ollama\DemaConsulting.AgentKit.Agents.Ollama.csproj" />
   </ItemGroup>
 
-  <!-- Package References: OllamaSharp supplies both the IChatClient the sample points at an Ollama
-       host and the IEmbeddingGenerator the memory family needs when the run asks for Ollama
-       embeddings. It is the only provider dependency the adapters do not already pull in. -->
+  <!-- Package References: OllamaSharp is still referenced directly because the sample needs more of
+       it than the Ollama adapter does — the IChatClient it points at an Ollama host, and the
+       IEmbeddingGenerator the memory family needs when the run asks for Ollama embeddings. The
+       adapter above supplies only the context-window discovery. -->
   <ItemGroup>
     <PackageReference Include="OllamaSharp" Version="5.4.30" />
   </ItemGroup>

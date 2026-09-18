@@ -1,0 +1,31 @@
+---
+# OllamaSharp OTS Software Requirements
+#
+# Requirements for the OllamaSharp client library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: OllamaSharp Requirements
+        requirements:
+          - id: AgentKit-OTS-OllamaSharp-ModelReports
+            title: >-
+              OllamaSharp shall provide the loaded-model and model-metadata types carrying the
+              context lengths an Ollama server reports.
+            justification: |
+              The context window an Ollama server will enforce is only reachable through Ollama's
+              own reporting, and OllamaSharp is where those reports arrive as .NET types: a loaded
+              model carrying the length it was loaded with, and model metadata carrying the
+              architecture and the architecture-keyed published length. AgentKit implements no
+              Ollama wire protocol; it reads these types. AgentKit's own offline tests construct
+              real loaded-model and model-metadata values and read those members back through the
+              precedence, which proves the shapes are present and carry what the precedence depends
+              on.
+
+              Deliberately not claimed here: that the query APIs which fetch those reports behave
+              as expected over the wire. Nothing offline can evidence that, and it arrives with the
+              captured live payloads - see the AgentKitAgentsOllama verification design.
+            tags: [ots]
+            tests:
+              - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
+              - OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead

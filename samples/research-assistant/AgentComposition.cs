@@ -1,5 +1,6 @@
 using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Agents.Copilot;
+using DemaConsulting.AgentKit.Agents.Ollama;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Agent;
 using DemaConsulting.AgentKit.Tools.File;
@@ -932,11 +933,12 @@ public static class AgentComposition
         ContextWindow window;
         try
         {
-            window = await OllamaContextWindow.ReadAsync(
-                ollama,
-                model,
-                options.ContextWindow,
-                cancellationToken);
+            window = ContextWindow.From(
+                await OllamaContextWindow.ReadAsync(
+                    ollama,
+                    model,
+                    options.ContextWindow,
+                    cancellationToken));
         }
         catch
         {

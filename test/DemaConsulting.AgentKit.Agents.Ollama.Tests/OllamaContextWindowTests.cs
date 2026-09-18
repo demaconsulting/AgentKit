@@ -1,11 +1,11 @@
 using System.Text.Json;
 using OllamaSharp.Models;
 
-namespace DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests;
+namespace DemaConsulting.AgentKit.Agents.Ollama.Tests;
 
 /// <summary>
-///     Unit tests for <see cref="OllamaContextWindow"/>: which of the figures a server can report
-///     is believed, and what is assumed when it reports none.
+///     Unit tests for <see cref="OllamaContextWindow"/>: which of the figures a server can report is
+///     believed, and what is assumed when it reports none.
 /// </summary>
 /// <remarks>
 ///     The window is the one number the whole compaction arrangement turns on, so the precedence is
@@ -31,12 +31,12 @@ public class OllamaContextWindowTests
         var running = new[] { Loaded(Model, 8192) };
         var published = Published("qwen3", 40960);
 
-        // Act: a window stated on the command line
+        // Act: a window stated by the application
         var window = OllamaContextWindow.Select(2048, running, published, Model);
 
         // Assert: the stated figure, named as stated
         Assert.Equal(2048, window.Tokens);
-        Assert.Equal(ContextWindowSource.Stated, window.Source);
+        Assert.Equal(OllamaContextWindowSource.Stated, window.Source);
     }
 
     /// <summary>
@@ -55,12 +55,12 @@ public class OllamaContextWindowTests
 
         // Assert: the loaded length, not the published maximum
         Assert.Equal(8192, window.Tokens);
-        Assert.Equal(ContextWindowSource.LoadedModel, window.Source);
+        Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
     }
 
     /// <summary>
-    ///     Proves a bare model name matches the loaded model the server resolved it to, so a run
-    ///     started without a tag still finds its own window.
+    ///     Proves a bare model name matches the loaded model the server resolved it to, so a
+    ///     conversation started without a tag still finds its own window.
     /// </summary>
     [Fact]
     public void OllamaContextWindow_Select_UntaggedModelName_MatchesTheLoadedLatestTag()
@@ -68,12 +68,12 @@ public class OllamaContextWindowTests
         // Arrange: the server reports the tag it resolved
         var running = new[] { Loaded("research-model:latest", 16384) };
 
-        // Act: the command line named no tag
+        // Act: the caller named no tag
         var window = OllamaContextWindow.Select(stated: null, running, published: null, "research-model");
 
         // Assert: matched anyway
         Assert.Equal(16384, window.Tokens);
-        Assert.Equal(ContextWindowSource.LoadedModel, window.Source);
+        Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
     }
 
     /// <summary>
@@ -91,7 +91,7 @@ public class OllamaContextWindowTests
 
         // Assert: the published maximum, reported as the maximum it is
         Assert.Equal(40960, window.Tokens);
-        Assert.Equal(ContextWindowSource.PublishedModel, window.Source);
+        Assert.Equal(OllamaContextWindowSource.PublishedModel, window.Source);
     }
 
     /// <summary>
@@ -119,7 +119,7 @@ public class OllamaContextWindowTests
 
         // Assert
         Assert.Equal(131072, window.Tokens);
-        Assert.Equal(ContextWindowSource.PublishedModel, window.Source);
+        Assert.Equal(OllamaContextWindowSource.PublishedModel, window.Source);
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ public class OllamaContextWindowTests
 
         // Assert: the assumed default rather than nothing
         Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
-        Assert.Equal(ContextWindowSource.Assumed, window.Source);
+        Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
     }
 
     /// <summary>
@@ -160,52 +160,22 @@ public class OllamaContextWindowTests
 
         // Assert
         Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
-        Assert.Equal(ContextWindowSource.Assumed, window.Source);
+        Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
     }
 
     /// <summary>
-    ///     Proves every source describes itself, so the startup banner can never present a
-    ///     published maximum as though it were the limit in force.
+    ///     Proves a missing model name is refused rather than matched against, because a window
+    ///     chosen without knowing which model it belongs to is not a window anyone can act on.
     /// </summary>
-    /// <param name="source">The source being described.</param>
-    [Theory]
-    [InlineData(ContextWindowSource.Stated)]
-    [InlineData(ContextWindowSource.LoadedModel)]
-    [InlineData(ContextWindowSource.PublishedModel)]
-    [InlineData(ContextWindowSource.Assumed)]
-    [InlineData(ContextWindowSource.Ceiling)]
-    public void OllamaContextWindow_Describe_EverySource_NamesTheNumberAndItsProvenance(
-        ContextWindowSource source)
-    {
-        // Arrange
-        var window = new ContextWindow(4096, source);
-
-        // Act
-        var described = window.Describe();
-
-        // Assert: the number is there, and so is a statement about where it came from
-        Assert.Contains("4096", described, StringComparison.Ordinal);
-        Assert.Contains("(", described, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    ///     Proves a ceiling is described as an upper bound rather than as the window.
-    /// </summary>
-    /// <remarks>
-    ///     A ceiling only lowers: on a provider that reports its own window, one above the runtime's
-    ///     limit is ignored entirely. A banner that stated it as the window could announce a figure
-    ///     the session never accounts against - reporting 272,000 tokens while rotation happened at
-    ///     8,000. Saying "at most" is what keeps the banner true whichever of the two governs.
-    /// </remarks>
     [Fact]
-    public void OllamaContextWindow_Describe_Ceiling_ReadsAsAnUpperBoundNotTheWindow()
+    public void OllamaContextWindow_Select_NullModelName_Throws()
     {
-        // Arrange / Act
-        var described = new ContextWindow(11000, ContextWindowSource.Ceiling).Describe();
+        // Arrange: a server reporting a loaded model, so there is something to match wrongly
+        var running = new[] { Loaded(Model, 8192) };
 
-        // Assert
-        Assert.StartsWith("at most 11000 tokens", described, StringComparison.Ordinal);
-        Assert.Contains("the lower of the two governs", described, StringComparison.Ordinal);
+        // Act / Assert
+        Assert.Throws<ArgumentNullException>(
+            () => OllamaContextWindow.Select(stated: null, running, published: null, null!));
     }
 
     /// <summary>

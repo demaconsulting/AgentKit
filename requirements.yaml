@@ -92,6 +92,9 @@ includes:
   - docs/reqstream/agent-kit-agents-copilot/copilot-summarizer.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-turn-channel.yaml
   - docs/reqstream/agent-kit-agents-copilot/platform-requirements.yaml
+  - docs/reqstream/agent-kit-agents-ollama.yaml
+  - docs/reqstream/agent-kit-agents-ollama/ollama-context-window.yaml
+  - docs/reqstream/agent-kit-agents-ollama/platform-requirements.yaml
   - docs/reqstream/ots/xunit.yaml
   - docs/reqstream/ots/apimark.yaml
   - docs/reqstream/ots/reqstream.yaml
@@ -107,3 +110,4 @@ includes:
   - docs/reqstream/ots/microsoft-extensions-ai-abstractions.yaml
   - docs/reqstream/ots/microsoft-agents-ai.yaml
   - docs/reqstream/ots/microsoft-agents-ai-github-copilot.yaml
+  - docs/reqstream/ots/ollamasharp.yaml

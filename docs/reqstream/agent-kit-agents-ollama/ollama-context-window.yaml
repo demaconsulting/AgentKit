@@ -1,0 +1,109 @@
+---
+# Software Unit Requirements for OllamaContextWindow
+#
+# These requirements describe the design-level behavior of the OllamaContextWindow unit.
+
+sections:
+  - title: AgentKitAgentsOllama Requirements
+    sections:
+      - title: OllamaContextWindow Requirements
+        requirements:
+          - id: AgentKitAgentsOllama-OllamaContextWindow-StatedWindowWins
+            title: >-
+              The unit shall report a window the application stated in preference to anything the
+              server reported, and shall name it as stated.
+            justification: |
+              An application that states a window has usually done so because it knows something the
+              server will not say - most often that the model was loaded with a smaller context
+              length than it publishes. Believing the server over the application in that case would
+              make the one flag that exists to correct a bad reading have no effect. Naming the
+              figure as stated also keeps the account honest: nothing was measured.
+            tests:
+              - OllamaContextWindow_Select_StatedWindow_WinsOverWhatTheServerReports
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
+            title: >-
+              The unit shall report the length the named model is loaded with in preference to the
+              maximum that model publishes.
+            justification: |
+              The loaded length is the one the server will enforce; the published maximum is only
+              what the model could be loaded with, and Ollama loads well below it by default. A
+              session told the maximum would keep going until the server had already truncated the
+              conversation, and nothing downstream could detect that. Preferring the loaded figure
+              is the whole reason both are read rather than only one.
+            tests:
+              - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-MatchesAnUntaggedModelName
+            title: >-
+              The unit shall match a model named without a tag against the loaded model the server
+              resolved that name to.
+            justification: |
+              A caller commonly names a model bare, and the server resolves that to the latest tag
+              and reports the tagged name back. Comparing the two spellings literally would find no
+              loaded model in the ordinary case and fall through to a published maximum or to the
+              assumed default, which is exactly the silent downgrade this unit exists to avoid.
+            tests:
+              - OllamaContextWindow_Select_UntaggedModelName_MatchesTheLoadedLatestTag
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
+            title: >-
+              The unit shall not report the loaded length of a model other than the one named.
+            justification: |
+              A server commonly holds several models loaded at once, each with its own context
+              length. Reporting one model's window for another would produce a figure that looks
+              measured, is specific, and is wrong - the worst of the available failures, because it
+              carries the confidence of a reading. The named model's published maximum, or the
+              assumed default, is the honest answer instead.
+            tests:
+              - OllamaContextWindow_Select_DifferentModelLoaded_DoesNotBorrowItsWindow
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLengthWhateverItsJsonShape
+            title: >-
+              The unit shall read a model's published context length whichever numeric form the
+              server's metadata carries it in.
+            justification: |
+              Model metadata arrives as loosely typed values, so the same published length can
+              present as a JSON number, an integer, or text depending on how the response was
+              materialized. Accepting only one of those forms would turn a perfectly good reading
+              into a silent fall-through to the assumed default whenever a serializer changed its
+              mind, which is a regression no test of the precedence alone would catch.
+            tests:
+              - OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
+            title: >-
+              The unit shall fall through to the next source when a model's metadata carries no
+              context length for its architecture.
+            justification: |
+              Metadata that names an architecture but says nothing about its window is a plausible
+              response rather than an error, and there is no window in it. Reporting zero, or
+              reporting some neighboring metadata value as though it were a window, would hand a
+              session a figure it could not be accounted against; falling through to the
+              conservative default is the only answer that remains usable.
+            tests:
+              - OllamaContextWindow_Select_MetadataWithoutAContextLength_FallsThrough
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
+            title: >-
+              The unit shall report Ollama's own default context length, named as assumed, when
+              nothing was stated and the server reported nothing usable.
+            justification: |
+              Something has to be returned, because a session cannot run without a window. The
+              conservative figure is chosen because the two ways of being wrong are not
+              symmetric - assuming less costs summarizer calls, assuming more loses history the
+              provider has already discarded - and naming it as assumed is what stops a caller
+              treating it as a measurement.
+            tests:
+              - OllamaContextWindow_Select_NothingReported_AssumesTheOllamaDefault
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
+            title: >-
+              The unit shall reject a request that names no model.
+            justification: |
+              Every figure below a stated window belongs to a particular model, so a request with no
+              model names nothing to match a loaded model against. Refusing it where the composing
+              application wrote it is better than matching nothing and quietly returning the assumed
+              default, which would look like a server that had not answered.
+            tests:
+              - OllamaContextWindow_Select_NullModelName_Throws

@@ -55,6 +55,7 @@ words:
   - NTFS
   - APFS
   - Ollama
+  - ollamasharp
   - ONNX
   - qwen
   - nomic

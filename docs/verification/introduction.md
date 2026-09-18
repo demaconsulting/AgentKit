@@ -104,6 +104,11 @@ constituent software items, specifically:
   allow-list from the supplied tools
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
+- **AgentKitAgentsOllama (System)** — Reports the context window an Ollama server will enforce for a
+  model, and which figure that came from
+- **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
+  the reading of the server, and the pure precedence function that chooses among what it reported
+
 The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
@@ -114,6 +119,8 @@ The following OTS items are also covered:
   `SessionConfig`, and the permission RPC
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
+- **OllamaSharp** — the Ollama client library providing the loaded-model and model-metadata reports
+  carrying a server's context lengths
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool

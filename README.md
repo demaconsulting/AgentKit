@@ -105,6 +105,14 @@ provider session. Today that means any `IChatClient`, through
   barely above the one AgentKit rotates at, every session AgentKit drives is created with the
   runtime's compaction threshold raised clear of that rotation point so the two compactors never act
   on one conversation.
+- **`DemaConsulting.AgentKit.Agents.Ollama`** — reports the context window an Ollama server will
+  actually enforce for a model, and which figure that came from: a window you stated, then the
+  length the server loaded the model with, then the model's published maximum, then a conservative
+  default named as assumed. Ollama is otherwise an ordinary `IChatClient` provider, and this is the
+  one thing the generic adapter cannot supply — an `IChatClient` publishes no window, and getting it
+  wrong in the high direction loses conversation history silently. Optional: add it only if you
+  target Ollama, and it carries the `OllamaSharp` dependency the `IChatClient` adapter deliberately
+  does not.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -136,6 +144,13 @@ Add the adapter for the provider you target:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
+```
+
+On Ollama, add one more so the session is told the window the server will enforce rather than a
+guess:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # reads Ollama's context window
 ```
 
 ## API Documentation
@@ -283,6 +298,22 @@ its verbatim tail length, and what it does with a reported rotation.
 `CopilotProviderSession`, `CopilotProviderSessionFactory` and `CopilotSummarizer` — natively,
 because the Copilot SDK exposes no `IChatClient` to adapt. Copilot reports both its occupancy and
 its limit, so that adapter is never told a window.
+
+On Ollama, `DemaConsulting.AgentKit.Agents.Ollama` answers the one question the generic adapter
+cannot — what window the server will actually enforce:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
+var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+```
+
+`window.Source` says which figure it is: the loaded model's length, which is what the server
+enforces; the model's published maximum, which it may have been loaded below; or a conservative
+default named as assumed. Report it rather than hiding it — a maximum shown as the limit in force
+is how a session ends up rotating after the server has already discarded the start of the
+conversation.
 
 ## Documentation
 

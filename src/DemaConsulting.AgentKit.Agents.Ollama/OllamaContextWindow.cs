@@ -2,21 +2,22 @@ using System.Text.Json;
 using OllamaSharp;
 using OllamaSharp.Models;
 
-namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
+namespace DemaConsulting.AgentKit.Agents.Ollama;
 
 /// <summary>
-///     Where the context window a compacting session is accounted against came from.
+///     Where a reported Ollama context window came from.
 /// </summary>
 /// <remarks>
-///     Reported in the startup banner rather than kept private, because the window is the one
-///     number the whole compaction arrangement turns on: a session told a window twice the truth
-///     will not rotate until the provider has already truncated, and a reader cannot tell the two
-///     apart from the outside. Naming the source makes the difference visible before a run starts.
+///     Published alongside the figure rather than kept private, because the window is the one number
+///     the whole compaction arrangement turns on and the sources are not interchangeable: a loaded
+///     model's length is what the server will enforce, while a published maximum is only what the
+///     model could be loaded with. A caller that cannot tell them apart cannot warn its user, so
+///     every member here is a distinct claim about how much the number should be trusted.
 /// </remarks>
-public enum ContextWindowSource
+public enum OllamaContextWindowSource
 {
     /// <summary>
-    ///     The application stated it on the command line, which settles the question outright.
+    ///     The application stated it, which settles the question outright.
     /// </summary>
     Stated,
 
@@ -35,74 +36,55 @@ public enum ContextWindowSource
     ///     Nothing could be read, so Ollama's own default context length is assumed.
     /// </summary>
     Assumed,
-
-    /// <summary>
-    ///     Stated on the command line as an upper bound only, on a provider that answers for its own
-    ///     window with every turn.
-    /// </summary>
-    /// <remarks>
-    ///     Distinct from <see cref="Stated"/> because it is not a claim about the window the session
-    ///     will actually account against. The runtime's own limit governs wherever it is lower, and
-    ///     that figure is not known until the first turn reports it — so a banner that printed this
-    ///     number as the window would be stating something that may never be true.
-    /// </remarks>
-    Ceiling,
 }
 
 /// <summary>
-///     The context window one run accounts its conversation against, and where the figure came
-///     from.
-/// </summary>
-/// <param name="Tokens">The window in tokens. Always positive.</param>
-/// <param name="Source">Where the figure was obtained.</param>
-public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
-{
-    /// <summary>
-    ///     Describes the window and its provenance in one line for the startup banner.
-    /// </summary>
-    /// <returns>A sentence naming the number and how it was arrived at.</returns>
-    public string Describe() => Source switch
-    {
-        ContextWindowSource.Stated =>
-            $"{Tokens} tokens (stated with --context-window)",
-        ContextWindowSource.LoadedModel =>
-            $"{Tokens} tokens (read from the loaded model, so this is what the server enforces)",
-        ContextWindowSource.PublishedModel =>
-            $"{Tokens} tokens (the model's published maximum; the server may have loaded it "
-            + "smaller, so pass --context-window if it did)",
-        ContextWindowSource.Ceiling =>
-            $"at most {Tokens} tokens (a --context-window ceiling; the runtime reports its own "
-            + "window every turn and the lower of the two governs)",
-        _ =>
-            $"{Tokens} tokens (assumed: Ollama reported nothing, and this is its own default)",
-    };
-}
-
-/// <summary>
-///     Reads the context window a compacting session should be accounted against from an Ollama
-///     server.
+///     The context window a conversation on an Ollama model should be accounted against, and where
+///     the figure came from.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     <b>This exists because an <c>IChatClient</c> publishes no context window, and AgentKit
-///     refuses to guess one.</b> <c>ChatClientProviderSessionFactory</c> is told the window once,
-///     where the application configures its provider, and answers with it thereafter. So the
-///     application has to obtain it — and for Ollama it can, which is why this sample reads it
-///     rather than hard-coding a number and hoping.
+///     refuses to guess one.</b> A compacting session is told the window once, where the
+///     application configures its provider, and answers with it thereafter — so the application has
+///     to obtain it. For Ollama it can, but only through Ollama's own APIs, which is why this ships
+///     apart from the adapter that serves every <c>IChatClient</c> provider alike.
 ///     </para>
 ///     <para>
 ///     <b>Two figures exist and they are not the same figure.</b> A model publishes the context
 ///     length it was trained for, and Ollama loads it with a context length of its own choosing,
 ///     which is smaller by default. The loaded figure is the one the server enforces, so it is
-///     preferred; the published figure is used only when nothing is loaded, and the banner says so
-///     rather than presenting a maximum as though it were the limit in force.
+///     preferred; the published figure is used only when nothing is loaded, and
+///     <see cref="Source"/> says so rather than presenting a maximum as though it were the limit in
+///     force.
 ///     </para>
 ///     <para>
-///     The selection is a pure function of what the server reported, kept separate from the reading
-///     of it, so the precedence can be tested without a server.
+///     Reading the server and choosing among what it reported are deliberately separate:
+///     <see cref="ReadAsync"/> performs the I/O, and <see cref="Select"/> is a pure function holding
+///     the whole precedence, so that precedence can be exercised without a server.
+///     </para>
+///     <para>
+///     Instances are immutable and safe for concurrent use.
 ///     </para>
 /// </remarks>
-public static class OllamaContextWindow
+/// <example>
+///     <code>
+///     // Ask the server what window it will enforce for the model this conversation runs on.
+///     var client = new OllamaApiClient(new Uri("http://localhost:11434"), "qwen3:8b");
+///     var window = await OllamaContextWindow.ReadAsync(
+///         client,
+///         "qwen3:8b",
+///         stated: null,
+///         CancellationToken.None);
+///
+///     // Hand window.Tokens to the provider-session factory the compacting session runs on, and
+///     // report window.Source so a published maximum is never shown as the limit in force.
+///     Console.WriteLine($"{window.Tokens} tokens, from {window.Source}");
+///     </code>
+/// </example>
+/// <param name="Tokens">The window in tokens. Always positive.</param>
+/// <param name="Source">Where the figure was obtained.</param>
+public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource Source)
 {
     /// <summary>
     ///     The context length Ollama loads a model with when nothing configures otherwise.
@@ -133,20 +115,25 @@ public static class OllamaContextWindow
     /// <remarks>
     ///     Neither query is required to succeed. A server that refuses either — an older build, a
     ///     proxy, a model that has never been loaded — yields a window from the next source down
-    ///     rather than a failed run, because a sample that cannot start because it could not read
-    ///     an optional number would be worse than one that says which number it assumed.
+    ///     rather than a failed run, because an application that could not start because it could
+    ///     not read an optional number would be worse than one that says which number it assumed.
+    ///     Performs network I/O; cancellation is propagated rather than swallowed.
     /// </remarks>
     /// <param name="client">The Ollama client to ask. Must not be <see langword="null"/>.</param>
     /// <param name="model">The model the conversation runs on. Must not be <see langword="null"/>.</param>
     /// <param name="stated">
-    ///     The window stated on the command line, or <see langword="null"/> when none was.
+    ///     The window the application stated, or <see langword="null"/> when none was. A value of
+    ///     zero or less is treated as unstated.
     /// </param>
     /// <param name="cancellationToken">Cancels the queries.</param>
-    /// <returns>The window to account against, and where it came from.</returns>
+    /// <returns>The window to account against, and where it came from. Never <see langword="null"/>.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="client"/> or <paramref name="model"/> is <see langword="null"/>.
     /// </exception>
-    public static async Task<ContextWindow> ReadAsync(
+    /// <exception cref="OperationCanceledException">
+    ///     <paramref name="cancellationToken"/> was canceled during a query.
+    /// </exception>
+    public static async Task<OllamaContextWindow> ReadAsync(
         IOllamaApiClient client,
         string model,
         int? stated,
@@ -177,15 +164,21 @@ public static class OllamaContextWindow
     /// <remarks>
     ///     The whole precedence in one pure function, so it can be exercised without a server: a
     ///     stated window, then the loaded model's enforced length, then the model's published
-    ///     maximum, then Ollama's own default.
+    ///     maximum, then Ollama's own default. Contacts nothing and is safe for concurrent use.
     /// </remarks>
-    /// <param name="stated">The stated window, or <see langword="null"/>.</param>
+    /// <param name="stated">
+    ///     The stated window, or <see langword="null"/>. A value of zero or less is treated as
+    ///     unstated.
+    /// </param>
     /// <param name="running">The models the server reports as loaded, or <see langword="null"/>.</param>
     /// <param name="published">The model's published metadata, or <see langword="null"/>.</param>
-    /// <param name="model">The model name to match a loaded model against.</param>
-    /// <returns>The chosen window and its source.</returns>
+    /// <param name="model">
+    ///     The model name to match a loaded model against, tagged or bare. Must not be
+    ///     <see langword="null"/>.
+    /// </param>
+    /// <returns>The chosen window and its source. Never <see langword="null"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is <see langword="null"/>.</exception>
-    public static ContextWindow Select(
+    public static OllamaContextWindow Select(
         int? stated,
         IEnumerable<RunningModel>? running,
         ShowModelResponse? published,
@@ -195,31 +188,31 @@ public static class OllamaContextWindow
 
         if (stated is > 0)
         {
-            return new ContextWindow(stated.Value, ContextWindowSource.Stated);
+            return new OllamaContextWindow(stated.Value, OllamaContextWindowSource.Stated);
         }
 
         var loaded = FromLoadedModel(running, model);
         if (loaded > 0)
         {
-            return new ContextWindow(loaded, ContextWindowSource.LoadedModel);
+            return new OllamaContextWindow(loaded, OllamaContextWindowSource.LoadedModel);
         }
 
         var maximum = FromPublishedModel(published);
         if (maximum > 0)
         {
-            return new ContextWindow(maximum, ContextWindowSource.PublishedModel);
+            return new OllamaContextWindow(maximum, OllamaContextWindowSource.PublishedModel);
         }
 
-        return new ContextWindow(AssumedTokens, ContextWindowSource.Assumed);
+        return new OllamaContextWindow(AssumedTokens, OllamaContextWindowSource.Assumed);
     }
 
     /// <summary>
     ///     Finds the context length the named model is currently loaded with.
     /// </summary>
     /// <remarks>
-    ///     Ollama names a loaded model with its tag — <c>qwen3.5:9b</c> — while a command line may
-    ///     omit the tag, which the server resolves to <c>latest</c>. Both forms are compared so a
-    ///     run started with a bare model name still finds its own loaded model.
+    ///     Ollama names a loaded model with its tag — <c>qwen3.5:9b</c> — while a caller may omit
+    ///     the tag, which the server resolves to <c>latest</c>. Both forms are compared so a
+    ///     conversation started with a bare model name still finds its own loaded model.
     /// </remarks>
     /// <param name="running">The loaded models, or <see langword="null"/> when none were reported.</param>
     /// <param name="model">The model name the conversation runs on.</param>
@@ -323,9 +316,10 @@ public static class OllamaContextWindow
     ///     Runs an optional server query, treating any failure as "the server did not say".
     /// </summary>
     /// <remarks>
-    ///     Both queries here are conveniences: the run proceeds without either, on a window from a
-    ///     lower-precedence source. Cancellation is deliberately not swallowed, because a canceled
-    ///     run must stop rather than quietly continue with an assumed window.    /// </remarks>
+    ///     Both queries here are conveniences: the conversation proceeds without either, on a window
+    ///     from a lower-precedence source. Cancellation is deliberately not swallowed, because a
+    ///     canceled call must stop rather than quietly continue with an assumed window.
+    /// </remarks>
     /// <typeparam name="T">The query's result type.</typeparam>
     /// <param name="query">The query to run.</param>
     /// <returns>The result, or <see langword="null"/> when the server did not answer.</returns>

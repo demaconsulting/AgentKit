@@ -77,6 +77,13 @@ sections:
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
+          # The Ollama package's mechanisms sit here rather than under a capability of their own.
+          # Being told a window is this capability's mechanism, and this is the layer where one is
+          # readable - which the OccupancyFromTheProvider child above already cites Ollama for. An
+          # AgentKit-Provider-Ollama capability is deferred until the package's live-payload
+          # evidence exists; stating it moves these two links and changes nothing else.
+          - AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
+          - AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
           - AgentKit-OTS-MicrosoftAgentsAI-Agent
           - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
         tests:

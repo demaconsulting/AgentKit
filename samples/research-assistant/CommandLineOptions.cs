@@ -195,7 +195,8 @@ public sealed class CommandLineOptions
     ///     <para>
     ///     An <c>IChatClient</c> publishes no context window, so AgentKit is told one once, where
     ///     the provider is configured, and answers with it thereafter. The sample reads it from
-    ///     Ollama rather than asking for it — see <see cref="OllamaContextWindow"/> — and this flag
+    ///     Ollama rather than asking for it — see
+    ///     <see cref="DemaConsulting.AgentKit.Agents.Ollama.OllamaContextWindow"/> — and this flag
     ///     exists for the case the reading gets wrong: a server that has loaded the model with a
     ///     context length smaller than the model publishes, which nothing else reveals.
     ///     </para>
