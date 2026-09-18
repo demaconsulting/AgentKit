@@ -29,8 +29,9 @@ same doctrine the reading tests follow.
 context length is not automated: it was measured by hand against a live Ollama 0.34.1 server and is
 recorded in *OllamaContextWindow Unit Verification Design*. What the tests here prove is that the
 request carries the size, on every request, which is the half this repository controls. The sample's
-composition of the decorator is likewise not automated, because reaching that code path requires a
-live Ollama host.
+composition of the decorator is likewise not automated: its host is injectable, so a loopback test
+would be feasible, but no sample's provider-backend composition is tested anywhere in this
+repository, and singling this one out would not follow from anything this change did.
 
 Unit tests reside in `OllamaContextSizingChatClientTests.cs`, with the recorder in
 `RecordingChatClient.cs`, within the `DemaConsulting.AgentKit.Agents.Ollama.Tests` project.
@@ -90,7 +91,11 @@ Normal operation and the invariant beneath it. The first sets a temperature, an 
 unrelated additional property, and asserts all three survive alongside the size. The second asserts
 that the caller's own settings instance never acquired the size and was not the instance forwarded —
 the clone promise, which matters because a session commonly reuses one settings object across every
-request and shares it with sibling clients.
+request and shares it with sibling clients. Its caller holds an additional property of its own
+deliberately: a decorator that wrote the size into the caller's own additional-property dictionary
+would still pass against a caller that held none, because a dictionary is created either way, so
+the scenario asserts on the caller's populated dictionary after the call rather than only on what
+was forwarded.
 
 #### AgentKitAgentsOllama-OllamaContextSizingChatClient-DoesNotOverruleAStatedSize: The Caller's Size Stands
 

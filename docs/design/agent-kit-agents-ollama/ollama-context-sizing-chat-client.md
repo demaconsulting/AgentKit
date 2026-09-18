@@ -98,8 +98,9 @@ an application needs to see, and this unit has no fallback of its own to offer.
 
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `ChatOptions` and the
   delegating chat-client base this unit extends.
-- **OllamaSharp** — not called by this unit, but it is what translates the named option into the
-  Ollama request's own options block on the wire; see *OllamaSharp Design*.
+- **OllamaSharp** — not called by this unit, which names the option and forwards; it is what
+  translates that option into the Ollama request's own options block on the wire, which is why the
+  unit's tests compose a real client over a loopback server to read it; see *OllamaSharp Design*.
 
 ### Callers
 

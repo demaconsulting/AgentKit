@@ -111,22 +111,36 @@ public class OllamaContextSizingChatClientTests
     /// <remarks>
     ///     A session commonly builds one options instance and reuses it for every request, sharing
     ///     it with sibling clients. Writing the size into it would leak this decorator's choice to
-    ///     clients that were never meant to carry it.
+    ///     clients that were never meant to carry it. The caller's options carry an additional
+    ///     property of their own deliberately: a decorator that handed on the caller's own
+    ///     additional-property dictionary would still look correct against a caller that had none,
+    ///     because a dictionary is created either way.
     /// </remarks>
     [Fact]
     public async Task OllamaContextSizingChatClient_GetResponseAsync_AnyRequest_DoesNotMutateTheCallersOptions()
     {
-        // Arrange: options the caller will inspect afterwards
+        // Arrange: options the caller will inspect afterwards, already holding a property of its own
         var recorder = new RecordingChatClient();
         using var client = new OllamaContextSizingChatClient(recorder, ContextLength);
-        var callerOptions = new ChatOptions { Temperature = 0.5f };
+        var callerOptions = new ChatOptions
+        {
+            Temperature = 0.5f,
+            AdditionalProperties = new AdditionalPropertiesDictionary { ["keep_alive"] = "10m" },
+        };
 
         // Act
         await Send(client, callerOptions);
 
-        // Assert: the caller's instance never acquired the size, and was not the one forwarded
-        Assert.Null(ContextLengthOf(callerOptions));
-        Assert.NotSame(callerOptions, Assert.Single(recorder.Requests));
+        // Assert: the caller's instance and its own dictionary are as the caller built them, and
+        // neither was the one forwarded
+        var forwarded = Assert.Single(recorder.Requests);
+        Assert.Multiple(
+            () => Assert.Null(ContextLengthOf(callerOptions)),
+            () => Assert.Equal(0.5f, callerOptions.Temperature),
+            () => Assert.Equal("10m", callerOptions.AdditionalProperties["keep_alive"]),
+            () => Assert.Single(callerOptions.AdditionalProperties),
+            () => Assert.NotSame(callerOptions, forwarded),
+            () => Assert.NotSame(callerOptions.AdditionalProperties, forwarded?.AdditionalProperties));
     }
 
     /// <summary>
