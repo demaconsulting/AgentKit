@@ -68,10 +68,10 @@ because the offline scenarios above reach the adapter, not the runtime the capab
   conversation on an Ollama model is accounted against is reported across the three states a real
   server moves between, and every figure names the source it came from. This is the capability as an
   application meets it.
-- `OllamaContextWindow_Select_RealPayloads_PrefersTheLoadedLengthOverThePublishedMaximum` — the
-  enforced-over-published decision judged on verbatim output from a live server, where the gap is
-  65,536 against 262,144. A session sized on the larger figure would rotate long after the server
-  had discarded the start of the conversation.
+- `OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces` — the
+  enforced-over-published decision judged on verbatim output from a live server, replayed over HTTP
+  to the real client, where the gap is 65,536 against 262,144. A session sized on the larger figure
+  would rotate long after the server had discarded the start of the conversation.
 - `OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces` — the same decision
   reached over HTTP through the real Ollama client, so the library's own request shaping and
   deserialization execute. This is the only scenario in the repository that goes through the wire to

@@ -273,18 +273,29 @@ public class OllamaContextWindowTests
     }
 
     /// <summary>
-    ///     Proves a missing model name is refused rather than matched against, because a window
-    ///     chosen without knowing which model it belongs to is not a window anyone can act on.
+    ///     Proves a model name that names nothing is refused rather than matched against, because a
+    ///     window chosen without knowing which model it belongs to is not a window anyone can act on.
     /// </summary>
-    [Fact]
-    public void OllamaContextWindow_Select_NullModelName_Throws()
+    /// <remarks>
+    ///     The empty case is the one that mattered and was missed. A null name never reached the
+    ///     ladder, but an empty one became <c>":latest"</c>, matched no loaded model, and returned
+    ///     the assumed default — indistinguishable from a server that simply had not answered. That
+    ///     is precisely the silent wrong answer this guard exists to prevent, arrived at by a
+    ///     different route.
+    /// </remarks>
+    /// <param name="model">The unusable model name.</param>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void OllamaContextWindow_Select_ModelNameThatNamesNothing_Throws(string? model)
     {
         // Arrange: a server reporting a loaded model, so there is something to match wrongly
         var running = new[] { Loaded(Model, 8192) };
 
-        // Act / Assert
-        Assert.Throws<ArgumentNullException>(
-            () => OllamaContextWindow.Select(stated: null, running, published: null, null!));
+        // Act / Assert: ThrowIfNullOrEmpty raises ArgumentNullException for null and
+        // ArgumentException for empty, so the assertion accepts the family rather than one member
+        Assert.ThrowsAny<ArgumentException>(
+            () => OllamaContextWindow.Select(stated: null, running, published: null, model!));
     }
 
     /// <summary>

@@ -39,7 +39,7 @@ captured again. The private helpers `FromLoadedModel`, `FromPublishedModel`,
 `AsTokenCount` and `Tagged` are not tested directly; each is reached through `Select` by the
 scenarios below, which is where their behavior is observable.
 
-Unit tests reside in `OllamaContextWindowTests.cs`, `OllamaContextWindowFixtureTests.cs` and
+Unit tests reside in `OllamaContextWindowTests.cs` and
 `OllamaContextWindowReadTests.cs` within the
 `DemaConsulting.AgentKit.Agents.Ollama.Tests` project.
 

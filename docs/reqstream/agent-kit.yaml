@@ -121,6 +121,5 @@ sections:
           - AgentKit-OTS-OllamaSharp-Queries
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
-          - OllamaContextWindow_Select_RealPayloads_PrefersTheLoadedLengthOverThePublishedMaximum
           - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement

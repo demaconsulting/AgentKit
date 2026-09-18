@@ -140,7 +140,7 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentNullException.ThrowIfNull(model);
+        ArgumentException.ThrowIfNullOrEmpty(model);
 
         // A stated window settles it, and asking the server anyway would only invite a reader to
         // wonder which answer won.
@@ -150,10 +150,12 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
         }
 
         var running = await TryReadAsync(
-            () => client.ListRunningModelsAsync(cancellationToken));
+            () => client.ListRunningModelsAsync(cancellationToken),
+            cancellationToken);
 
         var published = await TryReadAsync(
-            () => client.ShowModelAsync(new ShowModelRequest { Model = model }, cancellationToken));
+            () => client.ShowModelAsync(new ShowModelRequest { Model = model }, cancellationToken),
+            cancellationToken);
 
         return Select(stated, running, published, model);
     }
@@ -184,7 +186,7 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
         ShowModelResponse? published,
         string model)
     {
-        ArgumentNullException.ThrowIfNull(model);
+        ArgumentException.ThrowIfNullOrEmpty(model);
 
         if (stated is > 0)
         {
@@ -293,20 +295,29 @@ public sealed record OllamaContextWindow(int Tokens, OllamaContextWindowSource S
     /// </summary>
     /// <remarks>
     ///     Both queries here are conveniences: the conversation proceeds without either, on a window
-    ///     from a lower-precedence source. Cancellation is deliberately not swallowed, because a
-    ///     canceled call must stop rather than quietly continue with an assumed window.
+    ///     from a lower-precedence source. The caller's cancellation is deliberately not swallowed,
+    ///     because a canceled call must stop rather than quietly continue with an assumed window.
+    ///     <para>
+    ///     That question is asked of the token, not of the exception type. <c>HttpClient</c> reports
+    ///     its own request timeout by throwing <c>TaskCanceledException</c>, which derives from
+    ///     <see cref="OperationCanceledException"/> and is indistinguishable from a caller's
+    ///     cancellation by type alone. A server that accepts the connection and then never answers is
+    ///     exactly the unresponsive server this method exists to tolerate, so it costs a rung rather
+    ///     than failing the run - while a caller who really did cancel still stops.
+    ///     </para>
     /// </remarks>
     /// <typeparam name="T">The query's result type.</typeparam>
     /// <param name="query">The query to run.</param>
+    /// <param name="cancellationToken">The caller's token, which alone distinguishes the two.</param>
     /// <returns>The result, or <see langword="null"/> when the server did not answer.</returns>
-    private static async Task<T?> TryReadAsync<T>(Func<Task<T>> query)
+    private static async Task<T?> TryReadAsync<T>(Func<Task<T>> query, CancellationToken cancellationToken)
         where T : class
     {
         try
         {
             return await query();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }

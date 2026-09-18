@@ -1,5 +1,6 @@
 using System.Reflection;
 using OllamaSharp;
+using WireMock.Matchers;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -226,6 +227,45 @@ public sealed class OllamaContextWindowReadTests
     }
 
     /// <summary>
+    ///     Proves an unresponsive server costs a rung rather than failing the run.
+    /// </summary>
+    /// <remarks>
+    ///     A server that accepts the connection and then never answers is one of the cases this
+    ///     discovery promises to tolerate, but it is reported as <c>TaskCanceledException</c> —
+    ///     which derives from <see cref="OperationCanceledException"/> and so is indistinguishable
+    ///     by type from a caller who cancelled. Only the token tells them apart. A proxy returning
+    ///     504 already degraded correctly; a proxy that black-holes the request did not.
+    /// </remarks>
+    [Fact]
+    public async Task OllamaContextWindow_ReadAsync_ServerNeverAnswers_ReportsThePublishedMaximum()
+    {
+        // Arrange: /api/ps hangs far past the client's timeout, /api/show answers normally.
+        // The margins are wide on both sides and that is deliberate. The timeout must stay clear of
+        // however long a 26KB fixture takes to serve while 2,700 tests run in parallel - too tight
+        // and /api/show expires as well, discovery falls to Assumed, and the failure reads as a
+        // different bug. The delay must then dwarf the timeout so the hang is never a race.
+        using var server = WireMockServer.Start();
+        server
+            .Given(Request.Create().WithPath("/api/ps").UsingGet())
+            .RespondWith(Response.Create().WithDelay(TimeSpan.FromSeconds(60)).WithStatusCode(200));
+        Serve(server, "POST", "/api/show", "show-qwen35-9b.json");
+
+        using var http = new HttpClient { BaseAddress = new Uri(server.Url!), Timeout = TimeSpan.FromSeconds(4) };
+        using var client = new OllamaApiClient(http, Model);
+
+        // Act: the caller's token is never cancelled - only the client's own timeout fires
+        var window = await OllamaContextWindow.ReadAsync(
+            client,
+            Model,
+            stated: null,
+            TestContext.Current.CancellationToken);
+
+        // Assert: discovery fell to the next source instead of throwing
+        Assert.Equal(262_144, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.PublishedModel, window.Source);
+    }
+
+    /// <summary>
     ///     Answers an endpoint with a captured payload, as a working server would.
     /// </summary>
     /// <param name="server">The mock server to configure.</param>
@@ -234,11 +274,32 @@ public sealed class OllamaContextWindowReadTests
     /// <param name="fixture">The captured fixture file name to serve.</param>
     private static void Serve(WireMockServer server, string method, string path, string fixture) =>
         server
-            .Given(Request.Create().WithPath(path).UsingMethod(method))
+            .Given(MatchingRequest(method, path))
             .RespondWith(Response.Create()
                 .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")
                 .WithBody(Fixture(fixture)));
+
+    /// <summary>
+    ///     Builds the request match for an endpoint, naming the model where the endpoint carries one.
+    /// </summary>
+    /// <remarks>
+    ///     Matching the body is what makes running the real client worth the port: the request the
+    ///     client shapes is then part of the assertion, so asking the server about the wrong model —
+    ///     a hard-coded name, the client's selected model instead of the argument, or no model at
+    ///     all, which a real server answers with 400 — stops being invisible to these tests.
+    /// </remarks>
+    /// <param name="method">The HTTP method the Ollama client uses for this endpoint.</param>
+    /// <param name="path">The endpoint path.</param>
+    /// <returns>The request match.</returns>
+    private static IRequestBuilder MatchingRequest(string method, string path)
+    {
+        var request = Request.Create().WithPath(path).UsingMethod(method);
+
+        return path == "/api/show"
+            ? request.WithBody(new JsonPartialMatcher(new { model = Model }))
+            : request;
+    }
 
     /// <summary>
     ///     Declines an endpoint with a server error, as an older build or a proxy would.
