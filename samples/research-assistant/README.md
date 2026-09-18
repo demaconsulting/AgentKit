@@ -144,10 +144,10 @@ it, preferring in order:
 3. Failing that, Ollama's own default of 4096 tokens, announced as an assumption.
 
 Whichever of the three a run lands on, the sample then **asks the server for it**, naming the size
-on every request the conversation sends, so the instance Ollama runs is the one being accounted
-against. A figure that was only read is no more durable than one that was only claimed: Ollama does
-not remember the length an instance was loaded at, so an evicted model reloads at the server's
-default while the session goes on accounting against the old number.
+on every request the conversation and the summarizer send, so the
+instance Ollama runs is the one being accounted against. A figure that was only read is no more
+durable than one that was only claimed; `OllamaContextSizingChatClient`'s API reference says why,
+for that rung and for the assumed one.
 
 What the model *file* publishes as its maximum is deliberately not used. It describes the file, not
 the instance: one live server published 262,144 tokens for a model it was running at 4,096.
@@ -162,7 +162,10 @@ nothing downstream can detect that.
 summarization rather than reasoning, so a smaller model is usually the right choice; without the
 flag the conversation's own model does the work, on a separate client. Either way it runs *outside*
 the session being compacted, because a consolidation sent through the live session would spend the
-very context it exists to reclaim.
+very context it exists to reclaim. Whichever model it is, the sample asks it to run at the same
+context window as the conversation, because a consolidation is a single request carrying the whole
+conversation being rotated. Choose a summary model whose trained context and memory can host that
+figure: asking for a size is a property of the request, not a promise about the model.
 
 ### What the sample still writes for itself
 

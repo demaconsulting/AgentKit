@@ -30,6 +30,34 @@ This unit performs no I/O and knows nothing about the window a session accounts 
 connection between the two is made by the application, which hands one integer to both this
 decorator and the reading; see *OllamaContextWindow Unit Design*.
 
+### When an Application Composes It
+
+Around the client the conversation runs through, and around the summarizer's, carrying whatever
+window the application ended up with — not only one the application chose. A client doing unrelated
+work on the same server — generating embeddings, say — has its own model and its own window, and
+`num_ctx` means nothing to it.
+
+**A window that was only read is no more durable than one that was only claimed.** Ollama does not
+remember the length an instance was loaded at, and an idle model is evicted after minutes, so a
+figure discovered from a running instance stops describing that instance the moment it reloads at
+the server's default — while the session goes on accounting against the number it read at startup.
+That is the same error as accounting against a published maximum, one rung lower: a transient
+property of an instance treated as a stable fact. An assumed figure is weaker still, because it was
+never a measurement of anything: Ollama's own default is chosen from available memory or set
+server-wide with `OLLAMA_CONTEXT_LENGTH`, so it need not be the 4096 this system assumes. Asking for
+the figure already in hand re-reads nothing and forces no load the first chat request would not
+force anyway.
+
+**A summarizer needs it too, whichever model it runs on.** A consolidation is a single request
+carrying the whole conversation being rotated, so a summarizer left at the server's default would
+silently truncate the transcript it was asked to consolidate. Its need comes from the size of what
+it must read, not from sharing an instance with the conversation — which is why no comparison of
+model names decides it.
+
+Asking for a size is a property of the request and not a promise about the model: a summary model
+whose trained context or memory cannot host the figure will degrade or fail on it. The application
+chooses that model, so the caution belongs with the choice rather than with this unit.
+
 ### Data Model
 
 - **`_contextLength`** (`private readonly int`) — the context length every forwarded request asks
@@ -104,9 +132,7 @@ an application needs to see, and this unit has no fallback of its own to offer.
 
 ### Callers
 
-An application composes this decorator around its Ollama client where it configures its provider,
-using the window `OllamaContextWindow.ReadAsync` returned — whichever rung produced it, not only a
-figure the application stated. Every client that talks to the conversation's model is composed this
-way, including a summarizer sharing that model, because an un-annotated request from any of them
-resizes the same instance. The research-assistant sample is the worked example. Nothing within this
-system calls this unit.
+An application composes this decorator around the client its conversation runs through and around
+the summarizer's, using the window `OllamaContextWindow.ReadAsync` returned — whichever rung
+produced it. *When an Application Composes It* above gives the reasoning. The research-assistant
+sample is the worked example. Nothing within this system calls this unit.

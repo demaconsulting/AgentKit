@@ -15,9 +15,9 @@ Only the running instance can answer the question. A model file publishes the co
 could be loaded with, but Ollama decides at load time what the instance will actually use, and that
 decision is the one enforced. The published figure is therefore never consulted: it describes the
 file, and using it would account a session against a window nothing guarantees. What remains is a
-window the application stated — which it also asked the server to run at, so it is true by
-construction — then the length the running instance reports, then a conservative default named as an
-assumption.
+window the application stated, then the length the running instance reports, then a conservative
+default named as an assumption. Whichever answers, the application asks the server to run at it; see
+*OllamaContextSizingChatClient Unit Design*.
 
 A stated window short-circuits the reading entirely. That is deliberate twice over: asking the
 server anyway would invite a reader to wonder which answer won, and asking what a model would be
@@ -53,7 +53,7 @@ produce:
 
 | Member | Meaning |
 | -------- | --------- |
-| `Stated` | The application supplied it, and asked the server to run at it. |
+| `Stated` | The application supplied it. |
 | `LoadedModel` | Read from the running instance; this is what the server will enforce. |
 | `Assumed` | No instance was described; Ollama's own default is assumed. |
 
@@ -141,7 +141,7 @@ conservative window that names itself honestly.
 
 An application calls `ReadAsync` where it configures its Ollama provider, and hands `Tokens` to
 `ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. It composes
-that same figure onto its chat client through `OllamaContextSizingChatClient` whichever rung
-produced it — a window that was only read is no more durable than one that was only claimed — see
-*OllamaContextSizingChatClient Unit Design*.
-The research-assistant sample is the worked example. Nothing within this system calls this unit.
+that same figure onto the client its conversation runs through and onto the summarizer's, through
+`OllamaContextSizingChatClient` and whichever rung produced the figure; that unit's design says why
+a window this one merely read, or merely assumed, still needs asking for. The research-assistant
+sample is the worked example. Nothing within this system calls this unit.

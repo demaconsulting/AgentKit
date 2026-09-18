@@ -521,12 +521,10 @@ default was used. Show the source alongside the number: an assumption presented 
 how a session ends up sized on something nothing guarantees.
 
 Compose `OllamaContextSizingChatClient` whichever of the three you got. A window that was only
-*read* is no more durable than one that was only claimed — Ollama does not remember the length an
-instance was loaded at, so an evicted model reloads at the server's default while the session goes
-on accounting against the old number — and an assumed figure was never known to be right in the
-first place, because Ollama's default depends on available memory and on `OLLAMA_CONTEXT_LENGTH`.
-Asking for the number in hand is what makes it true, and it forces no load that the first chat
-request would not force anyway.
+*read* is no more durable than one that was only claimed, and an assumed figure was never known to
+be right in the first place, because Ollama's default depends on available memory and on
+`OLLAMA_CONTEXT_LENGTH`. Asking for the number in hand is what makes it true, and it forces no load
+that the first chat request would not force anyway.
 
 What a model *file* publishes as its maximum is deliberately never reported. It describes what the
 file could support, not what the instance is running: one live server published 262,144 tokens for a
@@ -543,12 +541,12 @@ IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Token
 var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 
-The decorator names the size on **every** request it forwards, not only the first. Ollama reloads a
-model when a request names a different `num_ctx`, so a single un-annotated request would resize the
-instance beneath a session still accounting against the old figure — with nothing reporting it.
-That is also why a summarizer sharing the conversation's model needs the same treatment. Everything
-else you set on a request reaches the provider unchanged, and a `num_ctx` you set yourself on a
-particular request is never overruled.
+The decorator names the size on **every** request it forwards, not only the first, and a summarizer
+needs the same treatment whichever model it runs on. The shipped API reference for
+`OllamaContextSizingChatClient` carries the reasoning for both, along with the one caution that
+comes with it: asking for a size is a property of the request, not a promise about the model.
+Everything else you set on a request reaches the provider unchanged, and a `num_ctx` you set
+yourself on a particular request is never overruled.
 
 An application that sets the context length itself already knows the number it chose. For a hosted
 model the window is a published property of the model the

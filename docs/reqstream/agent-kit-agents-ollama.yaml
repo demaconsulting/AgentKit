@@ -69,19 +69,22 @@ sections:
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
 
-      - id: AgentKitAgentsOllama-ContextWindow-StatedSizeIsAskedOfTheServer
+      - id: AgentKitAgentsOllama-ContextWindow-ChosenSizeIsAskedOfTheServer
         title: >-
           The library shall ask the Ollama server to run the model at the context length the
-          application stated, on every request a conversation sends, so the window the session
-          accounts against is the window the instance is running.
+          application chose, on every request it forwards, so the window the session accounts
+          against is the window the instance is running.
         justification: |
-          A stated window used to be only a claim: the application asserted a number and the session
+          The window used to be only a claim: the application asserted a number and the session
           accounted against it, with nothing making the server honor it. Ollama decides an
           instance's context length when it loads the model, and a request naming one loads or
-          reloads it at that length - so a size can be asked for rather than guessed at, and a
-          stated figure becomes true by construction. It has to ride on every request, because a
-          later un-annotated one would reload the instance at Ollama's default and silently resize
-          it beneath a session still accounting against the stated figure. This is what turns
+          reloads it at that length - so a size can be asked for rather than guessed at, and the
+          figure becomes true by construction. That applies to any figure the application arrived
+          at, not only one it stated: Ollama does not remember the length an instance was loaded
+          at, so a window merely read from a running instance stops describing that instance once
+          it is evicted and reloaded at the server's default. It has to ride on every request,
+          because a later un-annotated one would reload the instance at that default and silently
+          resize it beneath a session still accounting against the old figure. This is what turns
           "outlives the window the server enforces" from a hope into something an application can
           arrange, and it is what makes a published maximum unnecessary as a fallback.
         children:

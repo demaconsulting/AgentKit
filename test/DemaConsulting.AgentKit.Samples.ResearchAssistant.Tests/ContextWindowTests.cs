@@ -60,36 +60,6 @@ public class ContextWindowTests
     }
 
     /// <summary>
-    ///     Proves every window the Ollama path can produce is asked for, and a ceiling never is.
-    /// </summary>
-    /// <remarks>
-    ///     A figure that is only reported is a guess with a number attached. Ollama does not
-    ///     remember the length an instance was loaded at, so a window read at startup stops
-    ///     describing the instance the moment it is evicted; and an assumed figure was never known
-    ///     to be right, because Ollama's default is chosen from available memory or set server-wide
-    ///     rather than fixed at the 4,096 assumed here. Asking for the number in hand is what makes
-    ///     it true. A ceiling is withheld because it bounds another provider's window rather than
-    ///     naming one.
-    /// </remarks>
-    /// <param name="source">The source the window came from.</param>
-    /// <param name="expected">The length that should ride on every request, or null for none.</param>
-    [Theory]
-    [InlineData(ContextWindowSource.Stated, 8192)]
-    [InlineData(ContextWindowSource.LoadedModel, 8192)]
-    [InlineData(ContextWindowSource.Assumed, 8192)]
-    [InlineData(ContextWindowSource.Ceiling, null)]
-    public void ContextWindow_PinnedLength_EverySource_AsksForEveryWindowButACeiling(
-        ContextWindowSource source,
-        int? expected)
-    {
-        // Arrange / Act
-        var pinned = new ContextWindow(8192, source).PinnedLength;
-
-        // Assert
-        Assert.Equal(expected, pinned);
-    }
-
-    /// <summary>
     ///     Proves each source the Ollama package can report arrives in the banner as the same claim,
     ///     carrying the same figure.
     /// </summary>

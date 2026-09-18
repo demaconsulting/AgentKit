@@ -75,8 +75,8 @@ prefers, in order: a window stated with `--context-window`; the length the **loa
 reports, which is what the Ollama server is currently enforcing; and finally Ollama's own default,
 announced as an assumption. Whichever it lands on, the sample then *asks the server for* that size
 on every request, so the instance Ollama runs is the one the session accounts against — a figure
-that was only read is no more durable than one that was only claimed, because an evicted model
-reloads at the server's default. What the model file publishes as its maximum is
+that was only read is no more durable than one that was only claimed. What the model file publishes
+as its maximum is
 never used — it describes the file, not the instance, and against a live server the two differed by
 a factor of thirty-two in the direction that loses history. The startup banner names which of the
 three a run used, because a session told a window larger than the instance is running will not
@@ -214,4 +214,7 @@ context length — on every request, so the instance cannot be resized underneat
 accounts the session against the same figure; on `--provider copilot` it is a downward-only ceiling
 instead, lowering the window the session accounts against but never raising it above what the
 runtime reports. `--summary-model <name>` sends each consolidation to a smaller model, and
-applies to both providers.
+applies to both providers. On Ollama that model is asked to run at the conversation's window too — a
+consolidation is one request carrying the whole conversation being rotated — so choose a summary
+model whose trained context and memory can host that figure; asking for a size is a property of the
+request, not a promise about the model.

@@ -105,10 +105,10 @@ which loses conversation history with no error raised anywhere. Four measures bo
   one describing the running instance. What the model file could support is not asked for at all,
   so it cannot leak into the account through any path.
 - **The reported size is asked for on every request.** Whichever rung produced it, the window the
-  application will account against is put on each request the conversation sends, so the instance is
-  loaded at it and reloaded at it, and the reported figure is true rather than merely asserted. A
-  figure that was only read is no more durable than one that was only claimed: Ollama does not
-  remember the length an instance was loaded at.
+  application will account against is put on each request the run sends, so the instance is
+  loaded at it and reloaded at it, and the reported figure is true rather than merely asserted. Why
+  a discovered window needs this as much as a stated one is argued in *OllamaContextSizingChatClient
+  Unit Design*.
 - **The fallback is conservative and is named as assumed.** When nothing can be read the reported
   figure errs low, and its source says it was not measured, so a host can present or refuse it.
 - **A loaded model that is not the named one is never used.** A window borrowed from another model

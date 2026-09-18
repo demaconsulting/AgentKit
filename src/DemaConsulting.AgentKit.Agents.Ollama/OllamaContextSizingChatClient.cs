@@ -29,6 +29,30 @@ namespace DemaConsulting.AgentKit.Agents.Ollama;
 ///     invisible.
 ///     </para>
 ///     <para>
+///     <b>A window that was only read is no more durable than one that was only claimed.</b> Ollama
+///     does not remember the length an instance was loaded at, and an idle model is evicted after
+///     minutes, so a figure discovered at startup stops describing the instance the moment it
+///     reloads at the server's default. An assumed figure is weaker still: it was never a
+///     measurement of anything, because Ollama's own default is chosen from available memory or set
+///     server-wide with <c>OLLAMA_CONTEXT_LENGTH</c>. Compose this decorator around a discovered or
+///     assumed window as readily as a chosen one: asking for the figure already in hand re-reads
+///     nothing and forces no load that the first chat request would not force anyway.
+///     </para>
+///     <para>
+///     <b>A summarizer needs the same treatment, whichever model it runs on.</b> A consolidation is
+///     a single request carrying the whole conversation being rotated, so a summarizer left at the
+///     server's default would silently truncate the transcript it was asked to consolidate. Its
+///     need comes from the size of what it must read rather than from sharing an instance with the
+///     conversation. Asking for a size is a property of the request and not a promise about the
+///     model, so choose a summary model whose trained context and memory can host the figure.
+///     </para>
+///     <para>
+///     <b>Only the clients that carry the conversation.</b> The decorator belongs on the client the
+///     conversation runs through and on the summarizer's; a client doing unrelated work on the same
+///     server — generating embeddings, say — has its own model and its own window, and
+///     <c>num_ctx</c> means nothing to it.
+///     </para>
+///     <para>
 ///     <b>The caller's request is preserved.</b> Only the one option is added; every other option
 ///     reaches the provider exactly as the caller set it, and a caller who named the context length
 ///     itself is forwarded as it named it rather than overruled. The caller's own options object is

@@ -53,11 +53,13 @@ public enum OllamaContextWindowSource
 ///     what it is running, or nothing is known and the conservative default is named as assumed.
 ///     </para>
 ///     <para>
-///     <b>A stated window is asked of the server, not merely believed.</b> An application that
-///     states a size composes its chat client with <see cref="OllamaContextSizingChatClient"/>, so
-///     every request asks Ollama to run the model at that length. The figure is then true because
-///     the application made it true, which is why it wins outright and why the server is not asked a
-///     question it has already been told the answer to.
+///     <b>Whichever rung answers, the figure is asked of the server rather than merely believed.</b>
+///     The application composes its chat clients with <see cref="OllamaContextSizingChatClient"/>
+///     using the window this type returned, so every request asks Ollama to run at that length. A
+///     stated size additionally wins outright here, because the application has already made it
+///     true and the server need not be asked a question it has been told the answer to. See that
+///     type's remarks for why a discovered window needs asking for just as much as a stated one,
+///     and why a summarizer does too.
 ///     </para>
 ///     <para>
 ///     Reading the server and choosing among what it reported are deliberately separate:
@@ -82,10 +84,8 @@ public enum OllamaContextWindowSource
 ///     // report window.Source so an assumed default is never shown as a measured limit.
 ///     Console.WriteLine($"{window.Tokens} tokens, from {window.Source}");
 ///
-///     // Then ask the server for that same figure on every request, so it stays true. A window
-///     // that was only read is not durable: Ollama does not remember the length an instance was
-///     // loaded at, so an evicted model reloads at the server's default while the session goes on
-///     // accounting against the old number. Wrap a summarizer sharing this model the same way.
+///     // Then ask the server for that same figure on every request, so it stays true - a window
+///     // that was only read is no more durable than one that was only claimed.
 ///     IChatClient sized = new OllamaContextSizingChatClient(client, window.Tokens);
 ///     </code>
 /// </example>

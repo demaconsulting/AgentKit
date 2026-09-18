@@ -864,16 +864,13 @@ public static class AgentComposition
     ///     </para>
     ///     <para>
     ///     <b>The window is asked for, not merely reported.</b> Whichever figure the run ends up
-    ///     with — stated on the command line, read from a running instance, or assumed — every
-    ///     client that talks to the conversation's model is composed with
-    ///     <see cref="OllamaContextSizingChatClient"/>, so each request asks Ollama to run the model
-    ///     at that length and the figure becomes true by construction rather than hoped for. That
-    ///     covers the summarizer when it was given the conversation's own model name, because the
-    ///     two then share an instance and an un-annotated consolidation would resize it beneath a
-    ///     session still accounting against the old figure. A <c>--summary-model</c> naming
-    ///     something else is left unsized: its window is its own and nothing here measured it. See
-    ///     <see cref="ContextWindow.PinnedLength"/> for why a figure that was only read is no more
-    ///     durable than one that was only claimed.
+    ///     with — stated on the command line, read from a running instance, or assumed — the client
+    ///     the conversation runs through is composed with
+    ///     <see cref="OllamaContextSizingChatClient"/>, the summarizer's client included and
+    ///     whichever model <c>--summary-model</c> names, so each request asks Ollama to run at that
+    ///     length. That type's remarks give the reasoning, including why a window merely read from
+    ///     a running instance — or merely assumed — needs asking for as much as a stated one, and
+    ///     why a summary model should be chosen with the figure in mind.
     ///     </para>
     ///     <para>
     ///     <b>The consolidation model is separate from the conversation model, deliberately.</b>
@@ -915,8 +912,7 @@ public static class AgentComposition
 
         // The consolidation client is a second client over the same transport, so the summarizer
         // can run on a different model without a second connection or a second timeout policy.
-        var summaryModel = options.SummaryModel ?? model;
-        var summaryClient = new OllamaApiClient(http, summaryModel);
+        var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
 
         var cleanup = new AsyncDisposableAction(() =>
         {
@@ -950,28 +946,10 @@ public static class AgentComposition
             throw;
         }
 
-        // Every window this path can produce is asked for on every request, not just a stated one.
-        // Which figures qualify is decided by the window itself, where it can be proven without a
-        // server; see ContextWindow.PinnedLength for why a figure that was only read, or only
-        // assumed, is no more durable than one that was only claimed.
-        var pinned = window.PinnedLength;
-
-        IChatClient conversationClient = pinned is { } conversationLength
-            ? new OllamaContextSizingChatClient(ollama, conversationLength)
-            : ollama;
-
-        // The summarizer is sized only when it was given the same model name, because that is the
-        // case the sizing protects: one instance serving both, where an un-annotated consolidation
-        // would reload it at Ollama's default and resize it beneath a session still accounting
-        // against the pinned figure. A --summary-model naming a different model has its own window
-        // that nothing here measured, and asking it to run at this model's figure would be a guess
-        // dressed as a request. Spelling counts: a --summary-model that names the conversation's
-        // model differently - qwen3 against qwen3:latest - forgoes the sizing rather than growing
-        // this sample a copy of the tag matching that belongs to the package.
-        IChatClient summaryChatClient =
-            pinned is { } summaryLength && string.Equals(summaryModel, model, StringComparison.Ordinal)
-                ? new OllamaContextSizingChatClient(summaryClient, summaryLength)
-                : summaryClient;
+        // Both clients are sized to the window the session accounts against; the remarks on this
+        // method say why the summarizer needs it too.
+        IChatClient conversationClient = new OllamaContextSizingChatClient(ollama, window.Tokens);
+        IChatClient summaryChatClient = new OllamaContextSizingChatClient(summaryClient, window.Tokens);
 
         // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
         // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a

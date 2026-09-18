@@ -184,6 +184,13 @@ public sealed class CommandLineOptions
     ///     an unstated value falls back to the conversation's model; on Copilot it falls back to
     ///     whichever model the runtime chooses by default.
     ///     </para>
+    ///     <para>
+    ///     On Ollama this model is asked to run at the conversation's context window, because a
+    ///     consolidation is a single request carrying the whole conversation being rotated. Asking
+    ///     for a size is a property of the request and not a promise about the model, so a smaller
+    ///     model is the right choice only while its trained context and memory can host that
+    ///     figure.
+    ///     </para>
     /// </remarks>
     public string? SummaryModel { get; init; }
 
@@ -195,7 +202,8 @@ public sealed class CommandLineOptions
     ///     <para>
     ///     An <c>IChatClient</c> publishes no context window, so AgentKit is told one once, where
     ///     the provider is configured, and answers with it thereafter. On Ollama this flag is a
-    ///     <em>request</em>: the size is put on every request the conversation sends, so the
+    ///     <em>request</em>: the size is put on every request the conversation and the summarizer
+    ///     send, so the
     ///     instance the server runs is the one the session accounts against — see
     ///     <see cref="DemaConsulting.AgentKit.Agents.Ollama.OllamaContextSizingChatClient"/>. Left
     ///     unstated, the size is read from whatever instance the server already has loaded, or
@@ -617,7 +625,9 @@ public sealed class CommandLineOptions
            --summary-model <name>    Model each context consolidation is sent to (default: the
                                      conversation's own model on Ollama, the runtime's default on
                                      Copilot). Consolidation is summarization rather than reasoning,
-                                     so a smaller model is usually right.
+                                     so a smaller model is usually right - but on Ollama it is asked
+                                     to run at the conversation's window, so pick one whose trained
+                                     context and memory can host that figure.
            --context-window <tokens> Context window the compacting session accounts against (default:
                                      read from Ollama — the length the loaded model is running,
                                      else Ollama's own default assumed; taken from the runtime on

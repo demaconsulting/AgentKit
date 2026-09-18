@@ -60,24 +60,6 @@ public enum ContextWindowSource
 public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
 {
     /// <summary>
-    ///     The length to ask the server to run at on every request, or <see langword="null"/> when
-    ///     the figure is not a window to ask for.
-    /// </summary>
-    /// <remarks>
-    ///     Every window the Ollama path can produce is asked for, including an assumed one. A figure
-    ///     merely read from a running instance is not durable — Ollama does not remember the length
-    ///     an instance was loaded at, the default keep-alive is minutes, and an evicted model
-    ///     reloads at the server's default while the session goes on rotating against the old
-    ///     number. An assumed figure is not durable either, and is not even known to be right:
-    ///     Ollama's default is chosen from available memory or set server-wide, so it is not the
-    ///     4,096 assumed here. Asking for the number in hand makes it true by construction in both
-    ///     cases, which is the whole point of the exercise; it forces no load a first chat request
-    ///     would not force anyway. Only a ceiling is withheld, because it is an upper bound on
-    ///     another provider's window rather than a window, and it never reaches the Ollama path.
-    /// </remarks>
-    public int? PinnedLength => Source is ContextWindowSource.Ceiling ? null : Tokens;
-
-    /// <summary>
     ///     Describes the window and its provenance in one line for the startup banner.
     /// </summary>
     /// <returns>A sentence naming the number and how it was arrived at.</returns>
@@ -104,7 +86,9 @@ public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
     ///     The shipped package reports only what Ollama discovery can produce, so each of its three
     ///     sources has exactly one counterpart here; the banner's fourth,
     ///     <see cref="ContextWindowSource.Ceiling"/>, is produced by the Copilot path alone and
-    ///     never arrives through this method.
+    ///     never arrives through this method. That is what lets the Ollama composition ask the
+    ///     server for whatever window this method returns without inspecting its source: a ceiling
+    ///     bounds another provider's window rather than naming one, and it cannot reach here.
     /// </remarks>
     /// <param name="discovered">The window the package read. Must not be <see langword="null"/>.</param>
     /// <returns>The same figure, sourced in the banner's terms.</returns>

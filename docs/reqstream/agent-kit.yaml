@@ -128,7 +128,7 @@ sections:
         children:
           - AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
           - AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
-          - AgentKitAgentsOllama-ContextWindow-StatedSizeIsAskedOfTheServer
+          - AgentKitAgentsOllama-ContextWindow-ChosenSizeIsAskedOfTheServer
           - AgentKit-OTS-OllamaSharp-Queries
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource

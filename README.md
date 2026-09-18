@@ -318,10 +318,9 @@ var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens
 enforces, or a conservative default named as assumed. Report it rather than hiding it — an
 assumption shown as a measurement is how a session ends up sized on something nothing guarantees.
 
-Compose the decorator whichever figure you got. A window that was only *read* is no more durable
-than one that was only claimed: Ollama does not remember the length an instance was loaded at, so an
-evicted model reloads at the server's default while the session goes on accounting against the old
-number. Asking for the figure makes it true.
+Compose the decorator whichever figure you got — a window that was only *read* is no more durable
+than one that was only claimed, because Ollama does not remember the length an instance was loaded
+at. Asking for the figure makes it true.
 
 To choose the size rather than discover it, state it to the same call — nothing else changes:
 
@@ -333,10 +332,9 @@ IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Token
 var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
 ```
 
-The size rides on *every* request, not only the first: Ollama reloads a model when a request names a
-different `num_ctx`, so one un-annotated request would silently resize the instance beneath a
-session still accounting against the old figure. Wrap the summarizer's client too when it shares the
-model.
+The size rides on *every* request, not only the first, and a summarizer's client needs wrapping too
+whichever model it runs on. `OllamaContextSizingChatClient`'s API reference, shipped in the package,
+gives the reasoning for both.
 
 ## Documentation
 
