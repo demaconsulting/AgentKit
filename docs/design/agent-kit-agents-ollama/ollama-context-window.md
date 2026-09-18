@@ -11,13 +11,20 @@ from, and holds the reading and the precedence that produce it.
 A compacting session is told its window once, where the provider is configured, and answers with it
 thereafter. This unit is where an application gets that number for Ollama.
 
-Two figures exist and they are not the same figure. A model publishes the context length it was
-trained for; Ollama loads it with a context length of its own choosing, which is smaller by default.
-The loaded figure is what the server will enforce, so it wins, and the published figure is used only
-when nothing is loaded — with the source saying so, rather than a maximum being presented as the
-limit in force.
+Only the running instance can answer the question. A model file publishes the context length it
+could be loaded with, but Ollama decides at load time what the instance will actually use, and that
+decision is the one enforced. The published figure is therefore never consulted: it describes the
+file, and using it would account a session against a window nothing guarantees. What remains is a
+window the application stated — which it also asked the server to run at, so it is true by
+construction — then the length the running instance reports, then a conservative default named as an
+assumption.
 
-Reading and choosing are separate on purpose. `ReadAsync` does the I/O and tolerates either query
+A stated window short-circuits the reading entirely. That is deliberate twice over: asking the
+server anyway would invite a reader to wonder which answer won, and asking what a model would be
+loaded at is not free of consequence, so discovery must not change the thing it was asked to
+observe.
+
+Reading and choosing are separate on purpose. `ReadAsync` does the I/O and tolerates the query
 failing; `Select` is a pure function holding the whole precedence. That split is why the precedence
 — the part that can be wrong quietly — is testable without a server.
 
@@ -34,23 +41,19 @@ this unit publishes only what discovery can report, and presentation stays with 
 
 - **`Tokens`** (`int`) — the window the conversation is accounted against. Invariant: positive.
 - **`Source`** (`OllamaContextWindowSource`) — where that figure came from. Invariant: one of the
-  four members below.
+  three members below.
 - **`AssumedTokens`** (`const int`, 4096) — Ollama's own default context length, the conservative
   fallback. Published rather than private so a caller can detect "nothing was discovered" without
   matching on text.
-- **`ContextLengthKeySuffix`** (`private const string`, `.context_length`) — the metadata key
-  beneath the architecture name. Ollama keys model metadata by architecture, so the architecture the
-  same response names is what makes the key addressable without knowing the model.
 
-`OllamaContextWindowSource` has four members, and four only — what Ollama discovery can actually
+`OllamaContextWindowSource` has three members, and three only — what Ollama discovery can honestly
 produce:
 
 | Member | Meaning |
 | -------- | --------- |
-| `Stated` | The application supplied it; nothing was measured. |
-| `LoadedModel` | Read from the loaded model; this is what the server will enforce. |
-| `PublishedModel` | The model's published maximum; the server may have loaded it below this. |
-| `Assumed` | Nothing was readable; Ollama's own default is assumed. |
+| `Stated` | The application supplied it, and asked the server to run at it. |
+| `LoadedModel` | Read from the running instance; this is what the server will enforce. |
+| `Assumed` | No instance was described; Ollama's own default is assumed. |
 
 The record is immutable, holds no reference to a client, and is safe for concurrent use.
 
@@ -58,32 +61,32 @@ The record is immutable, holds no reference to a client, and is safe for concurr
 
 #### ReadAsync(IOllamaApiClient client, string model, int? stated, CancellationToken cancellationToken)
 
-**Purpose:** Obtain the window from a server, preferring what was stated and then what the server
-reports.
+**Purpose:** Obtain the window from a server, preferring what was stated and then what the running
+instance reports.
 
 **Algorithm:** Reject a null client and a null model. If a window was stated, return it immediately
-without contacting the server — asking anyway would only invite a reader to wonder which answer won.
-Otherwise attempt the running-models query and then the model-metadata query, each through a helper
-that converts any failure other than cancellation into "the server did not say", and hand both
-results to `Select`.
+without contacting the server. Otherwise attempt the running-models query through a helper that
+converts any failure other than cancellation into "the server did not say", and hand the result to
+`Select`.
 
 **Preconditions:** `client` and `model` are not null. `stated` is either null or the window to use;
 a value of zero or less is treated as unstated.
 
 **Postconditions:** A window with a positive token count, never null. The client is not disposed.
+No model is loaded as a side effect of asking.
 
-**Side effects:** Network I/O against the Ollama server, through the supplied client.
+**Side effects:** Network I/O against the Ollama server, through the supplied client, only when no
+window was stated.
 
-#### Select(int? stated, IEnumerable&lt;RunningModel&gt;? running, ShowModelResponse? published, string model)
+#### Select(int? stated, IEnumerable&lt;RunningModel&gt;? running, string model)
 
 **Purpose:** Choose the window from what was stated and what the server reported.
 
 **Algorithm:** Reject a null model. Take a stated window if there is one. Otherwise take the named
-model's loaded context length if it is loaded, then the published maximum if the metadata carries
-one, then `AssumedTokens`. Each branch reports its own source.
+model's loaded context length if it is loaded, then `AssumedTokens`. Each branch reports its own
+source.
 
-**Preconditions:** `model` is not null. `running` and `published` may each be null, meaning that
-query produced nothing.
+**Preconditions:** `model` is not null. `running` may be null, meaning the query produced nothing.
 
 **Postconditions:** A window with a positive token count and the matching source, never null.
 Contacts nothing; holds no state.
@@ -98,64 +101,43 @@ compare equal. Return the matched model's context length, or zero.
 
 **Postconditions:** Zero when the named model is not loaded — never another model's length.
 
-#### FromPublishedModel(ShowModelResponse? published)
-
-**Purpose:** Read the published context length out of a model's metadata.
-
-**Algorithm:** Take the architecture the metadata names, look up that architecture plus
-`ContextLengthKeySuffix` in the extra information, and convert the value found. Missing metadata, a
-missing architecture, or a missing key all yield zero.
-
-**Postconditions:** Zero when no published length could be read.
-
-#### AsTokenCount(object? value)
-
-**Purpose:** Convert a metadata value into a token count.
-
-**Algorithm:** Accept a `JsonElement` holding a number that fits a token count; anything else —
-text, a fraction, a figure beyond the range, or a value of another type entirely — yields zero.
-Ollama carries model metadata as JSON extension data, so a `JsonElement` is what every value in it
-is; checking the kind rather than casting is what makes an unreadable value a fall-through instead
-of a throw.
-
 #### Tagged(string model)
 
 **Purpose:** Give a model name an explicit tag so two spellings of one model compare equal.
 
 **Algorithm:** Return the name unchanged when it already carries a tag, otherwise append `:latest`.
 
-#### TryReadAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; query)
+#### TryReadAsync&lt;T&gt;(Func&lt;Task&lt;T&gt;&gt; query, CancellationToken cancellationToken)
 
 **Purpose:** Run an optional server query, treating failure as "the server did not say".
 
-**Algorithm:** Await the query. Re-raise `OperationCanceledException`; return null for anything
-else. Cancellation is deliberately not swallowed, because a canceled call must stop rather than
-quietly continue on an assumed window.
+**Algorithm:** Await the query. Re-raise `OperationCanceledException` when the caller's token was
+canceled; return null for anything else. The question is asked of the token rather than of the
+exception type, because an `HttpClient` timeout also arrives as an `OperationCanceledException` and
+a server that never answers is precisely the case this tolerance exists for.
 
 ### Error Handling
 
 | Condition | Handling |
 | ----------- | ---------- |
-| Null `client` or `model` | `ArgumentNullException` propagates to the caller |
-| Either server query fails | Treated as "not reported"; the next source down is used |
-| Cancellation during a query | `OperationCanceledException` propagates; no window is returned |
-| Metadata carries no context length | Falls through to the next source |
-| Metadata value is not a usable number | Falls through to the next source |
-| Nothing is readable at all | `AssumedTokens`, sourced as `Assumed` |
+| Null or empty `client` or `model` | `ArgumentException` family propagates to the caller |
+| The server query fails | Treated as "not reported"; the conservative default is used |
+| The server never answers | The client's own timeout ends the query; treated as "not reported" |
+| Cancellation during the query | `OperationCanceledException` propagates; no window is returned |
+| The named model is not loaded | `AssumedTokens`, sourced as `Assumed` |
 
 A query failure is deliberately not surfaced. Which way it failed — an older server, a proxy, a
 model never pulled — changes nothing the caller can act on, and the conversation proceeds on a
-window from a lower-precedence source that names itself honestly.
+conservative window that names itself honestly.
 
 ### Dependencies
 
-- **OllamaSharp** — supplies `IOllamaApiClient`, `RunningModel`, `ShowModelRequest`,
-  `ShowModelResponse` and `ModelInfo`; see *OllamaSharp Design*.
-- **System.Text.Json** — supplies `JsonElement`, the shape every model-metadata value arrives in.
+- **OllamaSharp** — supplies `IOllamaApiClient` and `RunningModel`; see *OllamaSharp Design*.
 
 ### Callers
 
 An application calls `ReadAsync` where it configures its Ollama provider, and hands `Tokens` to
-`ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. The
-research-assistant sample is the worked example. Nothing within this system calls it: the system is
-this one unit.
+`ChatClientProviderSessionFactory`; see *ChatClientProviderSessionFactory Unit Design*. Where the
+application states a window rather than discovering one, it composes the same figure onto its chat
+client through `OllamaContextSizingChatClient`; see *OllamaContextSizingChatClient Unit Design*.
+The research-assistant sample is the worked example. Nothing within this system calls this unit.

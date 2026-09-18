@@ -859,8 +859,16 @@ public static class AgentComposition
     ///     <para>
     ///     <b>The window is read from the provider rather than chosen.</b> An <c>IChatClient</c>
     ///     publishes no context window and AgentKit refuses to guess one, so the application must
-    ///     answer — and Ollama can be asked. See <see cref="OllamaContextWindow"/> for which of the
-    ///     two figures it reports is the one the server actually enforces.
+    ///     answer — and Ollama can be asked. See <see cref="OllamaContextWindow"/> for which figure
+    ///     describes the instance the server is actually running.
+    ///     </para>
+    ///     <para>
+    ///     <b><c>--context-window</c> is a request, not a claim.</b> When one is stated, every
+    ///     client that talks to the conversation's model is composed with
+    ///     <see cref="OllamaContextSizingChatClient"/>, so each request asks Ollama to run the model
+    ///     at that length. That covers the summarizer as well as the conversation, because without
+    ///     <c>--summary-model</c> the two share a model and an un-annotated consolidation would
+    ///     resize the instance beneath a session still accounting against the stated figure.
     ///     </para>
     ///     <para>
     ///     <b>The consolidation model is separate from the conversation model, deliberately.</b>
@@ -900,15 +908,29 @@ public static class AgentComposition
         var model = options.Model ?? CommandLineOptions.DefaultOllamaModel;
         var ollama = new OllamaApiClient(http, model);
 
+        // --context-window is a request, not merely a claim. The sizing decorator puts the chosen
+        // length on every request, so the instance Ollama runs is the one the session accounts
+        // against - which is what makes reporting the figure as "stated" honest.
+        IChatClient conversationClient = options.ContextWindow is { } requested
+            ? new OllamaContextSizingChatClient(ollama, requested)
+            : ollama;
+
         // The consolidation client is a second client over the same transport, so the summarizer
         // can run on a different model without a second connection or a second timeout policy.
         var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
+
+        // Without --summary-model the summarizer runs on the conversation's own model, so an
+        // un-annotated consolidation would reload the instance at Ollama's default and silently
+        // resize it beneath a session still accounting against the stated figure.
+        IChatClient summaryChatClient = options.ContextWindow is { } summaryRequested
+            ? new OllamaContextSizingChatClient(summaryClient, summaryRequested)
+            : summaryClient;
 
         // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
         // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a
         // session turn does not do for itself.
         var sessionClient = new ToolCallReportingChatClient(
-            ollama,
+            conversationClient,
             call =>
             {
                 ToolTrace.PrintCall(call);
@@ -918,10 +940,10 @@ public static class AgentComposition
 
         var cleanup = new AsyncDisposableAction(() =>
         {
-            // Disposing the reporting client releases the Ollama client beneath it; the transport
-            // is the sample's and is released last.
+            // Disposing the reporting client releases the chain beneath it - the sizing decorator
+            // and the Ollama client it wraps; the transport is the sample's and is released last.
             sessionClient.Dispose();
-            summaryClient.Dispose();
+            summaryChatClient.Dispose();
             http.Dispose();
             return ValueTask.CompletedTask;
         });
@@ -947,10 +969,11 @@ public static class AgentComposition
         }
 
         var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
-        var summarizer = new ChatClientSummarizer(summaryClient);
+        var summarizer = new ChatClientSummarizer(summaryChatClient);
 
         return new ProviderBackend(
-            (tools, instructions, name) => ChatClientAgentFactory.Create(ollama, tools, instructions, name: name),
+            (tools, instructions, name) =>
+                ChatClientAgentFactory.Create(conversationClient, tools, instructions, name: name),
             cleanup,
             (tools, instructions) => new CompactingSessionPlan(
                 new AgentSessionOptions(summarizer, instructions, [.. tools]),

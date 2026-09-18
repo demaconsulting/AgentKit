@@ -69,14 +69,17 @@ is the one signal that compacting bought nothing and history was discarded.
 *conversation*. The store is the application's, lives outside the session entirely, and survives
 every rotation intact — which is why the `--recall-question` turn still answers correctly after one.
 
-**On `--provider ollama` the window is read from the provider rather than assumed.** An
+**On `--provider ollama` the window is made true rather than assumed.** An
 `IChatClient` publishes no context window, so the application has to answer for it. The sample
-prefers, in order: a window stated with `--context-window`; the **loaded** model's context length,
-which is what the Ollama server actually enforces; the model's **published** maximum, which the
-server may have loaded it below; and finally Ollama's own default, announced as an assumption. The
-startup banner names which of the four a run used, because a session told a window larger than the
-server enforces will not rotate until the provider has already truncated the conversation, and
-nothing downstream can detect that.
+prefers, in order: a window stated with `--context-window`, which it also *asks the server for* on
+every request, so the instance Ollama runs is the one the session accounts against; the length the
+**loaded** instance reports, which is what the Ollama server is actually enforcing; and finally
+Ollama's own default, announced as an assumption. What the model file publishes as its maximum is
+never used — it describes the file, not the instance, and against a live server the two differed by
+a factor of thirty-two in the direction that loses history. The startup banner names which of the
+three a run used, because a session told a window larger than the instance is running will not
+rotate until the provider has already truncated the conversation, and nothing downstream can detect
+that.
 
 **On `--provider copilot` no window is stated, because the runtime answers for itself.** Copilot
 reports the tokens it currently holds, the limit it will hold them to, and how much of the total the
@@ -204,8 +207,9 @@ dotnet run --project samples/research-assistant -- \
 
 Omitting `--prompt` starts an interactive session. `--transcript <path>` appends one line per tool
 call, naming the tool and nothing else, which is how an unattended run can be checked without
-reading its prose. `--context-window <tokens>` states the window the compacting session is accounted
-against when the Ollama server cannot be asked; on `--provider copilot` it is a downward-only ceiling
-instead, lowering the window the session accounts against but never raising it above what the runtime
-reports. `--summary-model <name>` sends each consolidation to a smaller model, and
+reading its prose. `--context-window <tokens>` asks the Ollama server to run the model at that
+context length — on every request, so the instance cannot be resized underneath the session — and
+accounts the session against the same figure; on `--provider copilot` it is a downward-only ceiling
+instead, lowering the window the session accounts against but never raising it above what the
+runtime reports. `--summary-model <name>` sends each consolidation to a smaller model, and
 applies to both providers.

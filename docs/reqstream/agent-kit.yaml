@@ -100,26 +100,37 @@ sections:
           on Ollama unaided.
 
           A compacting session has to be told a window, because an IChatClient publishes none, and
-          on Ollama the number that matters is not the one the model advertises. Ollama loads a
-          model with a context length of its own choosing, smaller than the published maximum by
-          default - four times smaller in the payloads this project captured from a live server. A
-          session sized against the maximum keeps going until the server has already discarded the
-          start of the conversation, and nothing downstream reports an error or can detect it
-          afterwards. What AgentKit adds for Ollama is that the window the server will actually
-          enforce is discovered rather than guessed, which is what makes "outlives the window" a
-          promise about a real limit here instead of a hopeful one.
+          on Ollama the number that matters is the one the running instance is using, which is not
+          the one the model file advertises. Ollama decides an instance's context length when it
+          loads the model, and the gap between the two is large and in the dangerous direction: a
+          live server published 262,144 tokens for a model it was observed running at 65,536, then
+          8,192, then 4,096 within a single session. A session sized against the published figure
+          keeps going until the server has already discarded the start of the conversation, and
+          nothing downstream reports an error or can detect it afterwards.
+
+          What AgentKit adds for Ollama is therefore twofold, and the second half is what makes the
+          promise honest. The window is read from the running instance rather than from the model
+          file, so nothing that describes only what the file could support is ever reported. And an
+          application that wants a particular window can ask for one: the size it states rides on
+          every request the conversation sends, which is what decides the instance Ollama loads. The
+          figure the session accounts against is then the figure the instance is running, by
+          construction rather than by hope, and where nothing was stated and nothing is loaded the
+          answer is a conservative assumption named as one.
 
           Confinement and rotation are demonstrated on the IChatClient family by
           AgentKit-Provider-ChatClient's own scenario, cited below because Ollama is a member of
           that family and nothing about that half is Ollama-specific. The scenarios that belong to
           this capability are the ones that read the enforced window back out of what an Ollama
-          server actually sent - including over HTTP, through the real Ollama client, against
+          server actually sent, and the one that reads the requested size back off the wire an
+          Ollama request was sent on - both over HTTP, through the real Ollama client, against
           payloads captured verbatim from a live server.
         children:
           - AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
           - AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
+          - AgentKitAgentsOllama-ContextWindow-StatedSizeIsAskedOfTheServer
           - AgentKit-OTS-OllamaSharp-Queries
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
+          - AgentKitAgentsOllama_ContextSizing_EveryRequestAsksTheServerForTheStatedWindow
           - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement

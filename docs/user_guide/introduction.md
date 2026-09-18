@@ -512,14 +512,39 @@ var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: nu
 var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
 ```
 
-It reports where the figure came from as well as what it is, because the two Ollama can give are not
-interchangeable. `LoadedModel` is the length the server loaded that model with, and is what will
-actually be enforced. `PublishedModel` is the maximum the model advertises, which the server may
-have loaded it well below — so if a run reports that one and the conversation truncates earlier than
-expected, state the real figure. `Stated` means you supplied it and nothing was measured, and
-`Assumed` means nothing could be read at all and a conservative default was used. Show the source
-alongside the number: a maximum presented as the limit in force is how a session ends up rotating
-after the server has already discarded the start of the conversation.
+It reports where the figure came from as well as what it is, because they are not interchangeable.
+`LoadedModel` is the length the running instance is using, which is what will actually be enforced.
+`Stated` means you supplied it — and, if you composed the decorator below, asked the server to run
+at it. `Assumed` means no instance could be asked and a conservative default was used. Show the
+source alongside the number: an assumption presented as a measurement is how a session ends up
+sized on something nothing guarantees.
+
+What a model *file* publishes as its maximum is deliberately never reported. It describes what the
+file could support, not what the instance is running: one live server published 262,144 tokens for a
+model it was running at 4,096. Accounting against the larger figure would keep a session talking
+long after the server had begun discarding the start of the conversation.
+
+If you would rather choose the window than discover it, ask the server for one. Compose
+`OllamaContextSizingChatClient` around every client that talks to the model, and state the same
+figure to the reading:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
+
+const int windowTokens = 32768;
+
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, windowTokens);
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+The decorator names the size on **every** request it forwards, not only the first. Ollama reloads a
+model when a request names a different `num_ctx`, so a single un-annotated request would resize the
+instance beneath a session still accounting against the old figure — with nothing reporting it.
+That is also why a summarizer sharing the conversation's model needs the same treatment. Everything
+else you set on a request reaches the provider unchanged, and a `num_ctx` you set yourself on a
+particular request is never overruled.
 
 An application that sets the context length itself already knows the number it chose. For a hosted
 model the window is a published property of the model the

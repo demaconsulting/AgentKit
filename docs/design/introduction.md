@@ -162,11 +162,14 @@ software items, specifically:
   out of the session being compacted
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
   what makes everything above it testable without a live Copilot runtime
-- **AgentKitAgentsOllama (System)** — Reports the context window an Ollama server will enforce for a
-  model, and which figure that came from, so a compacting session over an Ollama `IChatClient` is
-  told a window it can trust
+- **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
+  the window the Ollama instance is actually using, by asking the server for a size and by reading
+  back what a running instance reports
 - **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
   the reading of the server, and the pure precedence function that chooses among what it reported
+- **OllamaContextSizingChatClient (Unit)** — The decorator that names the application's chosen
+  context length on every request, so the instance Ollama runs is the one the session accounts
+  against
 
 The following OTS items are also covered:
 
@@ -179,8 +182,8 @@ The following OTS items are also covered:
   `SessionConfig`, the permission RPC, the session lifecycle and the session event stream
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
-- **OllamaSharp** — the Ollama client library providing the loaded-model and model-metadata reports
-  carrying a server's context lengths
+- **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
+  instance's context length, and the carriage of a context-length option onto the wire
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool
@@ -197,8 +200,8 @@ requirements of the product rather than of any one package, so they correspond t
 and appear nowhere in the software-item tree; the chapter records which system delivers each and what
 it rests on. The Ollama capability is delivered through the same `IChatClient` adapter as the second,
 because that is how Ollama reaches an application — there is no Ollama session, agent or summarizer —
-and what `AgentKitAgentsOllama` adds beneath it is the discovery of the context window that adapter
-must be told.
+and what `AgentKitAgentsOllama` adds beneath it is making the context window that adapter must be
+told the one the Ollama instance is actually running.
 
 Version applicability: This design applies to all versions of the AgentKit.
 
@@ -298,11 +301,11 @@ other.
 
 `AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
 session. It exists for the single thing Ollama needs that the chat-client adapter cannot supply —
-the context window a server will actually enforce for a model, which an `IChatClient` publishes
-nowhere and which is only readable through Ollama's own APIs. It is a package of its own because
-that reading needs `OllamaSharp`, and the chat-client adapter serves every provider in its family
-and must stay free of any one of them. One unit, no dependency on Core, and nothing of its own
-appears in the session an application goes on to build.
+a context window the instance is actually running, which an `IChatClient` publishes nowhere and
+which is only reachable through Ollama's own APIs. It is a package of its own because that work
+needs `OllamaSharp`, and the chat-client adapter serves every provider in its family and must stay
+free of any one of them. Two units — one that reads the window, one that asks for it — no dependency
+on Core, and nothing of its own appears in the session an application goes on to build.
 
 The `SoftwareStructureView.svg` above renders all five systems.
 
@@ -424,10 +427,11 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
-`AgentKitAgentsOllama` is a single-file tree, because it is a single unit:
+`AgentKitAgentsOllama` is a two-file tree, one file per unit:
 
 ```text
 src/DemaConsulting.AgentKit.Agents.Ollama/
+├── OllamaContextSizingChatClient.cs  — names the chosen context length on every request
 └── OllamaContextWindow.cs            — the discovered window, its source, the reading and the precedence
 ```
 

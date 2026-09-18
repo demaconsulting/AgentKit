@@ -84,6 +84,7 @@ input-files:
   - docs/design/agent-kit-agents-copilot/copilot-summarizer.md
   - docs/design/agent-kit-agents-copilot/copilot-turn-channel.md
   - docs/design/agent-kit-agents-ollama.md
+  - docs/design/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md
   - docs/design/agent-kit-agents-ollama/ollama-context-window.md
   - docs/design/ots.md
   - docs/design/ots/apimark.md

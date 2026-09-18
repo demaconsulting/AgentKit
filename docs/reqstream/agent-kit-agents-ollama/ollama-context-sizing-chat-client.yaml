@@ -1,0 +1,83 @@
+---
+# Software Unit Requirements for OllamaContextSizingChatClient
+#
+# These requirements describe the design-level behavior of the OllamaContextSizingChatClient unit.
+
+sections:
+  - title: AgentKitAgentsOllama Requirements
+    sections:
+      - title: OllamaContextSizingChatClient Requirements
+        requirements:
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-EveryRequestCarriesTheSize
+            title: >-
+              The unit shall name the context length the application chose on every request it
+              forwards, whether it is the first request of a conversation or the hundredth.
+            justification: |
+              Ollama decides what an instance is running at when it loads the model, and a request
+              naming a different context length reloads it. A size named on only the opening request
+              would therefore be undone by the next un-annotated one, silently resizing the instance
+              beneath a session that is still accounting against the old figure - a failure nothing
+              in the exchange reports. Naming it every time is what makes the window a session
+              accounts against true for the whole conversation rather than only at the start. A
+              request the caller gave no options for is still a request, so it names the size too.
+            tests:
+              - >-
+                OllamaContextSizingChatClient_GetResponseAsync_EveryRequest_CarriesTheStatedContextLength
+              - >-
+                OllamaContextSizingChatClient_GetResponseAsync_NoCallerOptions_StillCarriesTheContextLength
+
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-StreamedRequestsAreNamedToo
+            title: >-
+              The unit shall name the context length on a streamed request exactly as it does on a
+              whole-response request.
+            justification: |
+              A host that streams its turns is holding the same conversation on the same instance,
+              so a streamed request that omitted the size would resize the instance on the first
+              turn it sent. The difference between the two paths is how the answer is delivered, not
+              what the request asks for, and a control that held on one path and not the other would
+              be worse than none because the gap would be invisible to the host that fell through
+              it.
+            tests:
+              - >-
+                OllamaContextSizingChatClient_GetStreamingResponseAsync_EveryRequest_CarriesTheStatedContextLength
+
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-PreservesTheCallersRequest
+            title: >-
+              The unit shall deliver every other option the caller set to the provider unchanged,
+              and shall leave the caller's own request settings as the caller built them.
+            justification: |
+              This sits beneath a session that offers tools and chooses a temperature, so losing
+              either while adding the size would trade one silent failure for another. The caller's
+              own settings object is commonly built once and reused for every request of a session,
+              and shared with sibling clients; writing into it would leak this decision outward to
+              clients that were never meant to carry it, and would make a size chosen here appear to
+              have been chosen by the application.
+            tests:
+              - OllamaContextSizingChatClient_GetResponseAsync_CallerOptions_ReachTheProviderUnchanged
+              - >-
+                OllamaContextSizingChatClient_GetResponseAsync_AnyRequest_DoesNotMutateTheCallersOptions
+
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-DoesNotOverruleAStatedSize
+            title: >-
+              The unit shall deliver a context length the caller named on a request as the caller
+              named it.
+            justification: |
+              A caller that named the option on a particular request has already decided what that
+              request should run at, and is the only party that can know why. Overruling it would
+              leave that caller no way to say so at all, and would make this control the one thing
+              in the pipeline that cannot be overridden from above.
+            tests:
+              - >-
+                OllamaContextSizingChatClient_GetResponseAsync_CallerSuppliedContextLength_IsNotOverwritten
+
+          - id: AgentKitAgentsOllama-OllamaContextSizingChatClient-RejectsASizeNoInstanceCouldRun
+            title: >-
+              The unit shall refuse a context length of zero or less where the composing application
+              stated it.
+            justification: |
+              No Ollama instance can run at a context length of zero or less, so such a figure is a
+              mistake in the application rather than a condition to degrade around. Refusing it
+              where it was written reports the mistake at the line that made it, instead of at some
+              later request whose failure would name a server rather than the composition.
+            tests:
+              - OllamaContextSizingChatClient_Constructor_NonPositiveContextLength_Throws

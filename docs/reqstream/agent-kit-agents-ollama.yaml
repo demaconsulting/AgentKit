@@ -13,8 +13,8 @@
 # capability promises a guarded agent on a model served by Ollama with a conversation that outlives
 # the window the server actually enforces; the agent and the compacting session come from
 # AgentKit-Provider-ChatClient, because Ollama reaches an application as an IChatClient, and what
-# this package adds is the discovery of the window that session must be told. These requirements
-# are that discovery.
+# this package adds is making the window that session is told the window the instance is actually
+# using - by asking the server for one, and by reading back what the running instance reports.
 
 sections:
   - title: AgentKitAgentsOllama Requirements
@@ -22,27 +22,25 @@ sections:
       - id: AgentKitAgentsOllama-ContextWindow-PrecedenceOfReportedFigures
         title: >-
           The library shall report the context window a conversation on an Ollama model should be
-          accounted against, preferring a window the application stated, then the length the server
-          loaded that model with, then the model's published maximum, and shall report which of
-          those the figure came from.
+          accounted against, preferring a window the application stated, then the length the running
+          instance reports, and shall report which of those the figure came from.
         justification: |
           A chat client publishes no context window, so a compacting session is told one where the
           provider is configured - and getting that number wrong is costly in a specific direction.
           Too low wastes summarizer calls; too high means the session rotates after the server has
           already discarded the start of the conversation, losing history with nothing reporting an
-          error. Ollama will answer, but the two figures it can give are not interchangeable: a
-          model publishes the length it was trained for, and the server loads it with a length of
-          its own choosing, smaller by default. The loaded figure is the one that will actually be
-          enforced, so it is preferred, and a window the application stated outranks both because an
-          application that set the context length itself already knows what it chose. Reporting the
-          source alongside the figure is what lets a host present a published maximum as a maximum
-          rather than as the limit in force.
+          error. Only two figures describe the instance the conversation will actually run on: one
+          the application asked the server for, and one the running instance reports. A third figure
+          is available - the maximum the model file publishes - and it is deliberately not used,
+          because it describes the file rather than the instance, and against a live server it was
+          thirty-two times too large in the direction that loses history. Reporting the source
+          alongside the figure is what lets a host tell a measurement from an assumption.
         children:
           - AgentKitAgentsOllama-OllamaContextWindow-StatedWindowWins
           - AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
           - AgentKitAgentsOllama-OllamaContextWindow-MatchesAnUntaggedModelName
           - AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
-          - AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLength
+          - AgentKitAgentsOllama-OllamaContextWindow-NeverConsultsAPublishedMaximum
           - AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
           - AgentKit-OTS-OllamaSharp-ModelReports
         tests:
@@ -50,20 +48,47 @@ sections:
 
       - id: AgentKitAgentsOllama-ContextWindow-ConservativeFallbackNamedAsAssumed
         title: >-
-          The library shall report a conservative context window, named as assumed, when neither a
-          loaded model nor published metadata yields one.
+          The library shall report a conservative context window, named as assumed, when no running
+          instance yields one.
         justification: |
-          A server can decline to answer - an older build, a proxy in front of it, a model that has
-          never been loaded - and an application that could not start because it could not read an
-          optional number would be worse than one that says which number it assumed. The figure
-          chosen is deliberately the low one: assuming less than the truth makes a session rotate
-          earlier than it needed to, which costs summarizer calls, while assuming more makes it
-          rotate after the provider has already discarded the beginning of the conversation, which
-          loses history silently. Naming it as assumed rather than reporting it as read is what
-          keeps a caller from being handed an invented number presented as measured.
+          A server can decline to answer - an older build, a proxy in front of it, one that accepts
+          the connection and then never replies - and a server holding nothing loaded answers
+          perfectly well with no instance to describe. An application that could not start because
+          it could not read an optional number would be worse than one that says which number it
+          assumed. The figure chosen is deliberately the low one: assuming less than the truth makes
+          a session rotate earlier than it needed to, which costs summarizer calls, while assuming
+          more makes it rotate after the provider has already discarded the beginning of the
+          conversation, which loses history silently. Naming it as assumed rather than reporting it
+          as read is what keeps a caller from being handed an invented number presented as
+          measured - and the remedy is one flag, because stating a window now also asks the server
+          to run at it.
         children:
-          - AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
           - AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
           - AgentKitAgentsOllama-OllamaContextWindow-ToleratesADeclinedQuery
         tests:
           - AgentKitAgentsOllama_ContextWindow_ReportsTheEnforcedWindowAndNamesItsSource
+
+      - id: AgentKitAgentsOllama-ContextWindow-StatedSizeIsAskedOfTheServer
+        title: >-
+          The library shall ask the Ollama server to run the model at the context length the
+          application stated, on every request a conversation sends, so the window the session
+          accounts against is the window the instance is running.
+        justification: |
+          A stated window used to be only a claim: the application asserted a number and the session
+          accounted against it, with nothing making the server honor it. Ollama decides an
+          instance's context length when it loads the model, and a request naming one loads or
+          reloads it at that length - so a size can be asked for rather than guessed at, and a
+          stated figure becomes true by construction. It has to ride on every request, because a
+          later un-annotated one would reload the instance at Ollama's default and silently resize
+          it beneath a session still accounting against the stated figure. This is what turns
+          "outlives the window the server enforces" from a hope into something an application can
+          arrange, and it is what makes a published maximum unnecessary as a fallback.
+        children:
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-EveryRequestCarriesTheSize
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-StreamedRequestsAreNamedToo
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-PreservesTheCallersRequest
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-DoesNotOverruleAStatedSize
+          - AgentKitAgentsOllama-OllamaContextSizingChatClient-RejectsASizeNoInstanceCouldRun
+          - AgentKit-OTS-OllamaSharp-ContextLengthOption
+        tests:
+          - AgentKitAgentsOllama_ContextSizing_EveryRequestAsksTheServerForTheStatedWindow

@@ -135,18 +135,21 @@ from what it filed on its first turn — which is precisely what `--recall-quest
 ### Where the window comes from
 
 An `IChatClient` publishes no context window, so AgentKit is told one once, where the provider is
-configured, and answers with it thereafter. This sample reads it from Ollama rather than hard-coding
-a number, and prefers the figure the server will actually enforce:
+configured, and answers with it thereafter. This sample makes that figure true rather than guessing
+it, preferring in order:
 
-1. `--context-window <tokens>`, if stated. It settles the question.
-2. The **loaded** model's context length, from the server's list of running models. This is what the
-   server enforces, and it is often smaller than the model's maximum.
-3. The model's **published** context length, from its metadata. A maximum, not a limit in force —
-   the banner says so.
-4. Failing all of that, Ollama's own default of 4096 tokens, announced as an assumption.
+1. `--context-window <tokens>`, if stated. It settles the question — and the sample asks the server
+   for it, naming the size on every request the conversation sends, so the instance Ollama runs is
+   the one being accounted against.
+2. The length the **loaded** instance reports, from the server's list of running models. This is
+   what the server is actually enforcing.
+3. Failing that, Ollama's own default of 4096 tokens, announced as an assumption.
 
-The banner prints which of the four a run used, because a session told a window larger than the
-server enforces will not rotate until the provider has already truncated the conversation, and
+What the model *file* publishes as its maximum is deliberately not used. It describes the file, not
+the instance: one live server published 262,144 tokens for a model it was running at 4,096.
+
+The banner prints which of the three a run used, because a session told a window larger than the
+instance is running will not rotate until the provider has already truncated the conversation, and
 nothing downstream can detect that.
 
 ### Where the consolidations go

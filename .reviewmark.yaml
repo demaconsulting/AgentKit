@@ -1397,10 +1397,9 @@ reviews:
 
   # AgentKitAgentsOllama-OllamaContextWindow Review (one per unit)
   #
-  # The system is one unit, so this set carries the whole implementation. The chat-client session
-  # factory's design is supplied as context because the figure this unit reports exists to be handed
-  # to it, and a reviewer judging whether the precedence is the right one needs to see what consumes
-  # it.
+  # The chat-client session factory's design is supplied as context because the figure this unit
+  # reports exists to be handed to it, and a reviewer judging whether the precedence is the right
+  # one needs to see what consumes it.
   - id: AgentKitAgentsOllama-OllamaContextWindow
     title: Review that AgentKitAgentsOllama OllamaContextWindow Implementation is Correct
     context:
@@ -1417,6 +1416,30 @@ reviews:
       # replaying payloads captured verbatim from a live server.
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowReadTests.cs"
       - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/*.json"
+
+  # AgentKitAgentsOllama-OllamaContextSizingChatClient Review (one per unit)
+  #
+  # The sibling unit's design is supplied as context because the two meet in one integer: the size
+  # this decorator asks the server for is the same size the reading reports as stated, and a
+  # reviewer judging whether that claim is honest needs to see both halves.
+  - id: AgentKitAgentsOllama-OllamaContextSizingChatClient
+    title: Review that AgentKitAgentsOllama OllamaContextSizingChatClient Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-ollama.md"
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+      - "docs/design/agent-kit-agents-ollama/ollama-context-window.md"
+    paths:
+      # unit requirements
+      - "docs/reqstream/agent-kit-agents-ollama/ollama-context-sizing-chat-client.yaml"
+      # unit design
+      - "docs/design/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md"
+      # unit verification
+      - "docs/verification/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md"
+      # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Ollama/OllamaContextSizingChatClient.cs"
+      # unit tests, including the wire test that drives the real Ollama client
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextSizingChatClientTests.cs"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/RecordingChatClient.cs"
 
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark

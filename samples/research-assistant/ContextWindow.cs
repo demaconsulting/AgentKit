@@ -22,7 +22,8 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant;
 public enum ContextWindowSource
 {
     /// <summary>
-    ///     The application stated it on the command line, which settles the question outright.
+    ///     The application stated it on the command line and asked the server to run at it, which
+    ///     settles the question outright.
     /// </summary>
     Stated,
 
@@ -32,13 +33,8 @@ public enum ContextWindowSource
     LoadedModel,
 
     /// <summary>
-    ///     Read from the model's published metadata: its maximum, which the server may have loaded
-    ///     it below.
-    /// </summary>
-    PublishedModel,
-
-    /// <summary>
-    ///     Nothing could be read, so Ollama's own default context length is assumed.
+    ///     Nothing could be read about the instance, so Ollama's own default context length is
+    ///     assumed.
     /// </summary>
     Assumed,
 
@@ -70,25 +66,24 @@ public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
     public string Describe() => Source switch
     {
         ContextWindowSource.Stated =>
-            $"{Tokens} tokens (stated with --context-window)",
+            $"{Tokens} tokens (stated with --context-window, and asked of the server on every "
+            + "request)",
         ContextWindowSource.LoadedModel =>
             $"{Tokens} tokens (read from the loaded model, so this is what the server enforces)",
-        ContextWindowSource.PublishedModel =>
-            $"{Tokens} tokens (the model's published maximum; the server may have loaded it "
-            + "smaller, so pass --context-window if it did)",
         ContextWindowSource.Ceiling =>
             $"at most {Tokens} tokens (a --context-window ceiling; the runtime reports its own "
             + "window every turn and the lower of the two governs)",
         _ =>
-            $"{Tokens} tokens (assumed: Ollama reported nothing, and this is its own default)",
+            $"{Tokens} tokens (assumed: no model was loaded to ask, and this is Ollama's own "
+            + "default; pass --context-window to run at a size of your choosing)",
     };
 
     /// <summary>
     ///     Converts what the Ollama package discovered into the banner's own vocabulary.
     /// </summary>
     /// <remarks>
-    ///     The shipped package reports only what Ollama discovery can produce, so each of its four
-    ///     sources has exactly one counterpart here; the banner's fifth,
+    ///     The shipped package reports only what Ollama discovery can produce, so each of its three
+    ///     sources has exactly one counterpart here; the banner's fourth,
     ///     <see cref="ContextWindowSource.Ceiling"/>, is produced by the Copilot path alone and
     ///     never arrives through this method.
     /// </remarks>
@@ -105,7 +100,6 @@ public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
             {
                 OllamaContextWindowSource.Stated => ContextWindowSource.Stated,
                 OllamaContextWindowSource.LoadedModel => ContextWindowSource.LoadedModel,
-                OllamaContextWindowSource.PublishedModel => ContextWindowSource.PublishedModel,
                 _ => ContextWindowSource.Assumed,
             });
     }

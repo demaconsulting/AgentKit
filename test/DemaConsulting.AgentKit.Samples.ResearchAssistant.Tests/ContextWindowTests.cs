@@ -9,21 +9,20 @@ namespace DemaConsulting.AgentKit.Samples.ResearchAssistant.Tests;
 /// <remarks>
 ///     The precedence itself is the package's and is tested there. What is left here is what the
 ///     sample still owns: the wording a reader sees before a run starts, and the mapping that
-///     decides which of those words a discovered window gets. A mapping that sent a published
-///     maximum to the wrong member would print a maximum as though it were the limit in force,
-///     which is exactly what naming the source exists to prevent.
+///     decides which of those words a discovered window gets. A mapping that sent an assumed
+///     default to the wrong member would print a guess as though it were a measurement, which is
+///     exactly what naming the source exists to prevent.
 /// </remarks>
 public class ContextWindowTests
 {
     /// <summary>
-    ///     Proves every source describes itself, so the startup banner can never present a
-    ///     published maximum as though it were the limit in force.
+    ///     Proves every source describes itself, so the startup banner can never present an assumed
+    ///     default as though it were a measured limit.
     /// </summary>
     /// <param name="source">The source being described.</param>
     [Theory]
     [InlineData(ContextWindowSource.Stated)]
     [InlineData(ContextWindowSource.LoadedModel)]
-    [InlineData(ContextWindowSource.PublishedModel)]
     [InlineData(ContextWindowSource.Assumed)]
     [InlineData(ContextWindowSource.Ceiling)]
     public void ContextWindow_Describe_EverySource_NamesTheNumberAndItsProvenance(
@@ -69,7 +68,6 @@ public class ContextWindowTests
     [Theory]
     [InlineData(OllamaContextWindowSource.Stated, ContextWindowSource.Stated)]
     [InlineData(OllamaContextWindowSource.LoadedModel, ContextWindowSource.LoadedModel)]
-    [InlineData(OllamaContextWindowSource.PublishedModel, ContextWindowSource.PublishedModel)]
     [InlineData(OllamaContextWindowSource.Assumed, ContextWindowSource.Assumed)]
     public void ContextWindow_From_EveryDiscoverySource_KeepsTheFigureAndItsClaim(
         OllamaContextWindowSource discovered,

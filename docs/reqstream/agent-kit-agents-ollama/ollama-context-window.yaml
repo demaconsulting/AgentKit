@@ -13,24 +13,26 @@ sections:
               The unit shall report a window the application stated in preference to anything the
               server reported, and shall name it as stated.
             justification: |
-              An application that states a window has usually done so because it knows something the
-              server will not say - most often that the model was loaded with a smaller context
-              length than it publishes. Believing the server over the application in that case would
-              make the one flag that exists to correct a bad reading have no effect. Naming the
-              figure as stated also keeps the account honest: nothing was measured.
+              An application that states a window has also asked the server to run the model at it,
+              on every request the conversation sends, so the figure is true by construction rather
+              than by measurement. Asking the server as well would only invite a reader to wonder
+              which answer won, and - because asking what a model would be loaded at is not free of
+              consequence - would risk making discovery change the very thing it was asked to
+              observe. Naming the figure as stated keeps the account honest: it was chosen, not
+              measured.
             tests:
               - OllamaContextWindow_Select_StatedWindow_WinsOverWhatTheServerReports
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
             title: >-
-              The unit shall report the length the named model is loaded with in preference to the
-              maximum that model publishes.
+              The unit shall report the length the named model is currently loaded with whenever the
+              server reports it as loaded.
             justification: |
-              The loaded length is the one the server will enforce; the published maximum is only
-              what the model could be loaded with, and Ollama loads well below it by default. A
-              session told the maximum would keep going until the server had already truncated the
-              conversation, and nothing downstream could detect that. Preferring the loaded figure
-              is the whole reason both are read rather than only one.
+              The loaded length is the only figure that describes the instance rather than the model
+              file: it is what the server will enforce for the conversation about to run. Anything
+              else available - what the file could support, what Ollama defaults to - describes
+              something other than the instance, so the loaded figure is the only measurement worth
+              preferring over an assumption.
             tests:
               - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
 
@@ -41,8 +43,8 @@ sections:
             justification: |
               A caller commonly names a model bare, and the server resolves that to the latest tag
               and reports the tagged name back. Comparing the two spellings literally would find no
-              loaded model in the ordinary case and fall through to a published maximum or to the
-              assumed default, which is exactly the silent downgrade this unit exists to avoid.
+              loaded model in the ordinary case and fall through to the assumed default, which is
+              exactly the silent downgrade this unit exists to avoid.
             tests:
               - OllamaContextWindow_Select_UntaggedModelName_MatchesTheLoadedLatestTag
 
@@ -53,45 +55,15 @@ sections:
               A server commonly holds several models loaded at once, each with its own context
               length. Reporting one model's window for another would produce a figure that looks
               measured, is specific, and is wrong - the worst of the available failures, because it
-              carries the confidence of a reading. The named model's published maximum, or the
-              assumed default, is the honest answer instead.
+              carries the confidence of a reading. The conservative default is the honest answer
+              instead: nothing is known about an instance the server did not report.
             tests:
               - OllamaContextWindow_Select_DifferentModelLoaded_DoesNotBorrowItsWindow
-
-          - id: AgentKitAgentsOllama-OllamaContextWindow-ReadsThePublishedLength
-            title: >-
-              The unit shall report the context length a model publishes when the server reports
-              that model as not loaded.
-            justification: |
-              A model that is not loaded has no enforced length to read, and the length it publishes
-              is then the only figure the server offers. Falling past it to the conservative default
-              would account a session against a fraction of a window the server would have honored,
-              costing summarizer calls on every long conversation for a figure that was available
-              all along. It is reported as the maximum it is, so a caller can see the server may
-              load the model below it.
-            tests:
-              - OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead
-
-          - id: AgentKitAgentsOllama-OllamaContextWindow-FallsThroughMetadataCarryingNoContextLength
-            title: >-
-              The unit shall fall through to the next source when a model's metadata carries no
-              context length it can read for that model's architecture.
-            justification: |
-              Metadata that names an architecture but says nothing about its window, and metadata
-              carrying a value that is not a token count - text, a fraction, a figure beyond the
-              range one can hold - are both plausible responses rather than errors, and there is no
-              window in either. Reporting zero, rounding, or reporting some neighboring metadata
-              value as though it were a window would hand a session a figure it could not be
-              accounted against; falling through to the conservative default is the only answer that
-              remains usable.
-            tests:
-              - OllamaContextWindow_Select_MetadataWithoutAContextLength_FallsThrough
-              - OllamaContextWindow_Select_PublishedLengthNotAUsableNumber_FallsThrough
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
             title: >-
               The unit shall report Ollama's own default context length, named as assumed, when
-              nothing was stated and the server reported nothing usable.
+              nothing was stated and the server reported no loaded instance.
             justification: |
               Something has to be returned, because a session cannot run without a window. The
               conservative figure is chosen because the two ways of being wrong are not
@@ -100,23 +72,38 @@ sections:
               treating it as a measurement.
             tests:
               - OllamaContextWindow_Select_NothingReported_AssumesTheOllamaDefault
+              - OllamaContextWindow_ReadAsync_NothingLoaded_AssumesTheOllamaDefault
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-ToleratesADeclinedQuery
             title: >-
-              The unit shall report a window from the next source down when the server declines to
-              answer a query.
+              The unit shall report the conservative default when the server declines to answer its
+              query.
             justification: |
-              Both server queries are conveniences, and a server declines them for ordinary
-              reasons - an older build, a proxy in front of it, a model that has never been
-              pulled. An application that could not start because it could not read an optional
-              number would be worse than one that says which number it assumed, so a declined
-              query has to cost a rung of the ladder rather than the run. This is what makes the
-              reading safe to call unconditionally where a provider is configured, which is the
-              only place a caller can call it.
+              The server query is a convenience, and a server declines it for ordinary
+              reasons - an older build, a proxy in front of it, one that accepts the connection and
+              then never answers. An application that could not start because it could not read an
+              optional number would be worse than one that says which number it assumed, so a
+              declined query has to cost a rung of the ladder rather than the run. This is what
+              makes the reading safe to call unconditionally where a provider is configured, which
+              is the only place a caller can call it.
             tests:
-              - OllamaContextWindow_ReadAsync_RunningModelsQueryFails_ReportsThePublishedMaximum
-              - OllamaContextWindow_ReadAsync_ModelMetadataQueryFails_ReportsTheEnforcedLength
-              - OllamaContextWindow_ReadAsync_NeitherQueryAnswers_AssumesTheOllamaDefault
+              - OllamaContextWindow_ReadAsync_RunningModelsQueryFails_AssumesTheOllamaDefault
+              - OllamaContextWindow_ReadAsync_ServerNeverAnswers_AssumesTheOllamaDefault
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-NeverConsultsAPublishedMaximum
+            title: >-
+              The unit shall not report a context length taken from what a model file publishes,
+              whatever the server would say about it.
+            justification: |
+              A published maximum describes what the model file could support, not what the instance
+              is running: one live server published 262,144 tokens for a model it was running at
+              4,096, a figure thirty-two times too large. Accounting against it would keep a session
+              talking long after the server had begun discarding the start of the conversation, with
+              nothing reporting an error - the one failure mode this whole reading exists to
+              prevent. Not asking for it at all is what makes that guarantee hold rather than merely
+              happen to hold.
+            tests:
+              - OllamaContextWindow_ReadAsync_ModelNotLoaded_NeverAsksForThePublishedMaximum
 
           - id: AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
             title: >-
@@ -127,4 +114,4 @@ sections:
               application wrote it is better than matching nothing and quietly returning the assumed
               default, which would look like a server that had not answered.
             tests:
-              - OllamaContextWindow_Select_NullModelName_Throws
+              - OllamaContextWindow_Select_ModelNameThatNamesNothing_Throws

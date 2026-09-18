@@ -105,12 +105,15 @@ provider session. Today that means any `IChatClient`, through
   barely above the one AgentKit rotates at, every session AgentKit drives is created with the
   runtime's compaction threshold raised clear of that rotation point so the two compactors never act
   on one conversation.
-- **`DemaConsulting.AgentKit.Agents.Ollama`** — reports the context window an Ollama server will
-  actually enforce for a model, and which figure that came from: a window you stated, then the
-  length the server loaded the model with, then the model's published maximum, then a conservative
-  default named as assumed. Ollama is otherwise an ordinary `IChatClient` provider, and this is the
-  one thing the generic adapter cannot supply — an `IChatClient` publishes no window, and getting it
-  wrong in the high direction loses conversation history silently. Optional: add it only if you
+- **`DemaConsulting.AgentKit.Agents.Ollama`** — makes the context window your session accounts
+  against the window the Ollama instance is actually running. It asks the server to run at a size
+  you chose, on every request, and where you chose none it reports the length the running instance
+  says it is using — falling back to a conservative default, named as assumed, when nothing is
+  loaded. What the model file publishes as its maximum is deliberately never used: on a live server
+  that figure was 262,144 for a model running at 4,096. Ollama is otherwise an ordinary
+  `IChatClient` provider, and this is the one thing the generic adapter cannot supply — an
+  `IChatClient` publishes no window, and getting it wrong in the high direction loses conversation
+  history silently. Optional: add it only if you
   target Ollama, and it carries the `OllamaSharp` dependency the `IChatClient` adapter deliberately
   does not.
 
@@ -146,11 +149,11 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
 ```
 
-On Ollama, add one more so the session is told the window the server will enforce rather than a
-guess:
+On Ollama, add one more so the session is told the window the instance is actually running rather
+than a guess:
 
 ```bash
-dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # reads Ollama's context window
+dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # asks for and reads Ollama's window
 ```
 
 ## API Documentation
@@ -252,7 +255,7 @@ using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Core;
 
 // The window is a fact about the provider, so the provider side answers for it. Read it from the
-// provider where you can — Ollama publishes the loaded model's context length — or state the
+// provider where you can — Ollama reports the length the running instance is using — or state the
 // window of the model you chose.
 var providerSessions = new ChatClientProviderSessionFactory(chatClient, windowTokens: 32768);
 
@@ -300,7 +303,7 @@ because the Copilot SDK exposes no `IChatClient` to adapt. Copilot reports both 
 its limit, so that adapter is never told a window.
 
 On Ollama, `DemaConsulting.AgentKit.Agents.Ollama` answers the one question the generic adapter
-cannot — what window the server will actually enforce:
+cannot — what window the instance is actually running:
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Ollama;
@@ -309,11 +312,29 @@ var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: nu
 var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
 ```
 
-`window.Source` says which figure it is: the loaded model's length, which is what the server
-enforces; the model's published maximum, which it may have been loaded below; or a conservative
-default named as assumed. Report it rather than hiding it — a maximum shown as the limit in force
-is how a session ends up rotating after the server has already discarded the start of the
-conversation.
+`window.Source` says which figure it is: the loaded instance's length, which is what the server
+enforces, or a conservative default named as assumed. Report it rather than hiding it — an
+assumption shown as a measurement is how a session ends up sized on something nothing guarantees.
+
+If you would rather choose the size than discover it, ask the server for one. Compose the same
+figure onto every client that talks to the model, and state it to the reading, so the window you
+account against is the window the instance runs:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
+
+const int windowTokens = 32768;
+
+IChatClient chatClient = new OllamaContextSizingChatClient(ollamaClient, windowTokens);
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
+var providerSessions = new ChatClientProviderSessionFactory(chatClient, window.Tokens);
+```
+
+The size rides on *every* request, not only the first: Ollama reloads a model when a request names a
+different `num_ctx`, so one un-annotated request would silently resize the instance beneath a
+session still accounting against the old figure. Wrap the summarizer's client too when it shares the
+model.
 
 ## Documentation
 
@@ -350,7 +371,8 @@ of what each demonstrates and when to read it.
   searchable memories with the document each came from, and delegates the reading of a single
   document to a child agent. On **either provider** the conversation runs on a
   `CompactingAgentSession`: `ChatClientProviderSessionFactory` and `ChatClientSummarizer` on
-  `--provider ollama`, reading the context window from the Ollama server rather than assuming one;
+  `--provider ollama`, reading the context window from the Ollama server rather than assuming one —
+  or, with `--context-window`, asking the server to run at a size of your choosing;
   `CopilotProviderSessionFactory` and `CopilotSummarizer` on `--provider copilot`, which reports its
   own window so none is stated. Either way it prints what each
   turn occupies, whether it rotated, how hard it is compacting, and whether history had to be

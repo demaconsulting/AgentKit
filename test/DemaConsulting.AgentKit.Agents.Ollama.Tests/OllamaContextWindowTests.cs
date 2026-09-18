@@ -1,4 +1,3 @@
-using System.Text.Json;
 using OllamaSharp.Models;
 
 namespace DemaConsulting.AgentKit.Agents.Ollama.Tests;
@@ -21,18 +20,17 @@ public class OllamaContextWindowTests
     private const string Model = "qwen3.5:9b";
 
     /// <summary>
-    ///     Proves a stated window wins outright, so an application that knows better than the
-    ///     server is believed.
+    ///     Proves a stated window wins outright, so an application that asked the server to run at a
+    ///     size is believed about the size it asked for.
     /// </summary>
     [Fact]
     public void OllamaContextWindow_Select_StatedWindow_WinsOverWhatTheServerReports()
     {
-        // Arrange: a server reporting a loaded model and a published maximum, both different
+        // Arrange: a server reporting the model loaded at a different length
         var running = new[] { Loaded(Model, 8192) };
-        var published = Published("qwen3", 40960);
 
         // Act: a window stated by the application
-        var window = OllamaContextWindow.Select(2048, running, published, Model);
+        var window = OllamaContextWindow.Select(2048, running, Model);
 
         // Assert: the stated figure, named as stated
         Assert.Equal(2048, window.Tokens);
@@ -50,7 +48,7 @@ public class OllamaContextWindowTests
         var running = new[] { Loaded(Model, 8192) };
 
         // Act: zero is stated, as an unset option commonly arrives
-        var window = OllamaContextWindow.Select(0, running, published: null, Model);
+        var window = OllamaContextWindow.Select(0, running, Model);
 
         // Assert: the server's figure, not a window of zero
         Assert.Equal(8192, window.Tokens);
@@ -58,20 +56,19 @@ public class OllamaContextWindowTests
     }
 
     /// <summary>
-    ///     Proves the loaded model's length is preferred over the model's published maximum,
-    ///     because it is the one the server will actually enforce.
+    ///     Proves the length the loaded instance is running is what gets reported, because it is the
+    ///     one the server will actually enforce.
     /// </summary>
     [Fact]
     public void OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces()
     {
-        // Arrange: a model loaded with far less than it publishes
+        // Arrange: a model loaded at a length of the server's choosing
         var running = new[] { Loaded(Model, 8192) };
-        var published = Published("qwen3", 40960);
 
         // Act
-        var window = OllamaContextWindow.Select(stated: null, running, published, Model);
+        var window = OllamaContextWindow.Select(stated: null, running, Model);
 
-        // Assert: the loaded length, not the published maximum
+        // Assert: the loaded length, named as the loaded model's
         Assert.Equal(8192, window.Tokens);
         Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
     }
@@ -87,7 +84,7 @@ public class OllamaContextWindowTests
         var running = new[] { Loaded("research-model:latest", 16384) };
 
         // Act: the caller named no tag
-        var window = OllamaContextWindow.Select(stated: null, running, published: null, "research-model");
+        var window = OllamaContextWindow.Select(stated: null, running, "research-model");
 
         // Assert: matched anyway
         Assert.Equal(16384, window.Tokens);
@@ -105,11 +102,7 @@ public class OllamaContextWindowTests
         var running = new[] { Loaded("research-model", 16384) };
 
         // Act: the caller named the tag the bare report resolves to
-        var window = OllamaContextWindow.Select(
-            stated: null,
-            running,
-            published: null,
-            "research-model:latest");
+        var window = OllamaContextWindow.Select(stated: null, running, "research-model:latest");
 
         // Assert: matched anyway
         Assert.Equal(16384, window.Tokens);
@@ -134,12 +127,8 @@ public class OllamaContextWindowTests
         };
 
         // Act
-        var fromName = OllamaContextWindow.Select(stated: null, underName, published: null, Model);
-        var fromModelName = OllamaContextWindow.Select(
-            stated: null,
-            underModelName,
-            published: null,
-            Model);
+        var fromName = OllamaContextWindow.Select(stated: null, underName, Model);
+        var fromModelName = OllamaContextWindow.Select(stated: null, underModelName, Model);
 
         // Assert: matched either way, each reporting the length its own report carried
         Assert.Multiple(
@@ -152,106 +141,21 @@ public class OllamaContextWindowTests
     /// <summary>
     ///     Proves a loaded model belonging to some other conversation is not mistaken for this one.
     /// </summary>
+    /// <remarks>
+    ///     The promise is unchanged - never borrow another model's window - but the honest answer
+    ///     beneath it moved. Nothing is known about a model the server did not report as loaded, and
+    ///     the conservative default is the only figure that does not invent one.
+    /// </remarks>
     [Fact]
     public void OllamaContextWindow_Select_DifferentModelLoaded_DoesNotBorrowItsWindow()
     {
-        // Arrange: something else is loaded, and this model publishes a maximum
+        // Arrange: something else is loaded
         var running = new[] { Loaded("some-other-model:latest", 8192) };
-        var published = Published("qwen3", 40960);
 
         // Act
-        var window = OllamaContextWindow.Select(stated: null, running, published, Model);
+        var window = OllamaContextWindow.Select(stated: null, running, Model);
 
-        // Assert: the published maximum, reported as the maximum it is
-        Assert.Equal(40960, window.Tokens);
-        Assert.Equal(OllamaContextWindowSource.PublishedModel, window.Source);
-    }
-
-    /// <summary>
-    ///     Proves a published context length arriving as a JSON number is read, which is the shape
-    ///     the metadata actually deserializes to.
-    /// </summary>
-    [Fact]
-    public void OllamaContextWindow_Select_PublishedLengthAsJsonNumber_IsRead()
-    {
-        // Arrange: the value as the serializer materializes it
-        var published = new ShowModelResponse
-        {
-            Info = new ModelInfo
-            {
-                Architecture = "llama",
-                ExtraInfo = new Dictionary<string, object>
-                {
-                    ["llama.context_length"] = JsonSerializer.Deserialize<JsonElement>("131072"),
-                },
-            },
-        };
-
-        // Act
-        var window = OllamaContextWindow.Select(stated: null, running: null, published, Model);
-
-        // Assert
-        Assert.Equal(131072, window.Tokens);
-        Assert.Equal(OllamaContextWindowSource.PublishedModel, window.Source);
-    }
-
-    /// <summary>
-    ///     Proves metadata carrying no context length for this architecture falls through rather
-    ///     than reporting zero, which no session could be accounted against.
-    /// </summary>
-    [Fact]
-    public void OllamaContextWindow_Select_MetadataWithoutAContextLength_FallsThrough()
-    {
-        // Arrange: metadata naming an architecture but carrying nothing about its window
-        var published = new ShowModelResponse
-        {
-            Info = new ModelInfo
-            {
-                Architecture = "llama",
-                ExtraInfo = new Dictionary<string, object>
-                {
-                    ["llama.block_count"] = JsonSerializer.SerializeToElement(32),
-                },
-            },
-        };
-
-        // Act
-        var window = OllamaContextWindow.Select(stated: null, running: null, published, Model);
-
-        // Assert: the assumed default rather than nothing
-        Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
-        Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
-    }
-
-    /// <summary>
-    ///     Proves a published context length the metadata does not carry as a usable number falls
-    ///     through to the next source rather than becoming a window.
-    /// </summary>
-    /// <param name="metadataJson">The value the metadata carried, as JSON.</param>
-    [Theory]
-    [InlineData("\"40960\"")]
-    [InlineData("9999999999")]
-    public void OllamaContextWindow_Select_PublishedLengthNotAUsableNumber_FallsThrough(
-        string metadataJson)
-    {
-        // Arrange: metadata carrying a context length that is not a token count - text, and a
-        // figure beyond the range one can hold
-        var published = new ShowModelResponse
-        {
-            Info = new ModelInfo
-            {
-                Architecture = "llama",
-                ExtraInfo = new Dictionary<string, object>
-                {
-                    ["llama.context_length"] = JsonSerializer.Deserialize<JsonElement>(metadataJson),
-                },
-            },
-        };
-
-        // Act
-        var window = OllamaContextWindow.Select(stated: null, running: null, published, Model);
-
-        // Assert: the conservative default rather than an invented figure
+        // Assert: the conservative default rather than the other model's window
         Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
         Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
     }
@@ -261,13 +165,19 @@ public class OllamaContextWindowTests
     ///     conservative choice: rotating earlier than necessary costs summarizer calls, while
     ///     rotating later loses history the provider has already discarded.
     /// </summary>
+    /// <remarks>
+    ///     The figure itself is asserted as well as the constant, because 4,096 is a fact about
+    ///     Ollama rather than a number this library is free to choose, and it is quoted to users in
+    ///     the README and the sample's own documentation.
+    /// </remarks>
     [Fact]
     public void OllamaContextWindow_Select_NothingReported_AssumesTheOllamaDefault()
     {
         // Act
-        var window = OllamaContextWindow.Select(stated: null, running: null, published: null, Model);
+        var window = OllamaContextWindow.Select(stated: null, running: null, Model);
 
         // Assert
+        Assert.Equal(4096, OllamaContextWindow.AssumedTokens);
         Assert.Equal(OllamaContextWindow.AssumedTokens, window.Tokens);
         Assert.Equal(OllamaContextWindowSource.Assumed, window.Source);
     }
@@ -295,7 +205,7 @@ public class OllamaContextWindowTests
         // Act / Assert: ThrowIfNullOrEmpty raises ArgumentNullException for null and
         // ArgumentException for empty, so the assertion accepts the family rather than one member
         Assert.ThrowsAny<ArgumentException>(
-            () => OllamaContextWindow.Select(stated: null, running, published: null, model!));
+            () => OllamaContextWindow.Select(stated: null, running, model!));
     }
 
     /// <summary>
@@ -306,24 +216,4 @@ public class OllamaContextWindowTests
     /// <returns>The report.</returns>
     private static RunningModel Loaded(string name, int contextLength) =>
         new() { Name = name, ModelName = name, ContextLength = contextLength };
-
-    /// <summary>
-    ///     Builds model metadata carrying a published context length.
-    /// </summary>
-    /// <param name="architecture">The architecture the metadata keys are prefixed with.</param>
-    /// <param name="contextLength">The published length.</param>
-    /// <returns>The metadata.</returns>
-    private static ShowModelResponse Published(string architecture, int contextLength) =>
-        new()
-        {
-            Info = new ModelInfo
-            {
-                Architecture = architecture,
-                ExtraInfo = new Dictionary<string, object>
-                {
-                    [architecture + ".context_length"] =
-                        JsonSerializer.SerializeToElement(contextLength),
-                },
-            },
-        };
 }

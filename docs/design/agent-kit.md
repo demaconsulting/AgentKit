@@ -29,8 +29,8 @@ no structure — it records which system delivers which capability and what each
   engine, resting on `Microsoft.Agents.AI`.
 - **`AgentKit-Provider-Ollama`** — delivered by AgentKitAgentsChatClient too, because Ollama reaches
   an application as an `IChatClient`, with AgentKitAgentsOllama supplying the one thing that
-  delivery cannot obtain for itself: the window the Ollama server will actually enforce, resting on
-  `OllamaSharp` to fetch it.
+  delivery cannot obtain for itself: a context window the Ollama instance is actually running,
+  asked for and read back through `OllamaSharp`.
 
 The two promises every capability shares come from two places. Confinement is the adapter's: on
 Copilot it is the
@@ -43,9 +43,9 @@ Design*, *AgentKitAgentsChatClient System Design* and *AgentKitCore System Desig
 
 The Ollama capability shares both of those with the chat-client one rather than restating them, and
 adds only what the shared delivery is missing. An `IChatClient` publishes no window, so a compacting
-session must be told one, and on Ollama the figure that matters is not the maximum the model
-advertises — the server loads the model with a length of its own choosing, smaller by default. See
-*AgentKitAgentsOllama System Design*.
+session must be told one, and on Ollama the figure that matters describes the running instance
+rather than the model file — the server decides at load time what the instance will use, and that
+decision can be asked for as well as read. See *AgentKitAgentsOllama System Design*.
 
 The chat-client capability carries a third promise, content fidelity, which is neither of those: a
 provider reached through an `IChatClient` drops a tool-returned image at the wire, so the adapter
@@ -58,7 +58,8 @@ tool's binary results to the model itself — which is why the capabilities are 
 Each capability names among its children the off-the-shelf requirements it depends on — the Copilot
 SDK's session configuration, agent construction, permission RPC, session lifecycle and event stream
 for the first; the Agent Framework's `AIAgent` and `ChatClientAgent` for the second; OllamaSharp's
-fetching of a server's loaded-model and model-metadata reports for the third. Those links
+fetching of a server's loaded-model report, and its carriage of a context-length option onto the
+wire, for the third. Those links
 carry the OTS traceability that two deleted "built on" requirements used to hold. Which SDK a
 package is built on is a technology fact rather than a promise an application can act on, so the
 fact is gone and the traceability it existed for now hangs from the capability that needs it. See
@@ -73,14 +74,15 @@ anything specific to either: nothing would be promised that the chat-client capa
 already promise, and nothing would be demonstrated that its scenarios do not already demonstrate.
 
 Ollama meets the rule. `AgentKitAgentsOllama` is a shipped package carrying Ollama-specific
-code — the context window a server will enforce, which the chat-client adapter cannot read because
+code — the context window an instance is running, which the chat-client adapter cannot read because
 an `IChatClient` publishes none — and that code is what makes the capability demonstrable. The
-evidence a capability requires is the whole promise shown, and the half that belongs to Ollama is
-the reading of what a server actually sent: the package's suite replays payloads captured verbatim
-from a live Ollama 0.34.1 server, both through the precedence directly and over HTTP through the
-real Ollama client. The other half, an agent confined to its tools carrying a conversation past the
-window, is the chat-client capability's and is cited from there rather than re-demonstrated, because
-on Ollama it is the same delivery.
+evidence a capability requires is the whole promise shown, and the half that belongs to Ollama has
+two parts: reading what a server actually sent, and asking a server for a size and seeing the
+request carry it. The package's suite replays payloads captured verbatim from a live Ollama 0.34.1
+server through the precedence directly and over HTTP through the real Ollama client, and reads the
+requested size back off the body an ordinary chat request was sent with. The other half, an agent
+confined to its tools carrying a conversation past the window, is the chat-client capability's and
+is cited from there rather than re-demonstrated, because on Ollama it is the same delivery.
 
 `AgentKit-Provider-Ollama` is worded to say only that. It claims a guarded agent on a model **served
 by** Ollama, not an Ollama implementation, and its justification names the chat-client capability as
