@@ -95,6 +95,28 @@ public class OllamaContextWindowTests
     }
 
     /// <summary>
+    ///     Proves a loaded model the server reported without a tag is matched by a caller that
+    ///     named the tag, so the normalization holds on the reported side as well as the asked one.
+    /// </summary>
+    [Fact]
+    public void OllamaContextWindow_Select_UntaggedLoadedModelName_MatchesATaggedRequest()
+    {
+        // Arrange: the server reports the model bare, naming no tag
+        var running = new[] { Loaded("research-model", 16384) };
+
+        // Act: the caller named the tag the bare report resolves to
+        var window = OllamaContextWindow.Select(
+            stated: null,
+            running,
+            published: null,
+            "research-model:latest");
+
+        // Assert: matched anyway
+        Assert.Equal(16384, window.Tokens);
+        Assert.Equal(OllamaContextWindowSource.LoadedModel, window.Source);
+    }
+
+    /// <summary>
     ///     Proves the model is found under either name a loaded-model report carries, so a report
     ///     that omits one of them still yields the length the server is enforcing.
     /// </summary>

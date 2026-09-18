@@ -130,9 +130,12 @@ indistinguishable from a server that had not answered.
 **Tests**:
 
 - `OllamaContextWindow_Select_StatedWindowOfZero_IsTreatedAsUnstated`
+- `OllamaContextWindow_Select_UntaggedLoadedModelName_MatchesATaggedRequest`
 - `OllamaContextWindow_Select_ModelNamedUnderEitherReportedField_IsMatched`
 
 A stated window of zero is an unset option rather than a claim, so it must not short-circuit the
-ladder into a window of zero; and a loaded-model report that names the model in only one of its two
-name fields must still match. Both are defensive checks on inputs the precedence tolerates rather
-than promises about, so neither is linked to a requirement.
+ladder into a window of zero; a loaded-model report that names the model bare, where the caller
+named the tag, must still match — the mirror of the ordinary direction, tagging the reported side
+rather than the asked one; and a loaded-model report that names the model in only one of its two
+name fields must still match. All three are defensive checks on inputs the precedence tolerates
+rather than promises about, so none is linked to a requirement.
