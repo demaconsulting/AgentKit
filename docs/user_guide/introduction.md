@@ -392,10 +392,17 @@ agent whose every tool call is denied.
 factory builds the agent over the client without taking ownership of it and creates nothing
 disposable of its own.
 
-**No provider session yet.** This adapter builds an agent; it does not yet supply an
-`IProviderSession` for the Copilot runtime. A Copilot conversation therefore runs on that runtime's
-own session and is not compacted by AgentKit. Everything under *Sessions* below applies to the
-`IChatClient` family today.
+**Provider sessions**. This adapter also supplies an `IProviderSession` for the Copilot runtime, so
+a Copilot conversation can run on an AgentKit compacting session exactly as an `IChatClient` one
+does — see `CopilotProviderSessionFactory` and `CopilotSummarizer`, and *Sessions* below.
+
+Copilot differs from the `IChatClient` family in two ways worth knowing. It reports **both** its
+occupancy and its context window with every turn, so you never state a window; and because its
+windows are large, `CopilotProviderSessionFactory` accepts an optional ceiling that lowers the
+window a session accounts against. The ceiling only ever lowers — one above the runtime's own limit
+is ignored — and setting one costs more rather than less, because a repeated prompt is served
+almost entirely from cache while a rotation starts a fresh one and adds a summarizer call. Set it
+for answer quality across a long conversation, not to save money.
 
 # Sessions
 

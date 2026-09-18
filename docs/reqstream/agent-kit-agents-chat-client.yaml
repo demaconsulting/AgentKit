@@ -3,6 +3,11 @@
 #
 # These requirements describe the externally visible behavior of the library
 # from the perspective of its consumers, without specifying implementation details.
+#
+# They are the mechanisms of one product capability, AgentKit-Provider-ChatClient
+# (docs/reqstream/agent-kit.yaml), which links every one of them as a child. They
+# therefore carry no 'system' tag: the capability is the root, and a mechanism here that
+# stops contributing to it is reported as an orphan rather than standing on its own.
 
 sections:
   - title: AgentKitAgentsChatClient Requirements
@@ -11,7 +16,6 @@ sections:
         title: >-
           The library shall build a Microsoft Agent Framework agent from any Microsoft.Extensions.AI
           chat client and a supplied tool list, carrying the supplied instructions and name.
-        tags: [system]
         justification: |
           A provider reached through an IChatClient carries no tools of its own, so supplying an
           application's tools is the whole of what an adapter must do to turn a chat client into a
@@ -30,7 +34,7 @@ sections:
           The library shall install the image-promoting decorator on every agent and every provider
           session it builds, beneath the function-invocation loop, and shall provide no option to omit
           it.
-        tags: [system, security]
+        tags: [security]
         justification: |
           A provider reached through an IChatClient preserves an image a tool returns all the way
           through the framework and then drops it at the wire, after which the model describes an
@@ -48,29 +52,11 @@ sections:
           - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
           - AgentKitAgentsChatClient_ImagePromotion_ToolReturnedImage_ReachesProviderOnUserMessage
 
-      - id: AgentKitAgentsChatClient-BuiltOnAgentFramework
-        title: >-
-          The library shall present the agent it builds as a Microsoft.Agents.AI AIAgent
-          constructed through the framework's ChatClientAgent.
-        tags: [system]
-        justification: |
-          The library does not implement an agent runtime; it adapts a chat client to the one
-          Microsoft Agent Framework supplies, so the agent it returns is the framework's own
-          AIAgent built through ChatClientAgent. The requirement records the repository's reliance
-          on that off-the-shelf abstraction and links its OTS requirements to the system root; see
-          OTS Integration Design (docs/design/ots.md).
-        children:
-          - AgentKit-OTS-MicrosoftAgentsAI-Agent
-          - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
-        tests:
-          - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
-
       - id: AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
         title: >-
           The library shall carry an AgentKit Core session over any Microsoft.Extensions.AI chat
           client, seeding each session from the instructions, tools and history the session engine
           supplies and resending the accumulated conversation on every turn.
-        tags: [system]
         justification: |
           Ollama, OpenAI and AI Foundry all reach this library as a chat client, and none of them
           keeps the conversation: every turn sends the whole message list again. One adapter
@@ -104,7 +90,6 @@ sections:
           provider was sent, taken against the window supplied where the provider was configured,
           shall report a session that has sent nothing as occupying nothing, and shall refuse a
           provider that reports no usage.
-        tags: [system]
         justification: |
           The session engine holds no token arithmetic: it asks the provider session how full it is
           and out of how much, and believes the answer. This adapter is where that answer comes from,
@@ -136,7 +121,6 @@ sections:
           The library shall consolidate session history through a chat client of the application's
           choosing, out of the session being compacted, using the consolidation prompt AgentKit Core
           publishes.
-        tags: [system]
         justification: |
           Compaction cannot happen without a summarizer, and the mechanism is this library's to
           guarantee rather than every application's to write. Consolidation runs through a client the

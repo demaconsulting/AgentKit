@@ -21,6 +21,26 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     safety-critical behavior of the package.
 ///     </para>
 ///     <para>
+///     <b>Every Copilot session this package builds is configured here, on one path.</b> The agent
+///     path goes through <see cref="BuildSessionConfig"/>; the session-engine paths —
+///     <see cref="CopilotProviderSessionFactory"/> and <see cref="CopilotSummarizer"/> — go through
+///     <see cref="BuildEngineSessionConfig"/>. Both end in <see cref="ApplyConfinement"/>, which is
+///     the single site where the allow-list is derived, the skill and custom-instruction channels
+///     are closed, and the default-safe permission handler is installed. A second builder with its
+///     own derivation is precisely the drift this arrangement exists to prevent, so there is not
+///     one.
+///     </para>
+///     <para>
+///     <b>The two paths differ in exactly one respect, deliberately.</b>
+///     <see cref="BuildEngineSessionConfig"/> raises the Copilot runtime's own compaction threshold
+///     clear of the session engine's rotation point; <see cref="BuildSessionConfig"/> leaves the
+///     runtime's compaction alone. A session the AgentKit engine drives has an AgentKit compactor
+///     behind it, and two compactors reading the same occupancy signal would fight — see
+///     <see cref="BuildEngineSessionConfig"/> for the full argument. A plain Copilot agent has no
+///     AgentKit compactor behind it, so changing the runtime's would remove protection rather than
+///     prevent a conflict. Do not "tidy" the asymmetry away.
+///     </para>
+///     <para>
 ///     <b>Permission handling is default-safe.</b> When no handler is supplied, the factory
 ///     installs one that approves exactly the supplied tools by name and rejects every other
 ///     request — including every built-in tool, none of which is one of the supplied custom tools.
@@ -55,6 +75,21 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// </remarks>
 public static class CopilotAgentFactory
 {
+    /// <summary>
+    ///     The share of the context window at which the Copilot runtime is allowed to compact a
+    ///     session AgentKit's engine drives.
+    /// </summary>
+    /// <remarks>
+    ///     Raised well above the engine's own rotation point so the engine always acts first. The
+    ///     runtime's default is 0.80 and the engine rotates at 0.70, which leaves a tenth of the
+    ///     window between them — close enough that a single turn returning a large tool result can
+    ///     cross it in one step. It is not set to 1.0: the runtime's last-resort behavior is worth
+    ///     keeping for the case where something extraordinary happens, and this engine refuses a
+    ///     session the runtime has rewritten rather than silently continuing, so the outcome is
+    ///     diagnosable either way.
+    /// </remarks>
+    private const double RuntimeCompactionThreshold = 0.95;
+
     /// <summary>
     ///     Builds an agent from a Copilot client and a supplied tool list, with the runtime's
     ///     built-in tools suppressed.
@@ -170,10 +205,18 @@ public static class CopilotAgentFactory
     ///     allow-list from the supplied tools.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Exposed as a seam so a test can assert the safety-critical property — that
     ///     <c>SessionConfig.AvailableTools</c> is derived from the same collection as
     ///     <c>SessionConfig.Tools</c> — without a live <see cref="CopilotClient"/>. Both are
     ///     built from <paramref name="tools"/> in one place so the two cannot diverge.
+    ///     </para>
+    ///     <para>
+    ///     This is the <em>agent</em> path. It deliberately leaves <c>InfiniteSessions</c> untouched,
+    ///     so the Copilot runtime keeps compacting a plain agent's session as it always has, at its own
+    ///     threshold: nothing else is watching that session's window. The session-engine path,
+    ///     <see cref="BuildEngineSessionConfig"/>, raises that threshold for the opposite reason.
+    ///     </para>
     /// </remarks>
     /// <param name="tools">The tools to publish and allow.</param>
     /// <param name="instructions">The system instructions, if any.</param>
@@ -198,20 +241,119 @@ public static class CopilotAgentFactory
     {
         ValidateTools(tools);
 
-        var config = new SessionConfig
+        return CreateSessionConfig(tools, instructions, onPermissionRequest, model);
+    }
+
+    /// <summary>
+    ///     Builds the session configuration for a session whose context AgentKit's own session
+    ///     engine manages: the same confinement the agent path receives, plus the Copilot runtime's
+    ///     own compaction threshold raised clear of the engine's rotation point.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Why the runtime's compaction is held off here.</b> Copilot compacts its own session:
+    ///     <c>InfiniteSessionConfig</c> defaults to enabled, with background compaction at 0.80 of
+    ///     the window and buffer exhaustion at 0.95. AgentKit's session engine rotates at 0.70,
+    ///     against the same occupancy signal. Left at that default, both compactors would act on one
+    ///     conversation: Copilot would rewrite history underneath a session whose transcript the
+    ///     engine believes it owns, and the occupancy the engine reads afterwards would move for
+    ///     reasons it cannot see — so the engine would seed a replacement from a history the
+    ///     provider no longer holds, and the two accounts of the conversation would diverge
+    ///     silently. A tenth of the window is not a margin: one turn returning a large tool result
+    ///     can cross it in a single step. <b>A future maintainer must not lower the threshold back
+    ///     toward the engine's own.</b>
+    ///     </para>
+    ///     <para>
+    ///     <b>The threshold is what the runtime honors; the enablement flag is not.</b> Measured
+    ///     against the live runtime on SDK 1.0.11, a session created with <c>Enabled = false</c>
+    ///     compacted as soon as its threshold was crossed, exactly as one created with it true did.
+    ///     The flag is still set, because it states the intent and costs nothing if the runtime ever
+    ///     begins honoring it, but nothing here depends on it.
+    ///     </para>
+    ///     <para>
+    ///     <b>The threshold is deliberately not 1.0, so a rewrite stays possible.</b> The runtime's
+    ///     last-resort behavior is worth keeping, so the margin is a margin rather than a guarantee:
+    ///     <see cref="CopilotSessionObserver"/> watches for the runtime's own compaction and
+    ///     truncation events, and <see cref="CopilotProviderSession"/> refuses the next turn if one
+    ///     arrives. That turns a silent divergence into a diagnosable failure.
+    ///     </para>
+    ///     <para>
+    ///     <b>An empty tool list is accepted here and refused on the agent path.</b> A consolidation
+    ///     runs on a session that must offer no tools at all, which is a correct engine-driven
+    ///     session and an incorrect agent. The confinement is identical either way: an empty tool
+    ///     list derives an empty allow-list and a permission handler that approves nothing, which is
+    ///     the strongest confinement this factory can express rather than the weakest.
+    ///     </para>
+    /// </remarks>
+    /// <param name="tools">
+    ///     The tools to publish and allow. Must not be <see langword="null"/>; may be empty. Must
+    ///     contain no <see langword="null"/> entry and no two tools of the same name.
+    /// </param>
+    /// <param name="instructions">The system instructions, if any.</param>
+    /// <param name="model">
+    ///     The Copilot model to back the session, or <see langword="null"/>/blank to leave
+    ///     <c>SessionConfig.Model</c> unset so the runtime applies its own default.
+    /// </param>
+    /// <returns>
+    ///     The configured session, with the runtime's own compaction threshold raised clear of the
+    ///     engine's rotation point.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
+    /// </exception>
+    /// <exception cref="ArgumentException">Two tools carry the same name.</exception>
+    internal static SessionConfig BuildEngineSessionConfig(
+        IList<AIFunction> tools,
+        string? instructions,
+        string? model)
+    {
+        ValidateToolNames(tools);
+
+        var config = CreateSessionConfig(tools, instructions, onPermissionRequest: null, model);
+
+        // Enabled = false does not work, and is set anyway: measured against SDK 1.0.11, a session
+        // created with it still compacted as soon as the threshold was crossed, identically to one
+        // created with it true. It is kept because it states the intent and costs nothing if the
+        // runtime ever starts honoring it - but nothing may depend on it.
+        //
+        // The threshold is honored, and is what actually holds the runtime off. It is raised rather
+        // than the flag being trusted: AgentKit rotates at 0.70 of the window, so the runtime's
+        // default of 0.80 leaves only a tenth of the window between the two. One turn returning a
+        // large tool result can cross that gap in a single step, and then the runtime rewrites a
+        // history this engine believes it owns. At 0.95 the margin is a quarter of the window, and
+        // the runtime's own last-resort behavior is still there if something extraordinary happens.
+        config.InfiniteSessions = new InfiniteSessionConfig
         {
-            // AvailableTools and Tools are both derived from the same collection so the tool set
-            // and its allow-list cannot drift apart. This is the suppression the package exists for.
-            Tools = [.. tools],
-            AvailableTools = [.. tools.Select(tool => tool.Name)],
-
-            // The runtime's skills are a further channel of injected capability an untrained user
-            // could not adjudicate; a confined agent receives only what its host attached.
-            EnableSkills = false,
-            SkipCustomInstructions = true,
-
-            OnPermissionRequest = onPermissionRequest ?? CreateDefaultPermissionHandler(tools),
+            Enabled = false,
+            BackgroundCompactionThreshold = RuntimeCompactionThreshold,
         };
+
+        return config;
+    }
+
+    /// <summary>
+    ///     Builds a confined session configuration from validated tools.
+    /// </summary>
+    /// <remarks>
+    ///     The single place a <see cref="SessionConfig"/> is constructed in this package. Both
+    ///     public-facing builders reach it, which is what keeps the confinement, the model choice
+    ///     and the system message on one path; they differ only in which tool lists they accept and
+    ///     in whether they adjust the runtime's own compaction afterwards.
+    /// </remarks>
+    /// <param name="tools">The validated tools to publish and allow.</param>
+    /// <param name="instructions">The system instructions, if any.</param>
+    /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
+    /// <param name="model">The model to back the session, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <returns>The configured session.</returns>
+    private static SessionConfig CreateSessionConfig(
+        IList<AIFunction> tools,
+        string? instructions,
+        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
+        string? model)
+    {
+        var config = new SessionConfig();
+
+        ApplyConfinement(config, tools, onPermissionRequest);
 
         if (!string.IsNullOrWhiteSpace(model))
         {
@@ -231,6 +373,39 @@ public static class CopilotAgentFactory
         }
 
         return config;
+    }
+
+    /// <summary>
+    ///     Confines a session to the supplied tools: derives the allow-list from them, closes the
+    ///     runtime's injection channels, and installs a permission handler.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The one safety-critical block in this package, and it exists exactly once.</b>
+    ///     <c>Tools</c> and <c>AvailableTools</c> are assigned from the same collection in the same
+    ///     two statements, so no reachable state has a published tool that is not allowed or an
+    ///     allowed name that is not published. A second copy of this derivation — in a session
+    ///     builder for the engine paths, say — is the drift the whole design exists to prevent, so
+    ///     every builder calls this rather than repeating it.
+    /// </remarks>
+    /// <param name="config">The session being configured.</param>
+    /// <param name="tools">The tools to publish and allow.</param>
+    /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
+    private static void ApplyConfinement(
+        SessionConfig config,
+        IList<AIFunction> tools,
+        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest)
+    {
+        // AvailableTools and Tools are both derived from the same collection so the tool set and its
+        // allow-list cannot drift apart. This is the suppression the package exists for.
+        config.Tools = [.. tools];
+        config.AvailableTools = [.. tools.Select(tool => tool.Name)];
+
+        // The runtime's skills are a further channel of injected capability an untrained user
+        // could not adjudicate; a confined agent receives only what its host attached.
+        config.EnableSkills = false;
+        config.SkipCustomInstructions = true;
+
+        config.OnPermissionRequest = onPermissionRequest ?? CreateDefaultPermissionHandler(tools);
     }
 
     /// <summary>
@@ -300,6 +475,28 @@ public static class CopilotAgentFactory
         {
             throw new ArgumentException("At least one tool is required.", nameof(tools));
         }
+
+        ValidateToolNames(tools);
+    }
+
+    /// <summary>
+    ///     Rejects a tool list whose entries could not produce an unambiguous allow-list.
+    /// </summary>
+    /// <remarks>
+    ///     Split out from <see cref="ValidateTools"/> because emptiness is the one rule the two
+    ///     paths disagree about: an agent publishing no tools is a defect in its host, while a
+    ///     session the engine drives for a consolidation must offer none. Everything else — a
+    ///     missing list, a null entry, a duplicated name — is a defect on either path and is refused
+    ///     here for both.
+    /// </remarks>
+    /// <param name="tools">The tool list to validate.</param>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
+    /// </exception>
+    /// <exception cref="ArgumentException">Two tools carry the same name.</exception>
+    internal static void ValidateToolNames(IList<AIFunction> tools)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var tool in tools)

@@ -11,12 +11,19 @@ session configuration; the validation
 scenarios pin each rejected condition; and the null-client refusal is asserted through the public
 entry point, which validates before it would reach the Copilot CLI.
 
+**The two safety-critical guarantees — the derived allow-list and the default-safe permission
+handler — are evidenced by tests that live with this unit's callers, and are named in the scenarios
+below rather than copied into this unit's own test file.** Both are reached through this factory's
+single confinement block, so a test at either caller falsifies the derivation here; writing a third
+copy against the same code would add no evidence.
+
 Tools are built through the framework's own function factory, and permission requests and decisions
 are constructed directly from the SDK's plain types. No Copilot CLI, credential, or network access is
 used.
 
 Unit tests reside in `CopilotAgentFactoryTests.cs` within the
-`DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
+`DemaConsulting.AgentKit.Agents.Copilot.Tests` project; the cited caller-level tests reside in
+`AgentKitAgentsCopilotTests.cs` and `CopilotProviderSessionFactoryTests.cs` in the same project.
 
 ### Test Environment
 
@@ -28,12 +35,47 @@ Unit tests reside in `CopilotAgentFactoryTests.cs` within the
 ### Acceptance Criteria
 
 A unit test run passes when all ten scenarios below pass without error or exception beyond those
-explicitly asserted. Any invalid argument that is accepted, any host handler that is not installed
+explicitly asserted. Any allow-list that diverges from the published tools, any request approved that
+names no supplied tool, any invalid argument that is accepted, any host handler that is not installed
 verbatim, any instruction that is not carried onto the session's system message, any model
 selection that is not carried onto the session — or that is invented when the host named none — or
 any channel of runtime-injected capability left open constitutes a failure.
 
 ### Test Scenarios
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList: The Allow-List Is the Supplied Tools
+
+**Tests**: `AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools`,
+`CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools`
+
+The safety-critical scenario, and the reason the package exists. Both build a session configuration
+from a set of supplied tools and assert the available-tools allow-list is exactly the names of the
+published tool set, in the same order and of the same size — the two derived from one collection. A
+drift here would silently re-admit a built-in tool an application meant to withhold.
+
+**The evidence lives in the test files of the callers, deliberately, and is named here rather than
+duplicated.** The first is the system-level assertion in `AgentKitAgentsCopilotTests.cs`; the second
+is the same assertion on the configuration a rotation produces, in
+`CopilotProviderSessionFactoryTests.cs`. Both reach this unit's single derivation, and both were
+confirmed to falsify it: emptying the allow-list this factory assigns fails both. A third copy here
+would restate them against the same code.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler: Safe Without Asking
+
+**Tests**: `AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved`,
+`AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected`,
+`AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected`,
+`CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler`
+
+The handler this factory installs is invoked directly with the three requests that matter — one
+naming a supplied tool, one naming an unlisted custom tool, and a built-in `shell` request — and the
+decision it returns is asserted in each case: approve, reject, reject. The fourth repeats the listed
+and built-in cases against the configuration a rotation produces, where no host is present to
+adjudicate anything.
+
+As above, these tests live in the system and provider-session-factory test files because that is
+where the handler is reached from; they are cited here so this unit's evidence can be found rather
+than assumed.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList: A Malformed Tool List Is Refused
 
@@ -94,3 +136,45 @@ instructions skipped, so a confined agent receives only the capability and direc
 attached. Both values are read from the constructed session configuration rather than inferred, so
 either one reverting to the permissive value — which would widen the agent without changing anything
 the host wrote — fails this scenario.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath: One Derivation, Two Entry Points
+
+**Tests**: `CopilotAgentFactory_BothPaths_DeriveTheSameConfinement`,
+`CopilotAgentFactory_BuildEngineSessionConfig_EmptyTools_ProducesAnEmptyAllowList`,
+`CopilotAgentFactory_BuildSessionConfig_EmptyTools_Throws`,
+`CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws`
+
+The first builds the same tool set through both entry points and asserts the allow-list, the
+published tool names, the skills setting and the custom-instruction setting are identical. It is the
+scenario that makes having two entry points safe: they differ in what tool lists they accept and in
+the runtime compaction, and in nothing that decides what a session may call. An implementation that
+forked the derivation would pass every other scenario in this file and fail only this one.
+
+The second asserts the engine path accepts an empty tool list and produces an empty allow-list with
+the injection channels still shut — the strongest confinement the factory can express, which is what
+a consolidation session needs. The third asserts the agent path still refuses the same list, because
+an agent publishing no tools is a defect in its host; emptiness is the only rule the two paths
+disagree about. The fourth asserts the engine path still refuses a duplicated tool name, so relaxing
+emptiness did not relax everything else.
+
+#### AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone: The Deliberate Asymmetry
+
+**Tests**: `CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched`,
+`CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation`
+
+Both sides of the asymmetry are asserted, because it is the one a maintainer is most likely to
+"tidy" into consistency. The agent path leaves the runtime's infinite-session setting at whatever a
+freshly constructed session configuration carries — a plain agent has no AgentKit compactor behind
+it, so changing the runtime's would remove the only protection that session has when its window
+fills. The engine path raises the runtime's background-compaction threshold above 0.90 — a session
+the engine drives has an AgentKit compactor behind it, the engine rotates at 0.70, and the runtime's
+default of 0.80 leaves only a tenth of the window between two compactors reading one occupancy
+signal.
+
+**The threshold is asserted rather than the enablement flag, and that is the point of the scenario.**
+Manual measurement against the live runtime established that the flag is ignored and the threshold is
+honored; the numbers are recorded in _AgentKitAgentsCopilot System Verification Design_. The flag is
+asserted too, because the configuration still states the intent, but a change that kept the flag and
+dropped the threshold would leave the two compactors a tenth of a window apart and is what this
+scenario is here to catch. What remains unverified is whether a live conversation ever crosses the
+raised threshold before the engine rotates it.

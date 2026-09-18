@@ -3,6 +3,11 @@
 #
 # These requirements describe the externally visible behavior of the library
 # from the perspective of its consumers, without specifying implementation details.
+#
+# They are the mechanisms of one product capability, AgentKit-Provider-GitHubCopilot
+# (docs/reqstream/agent-kit.yaml), which links every one of them as a child. They
+# therefore carry no 'system' tag: the capability is the root, and a mechanism here that
+# stops contributing to it is reported as an orphan rather than standing on its own.
 
 sections:
   - title: AgentKitAgentsCopilot Requirements
@@ -13,7 +18,7 @@ sections:
           runtime's tools by deriving the session allow-list from the same tool collection it
           publishes to the session, so the published tools and the allow-list cannot diverge, and
           closing the runtime's skill and custom-instruction channels on every session it builds.
-        tags: [system, security]
+        tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
           reading and writing, and more — and its own channels for injecting further capability and
@@ -30,15 +35,18 @@ sections:
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
           - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
+          - AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+          - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
 
       - id: AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
         title: >-
           The library shall install, when the host supplies none, a permission handler that
           approves exactly the supplied tools by name and rejects every other request, and shall
           install a host-supplied handler verbatim when one is given.
-        tags: [system, security]
+        tags: [security]
         justification: |
           The target user is not qualified to adjudicate a security prompt, so the default must be
           safe without asking: it approves a request only when it names one of the supplied tools
@@ -49,6 +57,7 @@ sections:
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
           - AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DefaultSafePermissions
         tests:
           - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
           - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
@@ -60,7 +69,6 @@ sections:
           supplied tool list without taking ownership of the client, rejecting a missing client, a
           malformed tool list, and carrying the supplied instructions and the supplied choice of
           model.
-        tags: [system]
         justification: |
           The host constructs, starts, and disposes the Copilot client, so the library takes no
           ownership of it and builds the agent with client ownership left to the host — whoever
@@ -81,21 +89,138 @@ sections:
         tests:
           - CopilotAgentFactory_Create_NullClient_Throws
 
-      - id: AgentKitAgentsCopilot-BuiltOnCopilotSdk
+      - id: AgentKitAgentsCopilot-SessionAdapter-CarriesACoreSession
         title: >-
-          The library shall present the agent it builds as a Microsoft.Agents.AI AIAgent
-          constructed from a GitHub Copilot CopilotClient through the SDK's session-config
-          agent-construction path and permission RPC.
-        tags: [system]
+          The library shall carry an AgentKit session over the GitHub Copilot runtime, seeding a
+          fresh Copilot session with the instructions, tools and history a rotation produces, sending
+          each message as one turn, recording the turn's tool calls and results as identified pairs,
+          abandoning a session whose conversation it can no longer account for, and owning and
+          releasing each Copilot session it creates without ever disposing the client.
         justification: |
-          The library does not implement an agent runtime; it adapts the GitHub Copilot SDK's
-          CopilotClient, SessionConfig, session-config agent-construction path, and permission RPC
-          into a Microsoft Agent Framework AIAgent. The requirement records the repository's reliance
-          on that off-the-shelf SDK and links its OTS requirements to the system root; see OTS
-          Integration Design (docs/design/ots.md).
+          The compaction engine is the reason a long-running agent behaves the same way on every
+          provider, and until now it had one adapter, for the stateless chat-client family. Copilot
+          exposes no chat-client abstraction at all, so the engine could not run on the one provider
+          this project's continuous integration can reach — which meant the engine's behavior against
+          a provider the team can actually run was never exercised. This requirement closes that gap.
+          Seeding is the hard part, because Copilot's session configuration carries no history field
+          of any kind: the history a rotation produces is rendered as a labeled record and carried on
+          the session's first message, prepended to the message the engine was already sending, so a
+          rotation still costs exactly one request and a rotated session is briefed rather than
+          replayed. Ownership follows the contract the package already records:
+          the host owns the client, and every session a rotation creates is AgentKit's, released on
+          every path including failure. A session that can no longer describe the conversation the
+          runtime holds is abandoned rather than reused, because the engine's own answer to such a
+          session — seed a replacement from the transcript — is the only recovery that is sound.
         children:
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
+          - AgentKitAgentsCopilot-CopilotProviderSession-SendsOneTurnPerMessage
+          - AgentKitAgentsCopilot-CopilotProviderSession-RecordsToolTraffic
+          - AgentKitAgentsCopilot-CopilotProviderSession-RejectsInvalidArguments
+          - AgentKitAgentsCopilot-CopilotProviderSession-ReleasesItsSessionNotTheClient
+          - AgentKitAgentsCopilot-CopilotProviderSession-RefusesASilentSession
+          - AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-CreatesSeededSessions
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsALabeledRecord
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-LeavesNothingUnowned
+          - AgentKitAgentsCopilot-CopilotSessionObserver-RecordsTheTurnsWork
+          - AgentKitAgentsCopilot-CopilotSessionObserver-RecordsToolOutcomes
+          - AgentKitAgentsCopilot-CopilotSessionObserver-RemembersTheRuntimesError
+          - AgentKitAgentsCopilot-CopilotTurnChannel-CarriesOneRuntimeSession
+          - AgentKitAgentsCopilot-CopilotTurnChannel-OwnsTheSessionNotTheClient
+          - AgentKitAgentsCopilot-CopilotTurnChannel-CallerGovernsTheDeadline
         tests:
-          - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+          - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+          - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsCopilot-SessionAdapter-OccupancyFromTheRuntime
+        title: >-
+          The library shall take both the occupancy and the context window of a Copilot session from
+          the runtime's own reporting, shall never require an application to state a window, and
+          shall refuse a turn the runtime answered without reporting its usage.
+        justification: |
+          Rotation happens when the window is filling, which is the one thing the session engine
+          needs a token count for. Every other adapter has to be told its window because the
+          abstraction it sits on publishes none; Copilot reports its occupancy, its limit and the
+          conversation's own share with every turn, so asking an application for a figure the
+          provider already knows would create a second source of truth for one fact — precisely what
+          the engine's single-reading design retired. Passing the conversation's share through rather
+          than inferring it keeps every threshold comparison in the runtime's own tokens. A turn
+          answered with no reading at all is refused rather than estimated around, because an absent
+          figure means something an application can see and fix.
+
+          An application may set a ceiling on the window accounted against, which only ever lowers
+          it. That is not a second source of truth: the runtime's figure still governs, and a
+          ceiling above it is ignored. It buys answer quality on a very long conversation, and it is
+          what makes a rotation reachable at all on a runtime whose smallest window is larger than
+          any conversation a test would produce.
+        children:
+          - AgentKitAgentsCopilot-CopilotSessionObserver-HoldsTheLatestUsageReading
+          - AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage
+          - AgentKitAgentsCopilot-CopilotProviderSession-ReportsTheRuntimesUsage
+          - AgentKitAgentsCopilot-CopilotProviderSession-ZeroBeforeTheFirstTurn
+          - AgentKitAgentsCopilot-CopilotProviderSession-RefusesUnreportedUsage
+          - AgentKitAgentsCopilot-CopilotProviderSession-HonorsAWindowCeilingDownwardOnly
+        tests:
+          - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+
+      - id: AgentKitAgentsCopilot-SelfCompaction-HeldClearOfRotation
+        title: >-
+          The library shall create every Copilot session its own session engine drives with the
+          runtime's compaction threshold raised clear of the engine's rotation point, shall leave the
+          runtime's compaction untouched on the plain agent path, and shall refuse further turns on a
+          session the runtime compacted or truncated anyway.
+        justification: |
+          The Copilot runtime compacts its own sessions by default, at a threshold of the same order
+          as AgentKit's rotation threshold and against the same occupancy signal. Two compactors
+          acting on one conversation is not a theoretical conflict: the runtime would rewrite history
+          underneath a session whose transcript the engine believes it owns, and the occupancy the
+          engine reads afterwards would move for reasons it cannot see — so the engine would seed a
+          replacement from a history the provider no longer holds.
+
+          Asking the runtime to stop does not work. Measured against SDK 1.0.11, a session created
+          with the infinite-session flag set false compacted as soon as its threshold was crossed,
+          identically to one created with the flag true; a session whose threshold was not crossed
+          did not compact whatever the flag said. The threshold is the honored setting, so it is the
+          one relied on. The flag is still set, because it states the intent and costs nothing if the
+          runtime ever begins honoring it, but nothing depends on it.
+
+          The threshold is raised rather than merely left alone because the runtime's default of 0.80
+          sits a tenth of the window above the engine's rotation at 0.70, and one turn returning a
+          large tool result can cross that gap in a single step. It is not raised to 1.0: the
+          runtime's last-resort behavior is worth keeping, and a session that sees a compaction or
+          truncation announced refuses the next turn — before it is sent as well as after one
+          returns — so the outcome is diagnosable rather than silent either way. That refusal is also
+          what makes it safe to carry a rotation's record on the conversation channel: the runtime
+          could in principle discard it, but it cannot do so quietly.
+
+          The asymmetry is deliberate: a plain Copilot agent has no AgentKit compactor behind it, so
+          changing the runtime's would remove protection rather than prevent a conflict.
+        children:
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation
+          - AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory
+          - AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory
+          - AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone
+        tests:
+          - AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
+
+      - id: AgentKitAgentsCopilot-Consolidation-OutOfSession
+        title: >-
+          The library shall consolidate session history on a separate, short-lived, tool-free Copilot
+          session, using the consolidation prompt the library publishes, and shall release that
+          session on every path.
+        justification: |
+          Compaction cannot happen without a summarizer, so a provider AgentKit carries a session for
+          but ships no summarizer for is a provider on which compaction quietly never happens. The
+          consolidation runs outside the session being compacted because a consolidation sent through
+          the live conversation would spend the very context it exists to reclaim and would itself
+          count toward the occupancy that triggered the rotation. The session it runs on carries no
+          tools, because a consolidation is a pure function from material to a record of it and a
+          tool that could act would be acting outside everything the conversation's own confinement
+          was reasoned about.
+        children:
+          - AgentKitAgentsCopilot-CopilotSummarizer-SendsTheConsolidationPrompt
+          - AgentKitAgentsCopilot-CopilotSummarizer-CarriesNoTools
+          - AgentKitAgentsCopilot-CopilotSummarizer-RunsOutsideTheCompactedSession
+          - AgentKitAgentsCopilot-CopilotSummarizer-EmptyAnswerIsAnEmptyRecord
+          - AgentKitAgentsCopilot-CopilotSummarizer-ReleasesItsSession
+        tests:
+          - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement

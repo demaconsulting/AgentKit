@@ -50,16 +50,17 @@ in a real model and changing nothing else. Second, **how a child agent is contai
 delegated agent may draw on are listed explicitly and exclude the task list and the memory store, so
 a child cannot reach its parent's plan or record even by accident.
 
-It is also the sample that **uses the session engine**. On `--provider ollama` the conversation runs
-on a `CompactingAgentSession` built from `ChatClientProviderSessionFactory` and
-`ChatClientSummarizer`, so it outlives the model's context window: older history is consolidated
+It is also the sample that **uses the session engine**, on either provider. The conversation runs
+on a `CompactingAgentSession` — built from `ChatClientProviderSessionFactory` and
+`ChatClientSummarizer` on Ollama, and from `CopilotProviderSessionFactory` and `CopilotSummarizer`
+on Copilot — so it outlives the model's context window: older history is consolidated
 into tiered records, a fresh provider session is seeded with them, and the turn loop carries on. The
 sample prints what each turn occupies, whether it rotated, how hard it is compacting, and — the one
 signal that matters most — whether compacting bought nothing and history had to be dropped. The
 memory store lives outside the session and survives every rotation, which is why the recall turn
-still works after one. On `--provider copilot` the runtime holds its own conversation and nothing
-compacts, because AgentKit ships no provider session for it; the startup banner says which shape a
-run got.
+still works after one. Both providers run on a compacting session; on `--provider copilot` the
+runtime reports its own window, and `--context-window` becomes a ceiling that lowers it so a
+rotation is reachable at all. The startup banner says which shape a run got.
 
 Read this if your agent's work spans turns, or if you are about to give an agent the ability to
 start another one.

@@ -35,6 +35,18 @@ public enum ContextWindowSource
     ///     Nothing could be read, so Ollama's own default context length is assumed.
     /// </summary>
     Assumed,
+
+    /// <summary>
+    ///     Stated on the command line as an upper bound only, on a provider that answers for its own
+    ///     window with every turn.
+    /// </summary>
+    /// <remarks>
+    ///     Distinct from <see cref="Stated"/> because it is not a claim about the window the session
+    ///     will actually account against. The runtime's own limit governs wherever it is lower, and
+    ///     that figure is not known until the first turn reports it — so a banner that printed this
+    ///     number as the window would be stating something that may never be true.
+    /// </remarks>
+    Ceiling,
 }
 
 /// <summary>
@@ -58,6 +70,9 @@ public sealed record ContextWindow(int Tokens, ContextWindowSource Source)
         ContextWindowSource.PublishedModel =>
             $"{Tokens} tokens (the model's published maximum; the server may have loaded it "
             + "smaller, so pass --context-window if it did)",
+        ContextWindowSource.Ceiling =>
+            $"at most {Tokens} tokens (a --context-window ceiling; the runtime reports its own "
+            + "window every turn and the lower of the two governs)",
         _ =>
             $"{Tokens} tokens (assumed: Ollama reported nothing, and this is its own default)",
     };

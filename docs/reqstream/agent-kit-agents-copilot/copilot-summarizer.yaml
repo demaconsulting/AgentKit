@@ -1,0 +1,91 @@
+---
+# Software Unit Requirements for CopilotSummarizer
+#
+# These requirements describe the design-level behavior of the CopilotSummarizer unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotSummarizer Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-SendsTheConsolidationPrompt
+            title: >-
+              The summarizer shall send each consolidation as the composed consolidation prompt the
+              library publishes, and shall back the session performing it with a model the application
+              names or the runtime's default when it names none.
+            justification: |
+              The consolidation prompt is the library's, not each adapter's: it names the categories
+              of information that must survive and licenses collapsing repetition, and a Copilot
+              consolidation must ask for exactly what every other provider is asked for or a rotation
+              would mean something different on each. The model is named separately because
+              consolidation is summarization rather than reasoning, so a smaller and cheaper model is
+              usually the right choice — and it is a different conversation, so changing it alters
+              nothing the agent can observe.
+            tests:
+              - CopilotSummarizer_Consolidate_SendsTheComposedConsolidationPrompt
+              - CopilotSummarizer_Consolidate_NamedModel_IsCarried
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-CarriesNoTools
+            title: >-
+              The summarizer shall create each consolidation session with no tools, an empty
+              allow-list, the runtime's skills disabled, its custom instructions skipped, and the
+              runtime's own compaction threshold raised clear of the session engine's rotation point.
+            justification: |
+              A consolidation is a pure function from material to a record of it: there is nothing for
+              a tool to do, and a tool that could act would be acting outside everything the
+              conversation's own confinement was reasoned about. An empty tool list derives an empty
+              allow-list and a permission handler that approves nothing, which is the strongest
+              confinement this package can express rather than the weakest. The runtime's compaction
+              is held clear for the same reason it is on a conversation session: a runtime that
+              reshaped the material mid-consolidation would produce a record of something other than
+              what it was given. The consolidation session takes the engine configuration whole,
+              from the same builder, rather than a variant of it — a second configuration path is the
+              drift this package exists to prevent.
+            tests:
+              - CopilotSummarizer_Consolidate_CarriesNoToolsAndAnEmptyAllowList
+              - CopilotSummarizer_Consolidate_HoldsTheRuntimesOwnCompactionClearOfRotation
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-RunsOutsideTheCompactedSession
+            title: >-
+              The summarizer shall perform each consolidation on a Copilot session of its own rather
+              than on the session being compacted.
+            justification: |
+              A consolidation sent through the live conversation would spend the very context it
+              exists to reclaim, and would itself count toward the occupancy that triggered the
+              rotation — which is the measured reason the session contract takes a summarizer at all
+              rather than reducing in place. A fresh session per consolidation is also what makes a
+              consolidation a pure function of its material: nothing carries over from the last one.
+            tests:
+              - CopilotSummarizer_Consolidate_RunsOutOfTheSessionBeingCompacted
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-EmptyAnswerIsAnEmptyRecord
+            title: >-
+              The summarizer shall return an empty record when the consolidation session produced no
+              answer, rather than failing the rotation.
+            justification: |
+              The session engine already treats a consolidation it could not obtain as material to
+              keep rather than material to lose: a blank record produces no slot at all and the
+              material stays verbatim while the session responds through its own hysteresis clock. A
+              model declining to answer is a thing that happens rather than a defect to escalate, so
+              it is reported as the empty record it is.
+            tests:
+              - CopilotSummarizer_Consolidate_EmptyAnswer_IsAnEmptyRecord
+
+          - id: AgentKitAgentsCopilot-CopilotSummarizer-ReleasesItsSession
+            title: >-
+              The summarizer shall release each consolidation session on every path, shall reject a
+              missing request, and shall open no session for a consolidation that was already
+              canceled.
+            justification: |
+              A long conversation performs one consolidation per rotation, so a session leaked here
+              would accumulate for exactly as long as the conversation this exists to prolong — and
+              the path a leak hides on is the failure path, not the successful one. A missing request
+              is a defect in the engine that composed it. A canceled consolidation costs no session at
+              all, so a canceled rotation leaves nothing behind on the runtime. The client itself is
+              never disposed: it is the host's, and every consolidation shares it.
+            tests:
+              - CopilotSummarizer_Consolidate_Succeeds_DisposesTheSession
+              - CopilotSummarizer_Consolidate_Fails_DisposesTheSession
+              - CopilotSummarizer_Consolidate_NullRequest_Throws
+              - CopilotSummarizer_Consolidate_Canceled_OpensNothing
+              - CopilotSummarizer_Constructor_NullClient_Throws

@@ -18,12 +18,16 @@ sections:
               tools. Deriving it and the published tool set from one collection, in one place, makes
               the two impossible to drift apart. Only the session-config agent-construction path
               carries an allow-list, so it is the path used; the tool-list path would publish tools
-              without suppressing anything. The image-promoting decorator is deliberately absent: the
+              without suppressing anything. The derivation is reached from both callers of this
+              factory, so the tests that falsify it live with them rather than being copied here; the
+              verification chapter names them and says where they are. The image-promoting decorator
+              is deliberately absent: the
               Copilot runtime already delivers images from tool results to the model, so promoting
               them onto a user message would duplicate content the model already received. A future
               maintainer should not add it here.
             tests:
               - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+              - CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
             title: >-
@@ -35,11 +39,14 @@ sections:
               without asking: a supplied custom tool requested by its exact name is approved, and
               everything else — an unlisted custom tool, and every built-in request, none of which is
               a supplied custom tool — is rejected. The allow-list is captured once, so the handler
-              cannot approve a name the session did not publish.
+              cannot approve a name the session did not publish. The handler is reached from both
+              callers of this factory, so the tests that invoke it live with them rather than being
+              copied here; the verification chapter names them and says where they are.
             tests:
               - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
               - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
               - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+              - CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
             title: >-
@@ -120,3 +127,47 @@ sections:
             tests:
               - CopilotAgentFactory_BuildSessionConfig_Model_CarriedOnSession
               - CopilotAgentFactory_BuildSessionConfig_NoModel_LeavesSessionModelAtDefault
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
+            title: >-
+              The factory shall confine every Copilot session this package builds — for an agent, for
+              a compacting session, and for a consolidation — through one derivation of the
+              allow-list, and shall accept an empty tool list only on the session-engine path.
+            justification: |
+              The safety property of this package is that a published tool set and the allow-list that
+              suppresses the runtime's built-ins cannot drift apart. A second builder with its own
+              derivation is exactly that drift, so every path ends in the same block: the tools and
+              the allow-list are assigned from one collection, the skill and custom-instruction
+              channels are closed, and a permission handler is installed. The one rule the two paths
+              disagree about is emptiness. An agent publishing no tools is a defect in its host and is
+              still refused; a consolidation must run on a session offering nothing, which produces an
+              empty allow-list and a handler that approves nothing — the strongest confinement this
+              factory can express rather than the weakest.
+            tests:
+              - CopilotAgentFactory_BothPaths_DeriveTheSameConfinement
+              - CopilotAgentFactory_BuildEngineSessionConfig_EmptyTools_ProducesAnEmptyAllowList
+              - CopilotAgentFactory_BuildSessionConfig_EmptyTools_Throws
+              - CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws
+
+          - id: AgentKitAgentsCopilot-CopilotAgentFactory-LeavesTheAgentPathsCompactionAlone
+            title: >-
+              The factory shall raise the Copilot runtime's own compaction threshold clear of the
+              session engine's rotation point on every session built for that engine, and shall leave
+              the runtime's compaction untouched on every session built for a plain agent.
+            justification: |
+              A session the engine drives has an AgentKit compactor behind it, and two compactors
+              reading the same occupancy signal would fight: the runtime would rewrite history
+              underneath a session whose transcript the engine believes it owns. A plain agent has no
+              AgentKit compactor behind it, so changing the runtime's there would remove the only
+              protection that session has when its window fills. The asymmetry is therefore deliberate
+              and is asserted on both paths, so that neither can be "tidied" into the other without a
+              test saying so.
+
+              The threshold is what the engine path raises, because the threshold is the setting the
+              runtime honors. Measured against SDK 1.0.11, a session created with the infinite-session
+              flag set false compacted as soon as its threshold was crossed, exactly as one created
+              with the flag true did. The flag is still set and states the intent, but nothing depends
+              on it; the assertion that carries this requirement is the one on the threshold.
+            tests:
+              - CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched
+              - CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation

@@ -232,9 +232,16 @@ public static class ChatLoop
         }
 
         var usage = compaction.Usage;
+
+        // A turn that rotated hands back the replacement session's usage, and a replacement has not
+        // spoken yet - so on a provider that answers for its own window there is nothing to report
+        // until the next turn. Printing the placeholder as though it were a reading ("0 of 1 tokens")
+        // reads as a defect; saying the figure is not in yet is what is actually true.
         Console.WriteLine(
-            $"\n  [session] conversation {usage.ConversationTokens} of {usage.WindowTokens} tokens"
-            + $" (overhead {usage.OverheadTokens}), compaction level {compaction.Level}");
+            usage.WindowTokens <= 1 && usage.ConversationTokens == 0
+                ? $"\n  [session] occupancy not yet reported by the provider, compaction level {compaction.Level}"
+                : $"\n  [session] conversation {usage.ConversationTokens} of {usage.WindowTokens} tokens"
+                  + $" (overhead {usage.OverheadTokens}), compaction level {compaction.Level}");
 
         if (compaction.RotationOccurred)
         {

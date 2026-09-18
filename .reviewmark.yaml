@@ -65,12 +65,14 @@ reviews:
       - "docs/user_guide/**/*.md"
     paths:
       - "requirements.yaml"                                         # root requirements file
-      # Repo-level quality/process requirements grouping. It is a root-tagged
-      # requirements file that belongs to no system, so no {SystemName}-AllRequirements
-      # set can own it; it is reviewed here alongside the root requirements file it
-      # is included from. Deliberate, documented deviation from the standard's
-      # Decomposition path list.
+      # Repo-level requirements files and chapters that belong to no system, so no
+      # {SystemName}-AllRequirements or {SystemName}-Design/-Verification set can own them.
+      # They are reviewed here alongside the root requirements file they are included from.
+      # Deliberate, documented deviation from the standard's Decomposition path list.
       - "docs/reqstream/quality.yaml"                               # repo-level quality requirements
+      - "docs/reqstream/agent-kit.yaml"                             # product capability requirements
+      - "docs/design/agent-kit.md"                                  # product capability design
+      - "docs/verification/agent-kit.md"                            # product capability verification
       - "docs/design/introduction.md"                               # design introduction
       - "docs/sysml2/**/*.sysml"                                    # SysML2 model (authoritative structure)
 
@@ -1253,6 +1255,98 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
+
+  # AgentKitAgentsCopilot-CopilotProviderSession Review (one per unit)
+  #
+  # The Copilot session adapter's four units share one scripted turn channel, so that test double
+  # is claimed by each of their review-sets: it is the fake the unit's own tests are written
+  # against, and a reviewer cannot judge those tests without it. This mirrors how the ChatClient
+  # adapter's units each claim the recording chat client.
+  - id: AgentKitAgentsCopilot-CopilotProviderSession
+    title: Review that AgentKitAgentsCopilot CopilotProviderSession Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-core/provider-session.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-provider-session.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-provider-session.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-provider-session.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotProviderSession.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotProviderSessionTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
+
+  # AgentKitAgentsCopilot-CopilotProviderSessionFactory Review (one per unit)
+  - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory
+    title: Review that AgentKitAgentsCopilot CopilotProviderSessionFactory Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-core/provider-session.md"
+      - "docs/design/agent-kit-agents-copilot/copilot-agent-factory.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-provider-session-factory.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-provider-session-factory.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotProviderSessionFactory.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotProviderSessionFactoryTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
+
+  # AgentKitAgentsCopilot-CopilotSessionObserver Review (one per unit)
+  #
+  # The unit is internal to the package and is reached by its tests through InternalsVisibleTo. It
+  # is nonetheless a unit like any other, and its correctness is what the session's occupancy
+  # figure and its detection of a rewritten history both rest on - which is precisely why it is
+  # reviewed rather than folded into the session that reads it.
+  - id: AgentKitAgentsCopilot-CopilotSessionObserver
+    title: Review that AgentKitAgentsCopilot CopilotSessionObserver Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-agents-copilot/copilot-provider-session.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-session-observer.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-session-observer.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-session-observer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSessionObserver.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotSessionObserverTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
+
+  # AgentKitAgentsCopilot-CopilotSummarizer Review (one per unit)
+  - id: AgentKitAgentsCopilot-CopilotSummarizer
+    title: Review that AgentKitAgentsCopilot CopilotSummarizer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-core/summarizer.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-summarizer.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-summarizer.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-summarizer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSummarizer.cs"    # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotSummarizerTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
+
+  # AgentKitAgentsCopilot-CopilotTurnChannel Review (one per unit)
+  #
+  # This unit is the seam the rest of the package is tested through, and its production
+  # implementation is the one piece of the package no automated test reaches - the SDK's session
+  # and client types are sealed and non-constructable. Its verification chapter states that
+  # plainly rather than implying coverage, so the scripted fake that stands in for it is claimed
+  # here as the unit's own test file: it is the evidence, and a reviewer cannot judge the seam
+  # without it.
+  - id: AgentKitAgentsCopilot-CopilotTurnChannel
+    title: Review that AgentKitAgentsCopilot CopilotTurnChannel Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/ots/microsoft-agents-ai-github-copilot.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-turn-channel.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-turn-channel.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-turn-channel.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotTurnChannel.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark

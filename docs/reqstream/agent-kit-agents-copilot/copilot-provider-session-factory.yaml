@@ -1,0 +1,144 @@
+---
+# Software Unit Requirements for CopilotProviderSessionFactory
+#
+# These requirements describe the design-level behavior of the CopilotProviderSessionFactory unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotProviderSessionFactory Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-CreatesSeededSessions
+            title: >-
+              The factory shall create one Copilot session per seed, registering the session observer
+              on the configuration before the session is created, and shall back each session with a
+              model the application names or the runtime's default when it names none.
+            justification: |
+              A rotation asks for a replacement session and expects one governed by the same
+              instructions, confined to the same tools, and holding the conversation so far ready to
+              travel on the first message it sends. The observer must be registered on the
+              configuration rather than on
+              the session afterwards because the SDK installs a configuration's handler before the
+              create request is issued — which is the only arrangement under which the very first
+              turn's occupancy reading and tool traffic are seen at all. The model choice is the
+              application's for the same reason it is on the agent path: which model backs a session
+              materially changes how reliably it uses its tools, and an application with no opinion
+              gets the runtime's own default.
+            tests:
+              - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
+              - CopilotProviderSessionFactory_BuildSessionConfig_ModelIsCarriedOrLeftToTheRuntime
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-RendersTheSeededHistoryAsALabeledRecord
+            title: >-
+              The factory shall render a seeded history as a labeled record opened and closed by fixed
+              lines, shall render a seeded tool call and its result as labeled lines carrying their
+              identifier rather than under any role, and shall render no record when the seed carries
+              no history.
+            justification: |
+              Copilot's session configuration carries no history or messages field of any kind, so a
+              rotation that must seed a rewritten history has to render it as text and carry it on the
+              only channel that takes text — the conversation. A rotated session is briefed rather
+              than replayed, and the record is the handover document it is briefed from. Rendering it
+              as a block of labeled lines rather than as role-bearing messages is what makes one class
+              of defect unrepresentable: what shipped on the stateless path was a seeded tool result
+              rendered under a role a provider's wire mapping silently discards, and a labeled line
+              inside one message cannot be dropped without dropping the message.
+
+              The opening and closing lines are punctuation, marking where the handover ends and the
+              current message begins. They are fixed text rather than a token generated per record,
+              because a generated marker was read back out by the model and offered as an answer.
+
+              A seed with no history renders nothing at all, so the first message of such a session is
+              sent exactly as the caller wrote it and a record around nothing never tells a model that
+              a conversation happened when none had.
+
+              Where the record does not go follows from this rule rather than standing as a promise of
+              its own: it is composed for the first message, so the system message carries the
+              application's instructions alone. That was once a separate requirement and was deleted
+              deliberately — it stated internal placement rather than behavior an application can act
+              on — and the tests listed here assert it by equality.
+            tests:
+              - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
+              - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
+              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
+              - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
+              - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
+            title: >-
+              The factory shall derive each session's allow-list from the same collection it publishes
+              as the session's tools, and shall build every session with the runtime's skills disabled
+              and its custom instructions skipped.
+            justification: |
+              A session the engine drives is exactly as exposed to the runtime's built-in tools,
+              skills and discovered instructions as an agent is, so it receives exactly the same
+              confinement — and receives it from the same code, because a second allow-list derivation
+              is the drift this design exists to prevent. Every session a rotation creates is built
+              this way, so a long conversation cannot become less confined the longer it runs.
+            tests:
+              - CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools
+              - CopilotProviderSessionFactory_BuildSessionConfig_SuppressesSkillsAndCustomInstructions
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DefaultSafePermissions
+            title: >-
+              The factory shall install the default-safe permission handler on every session it
+              creates, approving exactly the seeded tools by name and rejecting every other request.
+            justification: |
+              A session created here is driven by AgentKit's session engine rather than by the host
+              turn by turn, so there is no host present to adjudicate a permission prompt and the
+              default must be safe without asking. No host-supplied handler is accepted on this path:
+              a host that wants a policy of its own composes an agent, where that choice is offered.
+              Every built-in request is rejected because none of them is one of the seeded tools.
+            tests:
+              - CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler
+              - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation
+            title: >-
+              The factory shall create every session with the Copilot runtime's own compaction
+              threshold raised clear of the session engine's rotation point.
+            justification: |
+              The runtime compacts its own sessions by default, at a threshold of the same order as
+              AgentKit's rotation threshold and against the same occupancy signal. Left at that
+              default, both compactors would act on one conversation: the runtime would rewrite
+              history underneath a session whose transcript the engine believes it owns, and the
+              occupancy the engine reads afterwards would move for reasons it cannot see.
+
+              The threshold is what decides this, because it is the setting the runtime honors.
+              Measured against SDK 1.0.11, a session created with the infinite-session flag set false
+              compacted as soon as its threshold was crossed, exactly as a session created with the
+              flag true did; a session whose threshold was not crossed did not compact whatever the
+              flag said. The flag is still set, because it states the intent and costs nothing if the
+              runtime ever begins honoring it, but nothing depends on it.
+
+              The engine rotates at 0.70 of the window and the runtime's default is 0.80, which
+              leaves only a tenth of the window between them — a gap one turn returning a large tool
+              result can cross in a single step. Raised to 0.95, the margin is a quarter of the
+              window instead. It is raised on every session a rotation creates rather than on the
+              first one only, because a long conversation must not become less protected the longer
+              it runs. It is not raised to 1.0: the runtime's last-resort behavior is worth keeping,
+              and a session that sees a compaction announced refuses the next turn, so the outcome is
+              diagnosable rather than silent.
+            tests:
+              - CopilotProviderSessionFactory_BuildSessionConfig_HoldsTheRuntimesOwnCompactionClearOfRotation
+              - AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-LeavesNothingUnowned
+            title: >-
+              The factory shall reject a missing client, a missing channel opener and a missing seed,
+              shall open no session for a creation that was already canceled, and shall release a
+              session it opened but could not hand to a provider session.
+            justification: |
+              Between the create request returning and the provider session taking ownership there is
+              a window in which the runtime holds a session nothing references, and a cancellation
+              arriving in that window would otherwise discard the only handle to it — the same window
+              the compacting session guards when it adopts a replacement. A missing client or seed is
+              a defect in the composing application, refused where it was written; a creation that was
+              already canceled costs no session at all, so a canceled rotation leaves nothing behind
+              on the runtime.
+            tests:
+              - CopilotProviderSessionFactory_Constructor_NullClient_Throws
+              - CopilotProviderSessionFactory_Constructor_NullOpener_Throws
+              - CopilotProviderSessionFactory_CreateAsync_NullSeed_Throws
+              - CopilotProviderSessionFactory_CreateAsync_Canceled_OpensNothing
+              - CopilotProviderSessionFactory_CreateAsync_CanceledWhileOpening_ReleasesTheOpenedSession

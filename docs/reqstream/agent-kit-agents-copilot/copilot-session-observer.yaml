@@ -1,0 +1,125 @@
+---
+# Software Unit Requirements for CopilotSessionObserver
+#
+# These requirements describe the design-level behavior of the CopilotSessionObserver unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotSessionObserver Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-HoldsTheLatestUsageReading
+            title: >-
+              The observer shall hold the occupancy, the limit and the conversation's share from the
+              most recent usage event the runtime dispatched, holding no conversation figure when the
+              runtime reported none, and shall keep that reading across a turn boundary.
+            justification: |
+              A Copilot turn reveals its occupancy through an event rather than a return value, so
+              catching that event is the only way the adapter above can answer for the window at all.
+              The reading is cumulative session state rather than a per-request figure, which is the
+              deliberate difference from the stateless adapter's prompt-size recorder: clearing it
+              each turn would make a session that had already reported indistinguishable from one that
+              never had, and the session would then refuse a turn it could perfectly well measure. A
+              reading with no conversation split is held as such rather than given an invented one, so
+              the decision about what to do with the absence is made where it can be reasoned about.
+            tests:
+              - CopilotSessionObserver_OnEvent_UsageInfo_IsHeldAsTheLatestReading
+              - CopilotSessionObserver_OnEvent_SecondUsageInfo_ReplacesTheFirst
+              - CopilotSessionObserver_OnEvent_UsageWithoutSplit_HoldsNoConversationFigure
+              - CopilotSessionObserver_BeginTurn_KeepsTheUsageReading
+
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-RecordsTheTurnsWork
+            title: >-
+              The observer shall collect the current turn's tool calls, tool results and assistant
+              messages in arrival order, shall discard the previous turn's collection when a turn
+              begins, shall empty the collection when it is drained, and shall ignore an event it has
+              no use for.
+            justification: |
+              What a Copilot turn did arrives as a stream of events, so the transcript the engine
+              records is assembled here or nowhere. Arrival order is what makes the record a
+              description of the turn rather than a set of things that happened during it. Discarding
+              at the start of a turn rather than at the end is what stops the work of a turn that
+              failed part-way being attributed to the next one; emptying on drain is what records a
+              turn's work exactly once even if a caller asks twice. The runtime emits a great deal
+              that is not part of a conversation, and recording it would seed a future session with a
+              history the model never saw.
+            tests:
+              - CopilotSessionObserver_DrainEntries_ReturnsArrivalOrder
+              - CopilotSessionObserver_DrainEntries_Twice_ReturnsNothingTheSecondTime
+              - CopilotSessionObserver_BeginTurn_ClearsThePreviousTurnsEntries
+              - CopilotSessionObserver_OnEvent_UnrelatedEvent_IsIgnored
+
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-RecordsToolOutcomes
+            title: >-
+              The observer shall record a failed tool's error as that call's result, shall skip an
+              event carrying no usable call identifier and an assistant message carrying no text, and
+              shall skip every event belonging to a nested agent the runtime ran on the session's
+              behalf.
+            justification: |
+              A tool that failed is part of the conversation the model reasoned from, so its error is
+              recorded as the result it was rather than omitted. A transcript entry requires an
+              identifier so a call can be paired with its result, and an unidentified call could not
+              be paired — the runtime's events arrive by deserialization, which does not enforce the
+              members the SDK marks required, so the absence is representable and must be handled
+              rather than assumed away. An empty assistant message is a phase of the runtime's output
+              rather than something the model said. A nested agent's traffic was never shown to this
+              conversation's model as part of it.
+            tests:
+              - CopilotSessionObserver_OnEvent_ToolFailure_RecordsTheErrorAsTheResult
+              - CopilotSessionObserver_OnEvent_ToolCallWithoutAnIdentifier_IsSkipped
+              - CopilotSessionObserver_OnEvent_EmptyAssistantMessage_IsNotRecorded
+              - CopilotSessionObserver_OnEvent_NestedAgentEvents_AreNotRecorded
+
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory
+            title: >-
+              The observer shall record that the runtime rewrote the session's history when the
+              runtime dispatches a compaction or a truncation event, and shall not report it rewritten
+              otherwise.
+            justification: |
+              AgentKit holds the runtime's compaction threshold clear of the rotation point on every
+              session its own engine drives, which is a margin rather than a guarantee: the runtime's
+              last-resort behavior is deliberately left in place, and the infinite-session flag that
+              would ask it to stop altogether is not honored. The runtime announces both behaviors,
+              so neither the margin nor the flag has to be trusted on its own: observing the
+              announcement is what turns a silent divergence between the engine's transcript and the
+              conversation the provider holds into a fact the session above can refuse on.
+            tests:
+              - CopilotSessionObserver_OnEvent_TruncationEvent_MarksHistoryRewritten
+              - CopilotSessionObserver_OnEvent_CompactionEvent_MarksHistoryRewritten
+              - CopilotSessionObserver_OnEvent_UnrelatedEvent_IsIgnored
+
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage
+            title: >-
+              The observer shall answer whether the turn now in flight has reported its usage,
+              answering no from the moment a turn begins until a reading arrives within that turn.
+            justification: |
+              The kept reading is cumulative, so a question asked of it is a question about the
+              session rather than about the turn. A runtime that answered a later turn without
+              reporting would pass such a question on the previous turn's figure, leaving occupancy
+              frozen while the conversation kept growing and the engine rotating later and later
+              against a number that had stopped moving. That is the defect the sibling ChatClient
+              adapter shipped with, where an uncleared per-request figure did the same thing, and
+              this per-turn answer is what stops it returning on this adapter. The answer becomes
+              visible together with the reading it reports, so nothing can observe a turn that has
+              reported while its reading is still absent.
+            tests:
+              # Deliberately one level up. This answer is observable only through the refusal it
+              # governs, and the provider session is where that refusal is made; the verification
+              # chapter states that boundary rather than implying a test of this unit.
+              - CopilotProviderSession_Send_UsageReportedThenOmitted_RefusesTheLaterTurn
+
+          - id: AgentKitAgentsCopilot-CopilotSessionObserver-RemembersTheRuntimesError
+            title: >-
+              The observer shall remember the message of the most recent session error the runtime
+              reported, and shall discard it when a turn begins.
+            justification: |
+              A session that goes idle without answering has usually failed rather than had nothing to
+              say, and the runtime says why in a separate event. Remembering it is what lets the
+              refusal above name a cause an application can act on, instead of reporting only that
+              nothing came back. It is discarded at each turn boundary for the same reason it is kept
+              at all: an error carried over from an earlier turn would name the wrong cause in the one
+              message whose whole job is to name the right one, and would read as authoritative
+              because the message says the runtime reported it.
+            tests:
+              - CopilotSessionObserver_OnEvent_SessionError_IsRemembered
+              - CopilotSessionObserver_BeginTurn_ClearsTheReportedError

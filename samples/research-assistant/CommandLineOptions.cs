@@ -169,7 +169,7 @@ public sealed class CommandLineOptions
 
     /// <summary>
     ///     Gets the model each context consolidation is sent to, or <see langword="null"/> to use
-    ///     the conversation's own model. Set by <c>--summary-model</c>; Ollama only.
+    ///     the conversation's own model. Set by <c>--summary-model</c>.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -180,15 +180,16 @@ public sealed class CommandLineOptions
     ///     changes nothing the agent can observe.
     ///     </para>
     ///     <para>
-    ///     Unused on the Copilot runtime, which carries its own session and never reaches the
-    ///     compaction engine.
+    ///     Applies on both providers, because both carry an AgentKit compacting session. On Ollama
+    ///     an unstated value falls back to the conversation's model; on Copilot it falls back to
+    ///     whichever model the runtime chooses by default.
     ///     </para>
     /// </remarks>
     public string? SummaryModel { get; init; }
 
     /// <summary>
     ///     Gets the context window the compacting session accounts against, or
-    ///     <see langword="null"/> to read it from the provider. Set by <c>--context-window</c>.
+    ///     <see langword="null"/> to take it from the provider. Set by <c>--context-window</c>.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -197,6 +198,16 @@ public sealed class CommandLineOptions
     ///     Ollama rather than asking for it — see <see cref="OllamaContextWindow"/> — and this flag
     ///     exists for the case the reading gets wrong: a server that has loaded the model with a
     ///     context length smaller than the model publishes, which nothing else reveals.
+    ///     </para>
+    ///     <para>
+    ///     On the Copilot runtime, which reports its occupancy and its limit with every turn, the
+    ///     figure is a <em>ceiling</em> rather than a statement: it can only lower the window the
+    ///     session accounts against, never raise it above what the runtime will actually allow.
+    ///     Lowering it makes the conversation rotate sooner, which is how a rotation can be observed
+    ///     at all on a provider whose smallest window is larger than any conversation this sample
+    ///     would otherwise produce. It costs more rather than less — a repeated prompt is served
+    ///     almost entirely from cache, and a replacement session starts a new cached prefix and adds
+    ///     a summarizer call.
     ///     </para>
     /// </remarks>
     public int? ContextWindow { get; init; }
@@ -568,12 +579,14 @@ public sealed class CommandLineOptions
          into a separate notes folder. It composes the todo, memory and agent tool families onto one
          policy — the three families that make an agent capable of work that spans turns.
 
-         On --provider ollama the conversation runs on an AgentKit compacting session, so it
+         On either provider the conversation runs on an AgentKit compacting session, so it
          outlives the model's context window: when the window fills, older history is consolidated
          into tiered records, a fresh provider session is seeded with them, and the turn loop
          carries on. Each turn reports its occupancy, whether it rotated, and whether compacting
-         bought nothing and history had to be dropped. On --provider copilot the runtime carries its
-         own session and none of that happens, because AgentKit ships no provider session for it.
+         bought nothing and history had to be dropped. The two differ only in where the figures come
+         from: Ollama is told its window, while Copilot reports both its occupancy and its limit, and
+         has its own compaction threshold raised clear of AgentKit's rotation point so the two do not
+         both rewrite one history.
 
          The memory family needs an embedding backend, and choosing one is the application's job,
          not AgentKit's. This sample offers an offline generator of its own (no server, no model
@@ -598,14 +611,19 @@ public sealed class CommandLineOptions
                                      behavior you intend to cite.
            --embedding-model <name>  Ollama embedding model (default: {DefaultOllamaEmbeddingModel};
                                      --embeddings ollama only).
-           --summary-model <name>    Ollama model each context consolidation is sent to (default:
-                                     the conversation's own model). Consolidation is summarization
-                                     rather than reasoning, so a smaller model is usually right.
-           --context-window <tokens> Context window the compacting session accounts against
-                                     (default: read from Ollama — the loaded model's length where
-                                     one is loaded, else the model's published maximum). State it
-                                     when the server loaded the model with a smaller length than
-                                     the model publishes, which nothing else reveals.
+           --summary-model <name>    Model each context consolidation is sent to (default: the
+                                     conversation's own model on Ollama, the runtime's default on
+                                     Copilot). Consolidation is summarization rather than reasoning,
+                                     so a smaller model is usually right.
+           --context-window <tokens> Context window the compacting session accounts against (default:
+                                     read from Ollama — the loaded model's length where one is
+                                     loaded, else the model's published maximum; taken from the
+                                     runtime on Copilot). State it on Ollama when the server loaded
+                                     the model with a smaller length than the model publishes, which
+                                     nothing else reveals. On Copilot it is a ceiling only: it can
+                                     lower the accounted window but never raise it, and lowering it
+                                     is how a rotation becomes reachable at all on a window larger
+                                     than any conversation this sample would otherwise produce.
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
                                      GITHUB_TOKEN environment variable, else the logged-in user).
            --transcript <path>       Append a machine-readable record of every tool call to a file.

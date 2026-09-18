@@ -1,0 +1,85 @@
+---
+# Product-level capability requirements for AgentKit.
+#
+# These state what AgentKit delivers to an application author, above any one package. A
+# provider adapter's requirements describe mechanism — how a session is seeded, where an
+# allow-list comes from, which channel a record travels on — and a mechanism is only worth
+# having because of a capability it delivers. Each capability here names the mechanisms
+# beneath it as children, including the OTS requirements the capability rests on, so
+# `dotnet reqstream --requirements requirements.yaml --enforce` reports an adapter or OTS
+# requirement that contributes to no capability.
+#
+# This file belongs to no system: it sits above all four. It is included from
+# requirements.yaml alongside docs/reqstream/quality.yaml, and is reviewed in the
+# repository-level Decomposition review-set for the same reason.
+sections:
+  - title: AgentKit Product Requirements
+    requirements:
+      - id: AgentKit-Provider-GitHubCopilot
+        title: >-
+          AgentKit shall build and run a guarded agent on the GitHub Copilot runtime, and shall
+          carry a conversation on it that outlives the runtime's context window.
+        tags: [system]
+        justification: |
+          An application author who has chosen GitHub Copilot as the runtime should get what
+          AgentKit promises on any provider: an agent that can use only the tools the application
+          granted it, and a conversation that does not end when the window fills. Neither comes
+          from the runtime. Copilot arrives as a complete agent runtime carrying its own tools, and
+          it compacts its own sessions on its own schedule. Supporting Copilot therefore means
+          taking both of those back, and this is where that support is promised and shown to work
+          end to end. Everything linked beneath it is how.
+
+          The offline scenarios linked here reach the adapter rather than the runtime, so the "on the
+          GitHub Copilot runtime" half of the promise is carried by a live run recorded with the
+          capability's verification scenarios — manual, and not re-run by the suite.
+        children:
+          - AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
+          - AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
+          - AgentKitAgentsCopilot-AgentConstruction-Validated
+          - AgentKitAgentsCopilot-SessionAdapter-CarriesACoreSession
+          - AgentKitAgentsCopilot-SessionAdapter-OccupancyFromTheRuntime
+          - AgentKitAgentsCopilot-SelfCompaction-HeldClearOfRotation
+          - AgentKitAgentsCopilot-Consolidation-OutOfSession
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle
+          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents
+        tests:
+          - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+          - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
+          - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+
+      - id: AgentKit-Provider-ChatClient
+        title: >-
+          AgentKit shall build and run a guarded agent on any Microsoft.Extensions.AI IChatClient
+          provider, shall carry a conversation on it that outlives the provider's context window, and
+          shall deliver what a tool returned to the model intact, including an image the provider
+          would otherwise drop at the wire.
+        tags: [system]
+        justification: |
+          Ollama, OpenAI and AI Foundry all reach an application as an IChatClient, so this is the
+          capability that lets an author keep the provider already chosen and still get an AgentKit
+          agent: the application's tools and nothing else, images that survive the wire, and a
+          conversation that outlasts the window. A chat client holds no conversation and publishes
+          no window, so an application that wanted this without AgentKit would have to write the
+          transcript mapping and the compaction seam itself, once per provider.
+
+          Content fidelity is a third promise rather than part of the first two. It is neither
+          confinement nor window survival: a provider reached this way preserves a tool-returned
+          image all the way through the framework and then drops it at the wire, after which the
+          model describes an image it never received and nothing reports an error. Only this family
+          needs the promise — the Copilot runtime delivers a tool's binary results itself — so it is
+          stated here rather than at both capabilities.
+        children:
+          - AgentKitAgentsChatClient-AgentConstruction-FromChatClientAndTools
+          - AgentKitAgentsChatClient-ImagePromotion-AlwaysInstalled
+          - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
+          - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
+          - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
+          - AgentKit-OTS-MicrosoftAgentsAI-Agent
+          - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
+        tests:
+          - AgentKitAgentsChatClient_Create_BuildsAgentCarryingSuppliedName
+          - AgentKitAgentsChatClient_Create_InstallsImagePromotingDecoratorOnTheAgent
+          - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement

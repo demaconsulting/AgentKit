@@ -173,6 +173,7 @@ public class OllamaContextWindowTests
     [InlineData(ContextWindowSource.LoadedModel)]
     [InlineData(ContextWindowSource.PublishedModel)]
     [InlineData(ContextWindowSource.Assumed)]
+    [InlineData(ContextWindowSource.Ceiling)]
     public void OllamaContextWindow_Describe_EverySource_NamesTheNumberAndItsProvenance(
         ContextWindowSource source)
     {
@@ -185,6 +186,26 @@ public class OllamaContextWindowTests
         // Assert: the number is there, and so is a statement about where it came from
         Assert.Contains("4096", described, StringComparison.Ordinal);
         Assert.Contains("(", described, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a ceiling is described as an upper bound rather than as the window.
+    /// </summary>
+    /// <remarks>
+    ///     A ceiling only lowers: on a provider that reports its own window, one above the runtime's
+    ///     limit is ignored entirely. A banner that stated it as the window could announce a figure
+    ///     the session never accounts against - reporting 272,000 tokens while rotation happened at
+    ///     8,000. Saying "at most" is what keeps the banner true whichever of the two governs.
+    /// </remarks>
+    [Fact]
+    public void OllamaContextWindow_Describe_Ceiling_ReadsAsAnUpperBoundNotTheWindow()
+    {
+        // Arrange / Act
+        var described = new ContextWindow(11000, ContextWindowSource.Ceiling).Describe();
+
+        // Assert
+        Assert.StartsWith("at most 11000 tokens", described, StringComparison.Ordinal);
+        Assert.Contains("the lower of the two governs", described, StringComparison.Ordinal);
     }
 
     /// <summary>

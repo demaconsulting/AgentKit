@@ -4,7 +4,8 @@
 
 The AgentKitAgentsCopilot system builds a Microsoft Agent Framework agent from a GitHub Copilot
 `CopilotClient` and a supplied tool list, suppressing the built-in tools the Copilot runtime would
-otherwise inject.
+otherwise inject, and carries an AgentKit Core session — with its tiered context compaction — over
+the same runtime.
 
 ## Purpose
 
@@ -21,18 +22,170 @@ tools and rejecting every other request — while letting a host supply its own.
 ownership contract: the host constructs, starts, and disposes the `CopilotClient`; the adapter takes
 no ownership of it.
 
-The system is a thin adapter. It implements no agent runtime; it adapts the GitHub Copilot SDK into
-the Microsoft Agent Framework `AIAgent` abstraction. It shares no code with, and takes no reference
-on, the ChatClient adapter.
+**The system carries a second job: an AgentKit provider session.** Core's compaction engine is what
+lets a long-running agent behave the same way on every provider, and it reaches a provider through
+an adapter. Until this increment there was one adapter, for the stateless `IChatClient` family — and
+the Copilot SDK exposes no `IChatClient` anywhere, so the engine could not run on Copilot at all.
+That mattered more than the count suggests: Copilot is the provider this project's continuous
+integration can reach, so the engine's behavior against a runnable provider had never been
+exercised. `CopilotProviderSession`, its factory and `CopilotSummarizer` close that gap natively.
+
+The system implements no agent runtime and no compaction engine of its own; it adapts the GitHub
+Copilot SDK into the Microsoft Agent Framework `AIAgent` abstraction and into Core's session
+contracts. It shares no code with, and takes no reference on, the ChatClient adapter.
+
+## Seeding History Onto the First Message
+
+A rotation produces a seed carrying instructions, tools and a rewritten history, and the adapter has
+to get that history into a fresh Copilot session. **Copilot's session configuration has no history
+or messages field of any kind** — every property of the configuration and its base was enumerated
+against the shipped assembly. So the history is rendered as a labeled record and carried on the
+session's **first user message**, prepended to the message the engine was already about to send. The
+session's system message carries the application's instructions and nothing else, byte for byte as
+the plain agent path configures them.
+
+**Why the first user message, and not the system message — the engine's accounting.** The engine
+reasons about the window as overhead — the system message and the tool declarations — against the
+conversation. A record placed in the system message is charged as overhead, so overhead grows at
+every rotation while the conversation appears small, and the engine's model of its own window drifts
+from the runtime's; the figures a live run produced are in _AgentKitAgentsCopilot System Verification
+Design_. Compacted content belongs in the region that gets compacted. Secondarily, tool output in the
+instructions channel reads with more authority than it has earned. Nothing rests on how the record is
+delimited: the material was already in the model's context before it was consolidated, so seeding it
+back grants nothing new, and this library's guarantee is the tool policy rather than prompt hygiene.
+
+**It costs no extra request.** The record rides the message the engine was already sending, so a
+rotation is still exactly one call, and the runtime then holds the result for the rest of the session
+as it holds any other turn.
+
+**A rotated session is briefed, not replayed.** The record is a handover document, opened and closed
+by two fixed lines that mark where it ends and the current message begins.
+
+The rendering is still a block of labeled text lines rather than a sequence of role-bearing messages,
+and that remains decisive. The defect that shipped to review on the stateless path was a seeded tool
+result rendered as a text-only tool-role message, a shape the OpenAI wire mapping discards without an
+error — and fifty-five green tests and a live sample run never noticed. Here that whole class of
+defect is unrepresentable: a seeded tool result is a labeled line inside one message, and no
+provider's role mapping can drop part of a message without dropping the message.
+
+Conversational attachments, session resumption, the session RPC's message queue, the runtime's own
+prompt-section overrides, and a priming message sent on its own were each considered and rejected,
+with the evidence against each recorded in _CopilotProviderSessionFactory Unit Design_.
+
+Two consequences are stated rather than hidden. The record now lives in Copilot's **conversation**,
+where the runtime's own truncation could in principle drop it — which was the decisive objection to
+sending it as a separate priming message. It is admitted here because this design does not rely on
+the runtime leaving the conversation alone: every session the engine drives is created with the
+runtime's compaction threshold raised clear of the engine's rotation point, and a rewrite that
+happens anyway is announced, detected and refused rather than silently absorbed. And the record
+arrives as one message rather than as the turns it describes, so the model may weight it differently
+from turns it lived through; that is recorded as unverified rather than asserted.
+
+## A Session the Engine Cannot Account For Is Finished
+
+Two things can leave the runtime holding a conversation the engine's transcript does not describe:
+the runtime rewriting history itself, and a turn the runtime processed that the session could not
+record. The consequence is identical, so there is one rule and one latch.
+
+Once the prompt has been handed over, this session can no longer know what the runtime holds. A
+failure of the send itself, or after it — no usage reported, no assistant message, a rewrite
+announced — may leave the runtime a turn ahead of the transcript; and on a first turn the seeded
+record has been consumed either way and will not be sent again. Neither is recoverable by retrying
+on that session, and retrying an `InvalidOperationException` is the ordinary host response, which
+would re-run the application's tools, with their real side effects, against a conversation the
+engine may no longer describe.
+
+So the session latches unusable, naming the original failure, and refuses every later turn **before**
+sending it. The engine's answer to a session it cannot use is the one it already has: seed a
+replacement from its own transcript, which is the state known to be good. Detecting the first
+divergence is unavoidably after the fact; letting a second one happen is not.
+
+## The Runtime's Own Compaction Is Held Clear of Rotation
+
+Copilot compacts its own sessions: its infinite-session configuration defaults to enabled, with
+background compaction at 0.80 of the window and buffer exhaustion at 0.95. AgentKit rotates at 0.70
+of the window, against the same occupancy signal. This is therefore not a theoretical conflict.
+
+Left at those defaults, both compactors would act on one conversation. The runtime would rewrite
+history underneath a session whose transcript the engine believes it owns, and the occupancy the
+engine reads afterwards would move for reasons it cannot see — so the engine would seed a replacement
+from a history the provider has already discarded, and the two accounts of the conversation would
+diverge silently. Ten percentage points is not a margin: a single turn returning a large tool result
+can carry a session from below the engine's rotation point to past the runtime's compaction threshold
+in one step.
+
+Every session the engine drives is therefore created with the runtime's background-compaction
+threshold raised to 0.95, a quarter of the window clear of the engine's rotation point.
+**A future maintainer must not lower it back toward the engine's own threshold.**
+
+**Asking the runtime to stop does not work, and nothing here depends on it.** The session
+configuration also carries the infinite-session enablement flag set false, which states the intent
+and costs nothing, but the runtime ignores it. Measured against the live runtime, a session created
+with the flag false compacted as soon as its threshold was crossed, exactly as a session created with
+the flag true did; a session whose threshold was not crossed did not compact whatever the flag said.
+The threshold is the honored setting, so the threshold is the one relied on. The measurement itself
+is recorded in _AgentKitAgentsCopilot System Verification Design_.
+
+**The threshold is deliberately not raised to 1.0.** The runtime's last-resort behavior is worth
+keeping for the case where something extraordinary happens, so a rewrite remains possible rather than
+impossible. The session observer watches for the runtime's own compaction and truncation events, and
+the provider session refuses the next turn if one arrives — before a turn is sent as well as after
+one returns — naming the cause. That converts a silent divergence into a diagnosable failure, which
+is the convention this library already follows wherever it cannot know something it needs. It is also
+what makes it safe to carry a rotation's record on the conversation channel; see _A Session the Engine
+Cannot Account For Is Finished_ below.
+
+**The agent path is deliberately asymmetric.** A plain Copilot agent has no AgentKit compactor behind
+it, so changing the runtime's compaction there would remove protection rather than prevent a
+conflict. The agent path leaves the setting untouched, and a test pins each side of the asymmetry so
+neither can be tidied into the other by accident.
+
+## Occupancy Comes From the Runtime
+
+Core's session engine asks one question — how full, out of how much — and believes the answer. The
+stateless adapter has to be _told_ its window, because an `IChatClient` publishes none. Copilot is
+the opposite: it reports the tokens it currently holds, the limit it will hold them to, and how much
+of the total the conversation accounts for, all in one event and all counted with the same
+tokenizer.
+
+So this system takes **no** window from the application. Asking for a figure the provider already
+knows would create a second source of truth for one fact, which is exactly what the engine's
+single-reading design retired. The conversation's share is passed through rather than inferred,
+which keeps every threshold comparison downstream in Copilot's own tokens. Nothing is estimated, and
+a turn the runtime answered without reporting its usage is refused rather than guessed around.
+
+Before the runtime has reported anything — which includes the moment the engine reads a freshly
+adopted session — the session reports nothing occupied out of a placeholder window that cannot
+trigger a rotation and cannot be mistaken for a measurement.
+
+## Why a Turn-Channel Seam Exists
+
+`CopilotSession` is sealed, its constructor is not public, and none of its methods is virtual;
+`CopilotClient` is sealed too. Neither can be faked, subclassed or constructed in a test, and
+exercising a turn otherwise needs a live runtime and credentials, which CI does not have and which
+this repository deliberately does not require.
+
+Without a seam, the whole session adapter — the seeding, the usage arithmetic, the refusals, the
+ownership discipline — would ship with no automated evidence at all, on the one provider the project
+can otherwise reach. `ICopilotTurnChannel` is therefore one interface with one method, and the
+production implementation behind it forwards two calls and owns one disposal. Every decision worth
+testing lives above that line; what lies below it is stated plainly as untested in _CopilotTurnChannel
+Unit Verification Design_ rather than implied to be covered.
+
+Every session _event_ type, by contrast, is trivially constructable, so the tests drive the SDK's own
+event objects through the adapter's own matching code. The seam is narrow, and what crosses it is
+real.
 
 ## No Image-Promoting Decorator
 
 Unlike the ChatClient adapter, this system deliberately does **not** install Core's
 `ImagePromotingChatClient`. The Copilot runtime already delivers an image a tool returns to the
 model — its runtime converts a binary tool result into content the model sees — as verified in the
-spike that preceded this work. Installing the decorator here would carry the image a second time
-onto a user message, duplicating content the model already received. This absence is intentional and
-recorded here so a future maintainer does not "helpfully" add it.
+spike that preceded this work, and corroborated by the SDK's tool-completion result carrying binary
+results for the model explicitly. Installing the decorator here would carry the image a second time
+onto a user message, duplicating content the model already received. This absence is intentional,
+applies to the session path as much as to the agent path, and is recorded here and in both units so
+a future maintainer does not "helpfully" add it.
 
 ## Deployment Consequence: RID-Specific Native Runtime
 
@@ -54,29 +207,126 @@ Isolating it in its own package is exactly what the dependency justifies: an app
 builds a Copilot agent never takes the dependency or its native runtime. The system references Core
 and `Microsoft.Agents.AI.GitHub.Copilot` and nothing else.
 
-## Structure
+## Architecture
 
-The system is flat: it is one class, `CopilotAgentFactory`.
+The system holds six units: the agent factory that ships today, and the five that carry a Core
+session over the runtime.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, derives the
   allow-list from the supplied tools, installs a default-safe permission handler, and builds the
-  agent without taking ownership of the client.
+  agent without taking ownership of the client. It is also the **single** place a Copilot session
+  configuration is built, for the agent path and for both session-engine paths.
+- **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
+  carries the seeded record ahead of the first message it sends, refuses a turn that reported no
+  usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
+  it could not record, records tool traffic as identified pairs, reports the runtime's occupancy, and
+  owns and releases its session.
+- **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: configures the session's
+  system message with the application's instructions alone, composes the seeded history into a
+  labeled record for the first message to carry, reuses the one confinement path, holds the runtime's
+  compaction clear of the engine's rotation point, registers the observer before the session is
+  created, and guards the ownership window.
+- **CopilotSessionObserver (Unit)** — watches the runtime's event stream and holds the latest usage
+  reading, the current turn's entries, and whether the runtime rewrote history.
+- **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using
+  Core's consolidation prompt and releasing its session on every path.
+- **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
+  production implementation that owns one runtime session.
+
+## External Interfaces
+
+The system's public API is three types, each taking a `CopilotClient` the host constructed, started
+and will dispose. Everything else in the package is internal.
+
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `CopilotAgentFactory.Create` | Inbound | Client, tools, model | Tools non-empty, uniquely named |
+| `CopilotProviderSessionFactory` | Outbound | Core session factory | One session per rotation |
+| `CopilotSummarizer` | Outbound | Core summarizer | Separate tool-free session |
+| `CopilotClient` | Inbound/Outbound | Copilot SDK | Host-owned; never disposed here |
+| Session event stream | Inbound | Copilot SDK events | Registered before session creation |
+
+The application supplies no context window: occupancy and limit come from the runtime's own event
+stream, as recorded in _Occupancy Comes From the Runtime_.
+
+## Data Flow
+
+```text
+CompactingAgentSession
+        │  seed (instructions, tools, history)
+        ▼
+CopilotProviderSessionFactory ──► CopilotAgentFactory.BuildEngineSessionConfig
+        │                                   (allow-list, skills off, handler, compaction held clear)
+        │  SessionConfig (+ observer as OnEvent)
+        ▼
+CopilotTurnChannel ──► CopilotSession (runtime)
+        │  turn                              │  events
+        ▼                                    ▼
+CopilotProviderSession ◄──────────── CopilotSessionObserver
+        │  ProviderTurn + ContextUsage
+        ▼
+CompactingAgentSession ──► CopilotSummarizer ──► a separate, tool-free CopilotSession
+```
 
 ## Folder Layout
 
 ```text
 src/DemaConsulting.AgentKit.Agents.Copilot/
-└── CopilotAgentFactory.cs   — builds a Copilot agent with the built-in tools suppressed
+├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session configuration
+├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
+├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
+├── CopilotSessionObserver.cs         — watches the runtime's event stream
+├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
+└── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
 ## Dependencies
 
 - **AgentKitCore** — supplies the family-prefix tool convention and the `AIFunction` currency the
-  supplied tools are built from; see _AgentKitCore System Design_.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `SessionConfig`, the
-  session-config agent-construction path, and the permission RPC; see
-  _Microsoft.Agents.AI.GitHub.Copilot Design_. Carries a RID-specific native runtime, as noted
-  above.
+  supplied tools are built from, and the session contracts the adapter implements —
+  `IProviderSession`, `IProviderSessionFactory`, `ISummarizer`, `ProviderSessionSeed`,
+  `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`; see _AgentKitCore
+  System Design_.
+- **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `CopilotSession`,
+  `SessionConfig`, the session-config agent-construction path, the permission RPC, and the session
+  event stream; see _Microsoft.Agents.AI.GitHub.Copilot Design_. Carries a RID-specific native
+  runtime, as noted above.
+
+## Risk Control Measures
+
+Copilot arrives able to act on the machine it runs on, so this system's risk controls are the ones
+that take that capability back. All three are applied in one place — `CopilotAgentFactory`'s single
+confinement block — for every session the package builds, so no path can acquire capability another
+path withholds.
+
+- **The derived allow-list.** The session's available-tools allow-list is assigned from the same
+  collection published as the session's tools, so the two cannot drift apart and no built-in tool is
+  ever admitted. This is the segregation the package exists for; see _Purpose_.
+- **The default-safe permission handler.** With no host handler supplied, a request is approved only
+  when it names one of the supplied tools; everything else — including every built-in request — is
+  rejected without asking a user who could not adjudicate it.
+- **The closed injection channels.** The runtime's skills and its discovered custom instructions are
+  both closed on every session, because each would attach capability or direction the composing
+  application never granted.
+
+Two further measures protect the conversation rather than the machine: the runtime's own compaction
+threshold is held clear of the engine's rotation point, and a session whose conversation the engine
+can no longer account for is ended rather than reused. Both are argued above.
+
+## Design Constraints
+
+- **No ownership of the client**: the host constructs, starts and disposes the `CopilotClient`; this
+  system disposes only the sessions it creates
+- **One confinement path**: every session — agent, engine and consolidation — is built through one
+  derivation of the allow-list; a second builder would be the drift this package prevents
+- **No window from the application**: occupancy and limit come from the runtime, which is what makes
+  the session engine's accounting the runtime's own
+- **Isolated dependency**: `Microsoft.Agents.AI.GitHub.Copilot` and its RID-specific native runtime
+  reach an application only through this package
+- **Compliance**: all functionality must be traceable to requirements
+- **Quality**: zero warnings, full test coverage, complete documentation
+- **Portability**: compatible across supported .NET platforms, within the target frameworks and
+  runtime identifiers the Copilot SDK itself supports
 
 ## Document Conventions
 

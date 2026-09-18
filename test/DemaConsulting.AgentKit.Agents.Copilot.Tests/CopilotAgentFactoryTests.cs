@@ -170,6 +170,114 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves the agent path leaves the Copilot runtime's own compaction alone. This is the one
+    ///     deliberate asymmetry between the two configuration paths: a plain agent has no AgentKit
+    ///     compactor behind it, so moving the runtime's threshold would remove protection rather than
+    ///     prevent a conflict.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_LeavesTheRuntimesCompactionUntouched()
+    {
+        // Arrange: a valid tool set, and an untouched session for the default to compare against
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+        var untouched = new SessionConfig();
+
+        // Act
+        var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+
+        // Assert: whatever a freshly constructed session carries - the factory set nothing
+        Assert.Equal(untouched.InfiniteSessions, config.InfiniteSessions);
+    }
+
+    /// <summary>
+    ///     Proves the engine path holds the runtime's own compaction off until well past the point
+    ///     the engine rotates.
+    /// </summary>
+    /// <remarks>
+    ///     The threshold is the assertion that matters, because the flag does not work: measured
+    ///     against SDK 1.0.11, a session created with <c>Enabled = false</c> compacted as soon as
+    ///     the threshold was crossed, exactly as one created with it true. The threshold is honored,
+    ///     and it is what keeps the two compactors apart — the engine rotates at 0.70, and the
+    ///     runtime's default of 0.80 leaves only a tenth of the window between them, which one turn
+    ///     returning a large tool result can cross in a single step.
+    /// </remarks>
+    [Fact]
+    public void CopilotAgentFactory_BuildEngineSessionConfig_HoldsTheRuntimesCompactionWellAboveRotation()
+    {
+        // Arrange / Act
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(
+            [MakeTool("doc_read")],
+            instructions: null,
+            model: null);
+
+        // Assert: the honored setting is raised clear of the engine's own rotation point, and the
+        // flag is still stated so the intent survives if the runtime ever respects it
+        Assert.NotNull(config.InfiniteSessions);
+        Assert.False(config.InfiniteSessions.Enabled);
+        Assert.NotNull(config.InfiniteSessions.BackgroundCompactionThreshold);
+        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
+    }
+
+    /// <summary>
+    ///     Proves the engine path accepts a tool list the agent path refuses. A consolidation runs on
+    ///     a session that must offer nothing, which is a correct engine-driven session and an
+    ///     incorrect agent — and the confinement it produces is the strongest this factory can
+    ///     express, not the weakest.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildEngineSessionConfig_EmptyTools_ProducesAnEmptyAllowList()
+    {
+        // Arrange / Act
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], instructions: null, model: null);
+
+        // Assert: nothing published, nothing allowed, and the injection channels still shut
+        Assert.Empty(config.Tools!);
+        Assert.Empty(config.AvailableTools!);
+        Assert.False(config.EnableSkills);
+        Assert.True(config.SkipCustomInstructions);
+    }
+
+    /// <summary>
+    ///     Proves both configuration paths derive the allow-list identically, which is the property
+    ///     that makes having two builders safe: they differ in what tool lists they accept and in the
+    ///     runtime's compaction, and in nothing that decides what a session may call.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BothPaths_DeriveTheSameConfinement()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("doc_write") };
+
+        // Act
+        var agent = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
+
+        // Assert
+        Assert.Equal(agent.AvailableTools, engine.AvailableTools);
+        Assert.Equal(
+            agent.Tools!.Select(tool => tool.Name),
+            engine.Tools!.Select(tool => tool.Name));
+        Assert.Equal(agent.EnableSkills, engine.EnableSkills);
+        Assert.Equal(agent.SkipCustomInstructions, engine.SkipCustomInstructions);
+    }
+
+    /// <summary>
+    ///     Proves the engine path still refuses a tool list that could not produce an unambiguous
+    ///     allow-list. Emptiness is the only rule the two paths disagree about.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("doc_read") };
+
+        // Act / Assert
+        var ex = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null));
+        Assert.Contains("doc_read", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

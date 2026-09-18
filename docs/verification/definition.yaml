@@ -5,6 +5,7 @@ resource-path:
 input-files:
   - docs/verification/title.txt
   - docs/verification/introduction.md
+  - docs/verification/agent-kit.md
   - docs/verification/agent-kit-core.md
   - docs/verification/agent-kit-core/guarded-tool-factory.md
   - docs/verification/agent-kit-core/image-promoting-chat-client.md
@@ -77,6 +78,11 @@ input-files:
   - docs/verification/agent-kit-agents-chat-client/chat-client-summarizer.md
   - docs/verification/agent-kit-agents-copilot.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
+  - docs/verification/agent-kit-agents-copilot/copilot-provider-session.md
+  - docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md
+  - docs/verification/agent-kit-agents-copilot/copilot-session-observer.md
+  - docs/verification/agent-kit-agents-copilot/copilot-summarizer.md
+  - docs/verification/agent-kit-agents-copilot/copilot-turn-channel.md
   - docs/verification/ots.md
   - docs/verification/ots/apimark.md
   - docs/verification/ots/buildmark.md

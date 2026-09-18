@@ -22,10 +22,11 @@ long conversation outlives the model's context window on every provider alike.
 > `DemaConsulting.AgentKit.Tools`; and two
 > provider-adapter packages build a Microsoft Agent Framework agent from any `IChatClient` or from
 > a GitHub Copilot `CopilotClient`. The provider-agnostic session engine with tiered context
-> compaction ships in `DemaConsulting.AgentKit.Core` alongside the contract, and
-> `DemaConsulting.AgentKit.Agents.ChatClient` supplies the provider session, session factory and
-> summarizer that run it on any `IChatClient`. The GitHub Copilot adapter does not yet carry a
-> provider session, so a Copilot conversation still runs on that runtime's own session.
+> compaction ships in `DemaConsulting.AgentKit.Core` alongside the contract, and both adapter
+> packages supply the provider session, session factory and summarizer that run it —
+> `DemaConsulting.AgentKit.Agents.ChatClient` for any `IChatClient`, and
+> `DemaConsulting.AgentKit.Agents.Copilot` natively for the GitHub Copilot runtime, which exposes
+> no `IChatClient` at all and reports its own context window rather than being told one.
 
 Three runnable [samples](https://github.com/demaconsulting/AgentKit/tree/main/samples) show AgentKit
 end to end: **document-assistant** demonstrates consuming the shipped tools,
@@ -71,7 +72,8 @@ supplies those. It does provide **context-window management**, and treats it as 
 as an extra: the `DemaConsulting.AgentKit.Core` package ships the session engine alongside the tool
 contract, so a long-running agent behaves the same way on every provider that has an AgentKit
 provider session. Today that means any `IChatClient`, through
-`DemaConsulting.AgentKit.Agents.ChatClient`.
+`DemaConsulting.AgentKit.Agents.ChatClient`, and the GitHub Copilot runtime, through
+`DemaConsulting.AgentKit.Agents.Copilot`.
 
 ## Packages
 
@@ -95,8 +97,14 @@ provider session. Today that means any `IChatClient`, through
   of the application's choosing.
 - **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools. It carries no provider session yet, so a Copilot conversation
-  runs on the runtime's own session rather than on an AgentKit compacting one.
+  allow-list from the supplied tools. It also carries the session engine's provider side for the
+  Copilot runtime: a provider session over one Copilot session, the factory that produces one at
+  every rotation, and a summarizer that consolidates on a separate tool-free session. Copilot
+  reports its own occupancy and its own context window, so unlike every other adapter this one is
+  never told a window — and because Copilot compacts its own sessions by default, at a threshold
+  barely above the one AgentKit rotates at, every session AgentKit drives is created with the
+  runtime's compaction threshold raised clear of that rotation point so the two compactors never act
+  on one conversation.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -270,9 +278,11 @@ can be exercised without a live model, which is what lets an application test it
 its verbatim tail length, and what it does with a reported rotation.
 
 `DemaConsulting.AgentKit.Agents.ChatClient` supplies the provider side for any `IChatClient`:
-`ChatClientProviderSession`, `ChatClientProviderSessionFactory` and `ChatClientSummarizer`. The
-GitHub Copilot adapter does not carry one yet, so a Copilot conversation runs on that runtime's own
-session.
+`ChatClientProviderSession`, `ChatClientProviderSessionFactory` and `ChatClientSummarizer`.
+`DemaConsulting.AgentKit.Agents.Copilot` supplies the same three for the GitHub Copilot runtime —
+`CopilotProviderSession`, `CopilotProviderSessionFactory` and `CopilotSummarizer` — natively,
+because the Copilot SDK exposes no `IChatClient` to adapt. Copilot reports both its occupancy and
+its limit, so that adapter is never told a window.
 
 ## Documentation
 
@@ -307,9 +317,11 @@ of what each demonstrates and when to read it.
   composing the `todo`, `memory`, and
   `agent` families onto one policy: it plans its work as a task list, files what it learns as
   searchable memories with the document each came from, and delegates the reading of a single
-  document to a child agent. On `--provider ollama` the conversation runs on a
-  `CompactingAgentSession` built from `ChatClientProviderSessionFactory` and `ChatClientSummarizer`,
-  reading the context window from the Ollama server rather than assuming one, and printing what each
+  document to a child agent. On **either provider** the conversation runs on a
+  `CompactingAgentSession`: `ChatClientProviderSessionFactory` and `ChatClientSummarizer` on
+  `--provider ollama`, reading the context window from the Ollama server rather than assuming one;
+  `CopilotProviderSessionFactory` and `CopilotSummarizer` on `--provider copilot`, which reports its
+  own window so none is stated. Either way it prints what each
   turn occupies, whether it rotated, how hard it is compacting, and whether history had to be
   dropped. The memory store lives outside the session, so what the agent filed survives every
   rotation. Its corpus is granted read-only and contains a superseding revision, and
