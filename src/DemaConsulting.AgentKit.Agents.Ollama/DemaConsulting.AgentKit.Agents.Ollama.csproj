@@ -1,0 +1,111 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- NuGet Package Configuration -->
+    <PackageId>DemaConsulting.AgentKit.Agents.Ollama</PackageId>
+    <Version>0.0.0</Version>
+    <Authors>DEMA Consulting</Authors>
+    <Company>DEMA Consulting</Company>
+    <Description>Reports the context window an Ollama server will enforce for a model, and which figure that came from, so an AgentKit compacting session over an Ollama chat client is told a window it can trust rather than a guess</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>Icon.png</PackageIcon>
+    <PackageTags>ai;agent;llm;ollama;dotnet-library</PackageTags>
+    <Copyright>Copyright DEMA Consulting</Copyright>
+    <Title>AgentKit Ollama Agents</Title>
+    <Product>AgentKitAgentsOllama</Product>
+
+    <!-- Symbol Package Configuration -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Code Quality Configuration -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- Polyfill Configuration -->
+    <PolyArgumentExceptions>true</PolyArgumentExceptions>
+
+    <!-- SBOM Configuration -->
+    <GenerateSBOM>true</GenerateSBOM>
+    <SBOMPackageName>$(PackageId)</SBOMPackageName>
+    <SBOMPackageVersion>$(Version)</SBOMPackageVersion>
+    <SBOMPackageSupplier>Organization: $(Company)</SBOMPackageSupplier>
+
+    <!-- API Documentation Configuration -->
+    <!-- ApiMark turns this project's XML doc comments into gradually-disclosed Markdown API
+         reference (index -> namespace -> type -> member) for a coding agent to read.
+         - Output is redirected under 'generated/' so it is already covered by the repository's
+           .gitignore, markdownlint, and cspell ignore rules, and by the standing rule that
+           agents never read, lint, or modify generated content.
+         - The targets run once per build, for the first target framework only, which is the
+           correct behavior for a multi-targeted project whose public surface is identical.
+         - ApiMarkPackDocs ships the generated api/ tree inside the nupkg, which is the delivery
+           mechanism for the consuming-agent audience.
+         - ApiMarkEnforceDocs fails the build on any public API member lacking an XML doc
+           <summary>, so the shipped reference cannot silently develop gaps. The Public tier
+           matches ApiMarkVisibility, so enforcement covers exactly the surface that is
+           generated and shipped. -->
+    <ApiMarkOutputDir>$(MSBuildProjectDirectory)\generated\api</ApiMarkOutputDir>
+    <ApiMarkPackDocs>true</ApiMarkPackDocs>
+    <ApiMarkEnforceDocs>Public</ApiMarkEnforceDocs>
+    <ApiMarkEnforceDocsSeverity>Error</ApiMarkEnforceDocsSeverity>
+  </PropertyGroup>
+
+  <!-- Build Tool Dependencies -->
+  <ItemGroup>
+    <!-- OllamaSharp is why this is a package of its own: the window a server enforces is only
+         reachable through Ollama's own APIs, and the IChatClient adapter that serves every
+         provider in that family must not acquire a dependency on any one of them. -->
+    <PackageReference Include="OllamaSharp" Version="5.4.30" />
+    <!-- Referenced explicitly rather than taken transitively through OllamaSharp: DelegatingChatClient
+         and ChatOptions appear on this package's own public surface, so the dependency is direct. -->
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
+    <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
+         consuming project's dependency graph. -->
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.5" PrivateAssets="All" />
+    <PackageReference Include="Polyfill" Version="11.3.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Code Analysis Dependencies -->
+  <ItemGroup>
+    <!-- Analyzer packages use child-element form to configure both PrivateAssets and IncludeAssets:
+         - PrivateAssets="all" prevents these build-time analyzers from becoming transitive dependencies
+           in packages that consume this library.
+         - IncludeAssets lists all asset types (including 'analyzers' and 'buildtransitive') to ensure
+           Roslyn analyzers and MSBuild targets are fully activated during the build. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.401">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DemaConsulting.AgentKit.Agents.Ollama.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\Icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

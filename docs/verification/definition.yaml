@@ -83,6 +83,9 @@ input-files:
   - docs/verification/agent-kit-agents-copilot/copilot-session-observer.md
   - docs/verification/agent-kit-agents-copilot/copilot-summarizer.md
   - docs/verification/agent-kit-agents-copilot/copilot-turn-channel.md
+  - docs/verification/agent-kit-agents-ollama.md
+  - docs/verification/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md
+  - docs/verification/agent-kit-agents-ollama/ollama-context-window.md
   - docs/verification/ots.md
   - docs/verification/ots/apimark.md
   - docs/verification/ots/buildmark.md
@@ -90,6 +93,7 @@ input-files:
   - docs/verification/ots/microsoft-agents-ai.md
   - docs/verification/ots/microsoft-agents-ai-github-copilot.md
   - docs/verification/ots/microsoft-extensions-ai-abstractions.md
+  - docs/verification/ots/ollamasharp.md
   - docs/verification/ots/pandoc.md
   - docs/verification/ots/reqstream.md
   - docs/verification/ots/reviewmark.md

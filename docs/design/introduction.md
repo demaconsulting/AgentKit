@@ -162,6 +162,14 @@ software items, specifically:
   out of the session being compacted
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
   what makes everything above it testable without a live Copilot runtime
+- **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
+  the window the Ollama instance is actually using, by asking the server for a size and by reading
+  back what a running instance reports
+- **OllamaContextWindow (Unit)** — The discovered window and its source, the conservative fallback,
+  the reading of the server, and the pure precedence function that chooses among what it reported
+- **OllamaContextSizingChatClient (Unit)** — The decorator that names the application's chosen
+  context length on every request, so the instance Ollama runs is the one the session accounts
+  against
 
 The following OTS items are also covered:
 
@@ -174,6 +182,8 @@ The following OTS items are also covered:
   `SessionConfig`, the permission RPC, the session lifecycle and the session event stream
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
+- **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
+  instance's context length, and the carriage of a context-length option onto the wire
 - **Pandoc** — Markdown-to-HTML conversion tool
 - **ReqStream** — requirements traceability tool
 - **ReviewMark** — file review enforcement tool
@@ -184,10 +194,14 @@ The following OTS items are also covered:
 - **WeasyPrint** — HTML-to-PDF conversion tool
 - **xUnit** — unit-testing framework
 
-The document also opens with a product-capability chapter. AgentKit's two provider capabilities —
-GitHub Copilot support and `IChatClient` support — are requirements of the product rather than of any
-one package, so they correspond to no software item and appear nowhere in the software-item tree; the
-chapter records which system delivers each and what it rests on.
+The document also opens with a product-capability chapter. AgentKit's three provider capabilities —
+GitHub Copilot support, `IChatClient` support, and support for a model served by Ollama — are
+requirements of the product rather than of any one package, so they correspond to no software item
+and appear nowhere in the software-item tree; the chapter records which system delivers each and what
+it rests on. The Ollama capability is delivered through the same `IChatClient` adapter as the second,
+because that is how Ollama reaches an application — there is no Ollama session, agent or summarizer —
+and what `AgentKitAgentsOllama` adds beneath it is making the context window that adapter must be
+told the one the Ollama instance is actually running.
 
 Version applicability: This design applies to all versions of the AgentKit.
 
@@ -245,7 +259,7 @@ This is the point at which that judgment should be revisited. If one of those gr
 that a reader cannot hold it in view, the boundary around it stops being free and earns its
 artifacts.
 
-The repository contains four systems. `AgentKitCore` is the heart of the product and the one library
+The repository contains five systems. `AgentKitCore` is the heart of the product and the one library
 guaranteed to be imported. It supplies the contract every other package builds on — the policy
 primitives that bound where a tool may act, the single guarded construction path, the result
 constructors and the pack contract — and, alongside them, the provider-agnostic session engine that
@@ -285,11 +299,19 @@ that factory, a provider session, its factory, a summarizer, and the recorder th
 from the last request of a turn. Both are flat, and the two share no code and never reference each
 other.
 
-The `SoftwareStructureView.svg` above renders all four systems.
+`AgentKitAgentsOllama` is the fifth system and the odd one out: it builds no agent and carries no
+session. It exists for the single thing Ollama needs that the chat-client adapter cannot supply —
+a context window the instance is actually running, which an `IChatClient` publishes nowhere and
+which is only reachable through Ollama's own APIs. It is a package of its own because that work
+needs `OllamaSharp`, and the chat-client adapter serves every provider in its family and must stay
+free of any one of them. Two units — one that reads the window, one that asks for it — no dependency
+on Core, and nothing of its own appears in the session an application goes on to build.
+
+The `SoftwareStructureView.svg` above renders all five systems.
 
 The demonstration samples under `samples/` are not among them. They are runnable examples rather
 than deliverables, belong to no software package, and are excluded from the software-item tree for
-the reasons given under Scope above; the structure view renders only the four shipped systems.
+the reasons given under Scope above; the structure view renders only the five shipped systems.
 
 ## Folder Layout
 
@@ -403,6 +425,14 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
+```
+
+`AgentKitAgentsOllama` is a two-file tree, one file per unit:
+
+```text
+src/DemaConsulting.AgentKit.Agents.Ollama/
+├── OllamaContextSizingChatClient.cs  — names the chosen context length on every request
+└── OllamaContextWindow.cs            — the discovered window, its source, the reading and the precedence
 ```
 
 The demonstration samples live under `samples/`, one folder per sample. They are not software

@@ -55,6 +55,7 @@ words:
   - NTFS
   - APFS
   - Ollama
+  - ollamasharp
   - ONNX
   - qwen
   - nomic
@@ -79,3 +80,7 @@ ignorePaths:
   - "**/bin/**"
   - "**/obj/**"
   - package-lock.json
+  # Payloads captured verbatim from a live server and embedded as test fixtures. Their wording is
+  # the provider's, not ours - spell-checking it would only invite edits that make a fixture stop
+  # being a faithful record of what the server sent.
+  - "test/**/Fixtures/**"

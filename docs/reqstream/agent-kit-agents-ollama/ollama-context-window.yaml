@@ -1,0 +1,132 @@
+---
+# Software Unit Requirements for OllamaContextWindow
+#
+# These requirements describe the design-level behavior of the OllamaContextWindow unit.
+
+sections:
+  - title: AgentKitAgentsOllama Requirements
+    sections:
+      - title: OllamaContextWindow Requirements
+        requirements:
+          - id: AgentKitAgentsOllama-OllamaContextWindow-StatedWindowWins
+            title: >-
+              The unit shall report a window the application stated in preference to anything the
+              server reported, and shall name it as stated.
+            justification: |
+              An application that states a window has also asked the server to run the model at it,
+              on every request the conversation sends, so the figure is true by construction rather
+              than by measurement. Asking the server as well would only invite a reader to wonder
+              which answer won, and - because asking what a model would be loaded at is not free of
+              consequence - would risk making discovery change the very thing it was asked to
+              observe. Naming the figure as stated keeps the account honest: it was chosen, not
+              measured.
+            tests:
+              - OllamaContextWindow_Select_StatedWindow_WinsOverWhatTheServerReports
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-PrefersTheLengthTheServerEnforces
+            title: >-
+              The unit shall report the length the named model is currently loaded with whenever the
+              server reports it as loaded.
+            justification: |
+              The loaded length is the only figure that describes the instance rather than the model
+              file: it is what the server will enforce for the conversation about to run. Anything
+              else available - what the file could support, what Ollama defaults to - describes
+              something other than the instance, so the loaded figure is the only measurement worth
+              preferring over an assumption.
+            tests:
+              - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-MatchesAnUntaggedModelName
+            title: >-
+              The unit shall match a model named without a tag against the loaded model the server
+              resolved that name to.
+            justification: |
+              A caller commonly names a model bare, and the server resolves that to the latest tag
+              and reports the tagged name back. Comparing the two spellings literally would find no
+              loaded model in the ordinary case and fall through to the assumed default, which is
+              exactly the silent downgrade this unit exists to avoid.
+            tests:
+              - OllamaContextWindow_Select_UntaggedModelName_MatchesTheLoadedLatestTag
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-DoesNotBorrowAnotherModelsWindow
+            title: >-
+              The unit shall not report the loaded length of a model other than the one named.
+            justification: |
+              A server commonly holds several models loaded at once, each with its own context
+              length. Reporting one model's window for another would produce a figure that looks
+              measured, is specific, and is wrong - the worst of the available failures, because it
+              carries the confidence of a reading. The conservative default is the honest answer
+              instead: nothing is known about an instance the server did not report.
+            tests:
+              - OllamaContextWindow_Select_DifferentModelLoaded_DoesNotBorrowItsWindow
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-AssumesTheDefaultWhenNothingIsReported
+            title: >-
+              The unit shall report Ollama's own default context length, named as assumed, when
+              nothing was stated and the server reported no loaded instance.
+            justification: |
+              Something has to be returned, because a session cannot run without a window. The
+              conservative figure is chosen because the two ways of being wrong are not
+              symmetric - assuming less costs summarizer calls, assuming more loses history the
+              provider has already discarded - and naming it as assumed is what stops a caller
+              treating it as a measurement.
+            tests:
+              - OllamaContextWindow_Select_NothingReported_AssumesTheOllamaDefault
+              - OllamaContextWindow_ReadAsync_NothingLoaded_AssumesTheOllamaDefault
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-ToleratesADeclinedQuery
+            title: >-
+              The unit shall report the conservative default when the server declines to answer its
+              query.
+            justification: |
+              The server query is a convenience, and a server declines it for ordinary
+              reasons - an older build, a proxy in front of it, one that accepts the connection and
+              then never answers. An application that could not start because it could not read an
+              optional number would be worse than one that says which number it assumed, so a
+              declined query has to cost a rung of the ladder rather than the run. This is what
+              makes the reading safe to call unconditionally where a provider is configured, which
+              is the only place a caller can call it.
+            tests:
+              - OllamaContextWindow_ReadAsync_RunningModelsQueryFails_AssumesTheOllamaDefault
+              - OllamaContextWindow_ReadAsync_ServerNeverAnswers_AssumesTheOllamaDefault
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-NeverConsultsAPublishedMaximum
+            title: >-
+              The unit shall not report a context length taken from what a model file publishes,
+              whatever the server would say about it.
+            justification: |
+              A published maximum describes what the model file could support, not what the instance
+              is running: one live server published 262,144 tokens for a model it was running at
+              4,096, a figure thirty-two times too large. Accounting against it would keep a session
+              talking long after the server had begun discarding the start of the conversation, with
+              nothing reporting an error - the one failure mode this whole reading exists to
+              prevent. Not asking for it at all is what makes that guarantee hold rather than merely
+              happen to hold.
+            tests:
+              - OllamaContextWindow_ReadAsync_ModelNotLoaded_NeverAsksForThePublishedMaximum
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-RejectsAMissingModelName
+            title: >-
+              The unit shall reject a request that names no model.
+            justification: |
+              Every figure below a stated window belongs to a particular model, so a request with no
+              model names nothing to match a loaded model against. Refusing it where the composing
+              application wrote it is better than matching nothing and quietly returning the assumed
+              default, which would look like a server that had not answered.
+            tests:
+              - OllamaContextWindow_Select_ModelNameThatNamesNothing_Throws
+
+          - id: AgentKitAgentsOllama-OllamaContextWindow-RefusesAWindowNoSessionCouldUse
+            title: >-
+              The unit shall reject a context window of zero or fewer tokens, whoever constructs
+              one.
+            justification: |
+              The type documents this figure as positive, and it is a public record - so a caller
+              can construct an instance that contradicts the type's own documentation. The reading's
+              own paths cannot produce one, and the consumers a bad window would reach do re-check
+              it, but an invariant that holds only because every consumer re-checks is a habit
+              rather than a guarantee, and it leaves the documentation saying something the type
+              does not enforce. Refusing it where it is claimed is what makes the promise true, and
+              it refuses the value at the line that wrote it rather than somewhere further on.
+            tests:
+              - OllamaContextWindow_Construct_WindowOfZeroOrLess_Throws

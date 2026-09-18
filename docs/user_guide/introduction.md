@@ -50,6 +50,13 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
 ```
 
+If you target Ollama, add one more. Ollama is an ordinary `IChatClient` provider in every other
+respect, but it is the one that will tell you the context window it will enforce:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # reads Ollama's context window
+```
+
 ## API Documentation
 
 Detailed API documentation for all public types and members is distributed in the `api/` folder
@@ -495,10 +502,54 @@ An `IChatClient` publishes no context window — the abstraction exposes a provi
 URI and a default model identifier, and nothing about limits. So
 `ChatClientProviderSessionFactory` is told one, once, where the application configures its provider.
 
-Read it from the provider wherever the provider will say. Ollama publishes the loaded model's
-context length, and the loaded figure is the one the server enforces — which is often smaller than
-the maximum the model publishes. An application that sets the context length itself already knows
-the number it chose. For a hosted model the window is a published property of the model the
+Read it from the provider wherever the provider will say. On Ollama,
+`DemaConsulting.AgentKit.Agents.Ollama` does the asking:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+It reports where the figure came from as well as what it is, because they are not interchangeable.
+`LoadedModel` is the length the running instance is using, which is what will actually be enforced.
+`Stated` means you supplied it. `Assumed` means no instance could be asked and a conservative
+default was used. Show the source alongside the number: an assumption presented as a measurement is
+how a session ends up sized on something nothing guarantees.
+
+Compose `OllamaContextSizingChatClient` whichever of the three you got. A window that was only
+*read* is no more durable than one that was only claimed, and an assumed figure was never known to
+be right in the first place, because Ollama's default depends on available memory and on
+`OLLAMA_CONTEXT_LENGTH`. Asking for the number in hand is what makes it true, and it forces no load
+that the first chat request would not force anyway.
+
+What a model *file* publishes as its maximum is deliberately never reported. It describes what the
+file could support, not what the instance is running: one live server published 262,144 tokens for a
+model it was running at 4,096. Accounting against the larger figure would keep a session talking
+long after the server had begun discarding the start of the conversation.
+
+To choose the window rather than discover it, state it to the same call — nothing else changes:
+
+```csharp
+const int windowTokens = 32768;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+The decorator names the size on **every** request it forwards, not only the first, and a summarizer
+needs the same treatment whichever model it runs on. The shipped API reference for
+`OllamaContextSizingChatClient` carries the reasoning for both, along with the one caution that
+comes with it: asking for a size is a property of the request, not a promise about the model.
+Everything else you set on a request reaches the provider unchanged, and a `num_ctx` you set
+yourself on a particular request is never overruled.
+
+An application that sets the context length itself already knows the number it chose. For a hosted
+model the window is a published property of the model the
 application selected. The research-assistant sample reads it from Ollama and reports which of those
 sources it used; see *Sample: Research Assistant*.
 

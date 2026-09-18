@@ -1,0 +1,66 @@
+---
+# OllamaSharp OTS Software Requirements
+#
+# Requirements for the OllamaSharp client library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: OllamaSharp Requirements
+        requirements:
+          - id: AgentKit-OTS-OllamaSharp-ModelReports
+            title: >-
+              OllamaSharp shall provide the loaded-model type carrying the context length an Ollama
+              server reports for a running instance.
+            justification: |
+              The context window an Ollama server will enforce is only reachable through Ollama's
+              own reporting, and OllamaSharp is where that report arrives as a .NET type: a loaded
+              model carrying the name the server resolved and the length that instance was loaded
+              with. AgentKit implements no Ollama wire protocol; it reads this type. AgentKit's own
+              offline tests construct real loaded-model values and read those members back through
+              the precedence, which proves the shape is present and carries what the precedence
+              depends on.
+
+              Deliberately not claimed here: that the query API which fetches that report behaves
+              as expected over the wire. That is a separate promise about the library's own request
+              shaping and deserialization, and it is claimed by AgentKit-OTS-OllamaSharp-Queries
+              beneath this one.
+            tags: [ots]
+            tests:
+              - OllamaContextWindow_Select_ModelLoaded_PrefersTheLengthTheServerEnforces
+              - OllamaContextWindow_Select_ModelNamedUnderEitherReportedField_IsMatched
+
+          - id: AgentKit-OTS-OllamaSharp-Queries
+            title: >-
+              OllamaSharp shall fetch a server's loaded-model report over the Ollama HTTP API.
+            justification: |
+              The report type is only useful if the client can obtain it, and the obtaining is
+              the library's: AgentKit implements no Ollama wire protocol, names no endpoint and
+              parses no response. AgentKit's tests drive the real client against an HTTP server
+              replaying payloads captured verbatim from a live Ollama server, so the library's own
+              request shaping and its own deserialization execute rather than being asserted back
+              from a hand-built double - which is what this evidence had to wait for, and is what
+              a double could never have shown.
+            tags: [ots]
+            tests:
+              - OllamaContextWindow_ReadAsync_ModelLoaded_ReportsTheLengthTheServerEnforces
+              - OllamaContextWindow_ReadAsync_NothingLoaded_AssumesTheOllamaDefault
+
+          - id: AgentKit-OTS-OllamaSharp-ContextLengthOption
+            title: >-
+              OllamaSharp shall carry a context-length chat option through to the Ollama request it
+              sends.
+            justification: |
+              AgentKit asks an Ollama server to run a model at a chosen context length by naming
+              that length as a chat option on every request, and it is OllamaSharp that translates
+              the provider-neutral option into the Ollama request's own options block on the wire.
+              The whole claim that a stated window is true by construction rests on this
+              translation: if the option did not reach the server, the size would be asserted and
+              never enforced, which is worse than not stating one at all because nothing would
+              report the gap. AgentKit's test drives the real client against an HTTP server and
+              reads the request body it sent, so the library's own request shaping executes rather
+              than being asserted back from a double.
+            tags: [ots]
+            tests:
+              - >-
+                OllamaContextSizingChatClient_GetResponseAsync_ThroughTheRealClient_SendsTheContextLengthOnTheWire

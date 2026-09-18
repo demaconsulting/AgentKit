@@ -9,6 +9,7 @@ package AgentKitCore {
         expose AgentKitTools;
         expose AgentKitAgentsChatClient;
         expose AgentKitAgentsCopilot;
+        expose AgentKitAgentsOllama;
     }
 
     view AgentKitCoreView {
@@ -59,5 +60,11 @@ package AgentKitAgentsChatClient {
 package AgentKitAgentsCopilot {
     view AgentKitAgentsCopilotView {
         expose AgentKitAgentsCopilotSystem;
+    }
+}
+
+package AgentKitAgentsOllama {
+    view AgentKitAgentsOllamaView {
+        expose AgentKitAgentsOllamaSystem;
     }
 }

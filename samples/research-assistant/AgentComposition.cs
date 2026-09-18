@@ -1,5 +1,6 @@
 using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Agents.Copilot;
+using DemaConsulting.AgentKit.Agents.Ollama;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Agent;
 using DemaConsulting.AgentKit.Tools.File;
@@ -858,8 +859,18 @@ public static class AgentComposition
     ///     <para>
     ///     <b>The window is read from the provider rather than chosen.</b> An <c>IChatClient</c>
     ///     publishes no context window and AgentKit refuses to guess one, so the application must
-    ///     answer — and Ollama can be asked. See <see cref="OllamaContextWindow"/> for which of the
-    ///     two figures it reports is the one the server actually enforces.
+    ///     answer — and Ollama can be asked. See <see cref="OllamaContextWindow"/> for which figure
+    ///     describes the instance the server is actually running.
+    ///     </para>
+    ///     <para>
+    ///     <b>The window is asked for, not merely reported.</b> Whichever figure the run ends up
+    ///     with — stated on the command line, read from a running instance, or assumed — the client
+    ///     the conversation runs through is composed with
+    ///     <see cref="OllamaContextSizingChatClient"/>, the summarizer's client included and
+    ///     whichever model <c>--summary-model</c> names, so each request asks Ollama to run at that
+    ///     length. That type's remarks give the reasoning, including why a window merely read from
+    ///     a running instance — or merely assumed — needs asking for as much as a stated one, and
+    ///     why a summary model should be chosen with the figure in mind.
     ///     </para>
     ///     <para>
     ///     <b>The consolidation model is separate from the conversation model, deliberately.</b>
@@ -903,24 +914,14 @@ public static class AgentComposition
         // can run on a different model without a second connection or a second timeout policy.
         var summaryClient = new OllamaApiClient(http, options.SummaryModel ?? model);
 
-        // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
-        // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a
-        // session turn does not do for itself.
-        var sessionClient = new ToolCallReportingChatClient(
-            ollama,
-            call =>
-            {
-                ToolTrace.PrintCall(call);
-                ToolTrace.Record(transcript, call);
-            },
-            (result, call) => ToolTrace.PrintResult(result, call, MemoryPack.FamilyPrefix));
-
         var cleanup = new AsyncDisposableAction(() =>
         {
-            // Disposing the reporting client releases the Ollama client beneath it; the transport
-            // is the sample's and is released last.
-            sessionClient.Dispose();
+            // The raw clients are disposed directly rather than through the chain above them,
+            // because the chain is not built yet - the window has to be read before the sizing
+            // decorator can know what to ask for. Nothing is lost by this: the reporting and sizing
+            // decorators own no resource of their own, so releasing what they wrap is the whole job.
             summaryClient.Dispose();
+            ollama.Dispose();
             http.Dispose();
             return ValueTask.CompletedTask;
         });
@@ -932,11 +933,12 @@ public static class AgentComposition
         ContextWindow window;
         try
         {
-            window = await OllamaContextWindow.ReadAsync(
-                ollama,
-                model,
-                options.ContextWindow,
-                cancellationToken);
+            window = ContextWindow.From(
+                await OllamaContextWindow.ReadAsync(
+                    ollama,
+                    model,
+                    options.ContextWindow,
+                    cancellationToken));
         }
         catch
         {
@@ -944,11 +946,29 @@ public static class AgentComposition
             throw;
         }
 
+        // Both clients are sized to the window the session accounts against; the remarks on this
+        // method say why the summarizer needs it too.
+        IChatClient conversationClient = new OllamaContextSizingChatClient(ollama, window.Tokens);
+        IChatClient summaryChatClient = new OllamaContextSizingChatClient(summaryClient, window.Tokens);
+
+        // The client the session factory talks to Ollama with. AgentKit puts the prompt-size
+        // recorder and the tool-calling loop above it; all this adds is the tool-call reporting a
+        // session turn does not do for itself.
+        var sessionClient = new ToolCallReportingChatClient(
+            conversationClient,
+            call =>
+            {
+                ToolTrace.PrintCall(call);
+                ToolTrace.Record(transcript, call);
+            },
+            (result, call) => ToolTrace.PrintResult(result, call, MemoryPack.FamilyPrefix));
+
         var providerSessions = new ChatClientProviderSessionFactory(sessionClient, window.Tokens);
-        var summarizer = new ChatClientSummarizer(summaryClient);
+        var summarizer = new ChatClientSummarizer(summaryChatClient);
 
         return new ProviderBackend(
-            (tools, instructions, name) => ChatClientAgentFactory.Create(ollama, tools, instructions, name: name),
+            (tools, instructions, name) =>
+                ChatClientAgentFactory.Create(conversationClient, tools, instructions, name: name),
             cleanup,
             (tools, instructions) => new CompactingSessionPlan(
                 new AgentSessionOptions(summarizer, instructions, [.. tools]),

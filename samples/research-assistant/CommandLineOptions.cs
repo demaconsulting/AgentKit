@@ -184,6 +184,13 @@ public sealed class CommandLineOptions
     ///     an unstated value falls back to the conversation's model; on Copilot it falls back to
     ///     whichever model the runtime chooses by default.
     ///     </para>
+    ///     <para>
+    ///     On Ollama this model is asked to run at the conversation's context window, because a
+    ///     consolidation is a single request carrying the whole conversation being rotated. Asking
+    ///     for a size is a property of the request and not a promise about the model, so a smaller
+    ///     model is the right choice only while its trained context and memory can host that
+    ///     figure.
+    ///     </para>
     /// </remarks>
     public string? SummaryModel { get; init; }
 
@@ -194,10 +201,14 @@ public sealed class CommandLineOptions
     /// <remarks>
     ///     <para>
     ///     An <c>IChatClient</c> publishes no context window, so AgentKit is told one once, where
-    ///     the provider is configured, and answers with it thereafter. The sample reads it from
-    ///     Ollama rather than asking for it — see <see cref="OllamaContextWindow"/> — and this flag
-    ///     exists for the case the reading gets wrong: a server that has loaded the model with a
-    ///     context length smaller than the model publishes, which nothing else reveals.
+    ///     the provider is configured, and answers with it thereafter. On Ollama this flag is a
+    ///     <em>request</em>: the size is put on every request the conversation and the summarizer
+    ///     send, so the
+    ///     instance the server runs is the one the session accounts against — see
+    ///     <see cref="DemaConsulting.AgentKit.Agents.Ollama.OllamaContextSizingChatClient"/>. Left
+    ///     unstated, the size is read from whatever instance the server already has loaded, or
+    ///     assumed conservatively when it has none — see
+    ///     <see cref="DemaConsulting.AgentKit.Agents.Ollama.OllamaContextWindow"/>.
     ///     </para>
     ///     <para>
     ///     On the Copilot runtime, which reports its occupancy and its limit with every turn, the
@@ -614,16 +625,19 @@ public sealed class CommandLineOptions
            --summary-model <name>    Model each context consolidation is sent to (default: the
                                      conversation's own model on Ollama, the runtime's default on
                                      Copilot). Consolidation is summarization rather than reasoning,
-                                     so a smaller model is usually right.
+                                     so a smaller model is usually right - but on Ollama it is asked
+                                     to run at the conversation's window, so pick one whose trained
+                                     context and memory can host that figure.
            --context-window <tokens> Context window the compacting session accounts against (default:
-                                     read from Ollama — the loaded model's length where one is
-                                     loaded, else the model's published maximum; taken from the
-                                     runtime on Copilot). State it on Ollama when the server loaded
-                                     the model with a smaller length than the model publishes, which
-                                     nothing else reveals. On Copilot it is a ceiling only: it can
-                                     lower the accounted window but never raise it, and lowering it
-                                     is how a rotation becomes reachable at all on a window larger
-                                     than any conversation this sample would otherwise produce.
+                                     read from Ollama — the length the loaded model is running,
+                                     else Ollama's own default assumed; taken from the runtime on
+                                     Copilot). On Ollama it is a request: every request asks the
+                                     server to run the model at this length, so the window the
+                                     session accounts against is the one the instance is using. On
+                                     Copilot it is a ceiling only: it can lower the accounted window
+                                     but never raise it, and lowering it is how a rotation becomes
+                                     reachable at all on a window larger than any conversation this
+                                     sample would otherwise produce.
            --github-token <token>    GitHub token for the Copilot runtime (default: the GH_TOKEN or
                                      GITHUB_TOKEN environment variable, else the logged-in user).
            --transcript <path>       Append a machine-readable record of every tool call to a file.

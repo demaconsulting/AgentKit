@@ -105,6 +105,17 @@ provider session. Today that means any `IChatClient`, through
   barely above the one AgentKit rotates at, every session AgentKit drives is created with the
   runtime's compaction threshold raised clear of that rotation point so the two compactors never act
   on one conversation.
+- **`DemaConsulting.AgentKit.Agents.Ollama`** — makes the context window your session accounts
+  against the window the Ollama instance is actually running. It asks the server to run at a size
+  you chose, on every request, and where you chose none it reports the length the running instance
+  says it is using — falling back to a conservative default, named as assumed, when nothing is
+  loaded. What the model file publishes as its maximum is deliberately never used: on a live server
+  that figure was 262,144 for a model running at 4,096. Ollama is otherwise an ordinary
+  `IChatClient` provider, and this is the one thing the generic adapter cannot supply — an
+  `IChatClient` publishes no window, and getting it wrong in the high direction loses conversation
+  history silently. Optional: add it only if you
+  target Ollama, and it carries the `OllamaSharp` dependency the `IChatClient` adapter deliberately
+  does not.
 
 Additional provider and tool packages will be added as the architecture is implemented.
 
@@ -136,6 +147,13 @@ Add the adapter for the provider you target:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
 dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
+```
+
+On Ollama, add one more so the session is told the window the instance is actually running rather
+than a guess:
+
+```bash
+dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # asks for and reads Ollama's window
 ```
 
 ## API Documentation
@@ -237,7 +255,7 @@ using DemaConsulting.AgentKit.Agents.ChatClient;
 using DemaConsulting.AgentKit.Core;
 
 // The window is a fact about the provider, so the provider side answers for it. Read it from the
-// provider where you can — Ollama publishes the loaded model's context length — or state the
+// provider where you can — Ollama reports the length the running instance is using — or state the
 // window of the model you chose.
 var providerSessions = new ChatClientProviderSessionFactory(chatClient, windowTokens: 32768);
 
@@ -284,6 +302,40 @@ its verbatim tail length, and what it does with a reported rotation.
 because the Copilot SDK exposes no `IChatClient` to adapt. Copilot reports both its occupancy and
 its limit, so that adapter is never told a window.
 
+On Ollama, `DemaConsulting.AgentKit.Agents.Ollama` answers the one question the generic adapter
+cannot — what window the instance is actually running:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Ollama;
+using Microsoft.Extensions.AI;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, stated: null, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+`window.Source` says which figure it is: the loaded instance's length, which is what the server
+enforces, or a conservative default named as assumed. Report it rather than hiding it — an
+assumption shown as a measurement is how a session ends up sized on something nothing guarantees.
+
+Compose the decorator whichever figure you got — a window that was only *read* is no more durable
+than one that was only claimed, because Ollama does not remember the length an instance was loaded
+at. Asking for the figure makes it true.
+
+To choose the size rather than discover it, state it to the same call — nothing else changes:
+
+```csharp
+const int windowTokens = 32768;
+
+var window = await OllamaContextWindow.ReadAsync(ollamaClient, model, windowTokens, cancellationToken);
+IChatClient sized = new OllamaContextSizingChatClient(ollamaClient, window.Tokens);
+var providerSessions = new ChatClientProviderSessionFactory(sized, window.Tokens);
+```
+
+The size rides on *every* request, not only the first, and a summarizer's client needs wrapping too
+whichever model it runs on. `OllamaContextSizingChatClient`'s API reference, shipped in the package,
+gives the reasoning for both.
+
 ## Documentation
 
 Generated documentation includes:
@@ -319,7 +371,8 @@ of what each demonstrates and when to read it.
   searchable memories with the document each came from, and delegates the reading of a single
   document to a child agent. On **either provider** the conversation runs on a
   `CompactingAgentSession`: `ChatClientProviderSessionFactory` and `ChatClientSummarizer` on
-  `--provider ollama`, reading the context window from the Ollama server rather than assuming one;
+  `--provider ollama`, reading the context window from the Ollama server rather than assuming one —
+  or, with `--context-window`, asking the server to run at a size of your choosing;
   `CopilotProviderSessionFactory` and `CopilotSummarizer` on `--provider copilot`, which reports its
   own window so none is stated. Either way it prints what each
   turn occupies, whether it rotated, how hard it is compacting, and whether history had to be

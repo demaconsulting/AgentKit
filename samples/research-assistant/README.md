@@ -135,18 +135,25 @@ from what it filed on its first turn — which is precisely what `--recall-quest
 ### Where the window comes from
 
 An `IChatClient` publishes no context window, so AgentKit is told one once, where the provider is
-configured, and answers with it thereafter. This sample reads it from Ollama rather than hard-coding
-a number, and prefers the figure the server will actually enforce:
+configured, and answers with it thereafter. This sample makes that figure true rather than guessing
+it, preferring in order:
 
 1. `--context-window <tokens>`, if stated. It settles the question.
-2. The **loaded** model's context length, from the server's list of running models. This is what the
-   server enforces, and it is often smaller than the model's maximum.
-3. The model's **published** context length, from its metadata. A maximum, not a limit in force —
-   the banner says so.
-4. Failing all of that, Ollama's own default of 4096 tokens, announced as an assumption.
+2. The length the **loaded** instance reports, from the server's list of running models. This is
+   what the server is currently enforcing.
+3. Failing that, Ollama's own default of 4096 tokens, announced as an assumption.
 
-The banner prints which of the four a run used, because a session told a window larger than the
-server enforces will not rotate until the provider has already truncated the conversation, and
+Whichever of the three a run lands on, the sample then **asks the server for it**, naming the size
+on every request the conversation and the summarizer send, so the
+instance Ollama runs is the one being accounted against. A figure that was only read is no more
+durable than one that was only claimed; `OllamaContextSizingChatClient`'s API reference says why,
+for that rung and for the assumed one.
+
+What the model *file* publishes as its maximum is deliberately not used. It describes the file, not
+the instance: one live server published 262,144 tokens for a model it was running at 4,096.
+
+The banner prints which of the three a run used, because a session told a window larger than the
+instance is running will not rotate until the provider has already truncated the conversation, and
 nothing downstream can detect that.
 
 ### Where the consolidations go
@@ -155,7 +162,10 @@ nothing downstream can detect that.
 summarization rather than reasoning, so a smaller model is usually the right choice; without the
 flag the conversation's own model does the work, on a separate client. Either way it runs *outside*
 the session being compacted, because a consolidation sent through the live session would spend the
-very context it exists to reclaim.
+very context it exists to reclaim. Whichever model it is, the sample asks it to run at the same
+context window as the conversation, because a consolidation is a single request carrying the whole
+conversation being rotated. Choose a summary model whose trained context and memory can host that
+figure: asking for a size is a property of the request, not a promise about the model.
 
 ### What the sample still writes for itself
 

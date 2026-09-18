@@ -5,11 +5,14 @@ This document describes the overall Off-The-Shelf (OTS) integration strategy for
 ## Overview
 
 AgentKit Core carries exactly one runtime NuGet dependency,
-`Microsoft.Extensions.AI.Abstractions`. The two provider-adapter packages each carry one runtime
+`Microsoft.Extensions.AI.Abstractions`. The three provider-specific packages each carry one runtime
 dependency of their own, deliberately kept out of Core: `AgentKitAgentsChatClient` carries
-`Microsoft.Agents.AI` (the Microsoft Agent Framework runtime), and `AgentKitAgentsCopilot` carries
+`Microsoft.Agents.AI` (the Microsoft Agent Framework runtime), `AgentKitAgentsCopilot` carries
 `Microsoft.Agents.AI.GitHub.Copilot` (the GitHub Copilot SDK, which additionally brings a
-RID-specific native runtime through its own SDK dependency). Each is a third-party published library
+RID-specific native runtime through its own SDK dependency), and `AgentKitAgentsOllama` carries
+`OllamaSharp` (the Ollama client library) — which is precisely what keeps that provider-specific
+dependency out of the chat-client adapter serving every `IChatClient` provider alike. Each is a
+third-party published library
 providing functionality not developed within the program, so each is an OTS item and appears in the
 table below; its integration is detailed in its dedicated design document, and the relevant system
 design records the dependency. Every other OTS item listed below is a build-time or
@@ -32,6 +35,7 @@ inside the package.
 | Microsoft.Agents.AI                  | Runtime library defining `AIAgent` and `ChatClientAgent`             |
 | Microsoft.Agents.AI.GitHub.Copilot   | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |
 | Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency  |
+| OllamaSharp                          | Ollama client library: loaded-model report, context-length option    |
 | Pandoc                               | Converts Markdown documentation to HTML                              |
 | ReqStream                            | Enforces requirements-to-test traceability                           |
 | ReviewMark                           | Enforces file review coverage and currency                           |

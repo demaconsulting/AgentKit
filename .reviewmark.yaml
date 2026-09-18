@@ -1348,6 +1348,99 @@ reviews:
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotTurnChannel.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
+  # AgentKitAgentsOllama-Architecture Review (one per system)
+  - id: AgentKitAgentsOllama-Architecture
+    title: Review that AgentKitAgentsOllama Architecture Satisfies Requirements
+    context:
+      - "README.md"
+      - "docs/user_guide/**/*.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"                       # system requirements
+      - "docs/design/introduction.md"                                       # design introduction
+      - "docs/design/agent-kit-agents-ollama.md"                            # system design
+      - "docs/verification/introduction.md"                                 # verification introduction
+      - "docs/verification/agent-kit-agents-ollama.md"                      # system verification
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/AgentKitAgentsOllamaTests.cs"  # integration tests
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+
+  # AgentKitAgentsOllama-Design Review (one per system)
+  - id: AgentKitAgentsOllama-Design
+    title: Review that AgentKitAgentsOllama Design is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-ollama/platform-requirements.yaml"  # platform requirements
+      - "docs/design/introduction.md"                                       # design introduction
+      - "docs/design/agent-kit-agents-ollama.md"                            # system design
+      - "docs/design/agent-kit-agents-ollama/**/*.md"                       # all system design documents
+      - "docs/design/ots.md"                                                # OTS overview
+
+  # AgentKitAgentsOllama-Verification Review (one per system)
+  - id: AgentKitAgentsOllama-Verification
+    title: Review that AgentKitAgentsOllama Verification is Consistent and Complete
+    context:
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+    paths:
+      - "docs/verification/introduction.md"                                 # verification introduction
+      - "docs/verification/agent-kit-agents-ollama.md"                      # system verification
+      - "docs/verification/agent-kit-agents-ollama/**/*.md"                 # all verification documents
+      - "docs/verification/ots.md"                                          # OTS overview
+
+  # AgentKitAgentsOllama-AllRequirements Review (one per system)
+  - id: AgentKitAgentsOllama-AllRequirements
+    title: Review that All AgentKitAgentsOllama Requirements are Complete
+    context:
+      - "docs/design/agent-kit-agents-ollama.md"
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-agents-ollama/**/*.yaml"                  # all Ollama requirements files
+
+  # AgentKitAgentsOllama-OllamaContextWindow Review (one per unit)
+  #
+  # The chat-client session factory's design is supplied as context because the figure this unit
+  # reports exists to be handed to it, and a reviewer judging whether the precedence is the right
+  # one needs to see what consumes it.
+  - id: AgentKitAgentsOllama-OllamaContextWindow
+    title: Review that AgentKitAgentsOllama OllamaContextWindow Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-ollama.md"
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+      - "docs/design/agent-kit-agents-chat-client/chat-client-provider-session-factory.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-ollama/ollama-context-window.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-ollama/ollama-context-window.md"        # unit design
+      - "docs/verification/agent-kit-agents-ollama/ollama-context-window.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Ollama/OllamaContextWindow.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowTests.cs"  # unit tests
+      # The reading path, driven through the real Ollama client against a loopback HTTP server
+      # replaying payloads captured verbatim from a live server.
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextWindowReadTests.cs"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/Fixtures/*.json"
+
+  # AgentKitAgentsOllama-OllamaContextSizingChatClient Review (one per unit)
+  #
+  # The sibling unit's design is supplied as context because the two meet in one integer: the size
+  # this decorator asks the server for is the same size the reading reports as stated, and a
+  # reviewer judging whether that claim is honest needs to see both halves.
+  - id: AgentKitAgentsOllama-OllamaContextSizingChatClient
+    title: Review that AgentKitAgentsOllama OllamaContextSizingChatClient Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-ollama.md"
+      - "docs/reqstream/agent-kit-agents-ollama.yaml"
+      - "docs/design/agent-kit-agents-ollama/ollama-context-window.md"
+    paths:
+      # unit requirements
+      - "docs/reqstream/agent-kit-agents-ollama/ollama-context-sizing-chat-client.yaml"
+      # unit design
+      - "docs/design/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md"
+      # unit verification
+      - "docs/verification/agent-kit-agents-ollama/ollama-context-sizing-chat-client.md"
+      # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Ollama/OllamaContextSizingChatClient.cs"
+      # unit tests, including the wire test that drives the real Ollama client
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/OllamaContextSizingChatClientTests.cs"
+      - "test/DemaConsulting.AgentKit.Agents.Ollama.Tests/RecordingChatClient.cs"
+
   # OTS-ApiMark Review (one per OTS item)
   - id: OTS-ApiMark
     title: Review that ApiMark Provides Required Functionality
@@ -1395,6 +1488,14 @@ reviews:
       - "docs/reqstream/ots/microsoft-extensions-ai-abstractions.yaml"      # OTS requirements
       - "docs/design/ots/microsoft-extensions-ai-abstractions.md"           # OTS integration design
       - "docs/verification/ots/microsoft-extensions-ai-abstractions.md"    # OTS verification
+
+  # OTS-OllamaSharp Review (one per OTS item)
+  - id: OTS-OllamaSharp
+    title: Review that OllamaSharp Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/ollamasharp.yaml"                              # OTS requirements
+      - "docs/design/ots/ollamasharp.md"                                   # OTS integration design
+      - "docs/verification/ots/ollamasharp.md"                             # OTS verification
 
   # OTS-Pandoc Review (one per OTS item)
   - id: OTS-Pandoc
