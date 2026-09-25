@@ -27,10 +27,10 @@ public class ImageTests
     private static readonly byte[] SampleBytes = [0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04];
 
     /// <summary>
-    ///     Proves a composition attaching the family, on a vision host, publishes the read tool.
+    ///     Proves a composition attaching the family, on a vision host, publishes both tools.
     /// </summary>
     [Fact]
-    public void Image_Family_ComposedThroughBuilder_PublishesTheReadTool()
+    public void Image_Family_ComposedThroughBuilder_PublishesBothTools()
     {
         // Arrange: a vision host with the family attached under one policy
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
@@ -41,8 +41,10 @@ public class ImageTests
         // Act: compose the tool list
         var tools = builder.Build();
 
-        // Assert: the read tool the family promises, under the one family prefix
-        Assert.Equal([ImageReadTool.ToolName], tools.Select(tool => tool.Name));
+        // Assert: both tools the family promises, under the one family prefix
+        Assert.Equal(
+            [ImageReadTool.ToolName, ImageCropTool.ToolName],
+            tools.Select(tool => tool.Name));
     }
 
     /// <summary>
@@ -213,6 +215,133 @@ public class ImageTests
         var content = Assert.IsType<List<AIContent>>(result);
         var caption = Assert.IsType<TextContent>(content[0]);
         Assert.Contains("53x29 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the family returns a cropped region as image content.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_CroppedRegion_IsReturnedAsImageContent()
+    {
+        // Arrange: the family composed over a permitted location holding a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.png", ImageTestImages.Png(40, 30));
+        var tools = Compose(fixture.Root);
+
+        // Act: ask for a region through the composed family
+        var result = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 4,
+                ["y"] = 5,
+                ["width"] = 12,
+                ["height"] = 9
+            });
+
+        // Assert: the region comes back as image content, not as a written file or a JSON copy
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(ImageMediaTypes.Png, data.MediaType);
+
+        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        Assert.Equal(12, decoded.Width);
+        Assert.Equal(9, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves the size the read tool reports is the size a region request is aimed with.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The increment's thesis, in one scenario.</b> The family states an image's size, and
+    ///     the region named within exactly that size is accepted — while one pixel beyond it is
+    ///     refused. The two tools are one capability: a region request the model cannot aim is a
+    ///     region request it will aim wrongly.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_ReadCaption_StatesTheDimensionsACropCanBeAimedWith()
+    {
+        // Arrange: the family composed over a permitted location holding a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.png", ImageTestImages.Png(36, 22));
+        var tools = Compose(fixture.Root);
+
+        // Act: read the image, then ask for exactly the region its reported size allows, and
+        // then for one pixel more
+        var readResult = await InvokeAsync(
+            tools,
+            ImageReadTool.ToolName,
+            new AIFunctionArguments { ["path"] = file });
+        var wholeResult = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 0,
+                ["y"] = 0,
+                ["width"] = 36,
+                ["height"] = 22
+            });
+        var beyondResult = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 0,
+                ["y"] = 0,
+                ["width"] = 37,
+                ["height"] = 22
+            });
+
+        // Assert: the caption states the size, the region within it is content, and the region
+        // beyond it is a refusal naming that same size
+        var caption = Assert.IsType<TextContent>(Assert.IsType<List<AIContent>>(readResult)[0]);
+        Assert.Contains("36x22 pixels", caption.Text, StringComparison.Ordinal);
+        Assert.IsType<List<AIContent>>(wholeResult);
+        Assert.Contains("36x22 pixels", Assert.IsType<string>(beyondResult), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an image declaring more pixels than the host's budget is refused before it is
+    ///     decoded.
+    /// </summary>
+    /// <remarks>
+    ///     The fixture carries no pixel data at all, so a family that decoded before triaging
+    ///     would refuse it as undecodable instead of as oversized. Asserting the oversized
+    ///     refusal is therefore evidence the decision was made from the header alone.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_OversizedDeclaredImage_IsRefusedBeforeDecoding()
+    {
+        // Arrange: the family composed over a permitted location holding a bomb header
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "bomb.png", ImageTestImages.PngHeaderOnly(8000, 8000));
+        var tools = Compose(fixture.Root);
+
+        // Act: ask for a small region of it
+        var result = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 0,
+                ["y"] = 0,
+                ["width"] = 8,
+                ["height"] = 8
+            });
+
+        // Assert: refused for its declared size, and not for being undecodable
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not be decoded", text, StringComparison.Ordinal);
     }
 
     /// <summary>

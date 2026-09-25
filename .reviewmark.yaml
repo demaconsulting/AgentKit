@@ -766,6 +766,21 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageReadTool.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageReadToolTests.cs"  # unit tests
 
+  # AgentKitTools-Image-ImageCropTool Review (one per unit)
+  - id: AgentKitTools-Image-ImageCropTool
+    title: Review that AgentKitTools Image ImageCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageCropToolTests.cs"  # unit tests
+
   # AgentKitTools-Image-ImagePack Review (one per unit)
   - id: AgentKitTools-Image-ImagePack
     title: Review that AgentKitTools Image ImagePack Implementation is Correct

@@ -40,12 +40,26 @@ sections:
                 title: >-
                   The image pack shall create the read tool, with no null element.
                 justification: |
-                  The pack is the unit of attachment, so it must produce the family's tool for an
-                  application to receive it. A null element would fail the composition at build
+                  The pack is the unit of attachment, so it must produce the family's tools for an
+                  application to receive them. A null element would fail the composition at build
                   time for a reason no caller could act on, so the pack honors the contract it is
                   judged against.
                 tests:
-                  - ImagePack_CreateTools_Policy_CreatesTheReadTool
+                  - ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools
+                  - ImagePack_CreateTools_Policy_ReturnsNoNullTool
+
+              - id: AgentKitTools-Image-Pack-RegistersCropTool
+                title: >-
+                  The image pack shall create the crop tool alongside the read tool.
+                justification: |
+                  The two tools are one capability rather than two: the read tool reports the
+                  coordinate space the crop tool consumes, so a pack that published only one of
+                  them would offer a model either a region request it cannot aim or a size it has
+                  nothing to use. Creating them together in the one place the family prefix is
+                  claimed is what makes that pairing a property of the pack rather than of each
+                  application's composition code.
+                tests:
+                  - ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools
                   - ImagePack_CreateTools_Policy_ReturnsNoNullTool
 
               - id: AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix

@@ -1,0 +1,266 @@
+---
+# Software Unit Requirements for ImageCropTool
+#
+# These requirements describe the design-level behavior of the ImageCropTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageCropTool Requirements
+            requirements:
+              - id: AgentKitTools-Image-CropTool-ToolName
+                title: >-
+                  The crop tool shall be published under the name image_crop, exposed as a
+                  constant on the unit that defines it, and shall carry a description naming the
+                  coordinate space a region is stated in.
+                justification: |
+                  The name is the only handle a model has on the tool. A description is the only
+                  basis a model has for choosing this tool over another, so a tool offered without
+                  one is offered blind — and for this tool the description must additionally say
+                  where the coordinates come from, because a model that does not know the region
+                  is measured in pixels from the top-left corner of the image will state one in
+                  some other unit and be refused.
+                tests:
+                  - ImageCropTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - ImageCropTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-Image-CropTool-GuardedConstruction
+                title: >-
+                  The crop tool shall be constructed only through the guarded construction path
+                  with an access policy supplied at construction, and shall deliver the region it
+                  returns to the caller in the form it returned it rather than serialized to JSON.
+                tags: [security]
+                justification: |
+                  Without the guard the caption-plus-content result is serialized before a
+                  provider sees it, so the provider never receives the region and the model —
+                  told a tool returned one — describes content it never got. The failure is
+                  silent, which is exactly why the guarded path must be the only one. Requiring
+                  the policy at construction is what makes a crop tool governed by no policy
+                  impossible to build rather than merely a mistake somebody might notice.
+                tests:
+                  - ImageCropTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - ImageCropTool_Crop_Result_IsContentListNotJsonElement
+
+              - id: AgentKitTools-Image-CropTool-CropPermittedRegion
+                title: >-
+                  The crop tool shall return the rectangular region a caller names in pixels of a
+                  permitted image, as image content preceded by a caption stating both the region
+                  and the image's dimensions.
+                justification: |
+                  A model that can see an image still cannot examine part of one closely: a
+                  detail occupying a hundredth of a large picture is, at the resolution a provider
+                  receives, effectively invisible. Returning the named region at full resolution
+                  is what turns a guess about that detail into a reading of it. The caption
+                  restates the region and the source's dimensions so a follow-up region can be
+                  aimed without reading the whole image again. Nothing is written: the region is
+                  returned inline, so the capability adds no write decision and no new location
+                  an agent can reach.
+                tests:
+                  - ImageCropTool_Crop_PermittedPng_ReturnsCroppedImageContent
+                  - ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
+                  - ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent
+                  - ImageCropTool_Crop_BareFileName_ResolvesAgainstTheWorkspace
+                  - ImageCropTool_Crop_WholeImageRegion_IsAccepted
+                  - ImageCropTool_Crop_SinglePixelRegion_IsAccepted
+
+              - id: AgentKitTools-Image-CropTool-PixelsPreservedExactly
+                title: >-
+                  Every pixel of the region the crop tool returns shall be the pixel the source
+                  image held at that position, unaltered.
+                justification: |
+                  The model asked to examine this region closely, which is precisely the case in
+                  which a re-compression artifact is indistinguishable from the thing being
+                  examined. A region returned in a form that altered any pixel would let a model
+                  read a compression artifact as content and report it confidently. Stating the
+                  promise as preserved pixels rather than as a choice of format is what makes it
+                  demonstrable: a round trip compares every channel of every pixel, including the
+                  alpha channel an encoder might quietly discard.
+                tests:
+                  - ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+
+              - id: AgentKitTools-Image-CropTool-RefusesOutOfBounds
+                title: >-
+                  The crop tool shall refuse a region that does not lie wholly within the image,
+                  shall name the image's actual pixel dimensions in the refusal, and shall not
+                  reduce the region to one that would have fitted.
+                justification: |
+                  Reducing the region would answer a different question from the one asked while
+                  reporting success, and the model has no way to detect the substitution: it
+                  would then describe, confidently, a part of the picture it never received.
+                  Refusing is the only honest answer, and naming the image's real dimensions is
+                  what turns the refusal from a dead end into the fact the model was missing —
+                  it can restate the region correctly on the next turn rather than guessing again.
+                tests:
+                  - ImageCropTool_Crop_RegionExtendingPastTheRightEdge_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_RegionExtendingPastTheBottomEdge_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_OriginAtTheImageWidth_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_OriginAtTheImageHeight_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_RegionEntirelyOutsideTheImage_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_OutOfBoundsRegion_IsNotClamped
+
+              - id: AgentKitTools-Image-CropTool-RefusesMalformedRegion
+                title: >-
+                  The crop tool shall refuse a region whose origin is negative or whose extent is
+                  not positive, stating that the origin is measured from the image's top-left
+                  corner and that the extent must be greater than zero.
+                justification: |
+                  An empty or reversed region is a contradiction in the request rather than a
+                  resource problem, so it is refused as a malformed request and needs no file to
+                  diagnose. The coordinate convention is stated because it is the one thing about
+                  the coordinate space a model cannot observe from the picture itself, and it is
+                  the most likely reason it produced a negative value.
+                tests:
+                  - ImageCropTool_Crop_NegativeOrigin_ReturnsDenial
+                  - ImageCropTool_Crop_NonPositiveExtent_ReturnsDenial
+
+              - id: AgentKitTools-Image-CropTool-RefusesOversizedDecode
+                title: >-
+                  The crop tool shall refuse an image whose declared dimensions exceed the host's
+                  decode budget or the largest extent it can decode on one axis, deciding from the
+                  declared dimensions alone and naming both bounds.
+                tags: [security]
+                justification: |
+                  A compressed image well inside the binary ceiling can declare far more pixels
+                  than its size suggests, and decoding costs four bytes per pixel whatever
+                  encoding the file itself used — so a model can provoke a quarter of a gigabyte
+                  of transient allocation from a file of a few hundred kilobytes. Deciding from
+                  the declared dimensions alone is what makes the refusal cost nothing: the
+                  decision is made before any pixel data exists. Both bounds are named because
+                  one bounds each axis and the other bounds their product, neither implies the
+                  other, and a model needs both to form a request that would be accepted.
+                tests:
+                  - ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
+                  - ImageCropTool_Crop_HeaderDeclaringAnOversizedAxis_IsRefusedNamingTheBounds
+                  - ImageCropTool_Crop_PalettizedPngNearThePixelCeiling_IsRefusedNamingTheBudget
+
+              - id: AgentKitTools-Image-CropTool-RefusesUndecodableContent
+                title: >-
+                  The crop tool shall refuse content it cannot decode, and where the content's
+                  header stated its pixel dimensions the refusal shall name them.
+                justification: |
+                  Whether the size is stated is the fact that distinguishes the three ways
+                  content can fail, and a model needs the distinction. A file whose header will
+                  not read is not content of the kind its name claimed, so nothing is claimed
+                  about it. A file that declares interlaced storage is entirely well formed and
+                  merely of a kind this tool does not decode, so describing it as damaged would
+                  be false. A file whose header read and whose body did not is damaged, and
+                  stating the size it did declare is what tells the model so. No message reveals
+                  the decoding library's own wording, which is developer-facing and may echo
+                  values read out of the file.
+                tests:
+                  - ImageCropTool_Crop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions
+                  - ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions
+                  - ImageCropTool_Crop_TruncatedPngBody_ReturnsDenialNamingTheDeclaredDimensions
+                  - ImageCropTool_Crop_ZeroByteFile_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-Image-CropTool-RefusesNonCroppableType
+                title: >-
+                  The crop tool shall refuse a file of a type no region can be extracted from,
+                  composing the refusal through the media-type map so the family gives one answer
+                  to what a file is.
+                justification: |
+                  A file whose type cannot be decoded has no region to return. Delegating the
+                  refusal keeps the judgment about what a file is — and about whether naming a
+                  sibling reader states that or merely offers a way around the refusal — in one
+                  place rather than duplicated in each tool. A type the family reads but cannot
+                  cut earns a refusal naming the types that can be cut, so the model is told what
+                  it may ask for and not only what it may not.
+                tests:
+                  - ImageCropTool_Crop_GifFile_ReturnsDenialNamingTheCroppableTypes
+                  - ImageCropTool_Crop_WebpFile_ReturnsDenialNamingTheCroppableTypes
+                  - ImageCropTool_Crop_PdfFile_ReturnsDenialStatingRasterizationIsRequired
+                  - ImageCropTool_Crop_SvgFile_ReturnsDenialRedirectingToTextFileRead
+                  - ImageCropTool_Crop_UnknownExtension_ReturnsDenialWithoutRedirect
+                  - ImageCropTool_Crop_GifDenial_NamesNoSiblingTool
+
+              - id: AgentKitTools-Image-CropTool-ObservesBinaryCeiling
+                title: >-
+                  The crop tool shall refuse a file larger than the policy's binary ceiling before
+                  reading it, and shall refuse a region whose returned form exceeds that same
+                  ceiling, naming the ceiling in both cases.
+                justification: |
+                  The same ceiling governs everything this family hands a provider, whatever
+                  produced the bytes. Judging the source file's size from its directory entry
+                  means an oversized file is never read into memory merely to discover it was
+                  oversized. Judging the result separately is not redundant: a region of a
+                  compressed source, returned in a form that alters no pixel, can genuinely
+                  exceed a ceiling the source file sat well inside. Naming the ceiling lets the
+                  model ask for a smaller region rather than guess.
+                tests:
+                  - ImageCropTool_Crop_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling
+                  - ImageCropTool_Crop_EncodedRegionBeyondTheBinaryCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-Image-CropTool-DenyOutsideRoot
+                title: >-
+                  The crop tool shall refuse a request whose location lies outside the permitted
+                  read location.
+                tags: [security]
+                justification: |
+                  This is the primary threat the library exists to control, and a tool that
+                  returns part of a file rather than all of it escapes none of it. The decision
+                  is made before anything is learned about the file, so a refused path never
+                  reveals whether it exists, and it is the same read decision the sibling read
+                  tool consults rather than a second judgment that could differ from it.
+                tests:
+                  - ImageCropTool_Crop_PathOutsideTheReadRoot_ReturnsDenial
+
+              - id: AgentKitTools-Image-CropTool-DirectoryRefused
+                title: >-
+                  The crop tool shall refuse a request naming a directory with a plain fact that
+                  prescribes no course of action.
+                justification: |
+                  A directory has no image content to take a region of. A denial states a fact and
+                  never prescribes a remedy, because a denial that suggested one was measured
+                  driving a model into a destructive workaround the user had explicitly forbidden.
+                tests:
+                  - ImageCropTool_Crop_DirectoryPath_ReturnsDenial
+
+              - id: AgentKitTools-Image-CropTool-MissingFileDenied
+                title: >-
+                  The crop tool shall refuse a request for a file of a croppable type that does not
+                  exist, with a plain fact that prescribes no course of action.
+                justification: |
+                  A missing file has no region to return, and the refusal reports that as a
+                  returned result the model can act on rather than as an exception that would end
+                  the agent's turn. The type is judged before existence, matching the read tool's
+                  order, so a croppable extension naming no file is refused as not found rather
+                  than as an uncroppable type.
+                tests:
+                  - ImageCropTool_Crop_MissingFile_ReturnsDenial
+
+              - id: AgentKitTools-Image-CropTool-MalformedRequestDenied
+                title: >-
+                  The crop tool shall return a refusal, rather than raising an exception or a
+                  framework error, when the requested path or any part of the region is omitted,
+                  empty or consists only of whitespace.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must be
+                  told how to correct it. An exception at a tool call ends the agent's turn and
+                  strands it. An omitted argument is the same case reached by a different route: a
+                  parameter that is required rather than defaulted fails inside the function
+                  factory before the tool is reached, and the model receives an opaque framework
+                  error instead of a refusal naming what to supply. This tool takes five
+                  parameters, so it has five ways to reach that failure and every one of them
+                  carries a default.
+                tests:
+                  - ImageCropTool_Crop_MissingPathArgument_ReturnsDenialWithoutThrowing
+                  - ImageCropTool_Crop_MissingRegionArguments_ReturnsDenialWithoutThrowing
+                  - ImageCropTool_Crop_BlankPath_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-Image-CropTool-DenialDisclosure
+                title: >-
+                  A refusal from the crop tool shall carry the disclosure the access policy
+                  produces, while a refusal the tool composes itself shall name only integers and
+                  the resolved media type.
+                justification: |
+                  A policy refusal discloses the permitted locations so a confined model learns
+                  where it may look instead of guessing, and this tool passes that refusal through
+                  unchanged. Everything this tool composes itself reaches a model in a transcript
+                  that leaves the process, so it carries no absolute path, no permitted location
+                  and no directory separator — only the numbers and the media type the model
+                  needs to correct its request.
+                tests:
+                  - ImageCropTool_Crop_DeniedPath_DenialDisclosesPermittedLocation
+                  - ImageCropTool_Crop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions

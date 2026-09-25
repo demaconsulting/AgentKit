@@ -243,7 +243,8 @@ row.
 | File      | `file_move`             | Moves a file within the policy                   | None                |
 | File      | `file_delete`           | Deletes a single file within the policy          | None                |
 | Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
-| Image     | `image_read`            | Reads an image or PDF for a vision-capable agent | `Vision`            |
+| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`            |
+| Image     | `image_crop`            | Returns a pixel region of a PNG or JPEG image    | `Vision`            |
 | Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None                |
 | Todo      | `todo_set`              | Records a step, or updates the step with that id | None                |
 | Todo      | `todo_remove`           | Drops a step by id from the task list            | None                |
@@ -259,6 +260,15 @@ memory (`MemoryPack`) families require no host capability. Two families are gate
 (`ImagePack`) requires the `Vision` host capability, and the agent family (`AgentPack`) requires
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
 its tools, so a model is never offered a tool its host cannot use.
+
+The image family's two tools are one capability rather than two. `image_read` states the image's
+pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
+top-left corner of that same coordinate space — because a model can see a picture but cannot
+measure one, and a region request it cannot aim is a region request it will aim wrongly. A region
+that does not lie wholly inside the image is **refused, naming the image's real dimensions**, never
+quietly reduced to one that would have fitted: a reduced region answers a different question while
+reporting success, and the model has no way to detect the substitution. The region comes back
+inline as image content, so nothing is written and no new location becomes reachable.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
 should know what it is attaching:

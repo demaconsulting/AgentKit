@@ -41,8 +41,9 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type), **markdown** (outline a document's headings with their line ranges),
-  **image** (read images and PDF documents for a vision-capable agent, gated on the `Vision` host
-  capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
+  **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
+  dimensions, and return a rectangular region of a PNG or JPEG named in those pixels; gated on the
+  `Vision` host capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
   steps from), **memory**
   (file, recall, update, revise and forget memories, over an embedding generator the application
   supplies; supplying no store gives each composition a fresh in-memory store that does **not**
@@ -230,8 +231,8 @@ The policy is a guardrail, not a sandbox: a tool cannot express an operation the
 but AgentKit does not replace OS-level isolation for untrusted code. Symbolic links, directory
 junctions and other reparse points are not a protection boundary: a path that reaches outside a
 granted location through a link is not detected. Because the image family
-requires the `Vision` host capability, `ImagePack` contributes its tool only when the host
-declares that capability; a host that does not is never offered `image_read`.
+requires the `Vision` host capability, `ImagePack` contributes its tools only when the host
+declares that capability; a host that does not is never offered `image_read` or `image_crop`.
 
 Providers differ in where they accept images. Some deliver an image a tool returned straight to
 the model; others accept images only on messages and silently discard one that arrives in a tool

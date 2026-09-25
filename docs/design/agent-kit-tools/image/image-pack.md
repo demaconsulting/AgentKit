@@ -26,7 +26,7 @@ The class is sealed and holds no state; it is safe for concurrent use.
 | `FamilyPrefix` (constant) | `string`                  | `image`; leads every tool name it creates     |
 | `IToolPack.FamilyPrefix`  | `string`                  | Reports the constant above                    |
 | `RequiredCapabilities`    | `HostCapabilities`        | `Vision`; the family is gated on it           |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; the read tool      |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; both tools         |
 
 The prefix is published both as a constant and through the contract. The constant lets a test or a
 composing application name the family without repeating a string literal that could drift from the
@@ -54,9 +54,12 @@ the pack invented.
 **Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` as the single element
 of a collection.
 
-**Postconditions:** exactly the read tool, non-null, named `image_`-prefixed and governed by the
-supplied policy. It is returned as a collection because the pack contract is a collection and because
-a family grows without its callers changing. Called once per `ToolPackBuilder.Build`, and only when
+**Postconditions:** exactly the read tool and the crop tool, non-null, each named `image_`-prefixed
+and governed by the
+supplied policy. The two are created together because they are one capability: the read tool states
+the coordinate space the crop tool consumes, so a pack that published only one of them would offer
+a model either a region request it cannot aim or a size it has nothing to use. Called once per
+`ToolPackBuilder.Build`, and only when
 the host provides the Vision capability.
 
 #### Error Handling
@@ -75,8 +78,8 @@ pack is not reachable from a model's tool call, so no runtime refusal arises her
 #### Dependencies
 
 `IToolPack` and `HostCapabilities` for the contract it implements, `PathPolicy` as the argument it
-passes on, and the read tool unit whose internal factory it calls. `AIFunction`, from
-`Microsoft.Extensions.AI.Abstractions`, is the form the created tool takes.
+passes on, and the read and crop tool units whose internal factories it calls. `AIFunction`, from
+`Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
 
 #### Callers
 

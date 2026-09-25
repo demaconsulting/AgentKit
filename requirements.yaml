@@ -35,6 +35,7 @@ includes:
   - docs/reqstream/agent-kit-core/platform-requirements.yaml
   - docs/reqstream/agent-kit-tools.yaml
   - docs/reqstream/agent-kit-tools/image.yaml
+  - docs/reqstream/agent-kit-tools/image/image-crop-tool.yaml
   - docs/reqstream/agent-kit-tools/image/image-media-types.yaml
   - docs/reqstream/agent-kit-tools/image/image-pack.yaml
   - docs/reqstream/agent-kit-tools/image/image-read-tool.yaml

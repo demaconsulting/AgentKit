@@ -5,12 +5,13 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 
 /// <summary>
 ///     The image tool family: the pack an application attaches to give a vision-capable agent
-///     policy-governed reading of images and PDF documents.
+///     policy-governed reading of images and PDF documents, and extraction of a rectangular
+///     region of an image.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     A pack is the unit of attachment, which is why this is the only public way to obtain the
-///     family's tools. The read tool's factory is internal, so a tool cannot be constructed
+///     family's tools. Each tool's factory is internal, so a tool cannot be constructed
 ///     outside the family that claims its prefix, and every tool is necessarily built through
 ///     <see cref="GuardedToolFactory"/> with the policy the composition supplies.
 ///     </para>
@@ -52,8 +53,8 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///             .Add(new ImagePack());
 ///     }
 ///
-///     // With vision declared the list ends with image_read; without it, the pack contributes
-///     // nothing and the model never sees an image tool.
+///     // With vision declared the list ends with the image family's tools; without it, the pack
+///     // contributes nothing and the model never sees an image tool.
 ///     IReadOnlyList&lt;AIFunction&gt; tools = builder.Build();
 ///     </code>
 /// </example>
@@ -106,13 +107,15 @@ public sealed class ImagePack : IToolPack
     ///     Creates the family's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
-    ///     The family publishes a single tool today; it is still returned as a collection because
-    ///     the pack contract is a collection and because a family grows without its callers
-    ///     changing. The policy is passed to the tool's factory and captured there, so the tool
-    ///     cannot later observe a different policy.
+    ///     The family publishes two tools: the read tool, which returns a whole image or PDF,
+    ///     and the crop tool, which returns a rectangular region of one. They are created
+    ///     together because they are one capability rather than two — a region request a model
+    ///     cannot aim is a region request it will aim wrongly, and the read tool is what reports
+    ///     the coordinate space the crop tool consumes. The policy is passed to each tool's
+    ///     factory and captured there, so no tool can later observe a different policy.
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The read tool.</returns>
+    /// <returns>The read tool and the crop tool.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -124,7 +127,8 @@ public sealed class ImagePack : IToolPack
 
         return
         [
-            ImageReadTool.Create(policy)
+            ImageReadTool.Create(policy),
+            ImageCropTool.Create(policy)
         ];
     }
 }

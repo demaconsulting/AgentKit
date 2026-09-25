@@ -78,6 +78,9 @@ words:
   - zlib
   - Adler
   - Deflate
+  - croppable
+  - uncroppable
+  - triaging
   - Skia
   - Magick
   - subsampling

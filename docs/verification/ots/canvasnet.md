@@ -5,8 +5,10 @@ This document provides the verification evidence for the `CanvasNet` OTS softwar
 ### Required Functionality
 
 `CanvasNet` supplies the raster imaging capability the image family is built on: reading the pixel
-dimensions an image file declares in its header without decoding any pixel data, decoding PNG and
-JPEG files into an addressable pixel buffer, copying a rectangular sub-region of such a buffer, and
+dimensions an image file declares in its header without decoding any pixel data — including for a
+file whose declared dimensions exceed what it will decode — decoding PNG and JPEG files into an
+addressable pixel buffer including a PNG whose pixels are stored as palette indices, copying a
+rectangular sub-region of such a buffer, and
 encoding a buffer back to a form that reproduces every pixel exactly when decoded again.
 
 ### Verification Approach
@@ -45,8 +47,55 @@ marker segments.
 
 **Requirement coverage**: `AgentKit-OTS-CanvasNet-HeaderProbe`.
 
+#### ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
+
+**Scenario**: A file declaring eight thousand pixels on each side, and carrying no pixel data at
+all, is offered to the image crop tool.
+
+**Expected**: A refusal naming the host's decode budget and the declared size, and specifically not
+the undecodable refusal — so the header was read, and reported, without any attempt to decode.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-HeaderProbe`.
+
+#### ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent
+
+**Scenario**: A region is taken from a PNG whose pixels are stored as palette indices.
+
+**Expected**: The region decodes successfully and its first pixel is the palette's color rather
+than a raw index, proving the indices were resolved through the file's own palette.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-Decode`.
+
+#### ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
+
+**Scenario**: A region is taken from a JPEG.
+
+**Expected**: The region decodes successfully, with the requested dimensions, proving the second
+format decodes into the same addressable buffer.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-Decode`.
+
+#### ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+
+**Scenario**: A region whose origin is not the image's own is taken from a source built with a
+distinct value in every channel of every pixel, and the returned region is decoded again.
+
+**Expected**: Every channel of every pixel of the result equals the source pixel it came from,
+including the alpha channel, proving both that the sub-region copy addresses the right pixels and
+that the encoding alters none of them.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-Crop`, `AgentKit-OTS-CanvasNet-Encode`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-CanvasNet-HeaderProbe`**:
   ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions,
-  ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions
+  ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions,
+  ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
+- **`AgentKit-OTS-CanvasNet-Decode`**:
+  ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent,
+  ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
+- **`AgentKit-OTS-CanvasNet-Crop`**:
+  ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+- **`AgentKit-OTS-CanvasNet-Encode`**:
+  ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly

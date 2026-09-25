@@ -110,4 +110,173 @@ public class ImageMediaTypesTests
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("tool instead", text, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    ///     Proves each type a region can be extracted from resolves to its media type.
+    /// </summary>
+    [Theory]
+    [InlineData("picture.png", "image/png")]
+    [InlineData("photo.jpg", "image/jpeg")]
+    [InlineData("photo.jpeg", "image/jpeg")]
+    public void ImageMediaTypes_TryResolveCroppableMediaType_CroppableExtension_ReturnsMediaType(
+        string fileName,
+        string expected)
+    {
+        // Act: resolve the croppable type
+        var resolved = ImageMediaTypes.TryResolveCroppableMediaType(fileName, out var mediaType);
+
+        // Assert: the still raster formats the family can decode resolve to their media types
+        Assert.True(resolved);
+        Assert.Equal(expected, mediaType);
+    }
+
+    /// <summary>
+    ///     Proves a croppable extension is matched without regard to case.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_TryResolveCroppableMediaType_ExtensionCaseInsensitive_ReturnsMediaType()
+    {
+        // Act: resolve a capitalized extension
+        var resolved = ImageMediaTypes.TryResolveCroppableMediaType("PICTURE.PNG", out var mediaType);
+
+        // Assert: a capitalized extension names the same content as its lower-case form
+        Assert.True(resolved);
+        Assert.Equal(ImageMediaTypes.Png, mediaType);
+    }
+
+    /// <summary>
+    ///     Proves a type the family reads but cannot cut does not resolve as croppable.
+    /// </summary>
+    /// <remarks>
+    ///     The croppable set is narrower than the readable set, deliberately: extracting a region
+    ///     means decoding, so it is confined to the still raster formats the family can decode.
+    /// </remarks>
+    [Theory]
+    [InlineData("animation.gif")]
+    [InlineData("picture.webp")]
+    [InlineData("document.pdf")]
+    [InlineData("archive.zip")]
+    public void ImageMediaTypes_TryResolveCroppableMediaType_NonCroppableExtension_ReturnsFalse(string fileName)
+    {
+        // Act: try to resolve a type no region can be extracted from
+        var resolved = ImageMediaTypes.TryResolveCroppableMediaType(fileName, out var mediaType);
+
+        // Assert: reported as uncroppable, so the crop tool refuses it rather than attempting a
+        // decode it cannot complete
+        Assert.False(resolved);
+        Assert.Null(mediaType);
+    }
+
+    /// <summary>
+    ///     Proves a <c>.gif</c> is refused as animated, naming the types that can be cropped.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_Gif_StatesItIsAnimatedAndNamesTheCroppableTypes()
+    {
+        // Act: refuse an animated raster image
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("animation.gif"));
+
+        // Assert: states what the format is and what may be cropped, and names no sibling tool —
+        // a .gif genuinely is an image, so naming the reader would be a route to the content this
+        // refusal withheld rather than a classification of the file
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("animated raster image", text, StringComparison.Ordinal);
+        Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a <c>.webp</c> is refused in its own words, naming the types that can be cropped.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes()
+    {
+        // Act: refuse a still raster image this family hands over without decoding
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("picture.webp"));
+
+        // Assert: its own reason rather than the animated one, and no sibling tool named
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("does not decode", text, StringComparison.Ordinal);
+        Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a <c>.pdf</c> is refused with a statement that rasterization would be required.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired()
+    {
+        // Act: refuse the one admitted type that looks croppable and is not
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("document.pdf"));
+
+        // Assert: names the page-and-resolution choice no tool here makes, so a model does not
+        // retry with different coordinates
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.Contains("paginated document", text, StringComparison.Ordinal);
+        Assert.Contains("rasterize", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an <c>.svg</c> is refused exactly as the readable-type map refuses it.
+    /// </summary>
+    /// <remarks>
+    ///     The family must give one answer to "what is this file". Delegating a type the family
+    ///     cannot read at all back to the readable-type refusal is what keeps the two in step.
+    /// </remarks>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead()
+    {
+        // Act: refuse a vector-text file through the croppable-type path
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("diagram.svg"));
+
+        // Assert: the identical refusal the readable-type path composes
+        Assert.Equal(
+            Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svg")),
+            text);
+        Assert.Contains("is text and vector content", text, StringComparison.Ordinal);
+        Assert.Contains(TextFileReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an <c>.svgz</c> is refused through the croppable path exactly as before.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_Svgz_RefusesWithoutRedirect()
+    {
+        // Act: refuse the gzip-compressed vector content through the croppable-type path
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("diagram.svgz"));
+
+        // Assert: unchanged behavior, with no tool named
+        Assert.Equal(
+            Assert.IsType<string>(ImageMediaTypes.DenyUnsupportedType("diagram.svgz")),
+            text);
+        Assert.DoesNotContain(TextFileReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an extension the family cannot read at all is refused without a redirect.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_DenyNonCroppableType_UnknownType_RefusesWithoutRedirect()
+    {
+        // Act: refuse an extension with no better tool to name
+        var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("archive.zip"));
+
+        // Assert: refused as unsupported, with no redirect invented
+        Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(TextFileReadTool.ToolName, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a missing path is a programming error rather than a refusal.
+    /// </summary>
+    [Fact]
+    public void ImageMediaTypes_TryResolveCroppableMediaType_NullPath_ThrowsArgumentNullException()
+    {
+        // Act / Assert: the calling tool has already refused an absent path before reaching here
+        Assert.Throws<ArgumentNullException>(
+            () => ImageMediaTypes.TryResolveCroppableMediaType(null!, out _));
+    }
 }

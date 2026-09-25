@@ -8,9 +8,10 @@ pixel dimensions wherever it can establish them.
 
 ### Overview
 
-The subsystem's responsibility is to turn one file operation — reading visual content — into a
-tool an agent can be handed safely, and to hand the model the content itself rather than a
-serialized copy of it. It owns no containment logic of its own — every decision about whether a
+The subsystem's responsibility is to turn two file operations — reading visual content, and taking
+a rectangular region of an image — into tools an agent can be handed safely, and to hand the model
+the content itself rather than a serialized copy of it. It owns no containment logic of its own —
+every decision about whether a
 path may be read is made by the `PathPolicy` the composing application supplies — and its own
 design is therefore about the things a tool must get right *around* that decision: constructing
 tools so an unguarded one cannot exist, delivering binary content through the guarded path so it is
@@ -26,13 +27,23 @@ tool in this family reads. Each of those would be a separate decision an operato
 grant or withhold separately, and none of them is needed for the "let the agent look at this file"
 loop this family exists to support.
 
-The subsystem contains three units, plus one shared helper that is not a unit:
+**A second, narrower boundary governs region extraction**, and the two are held in one place so the
+family never gives two answers to "what is this file". Taking a region means *decoding*, which the
+subsystem can do only for the still raster types `png`, `jpg` and `jpeg`. That set is the
+intersection of what the family reads and what it can decode, chosen over the alternative of
+"whatever the decoder handles": widening to formats the read tool refuses would create an
+accidental conversion path — a model could launder an unreadable format into a viewable one by
+taking a region covering the whole image — which nobody designed and no requirement covers. Adding
+formats later is then a single coherent widening across both tools, reviewable as one decision.
+
+The subsystem contains four units, plus one shared helper that is not a unit:
 
 | Unit              | Responsibility                                                              |
 |-------------------|-----------------------------------------------------------------------------|
 | `ImageMediaTypes` | Maps an extension to the media type the family reads, and refuses the rest  |
 | `ImageReadTool`   | Publishes `image_read`: returns one permitted file's content with a caption |
-| `ImagePack`       | Publishes the tool as one family under the `image` prefix, gated on Vision  |
+| `ImageCropTool`   | Publishes `image_crop`: returns a pixel region of one permitted image       |
+| `ImagePack`       | Publishes the tools as one family under the `image` prefix, gated on Vision |
 
 `ImageProbe` is a shared helper rather than a unit: it is an internal static function of bytes
 with no state, no policy, no result and nothing a requirement would promise that the tools
@@ -42,9 +53,10 @@ here rather than in a file of its own.
 
 ### Interfaces
 
-The subsystem exposes two public types — `ImagePack`, the unit of attachment, and
-`ImageMediaTypes`, the media-type map a caller may consult — plus the name constant the tool unit
-publishes. The tool's factory is `internal`, so a tool cannot be obtained except through the pack
+The subsystem exposes three public types — `ImagePack`, the unit of attachment, and
+`ImageMediaTypes`, the media-type map a caller may consult — plus the name constants the two tool
+units publish. Each tool's factory is `internal`, so a tool cannot be obtained except through the
+pack
 that claims its family prefix — the pack is the unit of attachment, and an application that could
 construct a single tool directly could also construct one outside the family whose prefix protects
 it from collision.
@@ -52,8 +64,9 @@ it from collision.
 | Interface               | Direction | Format                       | Constraints                           |
 |-------------------------|-----------|------------------------------|---------------------------------------|
 | `ImagePack`             | Outbound  | AgentKitCore `IToolPack`     | Prefix `image`; requires Vision       |
-| `ImageReadTool.ToolName`| Outbound  | `string` constant            | The name the tool is published under  |
-| `ImageMediaTypes`       | Outbound  | Media-type map and refusals  | Extension-driven; states content kind |
+| `ImageReadTool.ToolName`| Outbound  | `string` constant            | The name the read tool carries        |
+| `ImageCropTool.ToolName`| Outbound  | `string` constant            | The name the crop tool carries        |
+| `ImageMediaTypes`       | Outbound  | Media-type maps and refusals | Extension-driven; states content kind |
 | `PathPolicy`            | Inbound   | AgentKitCore policy object   | Supplied at construction              |
 | File system             | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
 
@@ -105,11 +118,38 @@ failed enrichment would narrow the tool for no safety gain, since the bytes were
 the binary ceiling and were already going to be returned. The rule is live rather than defensive:
 `gif`, `webp` and `pdf` are in the read tool's admitted set and have no probe at all.
 
-**Construction.** `ImagePack.CreateTools` receives the composition's policy and calls the tool's
-internal `Create(PathPolicy)`. That factory validates the policy, then builds the tool through
+**A region is returned inline, refused rather than clamped, and bounded before it is decoded.**
+`ImageCropTool` returns the region a caller names in pixels as image content, carrying the source's
+pixels unaltered — nothing is written, so the capability adds no write decision and no new location
+an agent can reach.
+
+*A region that does not lie wholly inside the image is refused, never reduced.* Reducing it would
+answer a different question from the one asked while reporting success, and the model cannot detect
+the substitution: it would then describe, confidently, a part of the picture it never received —
+the same failure the whole family exists to prevent. The refusal names the image's real dimensions,
+which is what turns it into the fact the model was missing.
+
+*The decode budget is decided from the header, before any pixel data is allocated.* A compressed
+image well inside the binary ceiling can declare far more pixels than its size suggests, and a
+decoded buffer costs four bytes per pixel whatever the file's own encoding was — so 8192 × 8192 is
+67,108,864 pixels and 268,435,456 bytes from a file of a few hundred kilobytes. Two bounds are
+checked and neither implies the other: the decoder's published per-axis bound, read from the
+decoder so the two cannot drift, and `MaxImagePixels` on the policy's limits, which bounds the
+product. **The estimate uses a fixed four bytes per pixel and never the channel count a file
+declares**, because a header reports the file's own encoding — a palette-indexed image declares one
+channel per pixel — while the decoded buffer is always RGBA; an estimate from the declared channels
+would under-count exactly the format a hostile caller would choose by a factor of four. See
+*ImageCropTool Unit Design*, which states the arithmetic in full.
+
+*The region comes back as PNG whatever the source was*, because the encoding alters no pixel — and
+in the region a model asked to examine closely, a compression artifact is indistinguishable from
+the thing being examined.
+
+**Construction.** `ImagePack.CreateTools` receives the composition's policy and calls each tool's
+internal `Create(PathPolicy)`. Each factory validates the policy, then builds the tool through
 `GuardedToolFactory.Create`, capturing the policy in the tool's delegate. There is no other
 construction path, no setter and no default policy, so a tool that is unguarded, or governed by a
-policy other than the composition's, is unrepresentable rather than merely discouraged. The delegate
+policy other than the composition's, is unrepresentable rather than merely discouraged. Each delegate
 is declared to return `Task<object>` because a tool returns a union — a refusal, or content — and
 that declared shape is exactly the case the guard exists to protect.
 
@@ -131,7 +171,7 @@ interprets no path itself: it passes the model's text to the policy, which holds
 relative name is measured against. An absolute path remains expressible and remains subject to the
 same containment decision.
 
-**One decision per read.** The read tool consults `TryResolveRead`, and nothing in the subsystem
+**One decision per read.** Both tools consult `TryResolveRead`, and nothing in the subsystem
 consults the write decision, combines the two, or re-implements either. The decision is made on the
 path's normalized location, so a request outside the permitted location is refused without the
 tool having to reason about containment, and it is made before anything is learned about the file,
@@ -177,3 +217,9 @@ has not declared it receives none of the family's tools — and receives none be
 never asks the pack for them, not because it offers them and refuses later. A model that cannot see
 an image is therefore never offered a tool that returns one it could only fabricate a description
 of.
+
+**The two tools are published together because they are one capability.** The read tool states the
+coordinate space and the crop tool consumes it. A family publishing only one of them would offer a
+model either a region request it cannot aim, or a size it has nothing to use — which is why the
+pack creates both in the one place the family prefix is claimed, rather than leaving the pairing to
+each application's composition code.

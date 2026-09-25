@@ -57,12 +57,20 @@ the two cannot drift apart.
 Normal operation: requiring the vision capability is what lets the composition withhold the family
 from a host that cannot present its content.
 
-##### AgentKitTools-Image-Pack-RegistersReadTool: The Read Tool Is Created
+##### AgentKitTools-Image-Pack-RegistersReadTool: Both Tools Are Created
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadTool`
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
 
-Asserts a single tool named `image_read`, confirming the pack produces the family's tool for an
-application to receive.
+Asserts exactly two tools, named `image_read` and `image_crop`, confirming the pack produces the
+family's tools for an application to receive.
+
+##### AgentKitTools-Image-Pack-RegistersCropTool: The Crop Tool Is Created Alongside the Read Tool
+
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
+
+The same scenario read from the other side: the two tools are one capability, so the pack creating
+both in the one place the family prefix is claimed is what makes that pairing a property of the
+pack rather than of each application's composition code.
 
 ##### AgentKitTools-Image-Pack-RegistersReadTool: No Null Tool Is Returned
 
@@ -91,4 +99,6 @@ appearing correctly composed, so the mistake is reported at the line that made i
 
 Normal operation and error path together: one permitted path returns its content and one path
 outside the policy's location is refused, proving behaviorally that the supplied policy — not one
-the pack invented — is in force.
+the pack invented — is in force. The refusal is asserted through the crop tool as well as the read
+tool, because a tool that quietly observed a different policy from its neighbor would make the
+configured containment unverifiable.
