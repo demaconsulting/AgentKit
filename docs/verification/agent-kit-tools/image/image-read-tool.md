@@ -142,7 +142,7 @@ Run as a theory over `gif` and `webp`: types the family reads but has no header 
 content is returned and the caption claims no size, which is the common case rather than the edge
 case.
 
-##### AgentKitTools-Image-ReadTool-ReadPermittedPdf: A PDF Is Captioned by Media Type Alone
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A PDF Is Captioned by Media Type Alone
 
 **Test**: `ImageReadTool_Read_Pdf_CaptionStatesOnlyTheMediaType`
 

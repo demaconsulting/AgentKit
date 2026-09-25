@@ -29,8 +29,8 @@ list.
 
 Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate recording decorator in
 `Image/RecordingToolPack.cs`, the shared fixture builder in `Image/ImageTestImages.cs` and the
-shared temporary-directory test fixture reused from
-`TextFile/TempDirectoryFixture.cs`, all within the `DemaConsulting.AgentKit.Tools.Tests` project.
+shared temporary-directory test fixture reused from `TextFile/TempDirectoryFixture.cs`, all within
+the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 ### Test Environment
 
@@ -46,16 +46,14 @@ shared temporary-directory test fixture reused from
 ### Acceptance Criteria
 
 A subsystem test run passes when all seventeen scenarios below pass without error or exception
-beyond
-those explicitly asserted. A tool published outside the family prefix, image content arriving as a
-`JsonElement`, a family registered for a non-vision host, a pack consulted despite an unmet
-capability, a refusal raised as an exception rather than returned, a policy refusal that fails to
-disclose the permitted location, a relative name that is not resolved against the workspace, a permitted read that
-fails, a caption that omits a size the family could establish, an out-of-bounds region answered
-with content rather than a refusal, an oversized declared image decoded before being refused, and a
-truncated result where a
-refusal was required each
-constitute a failure.
+beyond those explicitly asserted. A tool published outside the family prefix, image content
+arriving as a `JsonElement`, a family registered for a non-vision host, a pack consulted despite
+an unmet capability, a refusal raised as an exception rather than returned, a policy refusal that
+fails to disclose the permitted location, a relative name that is not resolved against the
+workspace, a permitted read that fails, a caption that omits a size the family could establish, an
+out-of-bounds region answered with content rather than a refusal, an oversized declared image
+decoded before being refused, and a truncated result where a refusal was required each constitute
+a failure.
 
 ### Test Scenarios
 

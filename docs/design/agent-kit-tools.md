@@ -35,11 +35,11 @@ pack. It reports a Markdown file's heading structure as line ranges the text too
 read or cut.
 
 The system also contains the **Image** subsystem: the image tool family, publishing `image_read`
-under the `image` family prefix and attached to an application as one pack. Unlike the other
-families, it is gated on a host capability — it is registered only for a host that declares it can
-present visual content to a model — because its tool returns image and PDF content that a
-non-vision host could not use. Each family this package provides is its own subsystem with its own
-units, requirements, design, verification and review set.
+and `image_crop` under the `image` family prefix and attached to an application as one pack.
+Unlike the other families, it is gated on a host capability — it is registered only for a host
+that declares it can present visual content to a model — because its tools return image and PDF
+content that a non-vision host could not use. Each family this package provides is its own
+subsystem with its own units, requirements, design, verification and review set.
 
 The system contains the **Todo** subsystem: the todo tool family, publishing `todo_list`,
 `todo_set` and `todo_remove` under the `todo` family prefix and attached to an application as one
@@ -185,9 +185,9 @@ description of.
 
 ## Design Constraints
 
-- **Peer, not a layer**: The package depends on AgentKitCore and the Base Class Library only, and
-  no other capability package depends on it; a family it provides is attached alongside other
-  packs, never beneath them
+- **Peer, not a layer**: The package depends on AgentKitCore, the Base Class Library and the one
+  runtime imaging dependency the image family takes, and no other capability package depends on
+  it; a family it provides is attached alongside other packs, never beneath them
 - **Composed through Core**: Every family is published through Core's `IToolPack` contract and
   composed through `ToolPackBuilder`, so an application attaches this package's families the same
   way it attaches any other AgentKit pack
@@ -213,9 +213,11 @@ The library is supported on the following operating systems:
 - **macOS** — developer workstations using Apple platforms
 
 Portability is achieved by restricting the implementation to Base Class Library (BCL) APIs
-available across all target frameworks and to the provider-neutral
-`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore. No platform-specific
-native interop, OS-specific APIs, or framework-version-specific features are used.
+available across all target frameworks, to the provider-neutral
+`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore, and to one runtime
+imaging dependency that is itself fully safe managed code carrying no native binaries and that
+targets exactly the frameworks listed above; see _CanvasNet Design_. No platform-specific native
+interop, OS-specific APIs, or framework-version-specific features are used.
 
 ### Integration Patterns
 

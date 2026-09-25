@@ -102,8 +102,7 @@ Verifies that attaching the Image pack to a host that declares the Vision capabi
 that family's tools, under the one family prefix the pack claims. Constructs a real access policy,
 declares Vision on a `ToolPackBuilder`, adds `ImagePack`, and asserts the composed list is exactly
 `image_read` and `image_crop`. Confirms at the system level that a capability-gated family, on a
-host that meets its
-requirement, is attached as one pack.
+host that meets its requirement, is attached as one pack.
 
 ### Composition: The Image Family Is Withheld From a Non-Vision Host
 

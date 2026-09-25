@@ -27,6 +27,7 @@ sections:
             tests:
               - ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions
               - ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions
+              - ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
 
           - id: AgentKit-OTS-CanvasNet-Decode
             title: >-

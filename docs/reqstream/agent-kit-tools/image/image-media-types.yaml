@@ -41,6 +41,7 @@ sections:
                   - ImageMediaTypes_TryResolveCroppableMediaType_CroppableExtension_ReturnsMediaType
                   - ImageMediaTypes_TryResolveCroppableMediaType_ExtensionCaseInsensitive_ReturnsMediaType
                   - ImageMediaTypes_TryResolveCroppableMediaType_NonCroppableExtension_ReturnsFalse
+                  - ImageMediaTypes_TryResolveCroppableMediaType_NullPath_ThrowsArgumentNullException
 
               - id: AgentKitTools-Image-MediaTypes-RefusesNonCroppableType
                 title: >-

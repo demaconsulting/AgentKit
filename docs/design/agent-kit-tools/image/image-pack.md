@@ -51,16 +51,15 @@ Creates the family's tools.
 **Preconditions:** `policy` is non-null; it is the policy the composition was built with, not one
 the pack invented.
 
-**Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` as the single element
-of a collection.
+**Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` followed by
+`ImageCropTool.Create(policy)` as the two elements of a collection, in that order.
 
-**Postconditions:** exactly the read tool and the crop tool, non-null, each named `image_`-prefixed
-and governed by the
-supplied policy. The two are created together because they are one capability: the read tool states
-the coordinate space the crop tool consumes, so a pack that published only one of them would offer
-a model either a region request it cannot aim or a size it has nothing to use. Called once per
-`ToolPackBuilder.Build`, and only when
-the host provides the Vision capability.
+**Postconditions:** exactly the read tool and the crop tool, non-null, each named
+`image_`-prefixed and governed by the supplied policy. The two are created together because they
+are one capability: the read tool states the coordinate space the crop tool consumes, so a pack
+that published only one of them would offer a model either a region request it cannot aim or a
+size it has nothing to use. Called once per `ToolPackBuilder.Build`, and only when the host
+provides the Vision capability.
 
 #### Error Handling
 

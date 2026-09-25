@@ -11,8 +11,8 @@ pixel dimensions wherever it can establish them.
 The subsystem's responsibility is to turn two file operations — reading visual content, and taking
 a rectangular region of an image — into tools an agent can be handed safely, and to hand the model
 the content itself rather than a serialized copy of it. It owns no containment logic of its own —
-every decision about whether a
-path may be read is made by the `PathPolicy` the composing application supplies — and its own
+every decision about whether a path may be read is made by the `PathPolicy` the composing
+application supplies — and its own
 design is therefore about the things a tool must get right *around* that decision: constructing
 tools so an unguarded one cannot exist, delivering binary content through the guarded path so it is
 not flattened into JSON, returning refusals instead of throwing, keeping host layout out of
@@ -53,13 +53,12 @@ here rather than in a file of its own.
 
 ### Interfaces
 
-The subsystem exposes three public types — `ImagePack`, the unit of attachment, and
-`ImageMediaTypes`, the media-type map a caller may consult — plus the name constants the two tool
-units publish. Each tool's factory is `internal`, so a tool cannot be obtained except through the
-pack
-that claims its family prefix — the pack is the unit of attachment, and an application that could
-construct a single tool directly could also construct one outside the family whose prefix protects
-it from collision.
+The subsystem exposes four public types — `ImagePack`, the unit of attachment, `ImageMediaTypes`,
+the media-type map a caller may consult, and the two tool classes, which publish the name
+constants their tools carry. Each tool's factory is `internal`, so a tool cannot be obtained
+except through the pack that claims its family prefix — the pack is the unit of attachment, and an
+application that could construct a single tool directly could also construct one outside the
+family whose prefix protects it from collision.
 
 | Interface               | Direction | Format                       | Constraints                           |
 |-------------------------|-----------|------------------------------|---------------------------------------|
