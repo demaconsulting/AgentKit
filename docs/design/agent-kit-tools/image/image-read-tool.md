@@ -7,7 +7,8 @@ The `ImageReadTool` class publishes the `image_read` tool.
 #### Purpose
 
 To return the visual content of one file the access policy permits the agent to read — an image or
-a PDF — as a caption followed by the content itself, and to refuse, in a way the agent can act on,
+a PDF — as a caption followed by the content itself, stating the image's pixel dimensions in that
+caption wherever it can establish them, and to refuse, in a way the agent can act on,
 every request it cannot honor: a path outside the permitted location, a directory, a type the
 family cannot read, a file that does not exist, or a file
 too large to return.
@@ -30,6 +31,37 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 
 One ceiling from `PathPolicy.Limits` bounds the operation: `MaxBinaryBytes`, the greatest size of
 content that may be returned. It is inclusive — a file exactly at the ceiling is returned.
+
+#### The Caption Carries the Image's Pixel Dimensions
+
+The caption states the media type and, where the size can be established, the image's declared
+pixel dimensions: `File content of media type image/png, 1920x1080 pixels.` Where it cannot, the
+caption is the media-type-only form: `File content of media type image/gif.`
+
+**Why the size belongs here at all.** A model can see a picture but cannot measure one. Without
+the size stated alongside the content it has no coordinate space in which to name a region of that
+image, so a request for a region would be a guess — and a guess is either refused, costing a turn,
+or, in a library that clamped instead of refusing, silently answered for a region other than the
+one asked about. Stating the size is what lets a region request be aimed, which is why it is part
+of reading rather than a capability of its own.
+
+**This unit now parses a header; it still decodes nothing.** The size is read from the bytes
+already in hand — 33 bytes for a PNG, a bounded scan of leading marker segments for a JPEG — via
+the shared header-probe helper described in *Image Subsystem Design*. No pixel buffer is allocated
+anywhere on this path, and the file is not reopened, so there is no window in which the bytes
+captioned and the bytes returned could differ.
+
+**A header this unit cannot read costs the caption its dimensions and nothing else.** This unit's
+contract has never been to validate content: it hands a permitted file's bytes to the provider,
+whose own decoder is the authority on them, and the probe exists only to enrich the caption.
+Refusing a file because an *optional enrichment* failed would narrow a tool whose whole promise is
+to hand the model what the file holds, and would buy nothing — the bytes were already inside the
+binary ceiling and were already going to be returned. The rule is live rather than defensive.
+Three input classes reach it routinely: `gif`, `webp` and `pdf` are in this unit's admitted set and
+have no header probe at all, so they are the common case rather than the edge case; a malformed or
+truncated header may belong to a file a provider still renders; and a JPEG whose frame header lies
+beyond the probe's bounded cap is perfectly decodable yet unmeasurable here. **The caption never
+states a size it did not read.**
 
 #### Key Methods
 
@@ -75,8 +107,11 @@ governed by the supplied policy for the rest of its life.
 6. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size is
    judged before the file is opened, so an oversized file is never loaded merely to discover it was
    oversized
-7. Otherwise the bytes are read and returned with a caption naming the media type: an `image/*` type
-   through `ToolResult.Image`, and `application/pdf` through `ToolResult.Binary`
+7. Otherwise the bytes are read and returned with a caption naming the media type and, where the
+   header yields it, the image's pixel dimensions: an `image/*` type through `ToolResult.Image`,
+   and `application/pdf` through `ToolResult.Binary`. The header probe runs on the bytes already
+   read, after the ceiling check, and its failure costs the caption its dimensions and nothing
+   else
 
 The policy decision precedes every observation of the file system, so a refused path never discloses
 whether it exists.
@@ -123,7 +158,8 @@ composes — because there the naming *is* the statement of what the file is, on
 #### Dependencies
 
 `PathPolicy` and `ToolLimits` for the decision and the ceiling, `ImageMediaTypes` for the type
-resolution and the unsupported-type refusal, `ToolResult` for every result it returns, and
+resolution and the unsupported-type refusal, `ImageProbe` for the header read that yields the
+caption's pixel dimensions, `ToolResult` for every result it returns, and
 `GuardedToolFactory` for construction. From the Base Class Library: `File`, `FileInfo` and
 `Directory`. `AIFunction` and the content types, from `Microsoft.Extensions.AI.Abstractions`, are
 the form the constructed tool and its result take.

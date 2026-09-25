@@ -5,7 +5,11 @@ This document describes the overall Off-The-Shelf (OTS) integration strategy for
 ## Overview
 
 AgentKit Core carries exactly one runtime NuGet dependency,
-`Microsoft.Extensions.AI.Abstractions`. The three provider-specific packages each carry one runtime
+`Microsoft.Extensions.AI.Abstractions`. `AgentKitTools` carries one of its own, `CanvasNet`, the
+safe-managed-code raster imaging library the image family reads dimensions and extracts regions
+with; it is a runtime dependency rather than a build-time one, so it is referenced without
+`PrivateAssets` and reaches a consuming application transitively. The three provider-specific
+packages each carry one runtime
 dependency of their own, deliberately kept out of Core: `AgentKitAgentsChatClient` carries
 `Microsoft.Agents.AI` (the Microsoft Agent Framework runtime), `AgentKitAgentsCopilot` carries
 `Microsoft.Agents.AI.GitHub.Copilot` (the GitHub Copilot SDK, which additionally brings a
@@ -31,6 +35,7 @@ inside the package.
 |--------------------------------------|----------------------------------------------------------------------|
 | ApiMark                              | Generates Markdown API reference documentation from XML doc comments |
 | BuildMark                            | Generates build-notes documentation from GitHub Actions metadata     |
+| CanvasNet                            | Raster imaging: header inspection, decoding, cropping, encoding      |
 | FileAssert                           | Validates generated documents (HTML/PDF) against acceptance criteria |
 | Microsoft.Agents.AI                  | Runtime library defining `AIAgent` and `ChatClientAgent`             |
 | Microsoft.Agents.AI.GitHub.Copilot   | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |

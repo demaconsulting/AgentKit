@@ -89,6 +89,7 @@ input-files:
   - docs/design/ots.md
   - docs/design/ots/apimark.md
   - docs/design/ots/buildmark.md
+  - docs/design/ots/canvasnet.md
   - docs/design/ots/fileassert.md
   - docs/design/ots/microsoft-agents-ai.md
   - docs/design/ots/microsoft-agents-ai-github-copilot.md

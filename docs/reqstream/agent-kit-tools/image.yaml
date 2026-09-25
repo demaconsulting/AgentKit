@@ -29,6 +29,24 @@ sections:
               - Image_Family_ComposedThroughBuilder_PublishesTheReadTool
               - Image_Family_HostDeclaringVision_ReceivesTheFamily
 
+          - id: AgentKitTools-Image-DimensionReporting
+            title: >-
+              The image family shall state, alongside the media type it names for a readable
+              image, the pixel dimensions that image declares whenever it can establish them, and
+              shall state no dimensions it did not read.
+            justification: |
+              A model can see a picture but cannot measure one. Without the size stated alongside
+              the content it has no coordinate space in which to name a region of that image, so
+              the size is what lets a region request be aimed rather than a guess — and a guess is
+              either refused, costing a turn, or silently answered for some other region. Stating
+              no size the family did not read is the other half of the promise: a plausible
+              fabricated number would be worse than none at all, because a model has no way to
+              detect one and would aim a request into it confidently.
+            children:
+              - AgentKitTools-Image-ReadTool-ReportsDimensions
+            tests:
+              - Image_Family_ReadCaption_StatesTheImagesPixelDimensions
+
           - id: AgentKitTools-Image-CapabilityGated
             title: >-
               The image family shall be registered only for a host that declares the vision

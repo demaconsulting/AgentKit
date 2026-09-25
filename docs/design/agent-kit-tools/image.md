@@ -3,7 +3,8 @@
 ![AgentKit Tools Image Structure](ImageView.svg)
 
 The Image subsystem is the image tool family: the pack an application attaches to give a
-vision-capable agent policy-governed reading of images and PDF documents.
+vision-capable agent policy-governed reading of images and PDF documents, reporting an image's
+pixel dimensions wherever it can establish them.
 
 ### Overview
 
@@ -25,13 +26,19 @@ tool in this family reads. Each of those would be a separate decision an operato
 grant or withhold separately, and none of them is needed for the "let the agent look at this file"
 loop this family exists to support.
 
-The subsystem contains three units:
+The subsystem contains three units, plus one shared helper that is not a unit:
 
 | Unit              | Responsibility                                                              |
 |-------------------|-----------------------------------------------------------------------------|
 | `ImageMediaTypes` | Maps an extension to the media type the family reads, and refuses the rest  |
 | `ImageReadTool`   | Publishes `image_read`: returns one permitted file's content with a caption |
 | `ImagePack`       | Publishes the tool as one family under the `image` prefix, gated on Vision  |
+
+`ImageProbe` is a shared helper rather than a unit: it is an internal static function of bytes
+with no state, no policy, no result and nothing a requirement would promise that the tools
+consuming it do not already promise observably. It follows the same treatment `TextLines` and
+`MemoryEmbedding` receive in their subsystems — covered by this subsystem's review-set, documented
+here rather than in a file of its own.
 
 ### Interfaces
 
@@ -54,10 +61,49 @@ The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFac
 and `HostCapabilities` from AgentKitCore, `AIFunction` and the content types (`AIContent`,
 `DataContent`, `TextContent`) from `Microsoft.Extensions.AI.Abstractions` reached through Core, and
 `TextFileReadTool.ToolName` from the sibling TextFile subsystem — read as a constant, for the one
-classification an unsupported `.svg` earns. It exposes nothing of its own that another package would
-depend on.
+classification an unsupported `.svg` earns. It additionally consumes the `CanvasNet` raster
+imaging library directly, which is the one OTS runtime dependency this package takes; see
+*CanvasNet Design*. It exposes nothing of its own that another package would depend on.
+
+**No type from the imaging library crosses the subsystem's boundary.** `ImageProbe` takes bytes
+and reports integers and booleans; nothing in the subsystem's public surface mentions the library,
+so the generated API reference the package ships never names it and an application is never made
+to depend on its types to use the family.
 
 ### Design
+
+**The shared header probe.** `ImageProbe` answers what an image file declares about itself, from
+its header alone. It reports the declared pixel dimensions for the two formats this subsystem can
+read headers of, and — for a PNG — whether the file declares interlaced storage.
+
+*Nothing it does allocates a pixel buffer.* A PNG header is 33 bytes; a JPEG header is found by a
+bounded scan of leading marker segments. That is what lets a caller consult the helper *before*
+deciding whether decoding the file is affordable at all.
+
+*Every probe is offered, never required.* The helper reports failure rather than throwing, because
+the tools want different things from a failure: for the read tool a failed probe costs the caption
+its dimensions and nothing else. Neither the tools nor the helper ever surfaces the library's own
+exception text, which is developer-facing and may echo values read out of the file.
+
+*Interlacing is read from the header rather than inferred from a failed decode.* The decoder
+reports an interlaced file and a corrupt file with the same exception type, so the two are
+indistinguishable after the fact, and matching on an exception's message would be both fragile and
+a route for developer-facing text to reach a model. One named byte offset — the last byte of the
+PNG header payload — lets a refusal tell a model the true, specific reason rather than leaving it
+to guess whether its file is damaged. The cost is a single constant of format knowledge in a
+subsystem that otherwise decides an image's type from its extension; the alternative was a refusal
+that said only "could not be decoded" about a file that is not damaged at all.
+
+**The read caption carries the image's pixel dimensions.** A model can see a picture but cannot
+measure one, so without the size stated alongside the content it has no coordinate space in which
+to name a region of that image. `ImageReadTool` therefore states the declared size in its caption
+wherever the header probe establishes it, and states none it did not read. **The probe is an
+enrichment, never a condition**: this family's read contract has never been to validate content —
+it hands a permitted file's bytes to the provider, whose own decoder is the authority on them — so
+a header this library cannot read costs the caption its dimensions and nothing else. Refusing on a
+failed enrichment would narrow the tool for no safety gain, since the bytes were already inside
+the binary ceiling and were already going to be returned. The rule is live rather than defensive:
+`gif`, `webp` and `pdf` are in the read tool's admitted set and have no probe at all.
 
 **Construction.** `ImagePack.CreateTools` receives the composition's policy and calls the tool's
 internal `Create(PathPolicy)`. That factory validates the policy, then builds the tool through

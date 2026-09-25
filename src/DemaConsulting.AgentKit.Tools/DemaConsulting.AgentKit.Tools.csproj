@@ -70,6 +70,15 @@
     <ProjectReference Include="..\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
   </ItemGroup>
 
+  <!-- Runtime Dependencies -->
+  <ItemGroup>
+    <!-- Runtime dependency, deliberately without PrivateAssets: the image family decodes,
+         crops and encodes raster content with it, so a consuming application needs it at
+         run time. Fully safe managed code with no native binaries; see 'CanvasNet OTS
+         Integration Design'. -->
+    <PackageReference Include="DemaConsulting.CanvasNet" Version="0.1.0-beta.2" />
+  </ItemGroup>
+
   <!-- Build Tool Dependencies -->
   <ItemGroup>
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any

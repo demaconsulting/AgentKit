@@ -188,6 +188,34 @@ public class ImageTests
     }
 
     /// <summary>
+    ///     Proves the family states an image's pixel dimensions in the caption it returns.
+    /// </summary>
+    /// <remarks>
+    ///     A model can see a picture but cannot measure one. Stating the size alongside the
+    ///     content is what gives it a coordinate space to reason about a region of that image in.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_ReadCaption_StatesTheImagesPixelDimensions()
+    {
+        // Arrange: the family composed over a permitted location holding a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.png", ImageTestImages.Png(53, 29));
+        var tools = Compose(fixture.Root);
+
+        // Act: read the image through the composed family
+        var result = await InvokeAsync(
+            tools,
+            ImageReadTool.ToolName,
+            new AIFunctionArguments { ["path"] = file });
+
+        // Assert: the caption names the real declared size
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains("53x29 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a path outside the permitted location is refused.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>

@@ -103,16 +103,24 @@ the composition never asks its pack for them.
 
 ## Dependencies
 
-The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and no
+The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and one
 runtime NuGet dependency of its own. Core supplies the policy primitives, the guarded construction
 path, the result constructors and the pack contract every family in this package is built on.
 `Microsoft.Extensions.AI.Abstractions` — the package that defines the `AIFunction` a tool is —
 reaches this package transitively through Core rather than as a direct dependency, so a tool
 family composes through the same currency Core publishes without this package choosing a provider
-or restating a dependency Core already owns. That abstraction is the one OTS runtime library the
-software depends on; its integration is recorded in _OTS Integration Design_
-(`docs/design/ots.md`) and its dedicated _Microsoft.Extensions.AI.Abstractions Design_, where the
-transitive path through Core is documented.
+or restating a dependency Core already owns. Its integration is recorded in _OTS Integration
+Design_ (`docs/design/ots.md`) and its dedicated
+_Microsoft.Extensions.AI.Abstractions Design_, where the transitive path through Core is
+documented.
+
+The one direct runtime NuGet dependency is `CanvasNet`, which the image family uses to read what
+an image declares about itself and to extract and re-encode a region of one. It is taken directly
+rather than through Core because it serves one family in this package and nothing in Core, and it
+is taken **without** `PrivateAssets` because it is needed at run time by any application that
+attaches that family. It was chosen on the property that it is fully safe managed code carrying no
+native binaries, which is what makes parsing hostile image input consistent with this library's
+thesis; see _CanvasNet Design_.
 
 The memory family consumes a second abstraction from that same package —
 `IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application

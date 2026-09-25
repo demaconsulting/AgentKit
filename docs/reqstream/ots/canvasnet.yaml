@@ -1,0 +1,29 @@
+---
+# CanvasNet OTS Software Requirements
+#
+# Requirements for the CanvasNet raster imaging library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: CanvasNet Requirements
+        requirements:
+          - id: AgentKit-OTS-CanvasNet-HeaderProbe
+            title: >-
+              CanvasNet shall report an image file's header-declared pixel dimensions without
+              decoding its pixel data, including for a file whose declared dimensions exceed what
+              it will decode.
+            justification: |
+              The image family states an image's pixel dimensions so that a model has a
+              coordinate space in which to name a region, and it decides whether decoding an
+              image is affordable before it allocates anything. Both depend on a reader that
+              reports what a header declares and stops there — including for a file declaring
+              dimensions no decoder would accept, since that is precisely the file the decision
+              has to be made about. AgentKit's own tests that read a caption stating a real
+              image's size, and that refuse an image declaring more pixels than the host's decode
+              budget from a file carrying no pixel data at all, prove the header reader behaves
+              as required.
+            tags: [ots]
+            tests:
+              - ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions
+              - ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions

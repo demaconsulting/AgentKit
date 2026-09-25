@@ -108,6 +108,7 @@ includes:
   - docs/reqstream/ots/pandoc.yaml
   - docs/reqstream/ots/weasyprint.yaml
   - docs/reqstream/ots/fileassert.yaml
+  - docs/reqstream/ots/canvasnet.yaml
   - docs/reqstream/ots/microsoft-extensions-ai-abstractions.yaml
   - docs/reqstream/ots/microsoft-agents-ai.yaml
   - docs/reqstream/ots/microsoft-agents-ai-github-copilot.yaml

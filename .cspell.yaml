@@ -78,6 +78,10 @@ words:
   - zlib
   - Adler
   - Deflate
+  - Skia
+  - Magick
+  - subsampling
+  - IEND
 
 # Exclude common build artifacts, dependencies, and vendored third-party code
 ignorePaths:

@@ -733,6 +733,8 @@ reviews:
       - "docs/verification/agent-kit-tools/image.md"               # subsystem verification
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageProbe.cs"                # shared header-probe helper
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTestImages.cs"    # shared fixture builder
 
   # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
   - id: AgentKitTools-Image-ImageMediaTypes
@@ -1456,6 +1458,14 @@ reviews:
       - "docs/reqstream/ots/buildmark.yaml"                                 # OTS requirements
       - "docs/design/ots/buildmark.md"                                      # OTS integration design
       - "docs/verification/ots/buildmark.md"                               # OTS verification
+
+  # OTS-CanvasNet Review (one per OTS item)
+  - id: OTS-CanvasNet
+    title: Review that CanvasNet Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/canvasnet.yaml"                                 # OTS requirements
+      - "docs/design/ots/canvasnet.md"                                      # OTS integration design
+      - "docs/verification/ots/canvasnet.md"                               # OTS verification
 
   # OTS-FileAssert Review (one per OTS item)
   - id: OTS-FileAssert

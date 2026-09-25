@@ -174,6 +174,8 @@ The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
+- **CanvasNet** — the runtime raster imaging library providing image header inspection, PNG and
+  JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
   abstraction

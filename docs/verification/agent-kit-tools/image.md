@@ -44,12 +44,13 @@ Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate record
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all thirteen scenarios below pass without error or exception beyond
+A subsystem test run passes when all fourteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool published outside the family prefix, image content arriving as a
 `JsonElement`, a family registered for a non-vision host, a pack consulted despite an unmet
 capability, a refusal raised as an exception rather than returned, a policy refusal that fails to
 disclose the permitted location, a relative name that is not resolved against the workspace, a permitted read that
-fails, and a truncated result where a refusal was required each
+fails, a caption that omits a size the family could establish, and a truncated result where a
+refusal was required each
 constitute a failure.
 
 ### Test Scenarios
@@ -107,6 +108,15 @@ flattened into JSON, the provider would never receive the image, and the failure
 Normal operation: reads a permitted PNG and asserts the returned data content carries the
 `image/png` media type and the file's real bytes, so the model is handed the image the request
 named.
+
+#### AgentKitTools-Image-DimensionReporting: The Read Caption States the Image's Pixel Dimensions
+
+**Test**: `Image_Family_ReadCaption_StatesTheImagesPixelDimensions`
+
+Normal operation for the capability a region request depends on: a real image of 53 by 29 pixels
+is read through the composed family, and the caption states that size. The dimensions are
+asymmetric so a transposition cannot pass, and the image is built by the test so the expected
+answer is known independently of the library that reports it.
 
 #### AgentKitTools-Image-PolicyGoverned: A Path Outside the Root Is Refused
 

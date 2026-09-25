@@ -48,8 +48,9 @@ sections:
                   Reading a permitted image is the tool's reason to exist, and the content
                   returned must be that of the real file rather than of whatever the requested
                   path appeared to name. The caption tells the model what it is being handed
-                  before it reaches the attachment, and the media type is what lets a provider
-                  present the bytes as the image they are.
+                  before it reaches the attachment — the media type, and the image's pixel
+                  dimensions where they can be established — and the media type is what lets a
+                  provider present the bytes as the image they are.
                 tests:
                   - ImageReadTool_Read_SupportedImage_ReturnsDataContentWithMediaType
 
@@ -62,9 +63,42 @@ sections:
                   but it is not an image media type and the image result constructor refuses a
                   non-image media type. Returning it through the binary result path is the only
                   correct reading of that contract, and it produces the identical
-                  caption-plus-content shape the guard must deliver unserialized.
+                  caption-plus-content shape the guard must deliver unserialized. A PDF is
+                  paginated rather than a single raster image, and this library reads no PDF
+                  header, so its caption names the media type and claims no pixel size.
                 tests:
                   - ImageReadTool_Read_PermittedPdf_ReturnsBinaryContentWithPdfMediaType
+
+              - id: AgentKitTools-Image-ReadTool-ReportsDimensions
+                title: >-
+                  The read tool shall state the pixel dimensions of content whose declared size it
+                  can establish, alongside the media type it names, and shall return the content
+                  unchanged, without dimensions, when it cannot.
+                justification: |
+                  A model can see a picture but cannot measure one, so without the size stated
+                  alongside the content it has no coordinate space in which to name a region of
+                  that image — which is why reporting the size belongs to reading rather than
+                  being a separate capability. Degrading rather than refusing is the other half
+                  of the promise, and it follows from what this tool is: it hands a permitted
+                  file's bytes to the provider, whose own decoder is the authority on them, so
+                  stating the size is an enrichment and never a condition. Refusing a file
+                  because the optional enrichment failed would narrow the tool for no safety gain
+                  whatever — the bytes were already inside the binary ceiling and were already
+                  going to be returned. The rule is live rather than defensive: the animated and
+                  paginated types this tool admits declare their size somewhere this library does
+                  not read at all, a malformed header may still render at a provider, and a file
+                  whose header sits beyond a bounded probe is decodable yet unmeasurable here.
+                  Stating no size it did not read is what keeps the caption trustworthy in all
+                  three cases.
+                tests:
+                  - ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions
+                  - ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions
+                  - ImageReadTool_Read_PalettizedPng_CaptionStatesThePixelDimensions
+                  - ImageReadTool_Read_Adam7InterlacedPng_CaptionStatesThePixelDimensions
+                  - ImageReadTool_Read_MediaTypeWithNoHeaderProbe_CaptionStatesOnlyTheMediaType
+                  - ImageReadTool_Read_Pdf_CaptionStatesOnlyTheMediaType
+                  - ImageReadTool_Read_ContentWithAnUnreadableHeader_StillReturnsTheContent
+                  - ImageReadTool_Read_Caption_NeverStatesDimensionsItDidNotRead
 
               - id: AgentKitTools-Image-ReadTool-DenyOutsideRoot
                 title: >-

@@ -41,6 +41,27 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     that names the ceiling lets the model narrow its request instead.
 ///     </para>
 ///     <para>
+///     <b>The caption states the image's pixel dimensions wherever they can be established, and
+///     states none it did not read.</b> A model that can see a picture still cannot measure it,
+///     so without this it has no coordinate space in which to name a region of one — which is
+///     what makes the dimensions part of reading rather than a separate capability. Reporting
+///     them means this tool now parses a <em>header</em>: 33 bytes for a PNG, a bounded marker
+///     scan for a JPEG. It still decodes nothing and allocates no pixel buffer.
+///     </para>
+///     <para>
+///     <b>A header this tool cannot read costs the caption its dimensions and nothing else.</b>
+///     This tool's contract has never been to validate content: it hands a permitted file's bytes
+///     to the provider, whose own decoder is the authority on them. The probe exists only to
+///     enrich the caption with a fact a model needs in order to aim a region request. Refusing a
+///     file because an <em>optional enrichment</em> failed would narrow a tool whose whole promise
+///     is to hand the model what the file holds, for no safety gain whatever — the bytes were
+///     already inside the binary ceiling and were already going to be returned. The rule is live
+///     rather than defensive: <c>gif</c>, <c>webp</c> and <c>pdf</c> are in this tool's admitted
+///     set and have no header probe at all; a malformed header may still belong to a file a
+///     provider renders; and a JPEG whose frame header sits beyond the probe's bounded cap is
+///     decodable yet unmeasurable here.
+///     </para>
+///     <para>
 ///     Every refusal is returned rather than thrown. A refusal this tool composes itself — an
 ///     unsupported media type, or an oversized image naming the ceiling — interpolates only an
 ///     integer or the resolved media type. A refusal the access policy produces, by contrast, states
@@ -73,7 +94,8 @@ public static class ImageReadTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     private const string ToolDescription =
-        "Reads the visual content of an image or PDF file the agent is permitted to read. Paths "
+        "Reads the visual content of an image or PDF file the agent is permitted to read, "
+        + "reporting the image's pixel dimensions where it can establish them. Paths "
         + "are relative to the workspace root. Returns the content with a caption, or a denial "
         + "explaining why the request was refused.";
 
@@ -247,7 +269,7 @@ public static class ImageReadTool
 
             var data = await System.IO.File.ReadAllBytesAsync(realPath, cancellationToken)
                 .ConfigureAwait(false);
-            var caption = CaptionPrefix + mediaType + ".";
+            var caption = ComposeCaption(data, mediaType);
 
             // A PDF is not an image/ media type, so it is returned through Binary, whose guard
             // accepts any media type; the image types are returned through Image, whose guard
@@ -263,6 +285,40 @@ public static class ImageReadTool
             // refusal the model can act on, while a genuine defect still surfaces.
             return ToolResult.Denied(DenialReason.InvalidRequest, FileUnreadable);
         }
+    }
+
+    /// <summary>
+    ///     Composes the caption naming what the model is being handed, including the image's
+    ///     pixel dimensions when they can be established.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The caption never states a size it did not read.</b> The dimensions are read from
+    ///     the header of the bytes already in hand — not by reopening the file, so there is no
+    ///     window in which the bytes captioned and the bytes returned could differ, and not by
+    ///     decoding, so no pixel buffer is allocated. When the header cannot be read, or the
+    ///     media type carries no header probe at all, the caption is the media-type-only form and
+    ///     the content is returned unchanged: the dimensions are an enrichment this tool offers,
+    ///     never a condition it imposes.
+    /// </remarks>
+    /// <param name="data">The file's bytes, as already read.</param>
+    /// <param name="mediaType">The media type the file's extension resolved to.</param>
+    /// <returns>The caption to precede the content with.</returns>
+    private static string ComposeCaption(byte[] data, string mediaType)
+    {
+        // The size is stated only when it was actually read; otherwise the caption is exactly
+        // what it has always been.
+        if (!ImageProbe.TryReadSize(data, mediaType, out var width, out var height))
+        {
+            return CaptionPrefix + mediaType + ".";
+        }
+
+        return CaptionPrefix
+            + mediaType
+            + ", "
+            + width.ToString(CultureInfo.InvariantCulture)
+            + "x"
+            + height.ToString(CultureInfo.InvariantCulture)
+            + " pixels.";
     }
 
     /// <summary>

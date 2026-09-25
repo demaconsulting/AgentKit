@@ -1,6 +1,6 @@
 package AgentKitTools {
     part def ImageReadTool {
-        doc /* Publishes the image_read tool, returning the visual content of one image or PDF file the access policy permits the agent to read, delivered through the guarded construction path so the content is not serialized, and refusing an oversized, unsupported, missing or non-permitted request. */
+        doc /* Publishes the image_read tool, returning the visual content of one image or PDF file the access policy permits the agent to read, stating that image's declared pixel dimensions in the caption wherever it can establish them and stating none it did not read, delivered through the guarded construction path so the content is not serialized, and refusing an oversized, unsupported, missing or non-permitted request. */
 
         comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/Image/ImageReadTool.cs */
         comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageReadToolTests.cs */
