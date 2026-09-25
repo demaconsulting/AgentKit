@@ -23,7 +23,7 @@ The system consists of:
   zero-or-more access grants that permit locations, keeping addressing and permission orthogonal,
   and provides the single containment decision used by both direct access and directory
   enumeration
-- **ToolLimits Unit**: Carries the ceilings a tool observes when reading, returning and
+- **ToolLimits Unit**: Carries the ceilings a tool observes when reading, returning, decoding and
   attaching content
 - **ToolResult Unit**: Constructs the results a guarded tool returns to the model, and defines
   the reasons a tool may refuse an operation
@@ -364,12 +364,13 @@ The path-safety API:
 The system additionally exposes the tool-contract API:
 
 - **new ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int
-  maxAgentDepth)**: Creates a set of resource ceilings. Every parameter is optional and
+  maxAgentDepth, int maxImagePixels)**: Creates a set of resource ceilings. Every parameter is
+  optional and
   defaults to the corresponding published constant. Throws `ArgumentOutOfRangeException` for a
   negative ceiling; a ceiling of zero is accepted and disables the operation.
 - **ToolLimits.Default**: The shared set of ceilings a host receives when it configures nothing.
 - **ToolLimits.MaxReadBytes**, **MaxResultCharacters**, **MaxBinaryBytes**,
-  **MaxAgentDepth**: Read-only properties exposing the configured ceilings.
+  **MaxAgentDepth**, **MaxImagePixels**: Read-only properties exposing the configured ceilings.
 - **ToolResult.Text(string text)**: Returns the supplied text. Throws `ArgumentNullException`
   for a null text; an empty text is permitted.
 - **ToolResult.Structured(object value)**: Returns the supplied value, which the guarded

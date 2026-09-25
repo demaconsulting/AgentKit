@@ -9,7 +9,7 @@ properties. There are no dependencies to substitute — the unit depends only on
 library — so every scenario exercises the real type.
 
 The default-value scenario asserts against **literal numbers** rather than against the published
-constants. Asserting a constant against itself is vacuous, and those four values appear in
+constants. Asserting a constant against itself is vacuous, and those five values appear in
 _ToolLimits Unit Design_, in the requirement text and in the public API surface; this scenario is
 what stops them drifting silently.
 
@@ -25,7 +25,7 @@ Unit tests reside in `ToolLimitsTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all ten scenarios below pass without error or exception beyond those
+A unit test run passes when all twelve scenarios below pass without error or exception beyond those
 explicitly asserted. Any published default that has drifted, any ceiling that fails to take
 effect, any negative ceiling that is accepted, and any zero ceiling that is rejected constitutes
 a failure.
@@ -37,7 +37,7 @@ a failure.
 **Test**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`
 
 Reads all five ceilings from the shared default instance and asserts the literal values 65,536,
-32,000, 8,388,608, 4 and 2. Pins the published API surface against silent drift.
+32,000, 8,388,608, 2 and 16,777,216. Pins the published API surface against silent drift.
 
 #### AgentKitCore-ToolLimits-Defaults: Construction With No Arguments Matches the Default
 
@@ -84,7 +84,14 @@ Asserts every ceiling is validated.
 
 **Test**: `ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException`
 
-Asserts every ceiling is validated, including the last.
+Asserts every ceiling is validated, including the delegation budget.
+
+#### AgentKitCore-ToolLimits-RejectNegative: A Negative Image-Decode Ceiling Is Refused
+
+**Test**: `ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException`
+
+Asserts every ceiling is validated, including the last. A ceiling appended to the constructor is
+exactly the one a validation call is most easily forgotten for, so it carries its own scenario.
 
 #### AgentKitCore-ToolLimits-DelegationDepth: The Delegation Ceiling Is Carried With the Others
 
@@ -100,5 +107,16 @@ other ceiling rather than from a constant of its own.
 **Test**: `ToolLimits_Constructor_ZeroCeiling_IsAccepted`
 
 Boundary condition: zero is the expressible way for a host to disable an operation entirely, so
-it must not be rejected alongside a negative value. Asserts all four zero ceilings are accepted
+it must not be rejected alongside a negative value. Asserts all five zero ceilings are accepted
 and reported back unchanged.
+
+#### AgentKitCore-ToolLimits-DecodeCeiling: The Image-Decode Ceiling Is Carried With the Others
+
+**Tests**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`,
+`ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues`
+
+Asserts the image-decode ceiling is published with a default of 16,777,216 and is exposed as
+supplied when a host replaces it, so a tool that decodes an image reads its budget from the same
+object as every other ceiling rather than from a constant of its own. The default scenario's
+literal assertion is what pins the published value, since a refusal a model receives names this
+number.

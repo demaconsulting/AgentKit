@@ -158,15 +158,18 @@ sections:
       - id: AgentKitCore-ToolLimits-BudgetCeilings
         title: >-
           The library shall define ceilings on the bytes a tool may read, the characters a tool
-          result may return to the model, the bytes of binary content a tool may return, and how
-          deep a chain of delegated agents may run, and shall carry those ceilings with the access
+          result may return to the model, the bytes of binary content a tool may return, how
+          deep a chain of delegated agents may run, and how many pixels a tool may decode from
+          one image, and shall carry those ceilings with the access
           policy so that every tool observes the same budget.
         tags: [system]
         justification: |
           A tool that returns an unbounded amount of text exhausts the model's context window in
           the middle of a task, and the failure presents as the agent forgetting its instructions
           rather than as an error anyone can see. An agent that delegates without bound spends the
-          host's money and time the same way, and just as invisibly. Carrying every ceiling with
+          host's money and time the same way, and just as invisibly. An image whose declared
+          dimensions are far larger than its compressed size suggests costs the host a decode it
+          never sanctioned, which no byte ceiling on the file bounds. Carrying every ceiling with
           the access policy means every pack a host attaches observes one budget rather than each
           inventing its own.
         children:
@@ -174,6 +177,7 @@ sections:
           - AgentKitCore-ToolLimits-Customization
           - AgentKitCore-ToolLimits-RejectNegative
           - AgentKitCore-ToolLimits-DelegationDepth
+          - AgentKitCore-ToolLimits-DecodeCeiling
           - AgentKitCore-PathPolicy-CarriesLimits
         tests:
           - AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues

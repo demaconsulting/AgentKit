@@ -162,7 +162,7 @@ unrepresentable.
 
 Verifies that the ceilings a tool observes reach it through the access policy a host actually
 builds. Constructs a real policy from one rooted rule without configuring any ceilings, and
-asserts it exposes the four published values. Confirms that a host which states no budget still
+asserts it exposes the five published values. Confirms that a host which states no budget still
 operates within a bounded one.
 
 ### Guarded Tool: An Image Result Reaches the Runtime as Content
