@@ -31,6 +31,25 @@ Unit tests reside in `Image/ImageCropToolTests.cs`, reusing the shared temporary
 from `TextFile/TempDirectoryFixture.cs` and the shared fixture builder from
 `Image/ImageTestImages.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
+**Every destination scenario runs under an asymmetric policy**, built by the file's own
+`AsymmetricPolicy` helper: one location granted read-only and a separate location granted
+read-write. This is not a stylistic choice. A policy granting read-write over a single root cannot
+distinguish a write decision from a read decision, so a unit that resolved a destination through
+the read decision would pass every scenario written against the symmetric `RootedPolicy` helper —
+the feature's central guarantee would be untestable. It is also the shape a real application
+configures: a workspace to read and a separate session folder to produce into.
+
+**A written file is read back and decoded, never merely counted.** "A PNG was written" is asserted
+against the decoded pixels of the file on disk, so a scenario cannot pass on bytes that happen to
+exist; the pixel-fidelity scenario compares every channel of every pixel, alpha included, against
+the source the region was taken from.
+
+**The omitted-destination scenarios are textually unchanged.** Every scenario written before the
+parameter existed calls the file's `InvokeAsync` helper without a destination, and the helper adds
+the argument to the invocation only when one was supplied — so an omitted destination reaches the
+unit as a genuinely absent argument, and the unchanged scenarios are themselves the demonstration
+that the inline outcome is exactly the behavior that shipped before.
+
 #### Test Environment
 
 - **Framework**: xUnit v3 running under the .NET SDK
@@ -53,6 +72,14 @@ wording, a non-croppable
 type refused with a sibling tool named, an exception or framework error raised at a malformed or
 omitted request, or a policy refusal that omits the request, permitted location or access level
 each constitute a failure.
+
+The destination scenarios add these failures: a destination accepted under a read-only grant; a
+file left behind after a refused destination; an existing file replaced; a non-PNG destination
+accepted; a written region whose pixels differ from the source's; a confirmation that omits the
+destination, the region or the source's dimensions; image content returned alongside a
+confirmation; a directory materialized on the way to a destination whose parent did not exist; a
+destination refusal this unit composes that names a host path; and an inline crop altered in any
+observable way by the parameter's existence.
 
 #### Test Scenarios
 
@@ -369,3 +396,140 @@ refusal — and this unit delegates to the same map rather than inventing its ow
 
 Error path: an extension the family cannot read at all is refused with no tool invented to send the
 model to.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: A Permitted Destination Receives the Region
+
+**Test**: `ImageCropTool_Crop_PermittedDestination_WritesThePngAndConfirmsInText`
+
+Normal operation for the second outcome: a text confirmation comes back, and a real PNG of the
+requested size exists on disk. The file is read back and decoded, so the assertion is about pixels
+rather than about bytes that merely exist.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: The Written File Carries the Source Pixels Exactly
+
+**Test**: `ImageCropTool_Crop_WrittenFile_CarriesTheSourcePixelsExactly`
+
+The written counterpart of the inline pixel-fidelity scenario. A figure that is not the region it
+claims to be is a silent wrong answer that would survive every size assertion, so every channel of
+every pixel, alpha included, is compared against the source position it came from.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: A Written Region Returns No Image Content
+
+**Test**: `ImageCropTool_Crop_WithDestination_ReturnsNoImageContent`
+
+What keeps a document-preparation loop affordable: an agent cropping six figures would otherwise
+carry six full-resolution images it no longer needs through every subsequent turn. The result is
+asserted to be a string and explicitly not a content list, so nothing image-shaped can be hiding
+in it.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: The Confirmation Names All Three Facts
+
+**Test**: `ImageCropTool_Crop_Confirmation_NamesTheDestinationRegionAndSourceDimensions`
+
+Each of the three is load-bearing and each is asserted separately: the destination so the model can
+reference the file it just produced, and the region and the source's dimensions so a second,
+adjacent figure can be aimed without reading the image again.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: A Destination Outside the Anchor Is Confirmed Absolutely
+
+**Test**: `ImageCropTool_Crop_DestinationOutsideTheWorkingDirectory_IsConfirmedAbsolutely`
+
+The dialect rule, in the configuration the sample runs in. A relative name would name a location
+the model cannot reach from the anchor, so the absolute path is the only truthful answer — and the
+model needs a truthful one, because it goes on to reference the file by that name.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: A JPEG Source Is Written as PNG
+
+**Test**: `ImageCropTool_Crop_JpegSourceToDestination_WritesPngBytes`
+
+The output format is the family's own rather than the source's, whichever outcome was asked for.
+The written file's signature bytes are asserted directly, which is also what makes the `.png`
+destination rule honest rather than decorative.
+
+##### AgentKitTools-Image-CropTool-WritesRegionToDestination: An Omitted Destination Still Returns the Region Inline
+
+**Test**: `ImageCropTool_Crop_OmittedDestination_StillReturnsTheRegionInline`
+
+The explicit statement of the compatibility guarantee: image content comes back, and the permitted
+location afterwards holds exactly the file it held before — so the parameter's existence changes
+nothing for a caller that does not use it.
+
+##### AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant: A Read-Only Destination Is Refused
+
+**Test**: `ImageCropTool_Crop_DestinationUnderAReadOnlyGrant_IsRefusedDisclosingTheWritableLocation`
+
+**The increment's central guarantee.** The source is admitted by the read decision and the
+destination beside it refused by the write decision, in one call. The refusal is asserted to name
+the writable location with its access level, because that disclosure is what lets a confined agent
+recover to a location it may actually use. A unit that resolved the destination through the read
+decision would return a success here.
+
+##### AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant: A Destination Outside Every Grant Is Refused
+
+**Test**: `ImageCropTool_Crop_DestinationOutsideEveryGrant_IsRefused`
+
+Containment applied to the destination as it is to the source: a location no grant covers is
+refused by the policy's own decision rather than by any judgment this unit makes.
+
+##### AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant: A Refused Destination Leaves Nothing Behind
+
+**Test**: `ImageCropTool_Crop_RefusedDestination_WritesNothing`
+
+What makes the grant a boundary rather than advice. A refusal that nonetheless wrote the file would
+be the worst of both answers: the model told it failed, and the operator's confinement broken
+anyway.
+
+##### AgentKitTools-Image-CropTool-RefusesToReplaceDestination: An Existing Destination Is Refused and Left Unchanged
+
+**Test**: `ImageCropTool_Crop_ExistingDestination_IsRefusedWithoutReplacingIt`
+
+A crop that clobbered a figure someone already placed would report success while the document went
+on referencing a name that now points at a different picture. Both halves are asserted: the refusal
+states that this tool does not replace an existing file, and the occupying file is compared
+byte-for-byte afterwards.
+
+##### AgentKitTools-Image-CropTool-RefusesToReplaceDestination: An Image Cannot Be Consumed by Its Own Region
+
+**Test**: `ImageCropTool_Crop_DestinationEqualToTheSource_IsRefusedWithoutReplacingIt`
+
+The source was proven to exist one step earlier, so the existing-file refusal covers this case and
+no separate guard is needed. The source's bytes are compared afterwards, because the failure this
+prevents is destroying the very image the model asked to examine.
+
+##### AgentKitTools-Image-CropTool-RequiresPngDestination: A Non-PNG Destination Is Refused Naming the Extension
+
+**Test**: `ImageCropTool_Crop_NonPngDestination_IsRefusedNamingTheExpectedExtension`
+
+Six cases in one theory: `.jpg`, `.jpeg`, `.webp`, `.txt`, a name with no extension, and a
+whitespace-only destination. The blank case is included deliberately rather than by accident — it
+has no extension, so it lands here with a truthful and actionable answer instead of being silently
+read as "no destination". Each case additionally asserts that no file was produced.
+
+##### AgentKitTools-Image-CropTool-RequiresPngDestination: A Capitalized Extension Is Accepted
+
+**Test**: `ImageCropTool_Crop_UppercaseDestinationExtension_IsAccepted`
+
+The family already matches every extension it reads case-insensitively, because a capitalized
+extension names the same content; the destination follows that same rule rather than inventing a
+stricter one. The written file is decoded, so acceptance is demonstrated rather than assumed.
+
+##### AgentKitTools-Image-CropTool-RefusesUnusableDestination: An Unusable Destination Is Refused and No Directory Created
+
+**Test**: `ImageCropTool_Crop_UnusableDestination_IsRefused`
+
+Two cases in one theory: a destination that names an existing directory, and one whose parent
+directory does not exist. Both must be named `.png` to reach these checks at all, because the
+extension rule is judged first — which is why the directory case uses a directory literally named
+`panel.png`. Both cases assert that no directory was materialized, because silently creating a tree
+on a mistyped path would scatter directories the agent then believes are real.
+
+##### AgentKitTools-Image-CropTool-DenialDisclosure: Destination Refusals Name No Host Path
+
+**Test**: `ImageCropTool_Crop_DestinationDenials_NameNoHostPath`
+
+All four refusals this unit composes for a destination — wrong extension, directory, existing file,
+missing parent — are provoked in one scenario and each is asserted to contain no directory
+separator of either form and no part of the workspace path. The refusal text reaches a model and
+the resulting transcript leaves the process, so nothing about the host's layout may be composed
+into one. The success confirmation is governed by the opposite rule and is covered by the dialect
+scenarios above.

@@ -1047,6 +1047,506 @@ public class ImageCropToolTests
     }
 
     /// <summary>
+    ///     Proves a permitted destination receives the region as a PNG file and the caller
+    ///     receives a text confirmation.
+    /// </summary>
+    /// <remarks>
+    ///     The capability's central scenario. The written file is read back and decoded, so "a
+    ///     PNG was written" is asserted against decoded pixels rather than against a byte count
+    ///     that any bytes at all would have satisfied.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_PermittedDestination_WritesThePngAndConfirmsInText()
+    {
+        // Arrange: a permitted image and a writable workspace to produce the figure into
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(40, 30));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for a region and name where to put it
+        var result = await InvokeAsync(tool, file, 5, 6, 10, 7, "panel.png");
+
+        // Assert: a text confirmation, and a real PNG of the requested size on disk
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Wrote the cropped region", text, StringComparison.Ordinal);
+
+        var written = Path.Combine(fixture.Root, "panel.png");
+        Assert.True(System.IO.File.Exists(written));
+
+        var decoded = ImageTestImages.Decode(
+            await System.IO.File.ReadAllBytesAsync(written, TestContext.Current.CancellationToken));
+        Assert.Equal(10, decoded.Width);
+        Assert.Equal(7, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves the written file carries the source image's pixels unaltered.
+    /// </summary>
+    /// <remarks>
+    ///     The written counterpart of the inline pixel-fidelity scenario: a figure that is not
+    ///     the region it claims to be is a silent wrong answer, and one that would survive every
+    ///     size assertion. Alpha is compared too, so an encoder that quietly discarded it fails
+    ///     here.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_WrittenFile_CarriesTheSourcePixelsExactly()
+    {
+        // Arrange: a permitted PNG whose every pixel is distinguishable from every other
+        using var fixture = new TempDirectoryFixture();
+        var sourceBytes = ImageTestImages.Png(16, 16);
+        var file = WriteBytes(fixture.Root, "detail.png", sourceBytes);
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+        var source = ImageTestImages.Decode(sourceBytes);
+
+        // Act: write a region whose origin is not the image's origin
+        var result = await InvokeAsync(tool, file, 4, 5, 6, 7, "figure.png");
+
+        // Assert: every pixel of the written region, alpha included, is the source's own
+        Assert.IsType<string>(result);
+        var decoded = ImageTestImages.Decode(
+            await System.IO.File.ReadAllBytesAsync(
+                Path.Combine(fixture.Root, "figure.png"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(6, decoded.Width);
+        Assert.Equal(7, decoded.Height);
+        for (var row = 0; row < decoded.Height; row++)
+        {
+            for (var column = 0; column < decoded.Width; column++)
+            {
+                Assert.Equal(source[4 + column, 5 + row], decoded[column, row]);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Proves a written region is not also returned as image content.
+    /// </summary>
+    /// <remarks>
+    ///     What keeps a document-preparation loop affordable: an agent cropping six figures would
+    ///     otherwise carry six full-resolution images it no longer needs through every subsequent
+    ///     turn. The result is a string, so nothing image-shaped can be hiding in it.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_WithDestination_ReturnsNoImageContent()
+    {
+        // Arrange: a permitted image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: write the region rather than asking to see it
+        var result = await InvokeAsync(tool, file, 0, 0, 4, 4, "panel.png");
+
+        // Assert: a plain confirmation, carrying no content list and no data content
+        Assert.IsType<string>(result);
+        Assert.IsNotType<List<AIContent>>(result);
+    }
+
+    /// <summary>
+    ///     Proves the confirmation names the destination, the region and the source's dimensions.
+    /// </summary>
+    /// <remarks>
+    ///     Each of the three is load-bearing: the destination so the model can reference the file
+    ///     it just produced, and the region and the source's dimensions so a second, adjacent
+    ///     figure can be aimed without reading the image again.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_Confirmation_NamesTheDestinationRegionAndSourceDimensions()
+    {
+        // Arrange: a permitted image of a known size
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(40, 30));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: write a region whose coordinates are all distinct
+        var result = await InvokeAsync(tool, file, 5, 6, 10, 7, "panel.png");
+
+        // Assert: the name it can hand forward, the region, and the space to aim the next one in
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("panel.png", text, StringComparison.Ordinal);
+        Assert.Contains("5,6 10x7", text, StringComparison.Ordinal);
+        Assert.Contains("40x30", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a destination outside the working directory is confirmed by its absolute path.
+    /// </summary>
+    /// <remarks>
+    ///     The configuration the sample runs in: a workspace to read and a separate session
+    ///     folder to write into. A relative name would name a location the model cannot reach
+    ///     from the anchor, so the absolute path is the only truthful answer — and the model
+    ///     needs a truthful one, because it goes on to reference the file by that name.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_DestinationOutsideTheWorkingDirectory_IsConfirmedAbsolutely()
+    {
+        // Arrange: a readable workspace and a separate writable location
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(AsymmetricPolicy(fixture.Root, fixture.Outside));
+        var destination = Path.Combine(fixture.Outside, "panel.png");
+
+        // Act: write the region into the location outside the anchor
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, destination);
+
+        // Assert: the confirmation names the absolute path, and the file is really there
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(destination, text, StringComparison.Ordinal);
+        Assert.True(System.IO.File.Exists(destination));
+    }
+
+    /// <summary>
+    ///     Proves a JPEG source written to a destination produces PNG bytes.
+    /// </summary>
+    /// <remarks>
+    ///     The output format is the family's own rather than the source's, whichever outcome was
+    ///     asked for — which is also why the destination must be named <c>.png</c>.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_JpegSourceToDestination_WritesPngBytes()
+    {
+        // Arrange: a permitted JPEG
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "photo.jpg", ImageTestImages.Jpeg(48, 32));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: write a region of it
+        var result = await InvokeAsync(tool, file, 8, 4, 16, 12, "panel.png");
+
+        // Assert: the written file carries the PNG signature and decodes at the region's size
+        Assert.IsType<string>(result);
+        var written = await System.IO.File.ReadAllBytesAsync(
+            Path.Combine(fixture.Root, "panel.png"), TestContext.Current.CancellationToken);
+        Assert.Equal<byte[]>([0x89, 0x50, 0x4E, 0x47], written[..4]);
+
+        var decoded = ImageTestImages.Decode(written);
+        Assert.Equal(16, decoded.Width);
+        Assert.Equal(12, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves omitting the destination leaves the inline outcome exactly as it was.
+    /// </summary>
+    /// <remarks>
+    ///     The explicit statement of the compatibility guarantee: with no destination named, the
+    ///     region comes back as content and no file appears anywhere in the permitted location.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_OmittedDestination_StillReturnsTheRegionInline()
+    {
+        // Arrange: a permitted image, in a location where a stray file would be visible
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the region without naming a destination
+        var result = await InvokeAsync(tool, file, 2, 2, 5, 5);
+
+        // Assert: image content comes back, and nothing at all was written
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(ImageMediaTypes.Png, data.MediaType);
+        Assert.Equal(file, Assert.Single(Directory.GetFiles(fixture.Root)));
+    }
+
+    /// <summary>
+    ///     Proves a destination under a read-only grant is refused, and that the refusal names
+    ///     the location that is writable.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The increment's central guarantee.</b> The source is admitted by the read decision
+    ///     and the destination refused by the write decision in the same call, which is what
+    ///     keeps a read-wide, write-narrow configuration meaningful rather than decorative.
+    ///     Deriving the write from the read would make this call succeed.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_DestinationUnderAReadOnlyGrant_IsRefusedDisclosingTheWritableLocation()
+    {
+        // Arrange: a read-only workspace holding the image, and a separate writable location
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(AsymmetricPolicy(fixture.Root, fixture.Outside));
+
+        // Act: try to write the region beside the image, which may be read but not written
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, "panel.png");
+
+        // Assert: refused by the policy, which names the writable location with its level
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a destination no grant permits at all is refused.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_DestinationOutsideEveryGrant_IsRefused()
+    {
+        // Arrange: a permitted image, and a destination in a location no grant covers
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name a destination outside the permitted location
+        var result = await InvokeAsync(
+            tool, file, 1, 1, 4, 4, Path.Combine(fixture.Outside, "panel.png"));
+
+        // Assert: refused by the policy's own decision
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a refused destination leaves no file behind.
+    /// </summary>
+    /// <remarks>
+    ///     What makes the grant a boundary rather than advice. A refusal that nonetheless wrote
+    ///     the file would be the worst of both answers: the model told it failed, and the
+    ///     operator's confinement broken anyway.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_RefusedDestination_WritesNothing()
+    {
+        // Arrange: a read-only workspace holding the image, and a separate writable location
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(AsymmetricPolicy(fixture.Root, fixture.Outside));
+        var destination = Path.Combine(fixture.Root, "panel.png");
+
+        // Act: try to write into the read-only location
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, destination);
+
+        // Assert: refused, and nothing was created
+        Assert.IsType<string>(result);
+        Assert.False(System.IO.File.Exists(destination));
+    }
+
+    /// <summary>
+    ///     Proves an existing destination is refused and left exactly as it was.
+    /// </summary>
+    /// <remarks>
+    ///     A crop that clobbered a figure someone already placed would report success while the
+    ///     document went on referencing a name that now points at a different picture. The prior
+    ///     file's bytes are compared afterwards, so "refused" and "unchanged" are both asserted.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_ExistingDestination_IsRefusedWithoutReplacingIt()
+    {
+        // Arrange: a permitted image, and a file already occupying the destination name
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var existing = WriteBytes(fixture.Root, "panel.png", [0x01, 0x02, 0x03]);
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the occupied path as the destination
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, "panel.png");
+
+        // Assert: refused in terms the model can act on, and the file is byte-for-byte unchanged
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("does not replace an existing one", text, StringComparison.Ordinal);
+        Assert.Equal<byte[]>(
+            [0x01, 0x02, 0x03],
+            await System.IO.File.ReadAllBytesAsync(existing, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves an image cannot be consumed by its own region.
+    /// </summary>
+    /// <remarks>
+    ///     A destination equal to the source names a file that was proven to exist one step
+    ///     earlier, so the existing-file refusal covers it and no separate guard is needed. The
+    ///     source's bytes are compared afterwards, because the failure this prevents is
+    ///     destroying the very image the model asked to examine.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_DestinationEqualToTheSource_IsRefusedWithoutReplacingIt()
+    {
+        // Arrange: a permitted image
+        using var fixture = new TempDirectoryFixture();
+        var sourceBytes = ImageTestImages.Png(20, 20);
+        var file = WriteBytes(fixture.Root, "picture.png", sourceBytes);
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the source itself as the destination
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, "picture.png");
+
+        // Assert: refused, and the source survives untouched
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("does not replace an existing one", text, StringComparison.Ordinal);
+        Assert.Equal<byte[]>(
+            sourceBytes,
+            await System.IO.File.ReadAllBytesAsync(file, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a destination that does not name a PNG is refused, naming the expected
+    ///     extension.
+    /// </summary>
+    /// <remarks>
+    ///     A region is always encoded as PNG, so a destination named for another format would be
+    ///     a file every later reader is entitled to misread. The blank case is included
+    ///     deliberately: it has no extension, so it lands here with a truthful and actionable
+    ///     answer rather than being silently read as "no destination".
+    /// </remarks>
+    /// <param name="destination">The destination name under test.</param>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData("panel.jpg")]
+    [InlineData("panel.jpeg")]
+    [InlineData("panel.webp")]
+    [InlineData("panel.txt")]
+    [InlineData("panel")]
+    [InlineData("   ")]
+    public async Task ImageCropTool_Crop_NonPngDestination_IsRefusedNamingTheExpectedExtension(
+        string destination)
+    {
+        // Arrange: a permitted image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name a destination the region's encoding could not honestly carry
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, destination);
+
+        // Assert: refused as a malformed request, naming the extension it expects
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("'.png'", text, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(fixture.Root, "panel*"));
+    }
+
+    /// <summary>
+    ///     Proves a destination extension differing only in case is accepted.
+    /// </summary>
+    /// <remarks>
+    ///     The family already matches every extension it reads case-insensitively, because a
+    ///     capitalized extension names the same content; the destination follows the same rule
+    ///     rather than inventing a stricter one.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_UppercaseDestinationExtension_IsAccepted()
+    {
+        // Arrange: a permitted image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the destination with a capitalized extension
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, "PANEL.PNG");
+
+        // Assert: accepted, and the region really was written
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Wrote the cropped region", text, StringComparison.Ordinal);
+
+        var decoded = ImageTestImages.Decode(
+            await System.IO.File.ReadAllBytesAsync(
+                Path.Combine(fixture.Root, "PANEL.PNG"), TestContext.Current.CancellationToken));
+        Assert.Equal(4, decoded.Width);
+        Assert.Equal(4, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves a destination the file system cannot accept a new file at is refused, and that
+    ///     no directory is created on the way.
+    /// </summary>
+    /// <remarks>
+    ///     Both cases must be named <c>.png</c> to reach these checks at all, because the
+    ///     extension rule is judged first — which is why the directory case is a directory
+    ///     literally named <c>panel.png</c>. A missing parent is refused rather than
+    ///     materialized: silently creating a tree is a side effect the operator never asked for
+    ///     and, on a mistyped path, would scatter directories the agent then believes are real.
+    /// </remarks>
+    /// <param name="kind">Which unusable destination the scenario builds.</param>
+    /// <param name="expected">The refusal the model must be given.</param>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData("directory", "The destination path is a directory, not a file.")]
+    [InlineData("missing-parent", "The parent directory of the destination path does not exist.")]
+    public async Task ImageCropTool_Crop_UnusableDestination_IsRefused(string kind, string expected)
+    {
+        // Arrange: a permitted image, and a destination the file system cannot accept
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        string destination;
+        if (string.Equals(kind, "directory", StringComparison.Ordinal))
+        {
+            destination = Path.Combine(fixture.Root, "panel.png");
+            Directory.CreateDirectory(destination);
+        }
+        else
+        {
+            destination = Path.Combine(fixture.Root, "absent-dir", "panel.png");
+        }
+
+        // Act: name it as the destination
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, destination);
+
+        // Assert: refused with the fact stated, and no directory materialized
+        var text = Assert.IsType<string>(result);
+        Assert.Contains(expected, text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "absent-dir")));
+    }
+
+    /// <summary>
+    ///     Proves every destination refusal this tool composes itself names no host path.
+    /// </summary>
+    /// <remarks>
+    ///     The refusal text reaches a model and the resulting transcript leaves this process, so
+    ///     nothing about the host's layout may be composed into one. Only the access policy's own
+    ///     refusal discloses paths, and it does so deliberately. The success confirmation is not
+    ///     a refusal and is governed by the opposite rule, which the dialect scenarios cover.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_DestinationDenials_NameNoHostPath()
+    {
+        // Arrange: a permitted image, an occupied name, and a directory named as a png
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        WriteBytes(fixture.Root, "taken.png", [0x01]);
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "folder.png"));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: provoke each refusal this tool composes for a destination
+        var refusals = new List<string>
+        {
+            Assert.IsType<string>(await InvokeAsync(tool, file, 1, 1, 4, 4, "panel.jpg")),
+            Assert.IsType<string>(await InvokeAsync(tool, file, 1, 1, 4, 4, "folder.png")),
+            Assert.IsType<string>(await InvokeAsync(tool, file, 1, 1, 4, 4, "taken.png")),
+            Assert.IsType<string>(await InvokeAsync(tool, file, 1, 1, 4, 4, "absent-dir/panel.png"))
+        };
+
+        // Assert: none of them carries a separator, the workspace, or any absolute path
+        foreach (var refusal in refusals)
+        {
+            Assert.Contains("Denied (", refusal, StringComparison.Ordinal);
+            Assert.DoesNotContain(fixture.Root, refusal, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                Path.DirectorySeparatorChar.ToString(), refusal, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                Path.AltDirectorySeparatorChar.ToString(), refusal, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     ///     Creates a policy permitting reads and writes only beneath one workspace, and
     ///     interpreting relative requests against it.
     /// </summary>
@@ -1056,6 +1556,27 @@ public class ImageCropToolTests
     private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
         return new PathPolicy(root, [PathRule.ReadWrite(root)], limits ?? ToolLimits.Default);
+    }
+
+    /// <summary>
+    ///     Creates a policy that may read one location and write a different one.
+    /// </summary>
+    /// <remarks>
+    ///     <b>This is the configuration every destination guarantee is decided in.</b> A policy
+    ///     granting read-write over a single root cannot distinguish a write decision from a read
+    ///     decision, so a tool that resolved a destination through the read decision would pass
+    ///     every scenario written against <see cref="RootedPolicy"/>. It is also the shape a real
+    ///     application configures: a workspace to read and a separate session folder to produce
+    ///     into.
+    /// </remarks>
+    /// <param name="readRoot">The location that may be read and is the anchor for relative paths.</param>
+    /// <param name="writeRoot">The separate location that may be read and written.</param>
+    /// <returns>The constructed policy.</returns>
+    private static PathPolicy AsymmetricPolicy(string readRoot, string writeRoot)
+    {
+        return new PathPolicy(
+            readRoot,
+            [PathRule.ReadOnly(readRoot), PathRule.ReadWrite(writeRoot)]);
     }
 
     /// <summary>
@@ -1077,12 +1598,21 @@ public class ImageCropToolTests
     /// <summary>
     ///     Invokes the crop tool exactly as a runtime would.
     /// </summary>
+    /// <remarks>
+    ///     The destination is optional here for the same reason it is optional on the tool: every
+    ///     scenario written before the parameter existed calls this helper without it and is
+    ///     textually unchanged, which is what demonstrates that omitting a destination is exactly
+    ///     the behavior that shipped before. The argument is added to the invocation only when
+    ///     one was supplied, so an omitted destination reaches the tool as a genuinely absent
+    ///     argument rather than as an explicit null.
+    /// </remarks>
     /// <param name="tool">The tool to invoke.</param>
     /// <param name="path">The path argument to supply.</param>
     /// <param name="x">The region's left edge.</param>
     /// <param name="y">The region's top edge.</param>
     /// <param name="width">The region's width.</param>
     /// <param name="height">The region's height.</param>
+    /// <param name="destination">The destination to supply, or null to omit the argument.</param>
     /// <returns>The result the tool returned.</returns>
     private static async Task<object?> InvokeAsync(
         AIFunction tool,
@@ -1090,17 +1620,23 @@ public class ImageCropToolTests
         int x,
         int y,
         int width,
-        int height)
+        int height,
+        string? destination = null)
     {
-        return await tool.InvokeAsync(
-            new AIFunctionArguments
-            {
-                ["path"] = path,
-                ["x"] = x,
-                ["y"] = y,
-                ["width"] = width,
-                ["height"] = height
-            },
-            TestContext.Current.CancellationToken);
+        var arguments = new AIFunctionArguments
+        {
+            ["path"] = path,
+            ["x"] = x,
+            ["y"] = y,
+            ["width"] = width,
+            ["height"] = height
+        };
+
+        if (destination is not null)
+        {
+            arguments["destination"] = destination;
+        }
+
+        return await tool.InvokeAsync(arguments, TestContext.Current.CancellationToken);
     }
 }

@@ -122,10 +122,22 @@ the binary ceiling and were already going to be returned. The rule is live rathe
 them the common case rather than the edge case, and a malformed or truncated header may still
 belong to a file a provider renders.
 
-**A region is returned inline, refused rather than clamped, and bounded before it is decoded.**
-`ImageCropTool` returns the region a caller names in pixels as image content, carrying the source's
-pixels unaltered — nothing is written, so the capability adds no write decision and no new location
-an agent can reach.
+**A region is returned inline or written where the policy permits, refused rather than clamped, and
+bounded before it is decoded.** `ImageCropTool` returns the region a caller names in pixels as image
+content, carrying the source's pixels unaltered, when no destination is named; when one is named it
+writes that region as a new PNG file and confirms in text instead.
+
+*The destination is a second, independent policy decision.* It is resolved through
+`PathPolicy.TryResolveWrite`, never derived from the read that admitted the source, because a path
+an agent may read is not thereby one it may create files in — which is what keeps a read-wide,
+write-narrow configuration meaningful rather than decorative, and what makes one `image_crop` call
+exercise both of the grants an application configured. The destination must be named as a `.png`
+file, because a region is always encoded as PNG and a name claiming otherwise would be a file every
+later reader is entitled to misread; an existing file is never replaced; and no directory is ever
+created. **`MaxBinaryBytes` does not apply to a written file**: that ceiling bounds what this family
+hands a provider, and a file on disk is handed to none — what bounds a written region is the decode
+budget below and the extent of the region asked for. See *ImageCropTool Unit Design*, which states
+the decision in full.
 
 *A region that does not lie wholly inside the image is refused, never reduced.* Reducing it would
 answer a different question from the one asked while reporting success, and the model cannot detect

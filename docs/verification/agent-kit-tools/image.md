@@ -128,7 +128,7 @@ answer is known independently of the library that reports it.
 
 Normal operation: a region is asked for through the composed family and comes back as image
 content carrying `image/png`, with the decoded result's dimensions equal to the region requested.
-Nothing is written and no JSON copy is produced.
+No file is produced, because the scenario names no destination, and no JSON copy is produced.
 
 #### AgentKitTools-Image-RegionExtraction: The Read Caption States the Dimensions a Region Is Aimed With
 
@@ -138,6 +138,25 @@ Nothing is written and no JSON copy is produced.
 within exactly that size is accepted; the region one pixel beyond it is refused, naming the same
 size. The two tools are one capability, and this is the scenario that observes the join rather than
 each half separately.
+
+#### AgentKitTools-Image-RegionDestination: A Region Is Written to a Permitted Destination
+
+**Test**: `Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText`
+
+Normal operation for the written outcome, reached through the pack an application attaches and
+under the one policy it configured rather than through a tool built in isolation. The confirmation
+is asserted to name the file, and the file itself is read back and decoded at the region's size.
+
+#### AgentKitTools-Image-RegionDestination: One Call Is Judged by Both Decisions Independently
+
+**Test**: `Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation`
+
+**The increment's thesis, in one scenario.** The image is admitted by the read decision and the
+destination beside it refused by the write decision, in a single composed call — which is what
+keeps a read-wide, write-narrow configuration meaningful rather than decorative, and it is exactly
+the configuration an application granting a read-only workspace and a writable session folder
+produces. The refusal is asserted to name the writable location with its access level, and the
+read-only location is asserted to hold no new file.
 
 #### AgentKitTools-Image-DecodeBounded: An Oversized Declared Image Is Refused Before Decoding
 

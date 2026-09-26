@@ -164,7 +164,9 @@ family is introduced. For the TextFile family, that containment control is the `
 decision applied to every read, every write and every enumeration it performs — the read decision
 for reads and listings, the write decision for writes — with enumeration going through the policy
 so a listing can never advertise a file a read would refuse. For the Image family, the containment
-control is that same `PathPolicy` read decision applied to every read, and it adds a second control
+control is that same `PathPolicy` read decision applied to every read and the same write decision
+applied to every destination a crop names, judged independently of one another exactly as in the
+TextFile family, and it adds a second control
 of its own: the Vision capability gate, which withholds the family from a host that has not declared
 it can present visual content — withholding it by never asking the pack for its tools — so a model
 that cannot see an image is never offered a tool that returns one it could only fabricate a

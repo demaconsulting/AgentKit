@@ -42,7 +42,8 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type), **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
-  dimensions, and return a rectangular region of a PNG or JPEG named in those pixels; gated on the
+  dimensions, and return a rectangular region of a PNG or JPEG named in those pixels, inline or
+  written as a new PNG where a read-write grant permits it; gated on the
   `Vision` host capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
   steps from), **memory**
   (file, recall, update, revise and forget memories, over an embedding generator the application
@@ -362,7 +363,11 @@ of what each demonstrates and when to read it.
   — *the consumption path.* A console chat application that grants an agent two locations — a
   workspace folder to read and a separate session folder to write artifacts into — and gives it the
   shipped text-file, file, Markdown, and image tool packs. A `--read-only-workspace` switch makes the grants
-  asymmetric, so a refused write enumerates the writable location and the agent recovers. It runs
+  asymmetric, so a refused write enumerates the writable location and the agent recovers. The same
+  asymmetry is what makes the figure-preparation loop visible: one `image_crop` call reads a
+  workspace image under the read grant and writes the region it cut into the session folder under
+  the write grant, so the agent can reference that produced file from the document it then writes.
+  It runs
   unchanged against the GitHub Copilot runtime and any Ollama model, and prints every tool call so
   the containment, capability gating, and built-in suppression are visible as they happen.
 - **[Research Assistant](https://github.com/demaconsulting/AgentKit/tree/main/samples/research-assistant)**

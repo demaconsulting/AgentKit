@@ -56,9 +56,9 @@ sections:
           - id: AgentKitTools-Image-RegionExtraction
             title: >-
               The image family shall return the rectangular region of a readable image that a
-              caller names in pixels, as image content carrying every pixel of that region
-              unaltered, and shall refuse a region not wholly within the image while naming the
-              image's actual dimensions.
+              caller names in pixels, when no destination is named, as image content carrying
+              every pixel of that region unaltered, and shall refuse a region not wholly within
+              the image while naming the image's actual dimensions.
             justification: |
               A model that can see an image still cannot examine part of one closely: a detail
               occupying a hundredth of a large picture is, at the resolution a provider receives,
@@ -84,6 +84,37 @@ sections:
             tests:
               - Image_Family_CroppedRegion_IsReturnedAsImageContent
               - Image_Family_ReadCaption_StatesTheDimensionsACropCanBeAimedWith
+
+          - id: AgentKitTools-Image-RegionDestination
+            title: >-
+              The image family shall write a named region of a readable image to a destination
+              the caller names, only where a read-write grant permits that destination
+              independently of the grant that admitted the image, refusing to replace an
+              existing file and refusing a destination not named as a PNG.
+            tags: [security]
+            justification: |
+              An agent preparing a document needs the region it identified to exist as a file it
+              can reference; a region it can only look at cannot become a figure. Making the
+              destination a named part of the request rather than a second tool means one
+              capability carries one denial taxonomy: the coordinate convention, the
+              out-of-bounds refusal that names the image's real dimensions, the decode budget and
+              the media-type map are stated once and apply whichever outcome the caller asked
+              for. Resolving the destination through the write decision, independently of the
+              read that admitted the source, is what makes one call exercise both of the grants
+              an application configures — and what keeps a read-wide, write-narrow configuration
+              meaningful rather than decorative. Refusing to replace an existing file is the same
+              guarantee the text file family makes, for the same reason: an artifact silently
+              replaced is a document that now points at a different picture with nothing
+              reporting an error.
+            children:
+              - AgentKitTools-Image-CropTool-WritesRegionToDestination
+              - AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant
+              - AgentKitTools-Image-CropTool-RefusesToReplaceDestination
+              - AgentKitTools-Image-CropTool-RequiresPngDestination
+              - AgentKitTools-Image-CropTool-RefusesUnusableDestination
+            tests:
+              - Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText
+              - Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation
 
           - id: AgentKitTools-Image-DecodeBounded
             title: >-
@@ -152,8 +183,9 @@ sections:
 
           - id: AgentKitTools-Image-PolicyGoverned
             title: >-
-              The image family shall judge each request with the policy's read decision,
-              interpreting a path a model states relative to the workspace, returning the
+              The image family shall judge each request with the policy's read decision, and each
+              destination it writes with the policy's write decision, interpreting a path a model
+              states relative to the workspace, returning the
               permitted content — an image as image content and a PDF as binary
               content — and refusing a request whose location lies outside the permitted location.
             tags: [security]
@@ -164,7 +196,9 @@ sections:
               stops an agent from stepping outside the location its operator granted. The family
               shares the access policy the text file family uses, so a name a listing reported is
               directly usable here; a family that read names differently would make a discovered
-              name unusable. Returning an
+              name unusable. A destination is judged by the write decision alone, independently
+              of the read that admitted the image, because a location an operator opened for
+              reading is not thereby one an agent may produce files in. Returning an
               image as image content and a PDF as binary content is not a detail: the result
               constructor for an image refuses a non-image media type, so a PDF must take the
               binary path or the read would throw.
@@ -174,6 +208,7 @@ sections:
               - AgentKitTools-Image-ReadTool-RelativePath
               - AgentKitTools-Image-ReadTool-DenyOutsideRoot
               - AgentKitTools-Image-CropTool-DenyOutsideRoot
+              - AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant
               - AgentKitTools-Image-MediaTypes-SupportedTypes
             tests:
               - Image_Family_PermittedImage_IsReturnedAsImageContent

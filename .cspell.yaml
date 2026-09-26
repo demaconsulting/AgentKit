@@ -85,6 +85,7 @@ words:
   - Magick
   - subsampling
   - IEND
+  - unwritable
 
 # Exclude common build artifacts, dependencies, and vendored third-party code
 ignorePaths:

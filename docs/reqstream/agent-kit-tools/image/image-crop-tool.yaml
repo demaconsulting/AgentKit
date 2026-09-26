@@ -54,9 +54,9 @@ sections:
                   receives, effectively invisible. Returning the named region at full resolution
                   is what turns a guess about that detail into a reading of it. The caption
                   restates the region and the source's dimensions so a follow-up region can be
-                  aimed without reading the whole image again. Nothing is written: the region is
-                  returned inline, so the capability adds no write decision and no new location
-                  an agent can reach.
+                  aimed without reading the whole image again. With no destination named the
+                  region is returned inline, adding no write decision to the request that did not
+                  ask for one.
                 tests:
                   - ImageCropTool_Crop_PermittedPng_ReturnsCroppedImageContent
                   - ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
@@ -179,8 +179,8 @@ sections:
               - id: AgentKitTools-Image-CropTool-ObservesBinaryCeiling
                 title: >-
                   The crop tool shall refuse a file larger than the policy's binary ceiling before
-                  reading it, and shall refuse a region whose returned form exceeds that same
-                  ceiling, naming the ceiling in both cases.
+                  reading it, and shall refuse a region whose inline returned form exceeds that
+                  same ceiling, naming the ceiling in both cases.
                 justification: |
                   The same ceiling governs everything this family hands a provider, whatever
                   produced the bytes. Judging the source file's size from its directory entry
@@ -188,7 +188,11 @@ sections:
                   oversized. Judging the result separately is not redundant: a region of a
                   compressed source, returned in a form that alters no pixel, can genuinely
                   exceed a ceiling the source file sat well inside. Naming the ceiling lets the
-                  model ask for a smaller region rather than guess.
+                  model ask for a smaller region rather than guess. The ceiling governs what this
+                  family hands a provider. A region written to a file is handed to no provider
+                  and charged to no context window, so it is not measured against it; what bounds
+                  a written region is the decode ceiling the image was admitted under and the
+                  extent of the region asked for, both decided before any pixel data exists.
                 tests:
                   - ImageCropTool_Crop_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling
                   - ImageCropTool_Crop_EncodedRegionBeyondTheBinaryCeiling_ReturnsDenialNamingTheCeiling
@@ -242,8 +246,8 @@ sections:
                   strands it. An omitted argument is the same case reached by a different route: a
                   parameter that is required rather than defaulted fails inside the function
                   factory before the tool is reached, and the model receives an opaque framework
-                  error instead of a refusal naming what to supply. This tool takes five
-                  parameters, so it has five ways to reach that failure and every one of them
+                  error instead of a refusal naming what to supply. This tool takes six
+                  parameters, so it has six ways to reach that failure and every one of them
                   carries a default.
                 tests:
                   - ImageCropTool_Crop_MissingPathArgument_ReturnsDenialWithoutThrowing
@@ -261,7 +265,125 @@ sections:
                   unchanged. Everything this tool composes itself reaches a model in a transcript
                   that leaves the process, so it carries no absolute path, no permitted location
                   and no directory separator — only the numbers and the media type the model
-                  needs to correct its request.
+                  needs to correct its request. The rule is scoped to refusals: the confirmation
+                  for a written region is not one, and it names the destination in the policy's
+                  own dialect for the same reason the text file reader's header names the file it
+                  read — a name the model is handed is a name it can hand forward, and
+                  withholding it would leave the model unable to reference what it produced.
                 tests:
                   - ImageCropTool_Crop_DeniedPath_DenialDisclosesPermittedLocation
                   - ImageCropTool_Crop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions
+                  - ImageCropTool_Crop_DestinationDenials_NameNoHostPath
+
+              - id: AgentKitTools-Image-CropTool-WritesRegionToDestination
+                title: >-
+                  The crop tool shall, when a caller names a destination, write the region there
+                  as a new PNG file and return a text confirmation naming the destination, the
+                  region and the source image's dimensions instead of the region's content, and
+                  shall return the region as image content when no destination is named.
+                justification: |
+                  A crop that can only be looked at cannot become a figure in a document. An
+                  agent preparing an artifact needs the region it identified to exist as a file
+                  it can point at, and returning the bytes inline leaves it with nothing to
+                  reference. Naming the outcome in the request rather than inferring it means the
+                  model states which of the two it wants, so neither is ever delivered by
+                  surprise. Confirming in text rather than returning the image as well is what
+                  keeps a document-preparation loop affordable: an agent cropping six figures
+                  would otherwise carry six full-resolution images it no longer needs through
+                  every subsequent turn. The confirmation names the destination in the same
+                  dialect every other tool reports a path in, so a name it hands back is a name
+                  it can hand forward; it names the region and the source's dimensions so a
+                  second, adjacent figure can be aimed without re-reading the image.
+                tests:
+                  - ImageCropTool_Crop_PermittedDestination_WritesThePngAndConfirmsInText
+                  - ImageCropTool_Crop_WrittenFile_CarriesTheSourcePixelsExactly
+                  - ImageCropTool_Crop_WithDestination_ReturnsNoImageContent
+                  - ImageCropTool_Crop_Confirmation_NamesTheDestinationRegionAndSourceDimensions
+                  - ImageCropTool_Crop_DestinationOutsideTheWorkingDirectory_IsConfirmedAbsolutely
+                  - ImageCropTool_Crop_JpegSourceToDestination_WritesPngBytes
+                  - ImageCropTool_Crop_OmittedDestination_StillReturnsTheRegionInline
+
+              - id: AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant
+                title: >-
+                  The crop tool shall permit a destination only where a read-write grant permits
+                  it, judged independently of the grant that admitted the source, and shall write
+                  nothing when the destination is refused.
+                tags: [security]
+                justification: |
+                  A path an agent may read is refused for creation unless a read-write grant
+                  permits it too, which is what keeps a read-wide, write-narrow configuration
+                  meaningful. Deriving the write from the read that admitted the source would
+                  silently convert every readable location into a writable one and make the
+                  asymmetry an operator configured an illusion. Judging the two independently is
+                  what lets one call exercise both grants honestly: the source is admitted by the
+                  read decision, the destination by the write decision, and a destination the
+                  operator did not open is refused with the same disclosure every policy refusal
+                  carries — the request, its interpretation, and every permitted location with
+                  its access level — so a confined agent can recover to a location it may
+                  actually use. Leaving no file behind on a refusal is what makes the grant a
+                  boundary rather than advice.
+                tests:
+                  - ImageCropTool_Crop_DestinationUnderAReadOnlyGrant_IsRefusedDisclosingTheWritableLocation
+                  - ImageCropTool_Crop_DestinationOutsideEveryGrant_IsRefused
+                  - ImageCropTool_Crop_RefusedDestination_WritesNothing
+
+              - id: AgentKitTools-Image-CropTool-RefusesToReplaceDestination
+                title: >-
+                  The crop tool shall refuse a destination at which a file already exists, leaving
+                  that file unchanged, and shall say that it writes a new file rather than
+                  replacing one.
+                justification: |
+                  A crop that clobbers a figure someone already placed is exactly the silent
+                  wrong answer this library refuses: the agent reports success, the document
+                  still references the name, and the picture it points at is now a different
+                  one. Refusing is the only honest answer, and it is the same guarantee
+                  text_file_create makes for a new text file, so an agent meets one rule for
+                  creating a file rather than one rule per family. Stating that this tool writes
+                  a new file is what lets the model choose another name on the next turn instead
+                  of retrying the one that was refused. The refusal also protects the source:
+                  a destination equal to the image being cropped names a file that exists, so the
+                  image can never be consumed by its own region.
+                tests:
+                  - ImageCropTool_Crop_ExistingDestination_IsRefusedWithoutReplacingIt
+                  - ImageCropTool_Crop_DestinationEqualToTheSource_IsRefusedWithoutReplacingIt
+
+              - id: AgentKitTools-Image-CropTool-RequiresPngDestination
+                title: >-
+                  The crop tool shall refuse a destination that does not name a PNG file,
+                  naming the extension it expects, and shall accept one whose extension differs
+                  only in case.
+                justification: |
+                  A region is always encoded as PNG, because the encoding is lossless and every
+                  vision provider accepts it. A destination named for another format would
+                  therefore hold PNG bytes under a name that says otherwise — a file every later
+                  reader, human or program, would be entitled to misread, and one this tool would
+                  have produced knowingly. Refusing and naming the expected extension costs the
+                  model one turn and leaves it able to correct the request, which is cheaper than
+                  a mislabeled artifact nobody notices. Matching the extension case-insensitively
+                  follows the rule the family already applies to every other extension it reads,
+                  because a capitalized extension names the same content. A destination that is
+                  blank or only whitespace has no extension and is refused here too, rather than
+                  being silently read as a request for the inline outcome.
+                tests:
+                  - ImageCropTool_Crop_NonPngDestination_IsRefusedNamingTheExpectedExtension
+                  - ImageCropTool_Crop_UppercaseDestinationExtension_IsAccepted
+
+              - id: AgentKitTools-Image-CropTool-RefusesUnusableDestination
+                title: >-
+                  The crop tool shall refuse a destination naming an existing directory or one
+                  whose parent directory does not exist, shall create no directory, and shall
+                  refuse a permitted destination it cannot write without disclosing the
+                  underlying failure's own wording.
+                justification: |
+                  A directory is not a file a region can be written into, and saying so with the
+                  instruction to name a file within it is what turns the refusal into the next
+                  correct request. A missing parent is refused rather than materialized, because
+                  silently creating a tree is a side effect the operator never asked for and, on
+                  a mistyped path, would scatter directories the agent then believes are real —
+                  the same reading text_file_create takes. A permitted destination that the
+                  operating system nonetheless refuses is reported as a plain fact with no
+                  remedy, because the tool does not know the reason and a guess would be worse
+                  than silence; the underlying failure's own message is developer-facing and
+                  never reaches a transcript that leaves the process.
+                tests:
+                  - ImageCropTool_Crop_UnusableDestination_IsRefused

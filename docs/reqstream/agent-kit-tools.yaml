@@ -111,7 +111,8 @@ sections:
           The library shall provide an image family that reads images and PDF documents under the
           access policy the composing application supplies, reporting the pixel dimensions of an
           image it can establish them for, returning a rectangular region of one named in pixels
-          and refusing a region that is not wholly inside it, interpreting the paths a model
+          and refusing a region that is not wholly inside it, writing that region to a destination
+          a read-write grant permits when the caller names one, interpreting the paths a model
           states
           as relative to the workspace, publishing every tool under one family
           prefix, delivering the content to the caller rather than a serialized copy of it, and
@@ -136,8 +137,12 @@ sections:
           which to reason about any part of the image it is looking at. It also cannot examine
           part of a picture closely — a detail occupying a hundredth of a large image is, at the
           resolution a provider receives, effectively invisible — so the family returns the
-          region the model names, at full resolution and inline, adding no write decision and no
-          new location an agent can reach. Dimension reporting and region extraction are one
+          region the model names at full resolution: inline when the model wants to examine it,
+          or written to a destination the model names when it wants an artifact it can reference.
+          The destination is admitted by the policy's write decision, independently of the read
+          that admitted the image, so one call exercises both grants an application configured
+          and a read-wide, write-narrow policy stays meaningful. Dimension reporting and region
+          extraction are one
           capability rather than two: a region request the model cannot aim is a region request
           it will aim wrongly. A region that does not fit is refused rather than quietly reduced,
           because a reduced region answers a different question while reporting success and the
@@ -151,6 +156,7 @@ sections:
           - AgentKitTools-Image-PolicyGoverned
           - AgentKitTools-Image-DimensionReporting
           - AgentKitTools-Image-RegionExtraction
+          - AgentKitTools-Image-RegionDestination
           - AgentKitTools-Image-DecodeBounded
           - AgentKitTools-Image-DenialsAreResults
           - AgentKitTools-Image-ObservesPolicyLimits

@@ -501,6 +501,97 @@ public class ImageTests
     }
 
     /// <summary>
+    ///     Proves the family writes a cropped region to a destination a read-write grant permits
+    ///     and confirms it in text.
+    /// </summary>
+    /// <remarks>
+    ///     The composed counterpart of the unit's write scenario: the capability is reached
+    ///     through the pack the application attaches, under the one policy the application
+    ///     configured, rather than through a tool constructed in isolation.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText()
+    {
+        // Arrange: the family composed over a permitted location holding a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.png", ImageTestImages.Png(40, 30));
+        var tools = Compose(fixture.Root);
+
+        // Act: ask for a region and name where to produce it
+        var result = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 4,
+                ["y"] = 5,
+                ["width"] = 12,
+                ["height"] = 9,
+                ["destination"] = "figure.png"
+            });
+
+        // Assert: a confirmation naming the file, and a real PNG of that region on disk
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("figure.png", text, StringComparison.Ordinal);
+
+        var decoded = ImageTestImages.Decode(
+            await System.IO.File.ReadAllBytesAsync(
+                Path.Combine(fixture.Root, "figure.png"), TestContext.Current.CancellationToken));
+        Assert.Equal(12, decoded.Width);
+        Assert.Equal(9, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves one composed call is judged by both of the policy's decisions independently.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The increment's thesis, in one scenario.</b> The image is admitted by the read
+    ///     decision and the destination beside it refused by the write decision, in a single
+    ///     call — which is what keeps a read-wide, write-narrow configuration meaningful rather
+    ///     than decorative, and it is exactly the configuration an application that grants a
+    ///     read-only workspace and a writable session folder produces.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation()
+    {
+        // Arrange: the family composed over a read-only workspace and a writable session folder
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "diagram.png", ImageTestImages.Png(40, 30));
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
+        var tools = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision)
+            .Add(new ImagePack())
+            .Build();
+
+        // Act: read the image the workspace grant admits, and try to write beside it
+        var result = await InvokeAsync(
+            tools,
+            ImageCropTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = file,
+                ["x"] = 4,
+                ["y"] = 5,
+                ["width"] = 12,
+                ["height"] = 9,
+                ["destination"] = "figure.png"
+            });
+
+        // Assert: refused by the write decision, naming the location that is writable, with
+        // nothing left behind in the location that is not
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "figure.png")));
+    }
+
+    /// <summary>
     ///     Composes the family under a policy rooted at one location, on a vision host.
     /// </summary>
     /// <param name="root">The permitted read and write location.</param>
