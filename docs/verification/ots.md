@@ -24,6 +24,7 @@ tool executed correctly). Each item's individual verification document
 |--------------------------------------|-----------------------------------------------------------------------------|
 | ApiMark                              | Pipeline evidence: FileAssert assertions on the generated API reference     |
 | BuildMark                            | Self-validation CLI suite plus pipeline evidence via build-notes document   |
+| CanvasNet                            | AgentKit tests: images built in-test, read, cropped and compared            |
 | FileAssert                           | Self-validation CLI suite plus transitive evidence from document assertions |
 | Microsoft.Agents.AI                  | AgentKit integration tests building an agent from an IChatClient            |
 | Microsoft.Agents.AI.GitHub.Copilot   | AgentKit integration tests building the session config and handler          |

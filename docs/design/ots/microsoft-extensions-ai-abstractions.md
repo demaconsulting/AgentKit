@@ -7,7 +7,7 @@
 Framework, and any `Microsoft.Extensions.AI` `IChatClient` all consume. It was chosen — rather
 than a provider, runtime, or agent-loop package — so that one guarded tool can be offered to every
 provider without AgentKit choosing a provider on the application's behalf. It is the only runtime
-NuGet dependency AgentKit carries.
+NuGet dependency AgentKit Core carries.
 
 ### Features Used
 
@@ -25,7 +25,8 @@ NuGet dependency AgentKit carries.
 `Microsoft.Extensions.AI.Abstractions` is consumed as the tool currency by `GuardedToolFactory`
 in `AgentKitCore`, which references it as a **direct** `PackageReference`.
 `AgentKitTools` reaches the same abstraction **transitively** through its `ProjectReference` to
-`AgentKitCore`; it takes no direct package reference of its own, so a tool family composes through
-the same currency Core publishes without restating a dependency Core already owns. There is no
+`AgentKitCore`; it takes no direct package reference to _this_ library of its own, so a tool
+family composes through the same currency Core publishes without restating a dependency Core
+already owns. There is no
 initialization, configuration object, or disposal step: tools are constructed once through the
 factory and handed to the host as an `IReadOnlyList<AIFunction>`.

@@ -21,7 +21,15 @@ policy model as this tool observes it: the working directory anchors bare names,
 read permission, and policy refusals disclose the refused request and permitted locations.
 
 Unit tests reside in `Image/ImageReadToolTests.cs`, reusing the shared temporary-directory fixture
-from `TextFile/TempDirectoryFixture.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
+from `TextFile/TempDirectoryFixture.cs` and the shared fixture builder from
+`Image/ImageTestImages.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
+
+The dimension-reporting scenarios are run against **real image files built by the test**, of sizes
+chosen so that no default, no fixture constant and no coincidence could produce the asserted
+numbers. The degrade scenarios are run against content whose header genuinely cannot be read — a
+signature followed by junk — and against media types this library has no header probe for at all,
+which are the two distinct routes to the same outcome and are therefore covered separately rather
+than treated as one.
 
 #### Test Environment
 
@@ -34,13 +42,14 @@ from `TextFile/TempDirectoryFixture.cs`, within the `DemaConsulting.AgentKit.Too
 
 #### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-five scenarios below pass without error or exception beyond
 those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does not
 read, a relative name that is not read from the working directory, a refused file whose content
 leaks, a PDF routed through the image result path, a truncated result where a refusal was required,
 an exception or framework error raised at a malformed or omitted request, a refusal offering no way
-forward, or a policy refusal that omits the request, permitted location, or access level constitutes
-a failure.
+forward, a caption stating a size the tool did not read, a readable image whose size is omitted, a
+file refused because only its *header* was unreadable, or a policy refusal that omits the request,
+permitted location, or access level constitutes a failure.
 
 #### Test Scenarios
 
@@ -81,7 +90,8 @@ nothing would report an error.
 
 Normal operation: asserts a caption followed by data content carrying the `image/png` media type and
 the distinctive bytes the test wrote, so the scenario proves the real file was reached rather than a
-plausible-looking substitute.
+plausible-looking substitute. The caption's dimension reporting is covered by its own scenarios
+below.
 
 ##### AgentKitTools-Image-ReadTool-ReadPermittedPdf: A Permitted PDF Returns Binary Content
 
@@ -91,6 +101,74 @@ Normal operation on the other result path: a PDF is returned as data content car
 `application/pdf`, still unserialized, confirming the dispatch that keeps a non-image media type off
 the image result path — which would otherwise throw — while preserving the caption-plus-content
 shape.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A PNG Caption States the Pixel Dimensions
+
+**Test**: `ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions`
+
+Normal operation for the capability that lets a region request be aimed: a PNG of 37 by 19 pixels
+is read, and the caption names the media type and that size. The dimensions are deliberately
+asymmetric and prime-ish, so a width-and-height transposition or a hard-coded value cannot pass.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A JPEG Caption States the Pixel Dimensions
+
+**Test**: `ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions`
+
+Normal operation on the second format whose header this library reads, whose size is found by a bounded scan of leading
+marker segments rather than at a fixed offset.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A Palette-Indexed PNG Reports Its Dimensions
+
+**Test**: `ImageReadTool_Read_PalettizedPng_CaptionStatesThePixelDimensions`
+
+Variant input: a file storing one sample per pixel rather than three or four is the format most
+easily mishandled by a reader that assumed a single encoding. Its size is declared in the same
+place as any other PNG's and must be reported identically.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: An Interlaced PNG Reports Its Dimensions
+
+**Test**: `ImageReadTool_Read_Adam7InterlacedPng_CaptionStatesThePixelDimensions`
+
+Boundary condition, and the counterpart to the crop tool's refusal of the same file: interlacing
+is the one thing a well-formed PNG can declare that this library will not *decode*, but reading is
+not decoding — the bytes go to the provider and the size is declared in a header that reads
+perfectly well. This file therefore loses nothing here.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A Type With No Header Probe Is Captioned by Type Alone
+
+**Test**: `ImageReadTool_Read_MediaTypeWithNoHeaderProbe_CaptionStatesOnlyTheMediaType`
+
+Run as a theory over `gif` and `webp`: types the family reads but has no header probe for. The
+content is returned and the caption claims no size, which is the common case rather than the edge
+case.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: A PDF Is Captioned by Media Type Alone
+
+**Test**: `ImageReadTool_Read_Pdf_CaptionStatesOnlyTheMediaType`
+
+A PDF is paginated rather than a single raster image and this library reads no PDF header, so the
+caption names the media type and invents no pixel size for it.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: Content With an Unreadable Header Is Still Returned
+
+**Test**: `ImageReadTool_Read_ContentWithAnUnreadableHeader_StillReturnsTheContent`
+
+The degrade guarantee, and the load-bearing scenario of this requirement. A `.png` whose bytes are
+a signature followed by junk is returned in full, captioned by media type alone. Asserts the exact
+caption string, so a regression that invented a size — or that refused the file — fails here. The
+tool's contract is to hand the provider what the file holds; the provider's decoder is the
+authority on the bytes, and refusing because an optional enrichment failed would narrow the tool
+for no safety gain.
+
+##### AgentKitTools-Image-ReadTool-ReportsDimensions: The Caption Never States a Size It Did Not Read
+
+**Test**: `ImageReadTool_Read_Caption_NeverStatesDimensionsItDidNotRead`
+
+The negative form of the same promise, asserted by pattern rather than by string: nothing shaped
+like a pixel size appears anywhere in the caption of a file whose size was never established.
+Stated separately from the scenario above because a plausible-looking fabricated size is the
+failure this requirement exists to make impossible, and a test asserting one exact string would
+not catch a differently-worded one.
 
 ##### AgentKitTools-Image-ReadTool-DenyOutsideRoot: A Path Outside the Read Grant Is Refused
 

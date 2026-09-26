@@ -117,9 +117,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's read tool is published, under the family prefix
+        // Assert: both of the family's tools are published, under the family prefix
         Assert.Equal(
-            ["image_read"],
+            ["image_read", "image_crop"],
             tools.Select(tool => tool.Name));
     }
 

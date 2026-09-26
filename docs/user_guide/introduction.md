@@ -243,7 +243,8 @@ row.
 | File      | `file_move`             | Moves a file within the policy                   | None                |
 | File      | `file_delete`           | Deletes a single file within the policy          | None                |
 | Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
-| Image     | `image_read`            | Reads an image or PDF for a vision-capable agent | `Vision`            |
+| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`            |
+| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`            |
 | Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None                |
 | Todo      | `todo_set`              | Records a step, or updates the step with that id | None                |
 | Todo      | `todo_remove`           | Drops a step by id from the task list            | None                |
@@ -259,6 +260,36 @@ memory (`MemoryPack`) families require no host capability. Two families are gate
 (`ImagePack`) requires the `Vision` host capability, and the agent family (`AgentPack`) requires
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
 its tools, so a model is never offered a tool its host cannot use.
+
+The image family's two tools are one capability rather than two. `image_read` states the image's
+pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
+top-left corner of that same coordinate space — because a model can see a picture but cannot
+measure one, and a region request it cannot aim is a region request it will aim wrongly. A region
+that does not lie wholly inside the image is **refused, naming the image's real dimensions**, never
+quietly reduced to one that would have fitted: a reduced region answers a different question while
+reporting success, and the model has no way to detect the substitution.
+
+`image_crop` has two outcomes, and the request says which. **Omit `destination` and the region
+comes back inline as image content to look at**, which is what it has always done and what it still
+does unchanged. **Name a `destination` and the region is written there as a new `.png` file**, and
+the model receives a text confirmation naming the file, the region and the source's dimensions
+rather than the image itself. That second outcome exists because a region a model can only look at
+cannot become a figure: an agent preparing a document needs the region it identified to exist as a
+file it can point at.
+
+For an application author, the destination is where the two grants meet. **It is resolved through
+the policy's write decision, independently of the read that admitted the image** — so a path an
+agent may read is refused as a destination unless a read-write grant permits it too. One
+`image_crop` call therefore exercises both of the grants you configured, which is what lets a
+read-wide, write-narrow policy be expressed rather than approximated: point the workspace grant at
+a folder you only want read, point a read-write grant at the folder you want artifacts produced in,
+and the agent can crop from the first into the second and nowhere else. The refusal for a
+destination outside the write grant enumerates the locations that are writable, with their access
+levels, so the agent recovers rather than guesses. **The destination must name a `.png` file** —
+matched case-insensitively, as every extension this family reads is — because a region is always
+encoded as PNG and a file named otherwise would be one every later reader is entitled to misread,
+and **an existing file is never replaced** — the same guarantee
+`text_file_create` makes. No directory is created for a destination whose parent does not exist.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
 should know what it is attaching:

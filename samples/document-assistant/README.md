@@ -4,7 +4,8 @@ A console chat application that grants an AI agent exactly two locations — a *
 documents to read, and a separate **session** folder to write its artifacts into — and hands it the
 shipped AgentKit tool packs: searching, reading, creating, and editing text files; listing, copying,
 moving, and deleting files of any type; outlining a Markdown file's headings; and, when vision is
-enabled, looking at images. It is the first end-to-end demonstration of the AgentKit tools against live
+enabled, looking at images and cutting a region out of one into a file it can reference. It is the
+first end-to-end demonstration of the AgentKit tools against live
 models, and it runs unchanged against the GitHub Copilot runtime and against any Ollama model.
 
 ## Two locations, one anchor
@@ -91,8 +92,13 @@ result as they happen, so you can watch the guarantees hold rather than take the
   write and recovers by writing there instead of simply failing.
 - **Cross-location work.** The agent reads from the workspace and writes an artifact into the session
   folder — the ordinary shape of real work, and the case that makes the two dialects visible.
-- **Capability-gated tools.** The image tool is offered only when the host declares the `Vision`
-  capability. Run with `--no-vision` and `image_read` is not refused at call time — it is never
+- **Both grants in one call.** With a `destination`, `image_crop` reads the image under the workspace
+  grant and writes the region it cut under the session folder's write grant. Under
+  `--read-only-workspace` a destination in the workspace is refused while the same call into the
+  session folder succeeds — one tool call, two independent decisions.
+- **Capability-gated tools.** The image tools are offered only when the host declares the `Vision`
+  capability. Run with `--no-vision` and neither `image_read` nor `image_crop` is refused at call
+  time — they are never
   presented to the model at all.
 - **Provider quirks absorbed by the adapters.** The Copilot runtime ships its own shell, fetch, and
   file-editing tools; the adapter suppresses them so the agent is offered only the tools you gave it.
@@ -177,7 +183,7 @@ end-of-input to leave.
 | `--provider copilot\|ollama` | Runtime to run the agent on. Default: `copilot`. |
 | `--host <url>` | Ollama server URL. Default: `http://localhost:11434`. Ollama only. |
 | `--model <name>` | Model to back the agent. Default: the Copilot runtime's own choice, or `qwen3.5:9b` for Ollama. |
-| `--no-vision` | Omit the image tool and the `Vision` capability entirely. |
+| `--no-vision` | Omit the image tools and the `Vision` capability entirely. |
 | `--prompt "<text>"` | Run a single prompt and exit. Otherwise start an interactive chat. |
 | `--help` | Show help and exit. |
 
@@ -203,6 +209,20 @@ The default session folder is `document-assistant-session` beneath the system te
   triangle above the verification code `FALCON-4297`. See
   [Verifying vision honestly](#verifying-vision-honestly) below — reading that code back *verbatim*
   is the check that distinguishes real vision from a plausible guess, and it needs a capable model.
+- **Figure preparation.** "Look at diagram.png, crop the region holding the printed code into the
+  session folder as code.png, then write notes.md there referencing it." The agent reads the image,
+  aims a region in the coordinate space `image_read` reported, and calls `image_crop` with the
+  session folder's absolute path as the destination. What comes back is a *confirmation naming that
+  path* rather than the picture — which is exactly what the agent needs, because the next thing it
+  writes is a Markdown file pointing at that name. Whether it aims the region well is a property of
+  the model, in the same way reading the code back is; see *Verifying vision honestly* below.
+- **The write grant, on a crop.** Add `--read-only-workspace` and ask for the same crop written
+  *beside* the image instead. `image_crop` reads the image and refuses the destination, enumerating
+  the writable location — one call, two independent policy decisions.
+- **The destination rules.** Ask for the crop as `code.jpg`, or at a name that already exists. The
+  first is refused because a region is always encoded as PNG and a file named otherwise would be one
+  every later reader is entitled to misread; the second because this tool writes a new file and does
+  not replace one.
 - **The denial.** "Read ../outside-workspace.txt." The `text_file_read` tool returns
   `Denied (PathNotPermitted)` with guidance and the permitted locations. The sibling file
   `outside-workspace.txt` exists precisely so this refusal is a real containment decision.
@@ -211,7 +231,8 @@ The default session folder is `document-assistant-session` beneath the system te
 - **Suppressed built-ins.** "List your tools. Do you have a shell or web-fetch tool?" The agent
   reports only the file tools and answers *no* — confirming the Copilot runtime's built-in
   tools are suppressed.
-- **Capability gating.** Add `--no-vision` and ask the agent to list its tools: `image_read` is gone.
+- **Capability gating.** Add `--no-vision` and ask the agent to list its tools: `image_read` and
+  `image_crop` are gone.
 
 ## Verifying vision honestly
 
@@ -253,6 +274,9 @@ primary-color shapes and large embedded text including the verification code `FA
 produced once with Python Pillow (canvas, three shapes via `ImageDraw`, and text via a bold TrueType
 font) and committed as a fixture. The embedded, checkable code is deliberate: it lets a reader confirm
 the vision path genuinely delivered the image to the model instead of accepting a confident guess.
+It is also the only fixture the figure-preparation demonstration needs: the region holding
+`FALCON-4297` is legible on its own once cut out, so the crop's destination file is itself checkable
+in exactly the same way.
 
 ## Requirements
 

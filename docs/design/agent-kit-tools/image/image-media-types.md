@@ -7,14 +7,23 @@ composes the refusal for a file whose type it cannot read.
 
 #### Purpose
 
-To be the one place that decides what the image family can read and how it refuses what it cannot.
-The media type is what a provider is told a file's content is, so deciding it from the extension —
+To be the one place that decides what the image family can read, what it can take a region of, and
+how it refuses what it cannot. The media type is what a provider is told a file's content is, so
+deciding it from the extension —
 rather than by sniffing bytes — keeps the decision predictable and keeps the refusal for an
-unsupported type in a single place the read tool delegates to.
+unsupported type in a single place the tools delegate to.
 
-The unit does no file-system work and reads no content. It answers two questions about a path's
-extension: what media type, if any, the family reads it as, and — when the answer is none — what
-refusal a model should be handed.
+**Both questions live here so the family never gives two answers to "what is this file".** The set
+a region can be extracted from is narrower than the set that can be read, because extracting a
+region means decoding: `png`, `jpg` and `jpeg` rather than those plus `gif`, `webp` and `pdf`.
+Holding the two maps apart in separate units would make it possible for one to widen without the
+other, and confining the croppable set to the intersection of what the family reads and what it
+decodes is what stops a region request becoming an accidental format conversion for content the
+read tool itself refuses.
+
+The unit does no file-system work and reads no content. It answers questions about a path's
+extension: what media type, if any, the family reads it as, whether a region can be extracted from
+it, and — when the answer is none — what refusal a model should be handed.
 
 #### Data Model
 
@@ -27,6 +36,7 @@ The class is static and holds no state.
 | `Gif`                 | `string` | `image/gif`; public constant                                    |
 | `Webp`                | `string` | `image/webp`; public constant                                   |
 | `Pdf`                 | `string` | `application/pdf`; public constant; not an `image/` media type  |
+| Croppable set         | `string` | Compile-time constant; interpolated into each croppable refusal |
 | Denial messages       | `string` | Compile-time constants; contain no host location                |
 
 #### Key Methods
@@ -63,6 +73,51 @@ that. Any other extension is stated as unsupported, with nothing further.
 **Postconditions:** returns a `ToolResult.Denied` result naming the reason and, where the extension
 identifies the kind of content, the reader for that kind.
 
+##### TryResolveCroppableMediaType(string path, out string? mediaType)
+
+Resolves the media type of a file a region can be extracted from.
+
+**Algorithm:** takes the path's extension, lowered with the invariant culture, and maps `.png` to
+`image/png` and `.jpg`/`.jpeg` to `image/jpeg`. Every other extension — including those the family
+reads — resolves to nothing.
+
+**Postconditions:** returns `true` with the media type when a region can be taken from the
+extension, and `false` with a null media type otherwise. The out parameter is annotated so a caller
+may use the resolved type without a null check on the `true` branch.
+
+##### DenyNonCroppableType(string path)
+
+Composes the refusal for a file whose extension no region can be extracted from.
+
+**Preconditions:** called only once `TryResolveCroppableMediaType` has reported the type
+uncroppable, so the refusal is always an `UnsupportedMediaType`.
+
+**Algorithm:** chooses on the extension. A `.gif` is stated to be a file that may hold more than
+one frame, whose frame count nothing this family reads reports, so a region of it would silently be
+a region of the first frame alone — the reason is the unknowable frame rather than animation,
+because a single-frame `.gif` is the common case and refusing one as "animated" would state
+something untrue about the file the model just named. A `.webp` is stated to be a raster image this
+family does not decode — its own wording, because its reason is its own rather than the `.gif`'s. A
+`.pdf` is stated to be a paginated document whose region could only be taken by choosing a page
+and a resolution to rasterize it at, which no tool here does; it earns its own refusal because it
+is the one admitted type that *looks* croppable and is not, and without the reason stated a model
+would
+reasonably retry with different coordinates. Each of the three additionally names the set of types
+a region *can* be taken from, so the model is told what it may ask for and not only what it may
+not. Any extension the family cannot read at all is delegated to `DenyUnsupportedType`, so the
+family answers "what is this file" in a single voice.
+
+**None of the refusals composed here names a sibling tool.** The one place a media-type refusal may
+name one is where the naming *is* the statement of what the file is — an `.svg` is text, so the
+text reader is its reader. A `.gif` genuinely *is* an image, so naming the image reader would not
+classify it: it would offer a route to the content the refusal withheld, handing the model the
+whole image after it asked to examine one part of it closely. A model that then described that part
+confidently would be describing what it never examined, which is precisely the failure this family
+exists to prevent.
+
+**Postconditions:** returns a `ToolResult.Denied` result naming the reason and, for a readable
+type, the set a region can be taken from.
+
 #### Error Handling
 
 The unit raises `ArgumentNullException` for a null path, which is a programming error in the calling
@@ -81,5 +136,6 @@ Library:
 #### Callers
 
 `ImageReadTool` calls `TryResolveMediaType` to decide a permitted file's type and `DenyUnsupportedType`
-to refuse one it cannot read. Nothing else in this package calls the unit, though both methods are
-public so a composing application may consult the same map.
+to refuse one it cannot read. `ImageCropTool` calls `TryResolveCroppableMediaType` and
+`DenyNonCroppableType` for the same two questions about a region. Nothing else in this package calls
+the unit, though all four methods are public so a composing application may consult the same maps.

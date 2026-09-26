@@ -47,6 +47,7 @@ sections:
               - ToolLimits_Constructor_NegativeMaxResultCharacters_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxBinaryBytes_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_ZeroCeiling_IsAccepted
 
           - id: AgentKitCore-ToolLimits-DelegationDepth
@@ -62,6 +63,28 @@ sections:
               between two families. An agent that can delegate can delegate to something that
               delegates, so an unbounded chain spends the host's money and time in a way no single
               agent's transcript reveals.
+            tests:
+              - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
+              - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues
+
+          - id: AgentKitCore-ToolLimits-DecodeCeiling
+            title: >-
+              Tool limits shall carry the ceiling on how many pixels a tool may decode from one
+              image, counted from the dimensions that image declares.
+            tags: [security]
+            justification: |
+              A ceiling on a file's size does not bound what decoding that file costs. A
+              compressed image well inside the binary ceiling can declare far more pixels than its
+              size suggests, and a decoded pixel buffer costs four bytes per pixel whatever
+              encoding the file itself used — so an image of 8192 by 8192 pixels is 67,108,864
+              pixels and 268,435,456 bytes, a quarter of a gigabyte, reachable from a file of a
+              few hundred kilobytes. Bounding the pixel count is the only control that closes
+              that gap, and counting it from the dimensions an image declares is what lets a tool
+              decide before it allocates anything. Holding the ceiling here rather than as a
+              constant on whichever tool decodes means a host configures all of its budgets in one
+              place, a refusal names a number the host chose rather than an implementation detail,
+              and a host on a constrained container can lower it while a host doing high-resolution
+              document work can raise it.
             tests:
               - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
               - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues

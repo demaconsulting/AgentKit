@@ -240,6 +240,7 @@ public class AgentKitCoreTests
         Assert.Equal(32000, limits.MaxResultCharacters);
         Assert.Equal(8388608, limits.MaxBinaryBytes);
         Assert.Equal(2, limits.MaxAgentDepth);
+        Assert.Equal(16777216, limits.MaxImagePixels);
     }
 
     /// <summary>

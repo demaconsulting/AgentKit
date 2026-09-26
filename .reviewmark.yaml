@@ -733,6 +733,8 @@ reviews:
       - "docs/verification/agent-kit-tools/image.md"               # subsystem verification
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageProbe.cs"                # shared header-probe helper
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTestImages.cs"    # shared fixture builder
 
   # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
   - id: AgentKitTools-Image-ImageMediaTypes
@@ -763,6 +765,21 @@ reviews:
       - "docs/verification/agent-kit-tools/image/image-read-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageReadTool.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageReadToolTests.cs"  # unit tests
+
+  # AgentKitTools-Image-ImageCropTool Review (one per unit)
+  - id: AgentKitTools-Image-ImageCropTool
+    title: Review that AgentKitTools Image ImageCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageCropToolTests.cs"  # unit tests
 
   # AgentKitTools-Image-ImagePack Review (one per unit)
   - id: AgentKitTools-Image-ImagePack
@@ -1456,6 +1473,14 @@ reviews:
       - "docs/reqstream/ots/buildmark.yaml"                                 # OTS requirements
       - "docs/design/ots/buildmark.md"                                      # OTS integration design
       - "docs/verification/ots/buildmark.md"                               # OTS verification
+
+  # OTS-CanvasNet Review (one per OTS item)
+  - id: OTS-CanvasNet
+    title: Review that CanvasNet Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/canvasnet.yaml"                                 # OTS requirements
+      - "docs/design/ots/canvasnet.md"                                      # OTS integration design
+      - "docs/verification/ots/canvasnet.md"                               # OTS verification
 
   # OTS-FileAssert Review (one per OTS item)
   - id: OTS-FileAssert

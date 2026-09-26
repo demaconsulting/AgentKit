@@ -66,10 +66,15 @@ public class ImagePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates the read tool.
+    ///     Proves the pack creates the read tool and the crop tool.
     /// </summary>
+    /// <remarks>
+    ///     The two are asserted together because they are one capability: the read tool reports
+    ///     the coordinate space the crop tool consumes, and a pack that published only one of
+    ///     them would offer a model a region request it could not aim or a size it could not use.
+    /// </remarks>
     [Fact]
-    public void ImagePack_CreateTools_Policy_CreatesTheReadTool()
+    public void ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools()
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
@@ -78,9 +83,10 @@ public class ImagePackTests
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: exactly the read tool the family publishes today
-        Assert.Single(tools);
-        Assert.Equal(ImageReadTool.ToolName, tools[0].Name);
+        // Assert: exactly the two tools the family publishes
+        Assert.Equal(2, tools.Count);
+        Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
+        Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
     }
 
     /// <summary>
@@ -137,8 +143,13 @@ public class ImagePackTests
     }
 
     /// <summary>
-    ///     Proves the policy the composer supplies is the one governing the created tools.
+    ///     Proves the policy the composer supplies is the one governing every created tool.
     /// </summary>
+    /// <remarks>
+    ///     Asserted against the read tool and the crop tool in turn, because a tool that quietly
+    ///     observed a different policy from its neighbor would make the configured containment
+    ///     unverifiable — which is the same as not having it.
+    /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
     public async Task ImagePack_CreateTools_SuppliedPolicy_GovernsTheCreatedTools()
@@ -148,18 +159,35 @@ public class ImagePackTests
         var permitted = WriteBytes(fixture.Root, "picture.png", SampleBytes);
         var refused = WriteBytes(fixture.Outside, "secret.png", SampleBytes);
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
-        var readTool = new ImagePack().CreateTools(policy).First();
+        var tools = new ImagePack().CreateTools(policy).ToList();
+        var readTool = tools.Single(tool => tool.Name == ImageReadTool.ToolName);
+        var cropTool = tools.Single(tool => tool.Name == ImageCropTool.ToolName);
 
-        // Act: read one path the policy permits and one it does not
+        // Act: read one path the policy permits and one it does not, then refuse the same path
+        // through the sibling tool
         var permittedResult = await InvokeReadAsync(readTool, permitted);
         var refusedResult = await InvokeReadAsync(readTool, refused);
+        var cropRefusedResult = await cropTool.InvokeAsync(
+            new AIFunctionArguments
+            {
+                ["path"] = refused,
+                ["x"] = 0,
+                ["y"] = 0,
+                ["width"] = 1,
+                ["height"] = 1
+            },
+            TestContext.Current.CancellationToken);
 
-        // Assert: the supplied policy governs both decisions
+        // Assert: the supplied policy governs every decision, whichever tool made it
         var content = Assert.IsType<List<AIContent>>(permittedResult);
         Assert.Equal(SampleBytes, Assert.IsType<DataContent>(content[1]).Data.ToArray());
         Assert.Contains(
             "Denied (PathNotPermitted)",
             Assert.IsType<string>(refusedResult),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Denied (PathNotPermitted)",
+            Assert.IsType<string>(cropRefusedResult),
             StringComparison.Ordinal);
     }
 

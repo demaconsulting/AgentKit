@@ -29,6 +29,7 @@ input-files:
   - docs/verification/agent-kit-core/compacting-agent-session.md
   - docs/verification/agent-kit-tools.md
   - docs/verification/agent-kit-tools/image.md
+  - docs/verification/agent-kit-tools/image/image-crop-tool.md
   - docs/verification/agent-kit-tools/image/image-media-types.md
   - docs/verification/agent-kit-tools/image/image-pack.md
   - docs/verification/agent-kit-tools/image/image-read-tool.md
@@ -89,6 +90,7 @@ input-files:
   - docs/verification/ots.md
   - docs/verification/ots/apimark.md
   - docs/verification/ots/buildmark.md
+  - docs/verification/ots/canvasnet.md
   - docs/verification/ots/fileassert.md
   - docs/verification/ots/microsoft-agents-ai.md
   - docs/verification/ots/microsoft-agents-ai-github-copilot.md

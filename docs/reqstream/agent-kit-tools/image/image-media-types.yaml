@@ -24,6 +24,53 @@ sections:
                   - ImageMediaTypes_TryResolveMediaType_SupportedExtension_ReturnsMediaType
                   - ImageMediaTypes_TryResolveMediaType_ExtensionCaseInsensitive_ReturnsMediaType
 
+              - id: AgentKitTools-Image-MediaTypes-CroppableTypes
+                title: >-
+                  The media-type map shall report which of the types the family reads can have a
+                  region extracted from them, matching the extension without regard to case.
+                justification: |
+                  Extracting a region means decoding, so the set of types a region can be taken
+                  from is narrower than the set the family can hand to a provider. Holding both
+                  answers in one place is what stops the family giving two different answers to
+                  "what is this file", and confining the croppable set to the types the family
+                  both reads and decodes is what stops a region request becoming an accidental
+                  format conversion for content the read tool itself refuses. Matching
+                  case-insensitively means a capitalized extension names the same content as a
+                  lower-case one, exactly as it does for a readable type.
+                tests:
+                  - ImageMediaTypes_TryResolveCroppableMediaType_CroppableExtension_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveCroppableMediaType_ExtensionCaseInsensitive_ReturnsMediaType
+                  - ImageMediaTypes_TryResolveCroppableMediaType_NonCroppableExtension_ReturnsFalse
+                  - ImageMediaTypes_TryResolveCroppableMediaType_NullPath_ThrowsArgumentNullException
+
+              - id: AgentKitTools-Image-MediaTypes-RefusesNonCroppableType
+                title: >-
+                  The media-type map shall refuse a readable type from which no region can be
+                  extracted, stating what the type is and which types a region can be extracted
+                  from, and shall refuse a type the family cannot read at all exactly as it
+                  already does.
+                justification: |
+                  A model told only that its request failed will retry with different
+                  coordinates; a model told that the frame a region would come from cannot be
+                  established, or that the format is one this library does not decode, or that it
+                  is a paginated document needing a page and a resolution chosen, can choose
+                  something else instead. Naming the types a region
+                  can be taken from tells it what it may ask for and not only what it may not.
+                  None of these refusals names a sibling tool: a file of one of these types
+                  genuinely is an image, so naming the reader would not classify it — it would
+                  offer a route to the content the refusal withheld, handing the model a whole
+                  image after it asked to examine one part closely, which is the confident
+                  description of unseen content this family exists to prevent. A type the family
+                  cannot read at all is answered by the existing refusal, unchanged, so the
+                  family speaks with one voice.
+                tests:
+                  - ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes
+                  - ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes
+                  - ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired
+                  - ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead
+                  - ImageMediaTypes_DenyNonCroppableType_Svgz_RefusesWithoutRedirect
+                  - ImageMediaTypes_DenyNonCroppableType_UnknownType_RefusesWithoutRedirect
+
               - id: AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
                 title: >-
                   The media-type map shall refuse an svg file as an unsupported type, stating that

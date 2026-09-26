@@ -55,9 +55,13 @@ guarantees this guide describes:
 - **Asymmetric grants.** With `--read-only-workspace` the documents are readable but unmodifiable
   while the session folder stays writable, and the refusal of a workspace write enumerates the
   writable location so the agent can recover.
-- **Capability gating.** The image tool appears only when the host declares the `Vision` capability.
-  Running the sample with `--no-vision` removes `image_read` from the tools the model is offered — it
-  is never presented, not merely refused.
+- **Capability gating.** The image tools appear only when the host declares the `Vision` capability.
+  Running the sample with `--no-vision` removes `image_read` and `image_crop` from the tools the
+  model is offered — they are never presented, not merely refused.
+- **Both grants in one call.** With a destination, `image_crop` reads the image under the workspace
+  grant and writes the region under the session folder's write grant. Under `--read-only-workspace`
+  a destination in the workspace is refused while the same call into the session folder succeeds —
+  one tool call, two independent decisions.
 - **Suppressed built-ins.** On the Copilot runtime the agent is offered only the tools the sample
   supplied; the runtime's own shell, fetch, and file-editing tools are suppressed by the adapter, as
   described under the Building an Agent material earlier in this guide.
@@ -104,8 +108,9 @@ dotnet run --project samples/document-assistant -- \
 With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_file_create`,
 `text_file_replace`, `text_file_cut_lines`, `text_file_copy_lines`, `text_file_paste_lines`,
 `file_list`, `file_copy`,
-`file_move`, `file_delete`, `markdown_outline`, and `image_read`; with `--no-vision` the image tool
-is absent, because the builder never asks a pack for tools whose required capability the host has not
+`file_move`, `file_delete`, `markdown_outline`, `image_read`, and `image_crop`; with `--no-vision`
+both image tools
+are absent, because the builder never asks a pack for tools whose required capability the host has not
 declared.
 
 ## Demonstrating Containment
@@ -167,3 +172,43 @@ dialect is the tool telling the truth about where the file actually is. The agen
 session folder by the absolute path its instructions named, which works on a first run even when the
 session folder is still empty — discovery reports it either way, but naming it outright saves the
 round-trip.
+
+## Demonstrating Figure Preparation
+
+Preparing a document means producing artifacts, not only reading them. The image family's region
+extraction has a second outcome for exactly that: name a `destination` and `image_crop` writes the
+region there as a new `.png` file instead of returning it to be looked at.
+
+```bash
+dotnet run --project samples/document-assistant -- \
+  --workspace samples/document-assistant/workspace \
+  --provider copilot \
+  --prompt "Crop the code out of diagram.png into the session folder as code.png, then write notes.md referencing it."
+```
+
+The printed code `FALCON-4297` sits below the three shapes in `diagram.png`, so the region the
+agent is being asked for is a real, checkable one.
+
+The loop is four steps and each one is visible in the printed tool calls. The agent calls
+`image_read` on `diagram.png` and receives the picture together with a caption stating its pixel
+dimensions — which is the coordinate space the next call is aimed in. It then calls `image_crop`
+with a region in those pixels and the session folder's **absolute path**, ending in `.png`, as the
+destination. What comes back is a **text confirmation naming that absolute path, the region and the
+source's dimensions — not the image**, which is precisely what the agent needs next: it goes on to
+call `text_file_create` for `notes.md` in the same folder and references the file it just produced
+by the name the confirmation handed it.
+
+Two things about this are worth watching rather than assuming. **The destination is judged by the
+policy's write decision, independently of the read that admitted the image** — so the same call
+exercises both grants, and under `--read-only-workspace` a destination beside the image is refused
+while the identical call into the session folder succeeds. And **the confirmation's path is absolute
+because the session folder lies outside the anchor**; a workspace destination would come back as a
+relative name. That is the same dialect rule the cross-location demonstration above shows, applied
+to a file the agent produced rather than one it found.
+
+What is *not* guaranteed is that the model aims the region well. AgentKit guarantees which image is
+readable, which destination is writable, that the written pixels are the source's own, and that a
+file already at that name is never replaced. Whether the model picks the rectangle that actually
+holds `FALCON-4297` is a property of the model, in exactly the sense described under *Verifying
+vision honestly* in the sample's own README — and it is checkable in exactly the same way, by
+opening the produced `code.png` and reading the code back yourself.

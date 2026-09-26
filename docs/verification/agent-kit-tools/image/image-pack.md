@@ -5,9 +5,10 @@ This document describes the unit-level verification strategy for the `ImagePack`
 #### Verification Approach
 
 Nothing is mocked or stubbed. The pack has no dependency worth substituting: it reads no state,
-calls one factory in this same subsystem, and passes on the access policy it was given. What must be
+calls the two tool factories in this same subsystem, and passes on the access policy it was given.
+What must be
 verified is what a composing application can observe — the prefix it claims, the capability it
-requires, the tool it produces, and that the policy supplied is the one governing it.
+requires, the tools it produces, and that the policy supplied is the one governing them.
 
 The last of those is asserted **behaviorally** rather than by reference comparison: the scenario
 creates the pack's tool from a policy rooted at one location, then reads one permitted path and one
@@ -28,11 +29,11 @@ Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-dir
 
 #### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass without error or exception beyond those
+A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. A prefix that differs between the constant and the contract, a capability
-requirement other than vision, a tool count other than one, a null element, a tool outside the
-family prefix, an accepted null policy, and a created tool that does not observe the supplied policy
-each constitute a failure.
+requirement other than vision, a tool count other than two, a tool named anything other than
+`image_read` or `image_crop`, a null element, a tool outside the family prefix, an accepted null
+policy, and a created tool that does not observe the supplied policy each constitute a failure.
 
 #### Test Scenarios
 
@@ -57,12 +58,20 @@ the two cannot drift apart.
 Normal operation: requiring the vision capability is what lets the composition withhold the family
 from a host that cannot present its content.
 
-##### AgentKitTools-Image-Pack-RegistersReadTool: The Read Tool Is Created
+##### AgentKitTools-Image-Pack-RegistersReadTool: Both Tools Are Created
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadTool`
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
 
-Asserts a single tool named `image_read`, confirming the pack produces the family's tool for an
-application to receive.
+Asserts exactly two tools, named `image_read` and `image_crop`, confirming the pack produces the
+family's tools for an application to receive.
+
+##### AgentKitTools-Image-Pack-RegistersCropTool: The Crop Tool Is Created Alongside the Read Tool
+
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
+
+The same scenario read from the other side: the two tools are one capability, so the pack creating
+both in the one place the family prefix is claimed is what makes that pairing a property of the
+pack rather than of each application's composition code.
 
 ##### AgentKitTools-Image-Pack-RegistersReadTool: No Null Tool Is Returned
 
@@ -91,4 +100,6 @@ appearing correctly composed, so the mistake is reported at the line that made i
 
 Normal operation and error path together: one permitted path returns its content and one path
 outside the policy's location is refused, proving behaviorally that the supplied policy — not one
-the pack invented — is in force.
+the pack invented — is in force. The refusal is asserted through the crop tool as well as the read
+tool, because a tool that quietly observed a different policy from its neighbor would make the
+configured containment unverifiable.

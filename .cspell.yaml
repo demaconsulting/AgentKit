@@ -65,6 +65,27 @@ words:
   - Landlock
   - inodes
   - TOCTOU
+  - canvasnet
+  - grayscale
+  - truecolor
+  - RGBA
+  - scanline
+  - scanlines
+  - palettized
+  - IHDR
+  - IDAT
+  - PLTE
+  - zlib
+  - Adler
+  - Deflate
+  - croppable
+  - uncroppable
+  - triaging
+  - Skia
+  - Magick
+  - subsampling
+  - IEND
+  - unwritable
 
 # Exclude common build artifacts, dependencies, and vendored third-party code
 ignorePaths:

@@ -96,6 +96,7 @@ software items, specifically:
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
+- **ImageCropTool (Unit)** — Publishes the `image_crop` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack
@@ -175,6 +176,8 @@ The following OTS items are also covered:
 
 - **BuildMark** — build-notes documentation tool
 - **ApiMark** — public API surface tracking tool
+- **CanvasNet** — the runtime raster imaging library providing image header inspection including
+  decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
 - **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
   abstraction
@@ -367,8 +370,10 @@ src/DemaConsulting.AgentKit.Tools/
 │   ├── FileMoveTool.cs          — the file_move tool
 │   └── FilePack.cs              — publishes the file family as one pack
 ├── Image/
+│   ├── ImageCropTool.cs         — the image_crop tool
 │   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
 │   ├── ImagePack.cs             — publishes the image family as one pack
+│   ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
 │   └── ImageReadTool.cs         — the image_read tool
 ├── Markdown/
 │   ├── MarkdownOutlineTool.cs   — the markdown_outline tool

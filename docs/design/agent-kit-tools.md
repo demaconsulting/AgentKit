@@ -35,11 +35,11 @@ pack. It reports a Markdown file's heading structure as line ranges the text too
 read or cut.
 
 The system also contains the **Image** subsystem: the image tool family, publishing `image_read`
-under the `image` family prefix and attached to an application as one pack. Unlike the other
-families, it is gated on a host capability — it is registered only for a host that declares it can
-present visual content to a model — because its tool returns image and PDF content that a
-non-vision host could not use. Each family this package provides is its own subsystem with its own
-units, requirements, design, verification and review set.
+and `image_crop` under the `image` family prefix and attached to an application as one pack.
+Unlike the other families, it is gated on a host capability — it is registered only for a host
+that declares it can present visual content to a model — because its tools return image and PDF
+content that a non-vision host could not use. Each family this package provides is its own
+subsystem with its own units, requirements, design, verification and review set.
 
 The system contains the **Todo** subsystem: the todo tool family, publishing `todo_list`,
 `todo_set` and `todo_remove` under the `todo` family prefix and attached to an application as one
@@ -103,16 +103,24 @@ the composition never asks its pack for them.
 
 ## Dependencies
 
-The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and no
+The AgentKit Tools takes exactly one project dependency, `DemaConsulting.AgentKit.Core`, and one
 runtime NuGet dependency of its own. Core supplies the policy primitives, the guarded construction
 path, the result constructors and the pack contract every family in this package is built on.
 `Microsoft.Extensions.AI.Abstractions` — the package that defines the `AIFunction` a tool is —
 reaches this package transitively through Core rather than as a direct dependency, so a tool
 family composes through the same currency Core publishes without this package choosing a provider
-or restating a dependency Core already owns. That abstraction is the one OTS runtime library the
-software depends on; its integration is recorded in _OTS Integration Design_
-(`docs/design/ots.md`) and its dedicated _Microsoft.Extensions.AI.Abstractions Design_, where the
-transitive path through Core is documented.
+or restating a dependency Core already owns. Its integration is recorded in _OTS Integration
+Design_ (`docs/design/ots.md`) and its dedicated
+_Microsoft.Extensions.AI.Abstractions Design_, where the transitive path through Core is
+documented.
+
+The one direct runtime NuGet dependency is `CanvasNet`, which the image family uses to read what
+an image declares about itself and to extract and re-encode a region of one. It is taken directly
+rather than through Core because it serves one family in this package and nothing in Core, and it
+is taken **without** `PrivateAssets` because it is needed at run time by any application that
+attaches that family. It was chosen on the property that it is fully safe managed code carrying no
+native binaries, which is what makes parsing hostile image input consistent with this library's
+thesis; see _CanvasNet Design_.
 
 The memory family consumes a second abstraction from that same package —
 `IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application
@@ -156,7 +164,9 @@ family is introduced. For the TextFile family, that containment control is the `
 decision applied to every read, every write and every enumeration it performs — the read decision
 for reads and listings, the write decision for writes — with enumeration going through the policy
 so a listing can never advertise a file a read would refuse. For the Image family, the containment
-control is that same `PathPolicy` read decision applied to every read, and it adds a second control
+control is that same `PathPolicy` read decision applied to every read and the same write decision
+applied to every destination a crop names, judged independently of one another exactly as in the
+TextFile family, and it adds a second control
 of its own: the Vision capability gate, which withholds the family from a host that has not declared
 it can present visual content — withholding it by never asking the pack for its tools — so a model
 that cannot see an image is never offered a tool that returns one it could only fabricate a
@@ -177,9 +187,9 @@ description of.
 
 ## Design Constraints
 
-- **Peer, not a layer**: The package depends on AgentKitCore and the Base Class Library only, and
-  no other capability package depends on it; a family it provides is attached alongside other
-  packs, never beneath them
+- **Peer, not a layer**: The package depends on AgentKitCore, the Base Class Library and the one
+  runtime imaging dependency the image family takes, and no other capability package depends on
+  it; a family it provides is attached alongside other packs, never beneath them
 - **Composed through Core**: Every family is published through Core's `IToolPack` contract and
   composed through `ToolPackBuilder`, so an application attaches this package's families the same
   way it attaches any other AgentKit pack
@@ -205,9 +215,11 @@ The library is supported on the following operating systems:
 - **macOS** — developer workstations using Apple platforms
 
 Portability is achieved by restricting the implementation to Base Class Library (BCL) APIs
-available across all target frameworks and to the provider-neutral
-`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore. No platform-specific
-native interop, OS-specific APIs, or framework-version-specific features are used.
+available across all target frameworks, to the provider-neutral
+`Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore, and to one runtime
+imaging dependency that is itself fully safe managed code carrying no native binaries and that
+targets exactly the frameworks listed above; see _CanvasNet Design_. No platform-specific native
+interop, OS-specific APIs, or framework-version-specific features are used.
 
 ### Integration Patterns
 

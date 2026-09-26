@@ -22,8 +22,11 @@ namespace DemaConsulting.AgentKit.Tools.Tests.Image;
 public class ImageReadToolTests
 {
     /// <summary>
-    ///     One byte sequence standing in for image content; the tool does not parse it, so
-    ///     arbitrary bytes suffice and their distinctness is what proves the real file was read.
+    ///     One byte sequence standing in for image content. It is deliberately not a well-formed
+    ///     header — the eight bytes open like a PNG signature and then diverge — so the header
+    ///     probe the tool now runs on them fails. That failure is what makes this the fixture for
+    ///     the scenarios proving the caption degrades rather than refusing when no size can be
+    ///     established, and the bytes' distinctness is what proves the real file was read.
     /// </summary>
     private static readonly byte[] SampleBytes = [0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04];
 
@@ -385,6 +388,204 @@ public class ImageReadToolTests
         Assert.Contains(outsideFile, text, StringComparison.Ordinal);
         Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
         Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the caption states the pixel dimensions of a PNG whose header can be read.
+    /// </summary>
+    /// <remarks>
+    ///     This is what lets a region request be aimed: a model can see a picture but cannot
+    ///     measure it, so without the size in the caption it has no coordinate space to name a
+    ///     region in.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted PNG of a size no default could be mistaken for
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(37, 19));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the caption names the media type and the real declared size
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Png, caption.Text, StringComparison.Ordinal);
+        Assert.Contains("37x19 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the caption states the pixel dimensions of a JPEG whose header can be read.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted JPEG, whose header is found by a bounded marker scan
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "photo.jpg", ImageTestImages.Jpeg(24, 40));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the second of the two formats whose header is read reports its size too
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Jpeg, caption.Text, StringComparison.Ordinal);
+        Assert.Contains("24x40 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a palette-indexed PNG reports its dimensions like any other.
+    /// </summary>
+    /// <remarks>
+    ///     A palette-indexed file stores one sample per pixel rather than three or four, so it is
+    ///     the format most likely to be mishandled by a reader that assumed a single encoding.
+    ///     Its size is declared in the same place as every other PNG's and must be reported the
+    ///     same way.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_PalettizedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted palette-indexed PNG
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "indexed.png", ImageTestImages.PalettizedPng(12, 8));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the declared size is reported regardless of how the pixels are stored
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains("12x8 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an interlaced PNG still reports its dimensions.
+    /// </summary>
+    /// <remarks>
+    ///     Interlacing is the one thing a well-formed PNG can declare that this library will not
+    ///     decode. Reading is not decoding: the bytes go to the provider, whose own decoder is
+    ///     the authority on them, and the size is declared in a header that reads perfectly well.
+    ///     So this file loses nothing here, which is the counterpart to the crop tool refusing it.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Adam7InterlacedPng_CaptionStatesThePixelDimensions()
+    {
+        // Arrange: a permitted PNG declaring Adam7 interlacing
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "woven.png", ImageTestImages.Adam7InterlacedPng(64, 32));
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the image
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: content, with the declared size stated
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains("64x32 pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a media type this library has no header probe for is captioned by type alone.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Theory]
+    [InlineData("animation.gif")]
+    [InlineData("picture.webp")]
+    public async Task ImageReadTool_Read_MediaTypeWithNoHeaderProbe_CaptionStatesOnlyTheMediaType(string fileName)
+    {
+        // Arrange: a permitted file of a type the family reads but does not decode
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, fileName, SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the content is returned, captioned by media type with no size claimed
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.DoesNotContain(" pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a PDF is captioned by media type alone.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Pdf_CaptionStatesOnlyTheMediaType()
+    {
+        // Arrange: a permitted PDF, which is paginated rather than a single raster image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "document.pdf", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the document
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the media type is named and no pixel size is invented for it
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.Contains(ImageMediaTypes.Pdf, caption.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(" pixels", caption.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves content whose header cannot be read is still returned.
+    /// </summary>
+    /// <remarks>
+    ///     The degrade guarantee. This tool's contract has never been to validate content: it
+    ///     hands a permitted file's bytes to a provider whose own decoder is the authority on
+    ///     them. Refusing a file because an optional enrichment failed would narrow the tool for
+    ///     no safety gain — the bytes were inside the ceiling and were going to be returned.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_ContentWithAnUnreadableHeader_StillReturnsTheContent()
+    {
+        // Arrange: a .png whose bytes are a signature followed by junk, not a real image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "damaged.png", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: the real bytes come back, captioned without a size
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(SampleBytes, data.Data.ToArray());
+        Assert.Equal("File content of media type image/png.", caption.Text);
+    }
+
+    /// <summary>
+    ///     Proves the caption never states dimensions it did not read.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageReadTool_Read_Caption_NeverStatesDimensionsItDidNotRead()
+    {
+        // Arrange: a type with no header probe at all
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "animation.gif", SampleBytes);
+        var tool = ImageReadTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: read the file
+        var result = await InvokeAsync(tool, file);
+
+        // Assert: nothing shaped like a pixel size appears anywhere in the caption
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]);
+        Assert.DoesNotMatch(@"\d+x\d+", caption.Text);
     }
 
     /// <summary>

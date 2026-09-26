@@ -2,7 +2,7 @@
 
 ![AgentKit Core Structure](AgentKitCoreView.svg)
 
-The `ToolLimits` class carries the ceilings a tool observes when reading, returning and
+The `ToolLimits` class carries the ceilings a tool observes when reading, returning, decoding and
 attaching content.
 
 ### Purpose
@@ -54,6 +54,42 @@ case a host can be billed for finite and small.
 supplies them through the optional parameters of the `ToolLimits` constructor and hands the result
 to the three-argument `PathPolicy` constructor; a host that configures nothing receives `Default`.
 
+**`MaxImagePixels` = 16,777,216 (4096 × 4096).** This bounds how many pixels a tool may decode out
+of one image, counted from the dimensions that image declares. It is a count of pixels and not of
+bytes, deliberately, and the reasoning is worth stating in full because it is the kind of thing a
+later reader would "simplify" back into a defect.
+
+A byte ceiling on the *file* does not bound what decoding that file costs. Image formats compress,
+so a file well inside `MaxBinaryBytes` can declare a very large number of pixels: an image of
+8192 × 8192 is 67,108,864 pixels, and a decoded pixel buffer is **four bytes per pixel**, so that
+image costs 268,435,456 bytes — a quarter of a gigabyte of transient allocation — reachable from a
+file of a few hundred kilobytes. Any per-axis bound a decoder enforces is likewise insufficient on
+its own, because it bounds each dimension and says nothing about their product. It is the product
+that must be bounded.
+
+**The cost is four bytes per pixel regardless of what the file's header says about its channels.**
+A header reports the encoding the *file* uses — a palette-indexed image declares one sample per
+pixel, a grayscale image one, a truecolor image three — but the decoded buffer is 32-bit RGBA
+whatever the source was, because the palette or the gray level is resolved into RGBA during
+decoding. An estimate computed from a file's declared channel count would therefore under-count a
+palette-indexed image by a factor of four, and that is precisely the image a hostile caller would
+choose: palette-indexed content compresses extremely well, so it reaches the largest declared
+dimensions from the smallest file. The estimate must use a fixed four bytes per pixel, and in
+practice the implementation compares the **pixel product** against this ceiling and never
+materializes a byte figure at all — the four-bytes-per-pixel arithmetic is what justifies the
+ceiling's value, not an intermediate a tool computes.
+
+At 16,777,216 the transient decode is bounded at roughly 64 MiB of pixel buffer plus a comparable
+scanline buffer, which any host absorbs, while still admitting the images an agent realistically
+looks at: a 4K screenshot is 8.3 megapixels, a 300-dpi US-Letter page is 8.4. The first realistic
+thing the ceiling excludes is a 24-megapixel camera original, and an agent asked to work with one
+should be told a ceiling it can request within rather than cost the host the decode. It sits here
+rather than as a constant on whichever tool decodes, for the same reason `MaxAgentDepth` does: it
+is host resource spend a model can provoke, a host on a constrained container will want it lower
+and a host doing high-resolution document work will want it higher, and a refusal that names a
+configured ceiling tells the model something about the host rather than about an implementation
+detail.
+
 An instance is immutable after construction and is safe for concurrent use.
 
 ### Data Model
@@ -64,13 +100,15 @@ An instance is immutable after construction and is safe for concurrent use.
 | `MaxResultCharacters`           | `int`        | Ceiling on the characters a tool result may return to the model.  |
 | `MaxBinaryBytes`                | `int`        | Ceiling on the bytes of binary content a tool may return.         |
 | `MaxAgentDepth`                 | `int`        | Ceiling on how deep a chain of delegated agents may run.          |
+| `MaxImagePixels`                | `int`        | Ceiling on the pixels a tool may decode out of one image.         |
 | `Default`                       | `ToolLimits` | Shared instance a host receives when it configures nothing.       |
 | `DefaultMaxReadBytes`           | `const int`  | The published default for `MaxReadBytes`, 65,536.                 |
 | `DefaultMaxResultCharacters`    | `const int`  | The published default for `MaxResultCharacters`, 32,000.          |
 | `DefaultMaxBinaryBytes`         | `const int`  | The published default for `MaxBinaryBytes`, 8,388,608.            |
 | `DefaultMaxAgentDepth`          | `const int`  | The published default for `MaxAgentDepth`, 2.                     |
+| `DefaultMaxImagePixels`         | `const int`  | The published default for `MaxImagePixels`, 16,777,216.           |
 
-The four constants exist so that this document, the requirement text and the tests can all name
+The five constants exist so that this document, the requirement text and the tests can all name
 one source of truth rather than repeating literals.
 
 Invariants:
@@ -81,12 +119,13 @@ Invariants:
 
 ### Key Methods
 
-#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAgentDepth)
+#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAgentDepth, int maxImagePixels)
 
 The only constructor. Every parameter is optional and defaults to the corresponding published
 constant, which is what delivers per-ceiling customization without a builder: a host writes
-`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other three defaults. `maxAgentDepth` is last
-because it was the most recently added ceiling.
+`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other four defaults. `maxImagePixels` is last
+because it is the most recently added ceiling, and appending it leaves every existing named and
+positional caller unaffected.
 
 **Preconditions:** every supplied ceiling is zero or greater.
 

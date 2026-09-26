@@ -28,8 +28,9 @@ pack that was consulted and returned nothing and a pack that was never consulted
 list.
 
 Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate recording decorator in
-`Image/RecordingToolPack.cs` and the shared temporary-directory test fixture reused from
-`TextFile/TempDirectoryFixture.cs`, all within the `DemaConsulting.AgentKit.Tools.Tests` project.
+`Image/RecordingToolPack.cs`, the shared fixture builder in `Image/ImageTestImages.cs` and the
+shared temporary-directory test fixture reused from `TextFile/TempDirectoryFixture.cs`, all within
+the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 ### Test Environment
 
@@ -44,22 +45,26 @@ Subsystem tests reside in `Image/ImageTests.cs`, with the capability-gate record
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all thirteen scenarios below pass without error or exception beyond
-those explicitly asserted. A tool published outside the family prefix, image content arriving as a
-`JsonElement`, a family registered for a non-vision host, a pack consulted despite an unmet
-capability, a refusal raised as an exception rather than returned, a policy refusal that fails to
-disclose the permitted location, a relative name that is not resolved against the workspace, a permitted read that
-fails, and a truncated result where a refusal was required each
-constitute a failure.
+A subsystem test run passes when all nineteen scenarios below pass without error or exception
+beyond those explicitly asserted. A tool published outside the family prefix, image content
+arriving as a `JsonElement`, a family registered for a non-vision host, a pack consulted despite
+an unmet capability, a refusal raised as an exception rather than returned, a policy refusal that
+fails to disclose the permitted location, a relative name that is not resolved against the
+workspace, a permitted read that fails, a caption that omits a size the family could establish, an
+out-of-bounds region answered with content rather than a refusal, an oversized declared image
+decoded before being refused, and a truncated result where a refusal was required each constitute
+a failure.
 
 ### Test Scenarios
 
-#### AgentKitTools-Image-FamilyComposition: The Family Publishes the Read Tool
+#### AgentKitTools-Image-FamilyComposition: The Family Publishes Both Tools
 
-**Test**: `Image_Family_ComposedThroughBuilder_PublishesTheReadTool`
+**Test**: `Image_Family_ComposedThroughBuilder_PublishesBothTools`
 
-Normal operation: composes the pack through a `ToolPackBuilder` on a vision host and asserts the
-read tool name, confirming the family is attached as one unit and publishes what it promises.
+Normal operation: composes the pack through a `ToolPackBuilder` on a vision host and asserts both
+tool names, confirming the family is attached as one unit and publishes what it promises. The two
+are asserted together because they are one capability: the read tool states the coordinate space
+the crop tool consumes.
 
 #### AgentKitTools-Image-FamilyComposition: A Host Declaring Vision Receives the Family
 
@@ -107,6 +112,60 @@ flattened into JSON, the provider would never receive the image, and the failure
 Normal operation: reads a permitted PNG and asserts the returned data content carries the
 `image/png` media type and the file's real bytes, so the model is handed the image the request
 named.
+
+#### AgentKitTools-Image-DimensionReporting: The Read Caption States the Image's Pixel Dimensions
+
+**Test**: `Image_Family_ReadCaption_StatesTheImagesPixelDimensions`
+
+Normal operation for the capability a region request depends on: a real image of 53 by 29 pixels
+is read through the composed family, and the caption states that size. The dimensions are
+asymmetric so a transposition cannot pass, and the image is built by the test so the expected
+answer is known independently of the library that reports it.
+
+#### AgentKitTools-Image-RegionExtraction: A Cropped Region Is Returned as Image Content
+
+**Test**: `Image_Family_CroppedRegion_IsReturnedAsImageContent`
+
+Normal operation: a region is asked for through the composed family and comes back as image
+content carrying `image/png`, with the decoded result's dimensions equal to the region requested.
+No file is produced, because the scenario names no destination, and no JSON copy is produced.
+
+#### AgentKitTools-Image-RegionExtraction: The Read Caption States the Dimensions a Region Is Aimed With
+
+**Test**: `Image_Family_ReadCaption_StatesTheDimensionsACropCanBeAimedWith`
+
+**The increment's thesis, in one scenario.** The family states an image's size; the region named
+within exactly that size is accepted; the region one pixel beyond it is refused, naming the same
+size. The two tools are one capability, and this is the scenario that observes the join rather than
+each half separately.
+
+#### AgentKitTools-Image-RegionDestination: A Region Is Written to a Permitted Destination
+
+**Test**: `Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText`
+
+Normal operation for the written outcome, reached through the pack an application attaches and
+under the one policy it configured rather than through a tool built in isolation. The confirmation
+is asserted to name the file, and the file itself is read back and decoded at the region's size.
+
+#### AgentKitTools-Image-RegionDestination: One Call Is Judged by Both Decisions Independently
+
+**Test**: `Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation`
+
+**The increment's thesis, in one scenario.** The image is admitted by the read decision and the
+destination beside it refused by the write decision, in a single composed call — which is what
+keeps a read-wide, write-narrow configuration meaningful rather than decorative, and it is exactly
+the configuration an application granting a read-only workspace and a writable session folder
+produces. The refusal is asserted to name the writable location with its access level, and the
+read-only location is asserted to hold no new file.
+
+#### AgentKitTools-Image-DecodeBounded: An Oversized Declared Image Is Refused Before Decoding
+
+**Test**: `Image_Family_OversizedDeclaredImage_IsRefusedBeforeDecoding`
+
+Security control and boundary condition: the fixture declares far more pixels than the host's
+budget and carries no pixel data at all, so a family that decoded before triaging would refuse it
+as undecodable instead. The scenario asserts the oversized refusal and explicitly asserts the
+undecodable wording is absent, which is how "before decoding" is observed rather than assumed.
 
 #### AgentKitTools-Image-PolicyGoverned: A Path Outside the Root Is Refused
 

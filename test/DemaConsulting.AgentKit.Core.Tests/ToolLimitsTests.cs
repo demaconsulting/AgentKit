@@ -25,12 +25,14 @@ public class ToolLimitsTests
         var resultCharacters = limits.MaxResultCharacters;
         var binaryBytes = limits.MaxBinaryBytes;
         var agentDepth = limits.MaxAgentDepth;
+        var imagePixels = limits.MaxImagePixels;
 
         // Assert: the literal published values, so a silent change to a constant fails here
         Assert.Equal(65536, readBytes);
         Assert.Equal(32000, resultCharacters);
         Assert.Equal(8388608, binaryBytes);
         Assert.Equal(2, agentDepth);
+        Assert.Equal(16777216, imagePixels);
     }
 
     /// <summary>
@@ -50,10 +52,11 @@ public class ToolLimitsTests
         Assert.Equal(expected.MaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(expected.MaxBinaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(expected.MaxAgentDepth, limits.MaxAgentDepth);
+        Assert.Equal(expected.MaxImagePixels, limits.MaxImagePixels);
     }
 
     /// <summary>
-    ///     Proves that replacing one ceiling leaves the other three at their defaults.
+    ///     Proves that replacing one ceiling leaves the other four at their defaults.
     /// </summary>
     /// <remarks>
     ///     This is what the optional-parameter constructor is for: a host states the one
@@ -73,6 +76,7 @@ public class ToolLimitsTests
         Assert.Equal(ToolLimits.DefaultMaxReadBytes, limits.MaxReadBytes);
         Assert.Equal(ToolLimits.DefaultMaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(ToolLimits.DefaultMaxAgentDepth, limits.MaxAgentDepth);
+        Assert.Equal(ToolLimits.DefaultMaxImagePixels, limits.MaxImagePixels);
     }
 
     /// <summary>
@@ -81,20 +85,22 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues()
     {
-        // Arrange: four values that are distinguishable from each other and from the defaults
+        // Arrange: five values that are distinguishable from each other and from the defaults
         const int readBytes = 11;
         const int resultCharacters = 22;
         const int binaryBytes = 33;
         const int agentDepth = 55;
+        const int imagePixels = 66;
 
         // Act: supply every ceiling positionally, in the documented order
-        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, agentDepth);
+        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, agentDepth, imagePixels);
 
         // Assert: each ceiling lands on its own property, so the order cannot have transposed
         Assert.Equal(readBytes, limits.MaxReadBytes);
         Assert.Equal(resultCharacters, limits.MaxResultCharacters);
         Assert.Equal(binaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(agentDepth, limits.MaxAgentDepth);
+        Assert.Equal(imagePixels, limits.MaxImagePixels);
     }
 
     /// <summary>
@@ -138,6 +144,16 @@ public class ToolLimitsTests
     }
 
     /// <summary>
+    ///     Proves that a negative image-decode ceiling is rejected.
+    /// </summary>
+    [Fact]
+    public void ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException()
+    {
+        // Act & Assert: every ceiling is validated, including the most recently added one
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxImagePixels: -1));
+    }
+
+    /// <summary>
     ///     Proves that a ceiling of zero is accepted.
     /// </summary>
     /// <remarks>
@@ -149,12 +165,13 @@ public class ToolLimitsTests
     public void ToolLimits_Constructor_ZeroCeiling_IsAccepted()
     {
         // Act: disable every operation by configuring a ceiling of zero
-        var limits = new ToolLimits(0, 0, 0, 0);
+        var limits = new ToolLimits(0, 0, 0, 0, 0);
 
         // Assert: the zero ceilings are accepted and reported back unchanged
         Assert.Equal(0, limits.MaxReadBytes);
         Assert.Equal(0, limits.MaxResultCharacters);
         Assert.Equal(0, limits.MaxBinaryBytes);
         Assert.Equal(0, limits.MaxAgentDepth);
+        Assert.Equal(0, limits.MaxImagePixels);
     }
 }

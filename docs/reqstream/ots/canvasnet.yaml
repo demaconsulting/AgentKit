@@ -1,0 +1,99 @@
+---
+# CanvasNet OTS Software Requirements
+#
+# Requirements for the CanvasNet raster imaging library functionality.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: CanvasNet Requirements
+        requirements:
+          - id: AgentKit-OTS-CanvasNet-HeaderProbe
+            title: >-
+              CanvasNet shall report an image file's header-declared pixel dimensions without
+              decoding its pixel data, including for a file whose declared dimensions exceed what
+              it will decode.
+            justification: |
+              The image family states an image's pixel dimensions so that a model has a
+              coordinate space in which to name a region, and it decides whether decoding an
+              image is affordable before it allocates anything. Both depend on a reader that
+              reports what a header declares and stops there — including for a file declaring
+              dimensions no decoder would accept, since that is precisely the file the decision
+              has to be made about. AgentKit's own tests that read a caption stating a real
+              image's size, and that refuse an image declaring more pixels than the host's decode
+              budget from a file carrying no pixel data at all, prove the header reader behaves
+              as required.
+            tags: [ots]
+            tests:
+              - ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions
+              - ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions
+              - ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
+
+          - id: AgentKit-OTS-CanvasNet-Decode
+            title: >-
+              CanvasNet shall decode PNG and JPEG files into an addressable pixel buffer,
+              including a PNG whose pixels are stored as palette indices.
+            justification: |
+              The image family returns a region of an image, which requires the whole image to
+              exist as addressable pixels first. Palette-indexed storage is called out because it
+              is the format most easily mishandled — the file stores one index per pixel and the
+              buffer must hold the RGBA those indices resolve to — and because it is the format a
+              hostile caller would reach for, since it compresses best. AgentKit's own tests that
+              take a region of a palette-indexed PNG and assert the resulting pixel is the
+              palette's color rather than a raw index, and that take a region of a JPEG, prove
+              the decoder behaves as required; the palette assertion would fail loudly if the
+              capability regressed.
+            tags: [ots]
+            tests:
+              - ImageCropTool_Crop_PalettizedPng_ReturnsCroppedImageContent
+              - ImageCropTool_Crop_PermittedJpeg_ReturnsPngContent
+
+          - id: AgentKit-OTS-CanvasNet-Crop
+            title: >-
+              CanvasNet shall produce an independent copy of a rectangular sub-region of a decoded
+              image.
+            justification: |
+              Returning a region means copying it out of the decoded image, and the copy must be
+              independent so that nothing the family does afterwards to either buffer can alter
+              the other. AgentKit's round-trip test, which compares every channel of every pixel
+              of a returned region against the source it came from, proves the sub-region copy
+              addresses the right pixels and carries them intact.
+            tags: [ots]
+            tests:
+              - ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+
+          - id: AgentKit-OTS-CanvasNet-Encode
+            title: >-
+              CanvasNet shall encode a pixel buffer to a form that reproduces every pixel exactly
+              when decoded again.
+            justification: |
+              The region a model receives is one it asked to examine closely, which is precisely
+              the case in which a compression artifact is indistinguishable from the thing being
+              examined. An encoder that altered any channel — including the alpha channel an
+              encoder might quietly discard — would let a model read an artifact as content.
+              AgentKit's round-trip test encodes, decodes and compares every channel of every
+              pixel, which is the demonstrable form of that promise.
+            tags: [ots]
+            tests:
+              - ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+
+          - id: AgentKit-OTS-CanvasNet-DecodeFeasibility
+            title: >-
+              CanvasNet shall report, from an image file's header alone, whether decoding that
+              file is expected to succeed.
+            justification: |
+              The crop tool must tell a model the difference between a file that is damaged and a
+              file that is entirely well formed and merely uses a feature the decoder does not
+              implement, because the two call for different actions and describing the second as
+              damaged would be false. Establishing that difference after a failed decode means
+              matching on an exception, and establishing it before the decode means AgentKit
+              holding format knowledge of its own — the knowledge a consumer of a decoder should
+              never carry. A header reader that reports decode feasibility removes both, and
+              generalizes the refusal to any feature the decoder does not implement rather than
+              the one this library happened to know how to detect. AgentKit's own test, which
+              offers a complete, well-formed Adam7-interlaced PNG to the crop tool and asserts a
+              refusal stating the file is well formed rather than undecodable, proves the report
+              behaves as required.
+            tags: [ots]
+            tests:
+              - ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions

@@ -1,7 +1,7 @@
 namespace DemaConsulting.AgentKit.Core;
 
 /// <summary>
-///     Ceilings a tool observes when reading, returning and attaching content.
+///     Ceilings a tool observes when reading, returning, decoding and attaching content.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -43,6 +43,21 @@ namespace DemaConsulting.AgentKit.Core;
 ///     Two levels is enough for the pattern delegation exists to serve — a coordinator, a worker,
 ///     and a specialist the worker consults — while keeping the worst case a host can be billed
 ///     for finite and small.
+///     </para>
+///     <para>
+///     <see cref="DefaultMaxImagePixels"/> is 16,777,216 — 4096×4096. It bounds how many pixels a
+///     tool may decode out of one image, counted from the dimensions that image declares, and it
+///     sits here for the same reason <see cref="DefaultMaxAgentDepth"/> does: it is host resource
+///     spend a model can provoke and the host did not otherwise sanction. <b>A byte ceiling on the
+///     file does not bound it.</b> A compressed image well inside
+///     <see cref="DefaultMaxBinaryBytes"/> can declare far more pixels than its file size suggests,
+///     and a decoded pixel buffer costs four bytes per pixel whatever the file's own encoding was —
+///     so an image of 8192×8192, which is 67,108,864 pixels, costs 268,435,456 bytes, a quarter of
+///     a gigabyte, from a file of a few hundred kilobytes. Bounding the pixel product is what
+///     closes that gap. At 16,777,216 the transient decode is bounded at roughly 64 MiB, which
+///     still admits a 4K screenshot (8.3 megapixels) and a 300-dpi US-Letter page (8.4 megapixels)
+///     while refusing a 24-megapixel camera original, for which a model should be told a ceiling
+///     rather than the host billed for the decode.
 ///     </para>
 ///     <para>
 ///     <b>Every ceiling here is a default, and every one is overridable.</b> A host that wants
@@ -100,6 +115,17 @@ public sealed class ToolLimits
     public const int DefaultMaxAgentDepth = 2;
 
     /// <summary>
+    ///     The default ceiling on how many pixels a tool may decode out of one image.
+    /// </summary>
+    /// <remarks>
+    ///     16,777,216 is 4096×4096. The value is a count of pixels rather than of bytes because
+    ///     the cost being bounded is the decoded pixel buffer, which is four bytes per pixel
+    ///     whatever color depth or palette the file itself used, and because the dimensions an
+    ///     image declares are what a tool can read from its header before allocating anything.
+    /// </remarks>
+    public const int DefaultMaxImagePixels = 16 * 1024 * 1024;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ToolLimits"/> class.
     /// </summary>
     /// <remarks>
@@ -123,6 +149,11 @@ public sealed class ToolLimits
     ///     The ceiling on how deep a chain of delegated agents may run, counted from a root agent
     ///     at depth zero. Must not be negative; zero forbids delegation entirely.
     /// </param>
+    /// <param name="maxImagePixels">
+    ///     The ceiling on how many pixels a tool may decode out of one image, counted from the
+    ///     dimensions that image declares. Must not be negative; zero forbids image decoding
+    ///     entirely.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     Thrown when any of the supplied ceilings is negative.
     /// </exception>
@@ -130,7 +161,8 @@ public sealed class ToolLimits
         int maxReadBytes = DefaultMaxReadBytes,
         int maxResultCharacters = DefaultMaxResultCharacters,
         int maxBinaryBytes = DefaultMaxBinaryBytes,
-        int maxAgentDepth = DefaultMaxAgentDepth)
+        int maxAgentDepth = DefaultMaxAgentDepth,
+        int maxImagePixels = DefaultMaxImagePixels)
     {
         // Validate before any assignment so a rejected instance never exists even briefly. A
         // negative ceiling is a programming error in the host's configuration code, not a
@@ -139,11 +171,13 @@ public sealed class ToolLimits
         ArgumentOutOfRangeException.ThrowIfNegative(maxResultCharacters);
         ArgumentOutOfRangeException.ThrowIfNegative(maxBinaryBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(maxAgentDepth);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxImagePixels);
 
         MaxReadBytes = maxReadBytes;
         MaxResultCharacters = maxResultCharacters;
         MaxBinaryBytes = maxBinaryBytes;
         MaxAgentDepth = maxAgentDepth;
+        MaxImagePixels = maxImagePixels;
     }
 
     /// <summary>
@@ -180,4 +214,15 @@ public sealed class ToolLimits
     ///     expressible way for a host to attach a delegating family and then withhold its use.
     /// </remarks>
     public int MaxAgentDepth { get; }
+
+    /// <summary>
+    ///     Gets the ceiling on how many pixels a tool may decode out of one image.
+    /// </summary>
+    /// <remarks>
+    ///     Counted from the dimensions an image declares in its header, so a tool decides whether
+    ///     an image is affordable before allocating any pixel data for it. Zero forbids image
+    ///     decoding entirely, which is the expressible way for a host to attach a family that
+    ///     decodes images and then withhold that use.
+    /// </remarks>
+    public int MaxImagePixels { get; }
 }
