@@ -84,8 +84,8 @@ sections:
                   stating the size is an enrichment and never a condition. Refusing a file
                   because the optional enrichment failed would narrow the tool for no safety gain
                   whatever — the bytes were already inside the binary ceiling and were already
-                  going to be returned. The rule is live rather than defensive: the animated and
-                  paginated types this tool admits declare their size somewhere this library does
+                  going to be returned. The rule is live rather than defensive: the types this
+                  tool admits but does not decode declare their size somewhere this library does
                   not read at all, which makes them the common case rather than the edge case,
                   and a malformed or truncated header may still belong to a file a provider
                   renders. Stating no size it did not read is what keeps the caption trustworthy

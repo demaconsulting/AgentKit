@@ -60,9 +60,9 @@ internal static class ImageProbe
     ///     sniffing the bytes, because the extension is what decided how the content will be
     ///     presented and a file whose bytes disagree with its extension is a file the caller
     ///     should be told about rather than one this helper should quietly reinterpret. A media
-    ///     type with no header probe — the animated and paginated types the family reads but does
-    ///     not decode — simply reports failure, which is the same outcome as an unreadable header
-    ///     and needs no separate handling by a caller.
+    ///     type with no header probe — the types the family reads but does not decode — simply
+    ///     reports failure, which is the same outcome as an unreadable header and needs no
+    ///     separate handling by a caller.
     ///     <para>
     ///     The probe reads from the bytes the caller already holds, so no second read of the file
     ///     occurs and there is no window in which the bytes returned and the bytes probed could
