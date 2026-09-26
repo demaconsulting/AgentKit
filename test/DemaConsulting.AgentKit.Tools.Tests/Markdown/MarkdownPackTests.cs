@@ -41,6 +41,23 @@ public class MarkdownPackTests
     }
 
     /// <summary>
+    ///     Proves a policy that permits no writing anywhere still receives the family's single
+    ///     tool, because reading a document's section structure is a read and nothing else.
+    /// </summary>
+    [Fact]
+    public void MarkdownPack_CreateTools_ReadOnlyPolicy_PublishesItsTool()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: create the family's tools under that policy
+        var tools = new MarkdownPack().CreateTools(policy).ToList();
+
+        // Assert: the family is unaffected — it has no write-performing tool to withhold
+        Assert.Equal(["markdown_outline"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
     ///     Proves the pack requires a policy to create its tools.
     /// </summary>
     [Fact]

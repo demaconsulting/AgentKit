@@ -187,6 +187,21 @@ agent may produce files in, and the policy's refusal is returned unchanged becau
 every permitted location with its access level — which is what lets a confined agent recover to one
 it may actually use rather than guess.
 
+**The tool is published under every policy, and its description never varies.** Both are one
+decision. The text-file and file families withhold their write-performing tools when the policy
+permits no writing anywhere — see *Policy-derived publication* in the system design — but this tool
+is not one of those: its primary mode returns the region inline and writes nothing, so it succeeds
+under a read-only policy and withholding it would remove a working capability. What remains is
+whether the *description* should stop advertising the destination when it cannot be used, and it
+must not, for a reason that is structural rather than stylistic. `GuardedToolFactory.Create` sets
+the tool's own description through a value a pack could compute per composition, but the
+`destination` **parameter's** description is a `[Description]` attribute argument on the delegate
+parameter, and an attribute argument is a compile-time constant. A description that stopped
+mentioning the destination would therefore ship inside the same declaration as a parameter
+description still offering it — one payload contradicting itself, which serves truth strictly worse
+than one honest description does. The cost of the fixed description is one refusal, once, and that
+refusal enumerates the locations the agent could write to instead.
+
 **The destination must be named as a `.png` file.** A region is always encoded as PNG, so a
 destination named `.jpg` would hold PNG bytes under a name that says otherwise: a file every later
 reader, human or program, would be entitled to misread, and one this unit would have produced

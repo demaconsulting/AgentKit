@@ -48,6 +48,28 @@ sections:
                   - ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools
                   - ImagePack_CreateTools_Policy_ReturnsNoNullTool
 
+              - id: AgentKitTools-Image-Pack-PublishedUnderEveryPolicy
+                title: >-
+                  The image pack shall offer both of its tools under every access policy,
+                  including one that permits no writing anywhere.
+                justification: |
+                  Both tools can succeed where nothing may be written: examining an image needs
+                  only permission to read it, and extracting a region returns the region to the
+                  model to look at rather than producing a file. Withholding either would remove a
+                  capability that works. Region extraction also accepts an optional destination
+                  that does need permission to write, but the family is judged on whether a tool
+                  could ever succeed, not on whether every one of its arguments could — the
+                  opposite reading would require a gate for every optional argument and would
+                  remove a primary, fully working mode over a secondary one. Naming a destination
+                  where nothing may be written is answered by the ordinary refusal, which states
+                  the locations that could be written, so the agent learns its options in one turn
+                  rather than losing the capability altogether. For the same reason the description
+                  a model reads does not change with the configuration: it is a single fixed
+                  statement, so a model is never shown a capability described one way in one place
+                  and another way in another.
+                tests:
+                  - ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop
+
               - id: AgentKitTools-Image-Pack-RegistersCropTool
                 title: >-
                   The image pack shall create the crop tool alongside the read tool.

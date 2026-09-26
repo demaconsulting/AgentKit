@@ -105,6 +105,12 @@ over `this` and the policy, and `_depth`.
 supplied policy. Called once per `ToolPackBuilder.Build`, and only for a host that provides the
 Delegation capability.
 
+**This pack does not filter on the policy.** `agent_run` writes no file, so the family holds no
+tool a policy permitting no writing could prevent from succeeding, and the run tool is published
+under every policy. The policy's role here is to bound what a child may be granted, which is a
+different question from whether this tool can act. What a *child* is offered is a separate matter,
+handled in `ComposeChild`.
+
 ##### private ComposeChild(PathPolicy policy, AgentProfile profile)
 
 The `ChildToolComposer` implementation; the whole isolation mechanism.
@@ -119,6 +125,18 @@ filtered by the profile's declared names.
 **Every tool here is new.** The packs are asked for tools again rather than reusing the parent's,
 so each child gets its own per-composition state. The parent's tools are not consulted, filtered,
 or in scope.
+
+**Policy-derived publication reaches a child automatically, and this is emergent rather than
+arranged.** The builder above is constructed over the *child's* policy, so a profile whose grants
+are all read-only yields a child whose text-file and file families publish only their non-writing
+tools — with no change here and none in those packs. This is the property that makes a read-only
+reader child genuinely read-only in what it is offered, not merely in what it is permitted.
+
+**A profile naming a suppressed tool is not an error.** The profile's declared names are applied as
+a filter over what the child's composition published — the profile is a filter, never a source of
+tools — so a name the child's own policy suppressed yields absence, exactly as a name no attached
+pack publishes yields absence. An application that lists `text_file_write` in a read-only reader
+profile therefore gets a working reader rather than a composition failure.
 
 ##### private Reachable(PathPolicy policy)
 

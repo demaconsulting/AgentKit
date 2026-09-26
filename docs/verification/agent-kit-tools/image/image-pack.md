@@ -73,6 +73,21 @@ The same scenario read from the other side: the two tools are one capability, so
 both in the one place the family prefix is claimed is what makes that pairing a property of the
 pack rather than of each application's composition code.
 
+##### AgentKitTools-Image-Pack-PublishedUnderEveryPolicy: Both Tools Survive a Read-Only Policy
+
+**Test**: `ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop`
+
+Asserts that a policy whose every grant is read-only still yields exactly two tools, `image_read`
+and `image_crop`. Confirms the family is never narrowed by the access policy, which is a decision
+rather than an incidental outcome and so is asserted rather than merely described.
+
+Both tools can succeed where nothing may be written: reading an image is a read, and cropping
+without a destination returns image content rather than producing a file. The crop tool's optional
+`destination` does need a write grant, but the rule the packs apply is whether a tool could ever
+succeed, not whether every argument could — so a destination named under this policy earns the
+ordinary write denial, which enumerates the writable locations, instead of the whole tool
+disappearing.
+
 ##### AgentKitTools-Image-Pack-RegistersReadTool: No Null Tool Is Returned
 
 **Test**: `ImagePack_CreateTools_Policy_ReturnsNoNullTool`

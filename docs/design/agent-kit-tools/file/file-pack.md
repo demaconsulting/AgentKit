@@ -7,7 +7,8 @@ The `FilePack` class publishes the file tool family under the `file` prefix.
 #### Purpose
 
 To be the single public attachment point for policy-governed file-entity tools. The pack claims the
-`file` prefix and publishes four tools in fixed order: list, copy, move and delete.
+`file` prefix and publishes, in fixed order, those of its four tools — list, copy, move and delete —
+that the policy could permit to succeed.
 
 The pack itself grants nothing. It receives the `PathPolicy` from the `ToolPackBuilder` composition
 and passes that same policy to every tool factory.
@@ -23,7 +24,8 @@ The class is sealed and stateless.
 | `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host    |
 
 The returned tool collection contains, in order, `FileListTool`, `FileCopyTool`, `FileMoveTool`, and
-`FileDeleteTool`.
+`FileDeleteTool` — the whole family of four — when `policy.AnyLocationIsWritable` is true. When it
+is false the collection contains only `FileListTool`: one tool rather than four.
 
 #### Key Methods
 
@@ -43,11 +45,20 @@ Creates the family's tools.
 
 **Preconditions:** `policy` is non-null.
 
-**Algorithm:** validates `policy` and returns `FileListTool.Create(policy)`,
-`FileCopyTool.Create(policy)`, `FileMoveTool.Create(policy)`, and `FileDeleteTool.Create(policy)` in
-that fixed order.
+**Algorithm:** validates `policy`, returns `FileListTool.Create(policy)`, then asks the policy one
+question — `AnyLocationIsWritable` — and appends `FileCopyTool.Create(policy)`,
+`FileMoveTool.Create(policy)` and `FileDeleteTool.Create(policy)` in that fixed order only when the
+answer is true.
 
-**Postconditions:** all returned tools carry the `file` prefix and observe the same policy.
+**Postconditions:** all returned tools carry the `file` prefix and observe the same policy. When
+the policy permits writing somewhere, all four are returned; otherwise only the list tool is.
+
+**Which tools are withheld, and why.** Copy, move and delete each change the file system, so under
+a policy holding no read-write grant anywhere every one of them could only answer a refusal, and
+none of them is published. List is never withheld: it consults the read decision to choose what to
+report, and the write decision only to annotate a reported root as writable, so it stays fully
+useful and leaves the agent able to discover what it may read. See *Policy-derived publication* in
+the system design for the rule and the whole-family table.
 
 #### Error Handling
 

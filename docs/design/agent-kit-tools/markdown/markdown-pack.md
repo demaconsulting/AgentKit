@@ -48,6 +48,11 @@ can grow without changing callers.
 
 **Postconditions:** the returned tool carries the `markdown` prefix and observes the supplied policy.
 
+**This pack does not filter on the policy.** Reporting a document's heading structure consults only
+the read decision, so the family holds no tool a policy permitting no writing could prevent from
+succeeding, and nothing here is ever withheld. See *Policy-derived publication* in the system design
+for the rule and the whole-family table.
+
 #### Error Handling
 
 A null policy is a composing-application error and raises `ArgumentNullException`. Model-facing

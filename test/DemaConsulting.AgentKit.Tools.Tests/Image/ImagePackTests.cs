@@ -90,6 +90,35 @@ public class ImagePackTests
     }
 
     /// <summary>
+    ///     Proves the family is published whole under a policy that permits no writing anywhere,
+    ///     because both tools can succeed there: reading an image is a read, and cropping without a
+    ///     destination returns image content rather than writing a file.
+    /// </summary>
+    /// <remarks>
+    ///     This records a deliberate decision rather than an incidental outcome. The crop tool
+    ///     accepts an optional <c>destination</c> that does require a write grant, but the rule a
+    ///     pack applies is "could this tool ever succeed", not "could every argument ever succeed".
+    ///     Suppressing crop would remove its primary, fully-working inline mode; naming a
+    ///     destination under a read-only policy earns an ordinary denial that tells the model where
+    ///     it could write instead.
+    /// </remarks>
+    [Fact]
+    public void ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var pack = new ImagePack();
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: create the family's tools under that policy
+        var tools = pack.CreateTools(policy).ToList();
+
+        // Assert: both tools survive — the family is never narrowed by a read-only path policy
+        Assert.Equal(2, tools.Count);
+        Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
+        Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
+    }
+
+    /// <summary>
     ///     Proves the pack honors the contract obligation to return no null tool.
     /// </summary>
     [Fact]

@@ -60,7 +60,7 @@ said nothing about whether it will start a second agent, so neither declaration 
 |---------------------------|---------------------------|----------------------------------------------|
 | `FamilyPrefix`            | `string`                  | Non-null, non-empty; leads every tool's name |
 | `RequiredCapabilities`    | `HostCapabilities`        | `None` means the pack is always registered   |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; contains no null element           |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; may be a subset   |
 
 ### Key Methods
 
@@ -89,6 +89,17 @@ carries `FamilyPrefix` followed by an underscore.
 Called once per `ToolPackBuilder.Build`, and **not called at all** when the host does not provide
 `RequiredCapabilities`. That is the property the whole gating design rests on: an unsupported
 pack's tools are never built, so none of them can reach the model by accident.
+
+**The contract admits a policy-derived subset.** What is promised is a non-null collection holding
+no null element, every name carrying the declared family prefix — not that the same tools, or the
+same number of them, come back under every policy. An implementation is encouraged to withhold a
+tool the policy could never permit to succeed, because a tool whose only possible outcome is a
+refusal spends a declaration and the model's attention to achieve nothing.
+`PathPolicy.AnyLocationIsWritable` exists for exactly this decision: it answers, before the pack
+holds any path to test, whether writing is possible anywhere under this policy. A pack that
+withholds tools should preserve the surviving tools' relative order, so a model meets a shortened
+family rather than a rearranged one. See the *AgentKitTools* system design for which shipped
+families filter and which do not.
 
 The policy is a parameter rather than pack state so that implementations stay stateless and a
 pack cannot be configured with a policy of its own.

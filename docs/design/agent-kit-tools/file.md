@@ -26,7 +26,7 @@ The subsystem contains five units:
 | `FileCopyTool`   | Publishes `file_copy`: copies one readable file to one writable path  |
 | `FileMoveTool`   | Publishes `file_move`: moves one writable source to one writable path |
 | `FileDeleteTool` | Publishes `file_delete`: deletes one writable file                    |
-| `FilePack`       | Publishes the four tools as one family under the `file` prefix        |
+| `FilePack`       | Publishes the file tools as one family under the `file` prefix        |
 
 ### Interfaces
 
@@ -57,6 +57,14 @@ representable.
 **Fixed tool order.** The pack returns the four public tools in the order `file_list`, `file_copy`,
 `file_move`, then `file_delete`. The order a model sees is observable, so the pack makes it fixed
 rather than incidental.
+
+**Write-performing tools need a write grant to be published.** Three of the four — copy, move and
+delete — each change the file system, so under a policy holding no read-write grant anywhere they
+could only ever answer a refusal, and the pack does not publish them at all. `file_list` remains,
+because it needs only the read decision to report what exists and consults the write decision only
+to annotate a listed root as writable. The surviving tool keeps its place, so a model sees the
+family shortened, never rearranged. See *Policy-derived publication* in the system design for the
+rule and the whole-family table.
 
 **Endpoint decisions match the side effect.** Listing and a copy source use the read decision. A copy
 destination uses the write decision. Move source, move destination and delete path all use the write

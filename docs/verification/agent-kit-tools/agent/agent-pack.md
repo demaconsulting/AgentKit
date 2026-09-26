@@ -64,6 +64,18 @@ the family from a host that cannot start a second agent.
 Asserts a single tool named `agent_run`, confirming the pack produces the family's tool for
 an application to receive.
 
+##### AgentKitTools-Agent-Pack-PublishedUnderEveryPolicy: The Run Tool Survives a Read-Only Policy
+
+**Test**: `AgentPack_CreateTools_ReadOnlyPolicy_StillPublishesTheRunTool`
+
+Asserts that a policy whose every grant is read-only still yields `agent_run`. Confirms the family
+is never narrowed by the access policy: starting a child agent writes no file, and the policy's
+role here is to bound what a child may be granted rather than to permit an action this tool
+performs.
+
+What a *child* receives is a separate question, verified at the system level by
+`AgentKitTools_SystemComposition_DelegatedAgentWithReadOnlyProfile_ReceivesOnlyReadTools`.
+
 ##### AgentKitTools-Agent-Pack-RequiresPolicy: A Null Policy Throws
 
 **Test**: `AgentPack_CreateTools_NullPolicy_ThrowsArgumentNullException`

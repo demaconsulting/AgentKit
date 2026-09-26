@@ -68,11 +68,13 @@ before any family is added and that the package is a peer composed like any othe
 **Test**: `AgentKitTools_SystemComposition_TextFilePack_ContributesTheTextFileFamily`
 
 Verifies that attaching the TextFile pack contributes that family's tools to a composition, under
-the one family prefix the pack claims. Constructs a real access policy, adds `TextFilePack` to a
+the one family prefix the pack claims. Constructs a real access policy that permits writing, adds
+`TextFilePack` to a
 `ToolPackBuilder` governed by it, and asserts the composed list is exactly `text_file_search`,
 `text_file_read`, `text_file_create`, `text_file_write`, `text_file_replace`,
 `text_file_cut_lines`,
-`text_file_copy_lines` and `text_file_paste_lines`. Confirms at the system level that a family is
+`text_file_copy_lines` and `text_file_paste_lines` — the whole family of eight, which is what a
+write-permitting policy publishes. Confirms at the system level that a family is
 attached as
 one pack rather than tool by tool, and that the package now contributes a capability rather than
 only a composition baseline.
@@ -82,9 +84,11 @@ only a composition baseline.
 **Test**: `AgentKitTools_SystemComposition_FilePack_ContributesTheFileFamily`
 
 Verifies that attaching the File pack contributes that family's tools to a composition, under
-the one family prefix the pack claims. Constructs a real access policy, adds `FilePack` to a
+the one family prefix the pack claims. Constructs a real access policy that permits writing, adds
+`FilePack` to a
 `ToolPackBuilder` governed by it, and asserts the composed list is exactly `file_list`,
-`file_copy`, `file_move` and `file_delete`.
+`file_copy`, `file_move` and `file_delete` — the whole family of four, which is what a
+write-permitting policy publishes.
 
 ### Composition: The Markdown Family Is Contributed to a Composition
 
@@ -169,6 +173,56 @@ its parent's: capturing the parent's store while building the child's tools, and
 parent-bound tool list at the `agent_run` call site. Both stores are asserted because a test that
 checked only the parent would pass against a composition that gave the child no list at all, and a
 test that checked only the child would pass against one where both wrote into the parent's.
+
+### Composition: A Read-Only Policy Publishes Only the Tools It Can Permit
+
+**Test**: `AgentKitTools_SystemComposition_ReadOnlyPolicy_PublishesOnlyTheToolsThePolicyCanPermit`
+
+Verifies the system-level statement of policy-derived publication: the pack declares what tools
+exist, the policy decides which can function, and the published set is the intersection. Composes
+all seven families over one policy whose only grant is read-only, declaring both Vision and
+Delegation so that nothing is withheld by the capability gate and the policy is the only filter in
+play. Asserts the composed list is exactly sixteen tools, in pack-add order: `text_file_search`,
+`text_file_read`, `text_file_copy_lines`, `file_list`, `markdown_outline`, `image_read`,
+`image_crop`, `memory_file`, `memory_recall`, `memory_update`, `memory_revise`, `memory_forget`,
+`todo_list`, `todo_set`, `todo_remove` and `agent_run`.
+
+The eight write-performing tools — five in the TextFile family, three in the File family — are
+absent. The exact ordered list is asserted rather than set membership, because both which tools
+survive and the order a model sees them in are observable and part of the contract.
+
+### Composition: A Read-Only Workspace With a Writable Session Publishes Every Tool
+
+**Test**: `AgentKitTools_SystemComposition_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool`
+
+Verifies that the write question is asked of the whole policy rather than of the location relative
+names anchor to. Composes the same seven families over a policy granting the workspace read-only
+and a separate session location read-write, and asserts the composed list is exactly twenty-four
+tools in pack-add order — every tool of every family.
+
+This is the scenario the plausible wrong rule breaks. Had the question been "is the working
+directory writable", this composition would lose all eight write-performing tools even though
+writing is genuinely possible, and the common read-wide, write-narrow arrangement would be left
+unable to edit anything.
+
+### Cross-Family: A Delegated Agent With a Read-Only Profile Receives Only Read Tools
+
+**Test**: `AgentKitTools_SystemComposition_DelegatedAgentWithReadOnlyProfile_ReceivesOnlyReadTools`
+
+Verifies that policy-derived publication reaches a delegated child automatically, and that a write
+tool a profile names is simply absent rather than an error. Composes a read-write parent carrying
+the TextFile and File families and the Agent family, registers a child profile that narrows the
+same root to read-only and whose allow-list names `text_file_search`, `text_file_read`,
+`text_file_write` and `file_list`, then delegates to a runner that captures what it was handed.
+Asserts the parent holds `text_file_write`, and that the child received exactly
+`text_file_search`, `text_file_read` and `file_list`.
+
+The profile deliberately names a write tool the child's own policy suppresses. A profile naming
+only read tools would pass whether or not suppression reached the child, so it would verify
+nothing. The two properties proven together are that a child is composed through a fresh builder
+over its own narrowed policy — so the file families filter for it with no change to the Agent
+family — and that the allow-list is a filter over what was published rather than a source of tools,
+so a named-but-suppressed tool yields absence rather than a composition failure.
 
 ## Acceptance Criteria
 

@@ -13,13 +13,16 @@ sections:
           - id: AgentKitTools-File-FamilyComposition
             title: >-
               The file family shall publish four tools — list, copy, move and delete — under the
-              file family prefix, treat a file as an entity regardless of type, and require no host
-              capability.
+              file family prefix when the access policy permits writing somewhere, treat a file as
+              an entity regardless of type, and require no host capability.
             justification: |
               Managing a file is the same operation whatever it holds, so the family treats a file
               as an entity rather than as a kind of content, and the listing it provides replaces the
               text family's former listing so that discovery is type-agnostic. Publishing every tool
-              under one prefix keeps the names from colliding with another library's.
+              under one prefix keeps the names from colliding with another library's. The full set
+              of four is what the family offers when the policy could permit every one of them to
+              succeed; which of them it offers otherwise is stated separately, so that the
+              host-capability question and the access-policy question stay distinct.
             children:
               - AgentKitTools-File-ListTool-ToolName
               - AgentKitTools-File-CopyTool-ToolName
@@ -35,6 +38,30 @@ sections:
             tests:
               - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
               - File_Family_HostDeclaringNoCapability_StillReceivesTheFamily
+
+          - id: AgentKitTools-File-WriteToolsRequireAWriteGrant
+            title: >-
+              The file family shall offer only those of its tools the access policy could permit to
+              succeed, withholding copying, moving and deleting when the policy permits no writing
+              anywhere, and offering all of them whenever the policy permits writing in any
+              location.
+            tags: [security]
+            justification: |
+              A tool whose only possible outcome is a refusal costs an operator nothing to
+              configure and costs the agent on every turn: it occupies the model's attention, it
+              invites a request that can only fail, and a model that meets a refusal it cannot
+              avoid tends to retry it in another form rather than take the path that works. Copying,
+              moving and deleting each change the file system and can therefore never succeed where
+              nothing may be written, so an agent given a read-only configuration is offered a
+              coherent discovery capability instead of a management capability that cannot
+              function. Listing is never withheld: it needs only the read decision to choose what
+              to report, and consults the write decision only to mark a reported location as
+              writable, so it stays fully useful. Offering every tool whenever writing is permitted
+              anywhere is what keeps the read-wide, write-narrow configuration working.
+            children:
+              - AgentKitTools-File-Pack-SuppressesWriteToolsWithoutAWriteGrant
+            tests:
+              - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
 
           - id: AgentKitTools-File-GuardedConstruction
             title: >-

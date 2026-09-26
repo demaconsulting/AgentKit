@@ -49,14 +49,38 @@ the same prefix the class publishes as a constant.
 
 The listed tests prove the family asks nothing of its host.
 
-##### AgentKitTools-TextFile-Pack-RegistersEightTools: Registers Eight Tools
+##### AgentKitTools-TextFile-Pack-RegistersEightTools: Registers Eight Tools Under a Write-Granting Policy
 
-**Test**: `TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder`
+**Test**: `TextFilePack_CreateTools_WriteGrantingPolicy_CreatesTheEightToolsInOrder`
+
+**Test**: `TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool`
 
 **Test**: `TextFilePack_CreateTools_Policy_ReturnsNoNullTool`
 
-The listed tests prove the pack creates the eight tools in the fixed, documented order; the pack
-honors the contract obligation to return no null tool.
+The three listed tests prove the pack creates the eight tools in the fixed, documented order
+whenever the policy permits writing in any location; that a policy granting the workspace read-only
+and a separate session location read-write still publishes all eight, because the question is asked
+of the whole policy rather than of the anchor; and that the pack honors the contract obligation to
+return no null tool.
+
+##### AgentKitTools-TextFile-Pack-SuppressesWriteToolsWithoutAWriteGrant: Withholds the Write Tools Without a Write Grant
+
+**Test**: `TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools`
+
+**Test**: `TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools`
+
+**Test**: `TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool`
+
+The three listed tests prove that a policy whose every grant is read-only publishes exactly
+`text_file_search`, `text_file_read` and `text_file_copy_lines`, in that relative order, so the five
+tools that can act only by writing are withheld rather than offered and refused; that a policy
+holding no grants at all behaves identically, so the fully-confined case is not one the filter
+overlooks; and that the suppression lifts as soon as any location is writable, so the test set can
+distinguish a correct filter from one that suppresses unconditionally.
+
+The first two assert the exact ordered name list rather than set membership, because the surviving
+tools must keep their relative order — `text_file_copy_lines` sits between two withheld groups, so
+a filter that collapsed them into one block would move it.
 
 ##### AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix: Tools Carry Family Prefix
 

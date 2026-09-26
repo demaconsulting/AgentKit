@@ -51,6 +51,15 @@ The listed tests prove the pack requires no host capability, so every host recei
 The listed tests prove the pack creates its three tools — list, set and remove — in the fixed
 order a model sees them in.
 
+##### AgentKitTools-Todo-Pack-PublishedUnderEveryPolicy: Every Tool Survives a Read-Only Policy
+
+**Test**: `TodoPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool`
+
+Asserts that a policy whose every grant is read-only still yields all three tools, in their
+documented order. Confirms a read-only *path* policy narrows nothing in this family: the task list
+belongs to the composition itself and lives in no location the policy governs, and an agent
+restricted to reading still needs to plan the reading it is doing.
+
 ##### AgentKitTools-Todo-Pack-RequiresPolicy: Requires Policy
 
 **Test**: `TodoPack_CreateTools_NullPolicy_ThrowsArgumentNullException`

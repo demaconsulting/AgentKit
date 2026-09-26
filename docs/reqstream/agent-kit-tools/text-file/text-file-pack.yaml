@@ -31,15 +31,46 @@ sections:
               - id: AgentKitTools-TextFile-Pack-RegistersEightTools
                 title: >-
                   The pack shall create its eight tools — search, read, create, write, replace, cut,
-                  copy and paste — in a fixed, documented order, with no null entry.
+                  copy and paste — in a fixed, documented order, with no null entry, whenever the
+                  access policy permits writing in any location.
                 justification: |
                   The order a model sees the tools in is observable, so it is fixed rather than
                   incidental. It descends in scope through the three editing tools — bring a file
                   into existence, set its whole content, change part of its content — so the two
-                  tools a write is most easily confused with sit either side of it.
+                  tools a write is most easily confused with sit either side of it. Any location
+                  being writable is enough: an agent that may write only a session location outside
+                  the workspace still receives every editing tool, because every one of them could
+                  succeed there.
                 tests:
-                  - TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder
+                  - TextFilePack_CreateTools_WriteGrantingPolicy_CreatesTheEightToolsInOrder
+                  - TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
                   - TextFilePack_CreateTools_Policy_ReturnsNoNullTool
+
+              - id: AgentKitTools-TextFile-Pack-SuppressesWriteToolsWithoutAWriteGrant
+                title: >-
+                  The pack shall withhold every tool that can act only by writing when the access
+                  policy permits no writing anywhere, offering only searching, reading and
+                  copying a range of lines, in their usual relative order.
+                tags: [security]
+                justification: |
+                  Creating a file, setting its whole content, replacing text within it, cutting a
+                  range out of it and pasting a range into it each require permission to write, so
+                  under a configuration that permits no writing anywhere every one of them could
+                  only answer a refusal. Withholding them is what stops an agent spending turns on
+                  a capability that cannot work and keeps the tools it is offered a truthful
+                  statement of what it can do. Searching and reading need only permission to read.
+                  Copying a range needs only permission to read the file it copies from, by the
+                  same decision that keeps it usable from a read-only location, so it is offered
+                  too — even though the holding area it fills has no consumer while pasting is
+                  withheld, because whether the configuration could permit a tool to succeed is a
+                  question the pack can answer and whether a tool is useful is not. A configuration
+                  granting nothing at all behaves exactly as one granting only reading, so it is
+                  not a case the rule overlooks. The surviving tools keep their usual relative
+                  order, so a model meets a shortened family rather than a rearranged one.
+                tests:
+                  - TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools
+                  - TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools
+                  - TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
 
               - id: AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
                 title: >-

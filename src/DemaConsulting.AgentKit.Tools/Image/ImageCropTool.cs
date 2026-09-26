@@ -128,6 +128,7 @@ public static class ImageCropTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Names <see cref="ImageReadTool"/> as the source of the coordinate space, because that
     ///     is what makes the two tools compose and a description is not a denial — the rule that
     ///     restricts a refusal from naming a sibling tool governs refusals, not the text a model
@@ -135,6 +136,22 @@ public static class ImageCropTool
     ///     format variants decode: a rare exception stated here would make a model avoid a
     ///     capability that works on essentially every file it will meet, and the exceptions are
     ///     stated where they are actionable, in the refusals themselves.
+    ///     </para>
+    ///     <para>
+    ///     <b>The description is fixed and does not vary with the access policy</b>, even though
+    ///     the <c>destination</c> it offers needs a write grant this tool's policy may not hold.
+    ///     Two facts decide it. First, a policy-varying description cannot be made truthful here:
+    ///     the tool's own description is settable per composition, but the <c>destination</c>
+    ///     parameter's description is a <c>[Description]</c> attribute argument and therefore a
+    ///     compile-time constant. A description that stopped mentioning the destination would ship
+    ///     inside the same declaration as a parameter description still offering it — one payload
+    ///     contradicting itself, which serves truth strictly worse than one honest description
+    ///     does. Second, the destination is optional and the tool's primary mode does not use it,
+    ///     so nothing here is broken by the omission: a model that names a destination under a
+    ///     read-only policy receives an ordinary refusal that enumerates the locations it could
+    ///     write to instead, and the cost is bounded at one turn rather than paid on every
+    ///     declaration.
+    ///     </para>
     /// </remarks>
     private const string ToolDescription =
         "Returns a rectangular region of a PNG or JPEG file the agent is permitted to read. The "

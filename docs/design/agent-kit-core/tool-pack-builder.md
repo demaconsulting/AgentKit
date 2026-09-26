@@ -16,6 +16,17 @@ tool refused — reasons its way around the refusal instead of abandoning the ap
 unsupported pack is not even asked to create its tools, so there is nothing that could reach the
 list by accident.
 
+**A tool the access policy could never permit is likewise never offered.** The same argument
+applies one level finer, to individual tools rather than whole packs, and the two gates divide
+cleanly. The host capability decides *whether a pack is asked for its tools*; the policy the pack
+is then handed decides *which of its tools it returns*. A pack is free to withhold a tool whose
+only possible outcome under the policy in force would be a refusal — the built-in text-file and
+file families do exactly that for their write-performing tools, asking
+`PathPolicy.AnyLocationIsWritable` — and the builder does not distinguish a withheld tool from one
+the pack never had. It verifies whatever it is given against the pack's declared prefix exactly as
+before. The two gates apply in that order: a pack the host cannot support is never asked, so a
+policy question is never even reached for it.
+
 The builder is also where the single access policy is applied. Every pack receives the same
 policy, so an author cannot widen one pack's reach by configuring it separately.
 
@@ -143,11 +154,18 @@ about the name.
 and a host has one answer. Combining successive calls would make the declaration a one-way ratchet
 no caller could narrow, and widening what a model is offered is the safety-relevant direction.
 
-**The builder deliberately does not report which packs it skipped.** The information is already
+**The builder deliberately does not report which packs it skipped, or which tools a pack withheld.**
+The information is already
 available to the caller — it knows what it declared, and `RequiredCapabilities` is public — and a
 skipped-pack list invites the exact mistake this unit prevents: a host that inspects it and
-helpfully registers from it anyway. Should diagnosis be wanted later, a callback or logger can be
-added without a breaking change.
+helpfully registers from it anyway. The same argument rules out a withheld-tools list for
+policy-derived suppression, and rules it out slightly more strongly: the composing application
+holds the policy, so it can already answer "does this configuration permit writing" for itself, and
+a list of tools the configuration excluded is an invitation to add them back by some other route —
+which would reintroduce precisely the tools-that-cannot-work problem the suppression exists to
+remove. The rule is therefore explained in documentation, per pack and here, rather than reported
+at run time. Should diagnosis be wanted later, a callback or logger can be added for both cases
+without a breaking change.
 
 ### Dependencies
 

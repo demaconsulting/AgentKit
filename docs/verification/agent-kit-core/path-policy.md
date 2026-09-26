@@ -151,6 +151,52 @@ permission".
 Constructs wide read access plus a narrower read-write grant. The outside location is readable but
 not writable, proving read permission never implies write permission.
 
+#### AgentKitCore-PathPolicy-WriteGrantVisible: A Policy With No Grants Reports Nothing Writable
+
+**Test**: `PathPolicy_AnyLocationIsWritable_NoGrants_IsFalse`
+
+Constructs a valid, fully-confined policy holding no grants at all and asserts it reports no
+writable location. Confirms the fully-confined policy is not a case the report overlooks, so a
+composition governed by one withholds every write-performing tool.
+
+#### AgentKitCore-PathPolicy-WriteGrantVisible: Read-Only Grants Never Report a Writable Location
+
+**Test**: `PathPolicy_AnyLocationIsWritable_OnlyReadOnlyGrants_IsFalse`
+
+Constructs a policy holding two read-only grants, one of them over the anchor itself, and asserts
+it reports no writable location. Confirms write access is never inferred from read access, however
+widely reading is permitted — the property the report shares with the per-path write decision.
+
+#### AgentKitCore-PathPolicy-WriteGrantVisible: A Read-Only Workspace With a Writable Session Reports Writable
+
+**Test**: `PathPolicy_AnyLocationIsWritable_ReadOnlyWorkspaceAndReadWriteSession_IsTrue`
+
+Constructs the common mixed shape — the workspace granted read-only, a separate session location
+granted read-write — and asserts the policy reports a writable location while a write to the
+working directory itself is still denied. Confirms the question is asked of the whole policy rather
+than of the anchor.
+
+This is the scenario the plausible wrong rule breaks. Had the report been derived from whether the
+working directory is writable, this policy would answer false and a composition governed by it
+would silently lose its editing tools even though writing is genuinely possible.
+
+#### AgentKitCore-PathPolicy-WriteGrantVisible: A Rootless Read-Write Grant Reports Writable
+
+**Test**: `PathPolicy_AnyLocationIsWritable_UnrestrictedReadWriteGrant_IsTrue`
+
+Constructs a policy whose single grant is unrestricted and read-write, and asserts it reports a
+writable location. Confirms the report reads the grant's access level rather than its root, so a
+grant with no root restriction is not mistaken for no grant.
+
+#### AgentKitCore-PathPolicy-WriteGrantVisible: A Read-Write Grant Away From the Anchor Reports Writable
+
+**Test**: `PathPolicy_AnyLocationIsWritable_ReadWriteGrantOutsideTheAnchor_IsTrue`
+
+Anchors a policy at one location while granting read-write access only to an unrelated one, and
+asserts it reports a writable location while simultaneously reporting the anchor as ungranted.
+Confirms the two whole-policy facts are independent of one another: neither is derived from the
+other, and a policy may report either while denying the other.
+
 #### AgentKitCore-PathPolicy-WorkingDirectoryRequired: Missing Working Directory Throws
 
 **Test**: `PathPolicy_Constructor_MissingWorkingDirectory_ThrowsArgumentException`

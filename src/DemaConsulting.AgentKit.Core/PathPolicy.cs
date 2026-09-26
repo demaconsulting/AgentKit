@@ -66,6 +66,14 @@ namespace DemaConsulting.AgentKit.Core;
 ///     concealing paths it is already confined to.
 ///     </para>
 ///     <para>
+///     <b>Two questions are answered of the policy as a whole.</b> Most of this type decides
+///     individual paths, but a tool pack is handed the policy before it has any path to test.
+///     <see cref="WorkingDirectoryIsGranted"/> tells it whether relative addressing is meaningful
+///     at all here, and <see cref="AnyLocationIsWritable"/> tells it whether writing is possible
+///     anywhere at all. Both are computed once at construction, and neither is a statement about
+///     any particular path.
+///     </para>
+///     <para>
 ///     Instances are immutable after construction and are safe for concurrent use.
 ///     </para>
 /// </remarks>
@@ -288,6 +296,12 @@ public sealed class PathPolicy
         // Whether the working directory is itself a permitted read location decides the output
         // dialect: relative names are emitted only when the anchor is granted. Computed once.
         WorkingDirectoryIsGranted = Array.Exists(_grants, grant => grant.Allows(WorkingDirectory));
+
+        // Whether any grant permits writing at all is a property of the policy as a whole, not of a
+        // path. It decides whether a pack can usefully publish a tool that performs a write; a
+        // policy that grants a read-only workspace and a writable session folder genuinely can
+        // write, so it answers true. Computed once, beside the anchor's own grant status.
+        AnyLocationIsWritable = Array.Exists(_grants, grant => grant.Access == AccessLevel.ReadWrite);
     }
 
     /// <summary>
@@ -340,6 +354,49 @@ public sealed class PathPolicy
     ///     reason.
     /// </remarks>
     public bool WorkingDirectoryIsGranted { get; }
+
+    /// <summary>
+    ///     Gets whether any grant permits writing, anywhere.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>The question is asked of the whole policy, never of a path.</b> It answers
+    ///     <see langword="true"/> when at least one grant carries
+    ///     <see cref="AccessLevel.ReadWrite"/>, whatever its root, whether or not that root is the
+    ///     working directory, and whether or not that root exists. A policy granting a read-only
+    ///     workspace and a read-write session location therefore answers <see langword="true"/>,
+    ///     because it genuinely can write — just not where relative names land. The per-path form
+    ///     of this question already exists as <see cref="TryResolveWrite"/>; asking that about the
+    ///     working directory would be a different and, for this purpose, wrong question.
+    ///     </para>
+    ///     <para>
+    ///     <b>Why it exists.</b> A tool pack receives the policy in
+    ///     <c>IToolPack.CreateTools</c> before it has any path to test, and can use this to decide
+    ///     which of its tools are worth publishing at all: a tool that can act only by writing,
+    ///     under a policy holding no read-write grant anywhere, could only ever return a refusal,
+    ///     so the pack withholds it rather than spending a declaration on it. This is the
+    ///     extensibility contract <see cref="WorkingDirectoryIsGranted"/> serves for the output
+    ///     dialect, applied to publication.
+    ///     </para>
+    ///     <para>
+    ///     <b>It is not a promise that any particular write will succeed.</b> A deny pattern,
+    ///     containment, or the file system may still refuse a specific path. Deny patterns are
+    ///     deliberately not consulted: whether they exclude everything a grant covers is not
+    ///     statically decidable and depends on which files exist. Answering "the policy holds a
+    ///     grant that could permit a write" is the correct conservative direction, because it can
+    ///     only ever cause a tool to be published that a specific request might still be denied —
+    ///     never the reverse. The failure mode is a denial the model can read and act on, not a
+    ///     capability silently withheld.
+    ///     </para>
+    ///     <para>
+    ///     <b>Write access is never inferred from read access.</b> The answer tests
+    ///     <see cref="PathRule.Access"/> against <see cref="AccessLevel.ReadWrite"/> and nothing
+    ///     else, so no number of read-only grants makes it <see langword="true"/>. An empty grant
+    ///     set answers <see langword="false"/>. Computed once at construction and fixed for the
+    ///     lifetime of the policy.
+    ///     </para>
+    /// </remarks>
+    public bool AnyLocationIsWritable { get; }
 
     /// <summary>
     ///     Attempts to resolve a path for reading and to confirm some grant permits it.

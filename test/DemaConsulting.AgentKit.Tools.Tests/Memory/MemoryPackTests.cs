@@ -88,6 +88,25 @@ public class MemoryPackTests
     }
 
     /// <summary>
+    ///     Proves a read-only path policy withholds none of the family's five tools, because the
+    ///     memories are the pack's own store and no tool in the family touches the file system.
+    /// </summary>
+    [Fact]
+    public void MemoryPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: create the family's tools under that policy
+        var tools = new MemoryPack(new StubEmbeddingGenerator()).CreateTools(policy).ToList();
+
+        // Assert: all five survive — a path policy governs nothing these tools do
+        Assert.Equal(
+            ["memory_file", "memory_recall", "memory_update", "memory_revise", "memory_forget"],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
     ///     Proves the pack requires a policy to create its tools, even though its tools never
     ///     consult one.
     /// </summary>

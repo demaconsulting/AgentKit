@@ -52,6 +52,14 @@ The listed tests prove the pack requires no host capability, so every host recei
 
 The listed tests prove the pack creates its single outline tool.
 
+##### AgentKitTools-Markdown-Pack-PublishedUnderEveryPolicy: The Tool Survives a Read-Only Policy
+
+**Test**: `MarkdownPack_CreateTools_ReadOnlyPolicy_PublishesItsTool`
+
+Asserts that a policy whose every grant is read-only still yields `markdown_outline`. Confirms the
+family is never narrowed by the access policy: reporting a document's heading structure consults
+only the read decision, so the family holds no write-performing tool to withhold.
+
 ##### AgentKitTools-Markdown-Pack-RequiresPolicy: Requires Policy
 
 **Test**: `MarkdownPack_CreateTools_NullPolicy_ThrowsArgumentNullException`

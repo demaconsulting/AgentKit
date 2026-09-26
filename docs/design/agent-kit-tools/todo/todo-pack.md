@@ -67,6 +67,13 @@ nothing to judge against a policy.
 **Postconditions:** the returned tools carry the `todo` prefix, share one `TodoStore` whose
 lifetime equals theirs, and no other composition can reach that store.
 
+**This pack does not filter on the policy.** The consequence of accepting and ignoring the policy
+is that all three tools are published under every one of them. Where a file family publishes only
+those tools the policy could permit to succeed, a read-only *path* policy narrows nothing here,
+because the task list is this pack's own and lives in no location the policy governs. Recording a
+step under such a policy is correct and works — and an agent restricted to reading still needs to
+plan the reading it is doing. See *Policy-derived publication* in the system design.
+
 #### Error Handling
 
 A null policy is a composing-application error and raises `ArgumentNullException`. Model-facing

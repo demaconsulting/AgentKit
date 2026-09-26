@@ -48,7 +48,17 @@ failure.
 **Test**: `File_Family_HostDeclaringNoCapability_StillReceivesTheFamily`
 
 The listed tests prove a composition attaching the family publishes list, copy, move and delete
-tools; a host declaring no capability still receives the family.
+tools under a policy that permits writing; a host declaring no capability still receives the family.
+
+#### AgentKitTools-File-WriteToolsRequireAWriteGrant: Only What the Policy Can Permit Is Offered
+
+**Test**: `File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete`
+
+The listed test proves at family level that a composition governed by a write-permitting policy
+receives all four tools, which is the half of the rule that guards against a filter suppressing
+unconditionally. The complementary half — that a policy permitting no writing anywhere receives
+only `file_list` — is verified against the pack in *FilePack Unit Verification Design*, and across
+all seven families in *AgentKitTools System Verification Design*.
 
 #### AgentKitTools-File-GuardedConstruction: Guarded Construction
 

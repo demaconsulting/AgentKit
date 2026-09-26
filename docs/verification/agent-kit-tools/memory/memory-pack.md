@@ -58,6 +58,15 @@ it receives the family.
 The listed tests prove exactly five tools are created, in the order `memory_file`, `memory_recall`,
 `memory_update`, `memory_revise`, `memory_forget`.
 
+##### AgentKitTools-Memory-Pack-PublishedUnderEveryPolicy: Every Tool Survives a Read-Only Policy
+
+**Test**: `MemoryPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool`
+
+Asserts that a policy whose every grant is read-only still yields all five tools, in their
+documented order. Confirms a read-only *path* policy narrows nothing in this family: the memories
+live in the store the application supplied or the pack allocated, not in a location the policy
+governs, so filing a memory under such a policy is correct and works.
+
 ##### AgentKitTools-Memory-Pack-RequiresPolicy: Requires A Policy
 
 **Test**: `MemoryPack_CreateTools_NullPolicy_ThrowsArgumentNullException`

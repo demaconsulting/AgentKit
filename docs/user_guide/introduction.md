@@ -216,6 +216,16 @@ through `ToolPackBuilder`, declaring what its host supports and adding one pack 
 wishes to attach. A pack whose required capabilities the host does not provide is never asked to
 create its tools at all, so the model is never offered a tool it cannot use.
 
+The same reasoning applies one level finer, to individual tools. A pack is handed the access policy
+before it has any path to test, and may publish only those of its tools the policy could permit to
+succeed — so a tool that can act only by writing, under a policy holding no read-write grant
+anywhere, is simply not offered rather than offered and refused on every use. The two gates divide
+cleanly: **the host capability decides whether a pack is asked for its tools; the policy decides
+which of its tools it returns.** The published set is the intersection. Nothing reports which tools
+were withheld, for the same reason nothing reports which packs were skipped — the application holds
+both the capability declaration and the policy, so it can already answer the question, and a list
+of excluded tools is an invitation to add them back by another route.
+
 # Tool Families
 
 `DemaConsulting.AgentKit.Tools` ships seven ready-made guarded tool families. Each family is a pack
@@ -229,32 +239,62 @@ row.
 
 ## Available Tools
 
-| Family    | Tool                    | Purpose                                          | Required capability |
-|-----------|-------------------------|--------------------------------------------------|---------------------|
-| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None                |
-| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None                |
-| Text file | `text_file_create`      | Creates a new text file within the policy        | None                |
-| Text file | `text_file_write`       | Sets a file's whole content, capturing the old   | None                |
-| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None                |
-| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None                |
-| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None                |
-| Text file | `text_file_paste_lines` | Pastes previously cut lines back into a file     | None                |
-| File      | `file_list`             | Lists files of any type within the policy        | None                |
-| File      | `file_copy`             | Copies a file within the policy                  | None                |
-| File      | `file_move`             | Moves a file within the policy                   | None                |
-| File      | `file_delete`           | Deletes a single file within the policy          | None                |
-| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
-| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`            |
-| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`            |
-| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None                |
-| Todo      | `todo_set`              | Records a step, or updates the step with that id | None                |
-| Todo      | `todo_remove`           | Drops a step by id from the task list            | None                |
-| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None                |
-| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None                |
-| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None                |
-| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None                |
-| Memory    | `memory_forget`         | Removes one memory permanently                   | None                |
-| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation`        |
+| Family    | Tool                    | Purpose                                          | Capability   | Write grant |
+|-----------|-------------------------|--------------------------------------------------|--------------|-------------|
+| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None         | No          |
+| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None         | No          |
+| Text file | `text_file_create`      | Creates a new text file within the policy        | None         | Yes         |
+| Text file | `text_file_write`       | Sets a file's whole content, capturing the old   | None         | Yes         |
+| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None         | Yes         |
+| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None         | Yes         |
+| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None         | No          |
+| Text file | `text_file_paste_lines` | Pastes previously cut lines back into a file     | None         | Yes         |
+| File      | `file_list`             | Lists files of any type within the policy        | None         | No          |
+| File      | `file_copy`             | Copies a file within the policy                  | None         | Yes         |
+| File      | `file_move`             | Moves a file within the policy                   | None         | Yes         |
+| File      | `file_delete`           | Deletes a single file within the policy          | None         | Yes         |
+| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None         | No          |
+| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`     | No          |
+| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`     | No          |
+| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None         | No          |
+| Todo      | `todo_set`              | Records a step, or updates the step with that id | None         | No          |
+| Todo      | `todo_remove`           | Drops a step by id from the task list            | None         | No          |
+| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None         | No          |
+| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None         | No          |
+| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None         | No          |
+| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None         | No          |
+| Memory    | `memory_forget`         | Removes one memory permanently                   | None         | No          |
+| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation` | No          |
+
+The **Capability** column is the host capability the family requires; the **Write grant** column
+says whether the tool is published only when the access policy permits writing somewhere.
+
+**A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eight
+of the twenty-four tools are marked `Yes`: five in the text file family and three in the file
+family. If every grant an application configures is read-only — or it configures no grants at all —
+those eight are absent from the composed list, and the seven families together publish sixteen
+tools rather than twenty-four. The text file family offers `text_file_search`, `text_file_read` and
+`text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
+agent families are unaffected.
+
+The question is asked once, of the **whole policy**, not of any particular path. A policy granting
+a read-only workspace and a read-write session folder can genuinely write, so it publishes every
+tool — even though a relative name still lands in the read-only workspace and a write there is
+still refused. Only a policy with no read-write grant anywhere withholds them.
+
+Three families' tools are marked `No` for reasons worth stating. `text_file_copy_lines` consults
+only the read decision, so it works from a read-only location; note that under a read-only policy
+the buffer it fills has no drain, because `text_file_paste_lines` is the buffer's only reader.
+`file_list` needs only the read decision to report what exists, consulting the write decision
+solely to mark a listed location as writable. The todo and memory families keep their state in the
+composition's own store rather than on disk, so a read-only *path* policy governs nothing they do.
+
+`image_crop` is marked `No` and is offered under a read-only policy, because its primary mode
+returns the region as image content and writes nothing. Its optional `destination` does need a
+write grant, and naming one under a read-only policy earns the ordinary refusal, which enumerates
+the locations that are writable. The tool's description does not change with the policy: the
+`destination` parameter's own description is fixed at compile time, so a policy-varying tool
+description would contradict it within a single declaration.
 
 The text file (`TextFilePack`), file (`FilePack`), Markdown (`MarkdownPack`), todo (`TodoPack`) and
 memory (`MemoryPack`) families require no host capability. Two families are gated. The image family
@@ -351,6 +391,13 @@ and reports them all, so a listing with no argument is a discovery listing over 
 location rather than a listing of the working directory alone. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
+
+The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all fifteen
+tools of those four families. The same builder, the same packs and the same capability declaration
+over a policy whose grants are all read-only yields a shorter list — seven tools, because the five
+write-performing text file tools and the three file management tools are withheld. Nothing else
+about the composition changes, and nothing announces the difference, so an application that means
+its agent to edit must grant it somewhere to write.
 
 The todo, memory and agent packs are added the same way, but take constructor arguments of their
 own — a supplied store, an embedding generator, or the profiles, runner and child packs a delegated

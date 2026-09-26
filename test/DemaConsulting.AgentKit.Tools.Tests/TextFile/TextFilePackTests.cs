@@ -10,8 +10,10 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 /// <remarks>
 ///     The pack is the only public way to obtain the family's tools, so these scenarios verify
 ///     what a composing application can observe: the prefix claimed, the capability required, the
-///     tools produced, the shared cut/paste buffer, and that the policy the composition supplied is
-///     the one governing them.
+///     tools produced under each shape of policy, the shared cut/paste buffer, and that the policy
+///     the composition supplied is the one governing them. Because the published set now depends on
+///     whether the policy permits writing anywhere, every scenario that states a count also states
+///     the policy shape it holds under.
 /// </remarks>
 public class TextFilePackTests
 {
@@ -44,10 +46,11 @@ public class TextFilePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates the eight tools in the fixed, documented order.
+    ///     Proves the pack creates the eight tools in the fixed, documented order when the policy
+    ///     permits writing, which is the condition under which the whole family is published.
     /// </summary>
     [Fact]
-    public void TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder()
+    public void TextFilePack_CreateTools_WriteGrantingPolicy_CreatesTheEightToolsInOrder()
     {
         var pack = new TextFilePack();
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
@@ -65,6 +68,92 @@ public class TextFilePackTests
                 TextFileCutLinesTool.ToolName,
                 TextFileCopyLinesTool.ToolName,
                 TextFilePasteLinesTool.ToolName
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a policy that permits no writing anywhere receives only the three tools that
+    ///     consult the read decision, in their documented relative order, so no tool is offered
+    ///     whose only possible outcome would be a refusal.
+    /// </summary>
+    [Fact]
+    public void TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var pack = new TextFilePack();
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: ask the pack what it publishes under that policy
+        var tools = pack.CreateTools(policy).ToList();
+
+        // Assert: exactly search, read and copy — the five write-performing tools are withheld
+        Assert.Equal(3, tools.Count);
+        Assert.Equal(
+            [
+                TextFileSearchTool.ToolName,
+                TextFileReadTool.ToolName,
+                TextFileCopyLinesTool.ToolName
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a read-only workspace paired with a writable session location publishes every
+    ///     tool, because the write question is asked of the policy as a whole rather than of the
+    ///     location relative names anchor to.
+    /// </summary>
+    [Fact]
+    public void TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool()
+    {
+        // Arrange: the anchor is granted read-only; a separate location is granted read-write
+        using var fixture = new TempDirectoryFixture();
+        var session = Path.Combine(fixture.Outside, "session");
+        Directory.CreateDirectory(session);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(session)]);
+
+        // Act: ask the pack what it publishes under the mixed policy
+        var tools = new TextFilePack().CreateTools(policy).ToList();
+
+        // Assert: all eight, in the documented order — writing is possible, just not at the anchor
+        Assert.Equal(8, tools.Count);
+        Assert.Equal(
+            [
+                TextFileSearchTool.ToolName,
+                TextFileReadTool.ToolName,
+                TextFileCreateTool.ToolName,
+                TextFileWriteTool.ToolName,
+                TextFileReplaceTool.ToolName,
+                TextFileCutLinesTool.ToolName,
+                TextFileCopyLinesTool.ToolName,
+                TextFilePasteLinesTool.ToolName
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a policy holding no grants at all behaves exactly as a read-only one does here,
+    ///     so a fully-confined composition is not a special case the filter overlooks.
+    /// </summary>
+    [Fact]
+    public void TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools()
+    {
+        // Arrange: a valid, fully-confined policy that permits nothing anywhere
+        var pack = new TextFilePack();
+        var policy = new PathPolicy(Path.GetTempPath(), []);
+
+        // Act: ask the pack what it publishes under that policy
+        var tools = pack.CreateTools(policy).ToList();
+
+        // Assert: exactly search, read and copy
+        Assert.Equal(3, tools.Count);
+        Assert.Equal(
+            [
+                TextFileSearchTool.ToolName,
+                TextFileReadTool.ToolName,
+                TextFileCopyLinesTool.ToolName
             ],
             tools.Select(tool => tool.Name));
     }

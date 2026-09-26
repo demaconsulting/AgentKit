@@ -44,6 +44,20 @@ sections:
                 tests:
                   - MemoryPack_CreateTools_RegistersTheFamilyInOrder
 
+              - id: AgentKitTools-Memory-Pack-PublishedUnderEveryPolicy
+                title: >-
+                  The memory pack shall offer every one of its tools under every access policy,
+                  including one that permits no writing anywhere.
+                justification: |
+                  The memories this family works with live in the store the application supplied or
+                  the pack allocated, not in any location the access configuration governs, so a
+                  configuration that permits no file writing prevents none of these tools from
+                  succeeding. Filing a memory under such a configuration is correct and works, and
+                  withholding any of the family would remove a working capability on the strength
+                  of a configuration that has no bearing on it.
+                tests:
+                  - MemoryPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool
+
               - id: AgentKitTools-Memory-Pack-RequiresPolicy
                 title: >-
                   The memory pack shall require an access policy to create its tools, and shall

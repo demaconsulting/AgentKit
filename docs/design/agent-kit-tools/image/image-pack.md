@@ -61,6 +61,21 @@ that published only one of them would offer a model either a region request it c
 size it has nothing to use. Called once per `ToolPackBuilder.Build`, and only when the host
 provides the Vision capability.
 
+**This pack does not filter on the policy, and the reason is a decision rather than an oversight.**
+The rule the text-file and file families apply — described under *Policy-derived publication* in the
+system design — is "could this tool ever succeed under this policy", not "could every argument ever
+succeed". Both tools here clear that bar under a policy that permits no writing anywhere: reading
+an image is a read, and the crop tool's primary mode returns the region inline as image content and
+writes nothing. The crop tool's optional `destination` genuinely does need a write grant, but
+withholding the whole tool over an optional argument would remove a fully working capability, and
+treating a narrowable parameter as grounds for suppressing a tool would mean every optional
+argument needs a gate of its own. A destination named under a read-only policy is answered by the
+ordinary write denial, which enumerates the writable locations, so the model learns its options in
+one turn instead of losing the tool permanently.
+
+**Nor does the crop tool's description vary with the policy.** That decision, and the compile-time
+constraint that forces it, are recorded in *Image Crop Tool Design*.
+
 #### Error Handling
 
 `ArgumentNullException` is raised for a null policy. This is validated here as well as in the tool's

@@ -29,12 +29,33 @@ sections:
               - id: AgentKitTools-File-Pack-RegistersFourTools
                 title: >-
                   The pack shall create its four tools — list, copy, move and delete — in a fixed,
-                  documented order.
+                  documented order, whenever the access policy permits writing in any location.
                 justification: |
                   The order a model sees the tools in is observable, so it is fixed rather than
-                  incidental.
+                  incidental. Any location being writable is enough: an agent that may write only a
+                  session location outside the workspace still receives every management tool,
+                  because every one of them could succeed there.
                 tests:
-                  - FilePack_CreateTools_RegistersListCopyMoveDeleteInOrder
+                  - FilePack_CreateTools_WriteGrantingPolicy_RegistersListCopyMoveDeleteInOrder
+                  - FilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
+
+              - id: AgentKitTools-File-Pack-SuppressesWriteToolsWithoutAWriteGrant
+                title: >-
+                  The pack shall withhold copying, moving and deleting when the access policy
+                  permits no writing anywhere, offering only listing.
+                tags: [security]
+                justification: |
+                  Copying, moving and deleting each change the file system, so under a
+                  configuration that permits no writing anywhere every one of them could only
+                  answer a refusal. Withholding them is what stops an agent spending turns on a
+                  capability that cannot work and keeps the tools it is offered a truthful
+                  statement of what it can do. Listing is never withheld: it needs only permission
+                  to read in order to report what exists, and consults the write decision solely to
+                  mark a reported location as writable, so it stays fully useful and leaves the
+                  agent able to discover what it may read.
+                tests:
+                  - FilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheListTool
+                  - FilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
 
               - id: AgentKitTools-File-Pack-ToolsCarryFamilyPrefix
                 title: >-

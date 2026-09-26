@@ -188,7 +188,8 @@ conversation alive:
 - **Tool results**: text, structured data, binary, and image results, and refusals that carry a
   reason
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
-  gated on host capability
+  gated on host capability and narrowed by the access policy — a pack publishes only the tools the
+  policy could permit to succeed
 - **Session engine**: an agent session that compacts its own context, so a conversation outlives the
   provider's window. See [Sessions](#sessions) below.
 
@@ -232,7 +233,12 @@ grant the working directory whatever access it should have — it receives none 
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
 but AgentKit does not replace OS-level isolation for untrusted code. Symbolic links, directory
 junctions and other reparse points are not a protection boundary: a path that reaches outside a
-granted location through a link is not detected. Because the image family
+granted location through a link is not detected. The policy also decides which tools exist at all:
+a pack publishes only the tools the policy could permit to succeed, so a policy holding no
+read-write grant anywhere withholds every tool that can act only by writing — the five editing
+tools of the text file family and the three management tools of the file family. The question is
+asked of the whole policy, so a read-only workspace paired with a read-write session folder still
+publishes them all. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tools only when the host
 declares that capability; a host that does not is never offered `image_read` or `image_crop`.
 

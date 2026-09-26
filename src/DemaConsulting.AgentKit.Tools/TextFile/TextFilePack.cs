@@ -25,6 +25,15 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     jobs in separate families is what lets each tool's description say one clear thing.
 ///     </para>
 ///     <para>
+///     <b>Three of the eight tools are published under every policy; five need a write grant.</b>
+///     <c>text_file_search</c>, <c>text_file_read</c> and <c>text_file_copy_lines</c> consult only
+///     the read decision, so they are always published. <c>text_file_create</c>,
+///     <c>text_file_write</c>, <c>text_file_replace</c>, <c>text_file_cut_lines</c> and
+///     <c>text_file_paste_lines</c> can act only by writing, so the pack withholds all five when
+///     <see cref="PathPolicy.AnyLocationIsWritable"/> is <see langword="false"/> — see
+///     <see cref="CreateTools"/>.
+///     </para>
+///     <para>
 ///     <b>Navigation is by line number; editing in place is by content.</b> Search, read, cut and
 ///     copy address lines by number, while replace addresses text by exact content. The spike observed
 ///     models mixing the two dialects freely and correctly — searching for a line number, then
@@ -33,10 +42,15 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <para>
 ///     <b>The write, cut, copy and paste tools share one buffer per composition.</b> Every call to
 ///     <see cref="CreateTools"/> allocates a fresh <see cref="TextFileLineBuffers"/> and gives it to
-///     the write, cut, copy and paste tools, so a range cut or copied in one call can be pasted back
-///     in another against the same file set, and content a write displaced can be restored from the
-///     slot it was captured into, while two independently composed tool sets never share slots. The
-///     buffer lives exactly as long as the tools do.
+///     whichever of the write, cut, copy and paste tools it publishes, so a range cut or copied in
+///     one call can be pasted back in another against the same file set, and content a write
+///     displaced can be restored from the slot it was captured into, while two independently
+///     composed tool sets never share slots. The buffer lives exactly as long as the tools do. Under
+///     a policy that permits no writing, <c>text_file_copy_lines</c> is the only tool holding the
+///     buffer, so what it fills has no drain — <c>paste</c> is the buffer's only reader and the
+///     buffer deliberately offers no peek or clear tool. Copy stays published nonetheless, because
+///     the rule a pack applies is "could the policy permit this tool to succeed", which a pack can
+///     evaluate, and not "is this tool useful", which it cannot.
 ///     </para>
 ///     <para>
 ///     <see cref="FamilyPrefix"/> is published as a constant as well as through the contract, so that
@@ -46,7 +60,10 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     <para>
 ///     <b>The family requires no host capability.</b> Reading and editing text needs nothing of the
 ///     model or the application beyond what every host already provides, so every host receives the
-///     family.
+///     family. That is a separate gate from the write-grant filtering described above: the host
+///     capability decides whether the pack is asked for tools at all, and the policy decides which of
+///     its tools it then returns. A host that grants nothing still receives this family; a policy
+///     that permits no writing still receives its three reading tools.
 ///     </para>
 ///     <para>
 ///     The class is stateless — the per-composition buffer lives on the tools it creates, not on the
@@ -56,10 +73,14 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 /// <example>
 ///     <para>
 ///     Attaching the family. The pack requires no host capability, so it is registered by every
-///     composition. It publishes eight tools, in this order: <c>text_file_search</c>,
+///     composition. Under a policy that permits writing somewhere it publishes eight tools, in this
+///     order: <c>text_file_search</c>,
 ///     <c>text_file_read</c>, <c>text_file_create</c>, <c>text_file_write</c>,
 ///     <c>text_file_replace</c>, <c>text_file_cut_lines</c>, <c>text_file_copy_lines</c>, and
-///     <c>text_file_paste_lines</c>. Every one of them is governed by
+///     <c>text_file_paste_lines</c>. The policy below grants a read-write session location, so all
+///     eight appear; had every grant been read-only, the three reading tools —
+///     <c>text_file_search</c>, <c>text_file_read</c> and <c>text_file_copy_lines</c> — would be the
+///     whole list. Every one of them is governed by
 ///     the policy the builder was constructed with — the pack itself grants nothing.
 ///     </para>
 ///     <code>
@@ -127,18 +148,43 @@ public sealed class TextFilePack : IToolPack
     ///     Creates the family's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The order — search, read, create, write, replace, cut, copy, paste — is fixed rather than
     ///     incidental, because the order a model sees the tools in is observable. It descends in
     ///     scope through the three editing tools: bring a file into existence, set its whole content,
-    ///     change part of its content. A fresh
-    ///     <see cref="TextFileLineBuffers"/> is allocated here and shared between the write, cut, copy
-    ///     and paste tools, giving the buffer exactly the lifetime of this composition's tools. The
+    ///     change part of its content. When tools are withheld the survivors keep their relative
+    ///     order, so a model never sees the family rearranged, only shortened. A fresh
+    ///     <see cref="TextFileLineBuffers"/> is allocated here and shared between whichever of the
+    ///     write, cut, copy and paste tools are published, giving the buffer exactly the lifetime of
+    ///     this composition's tools. The
     ///     policy is passed to each tool's factory and captured there, so no tool in the family can
     ///     observe a different policy from its neighbor.
+    ///     </para>
+    ///     <para>
+    ///     <b>The pack declares what tools exist; the policy decides which can function.</b> A tool
+    ///     that can act only by writing, under a policy holding no read-write grant anywhere, could
+    ///     only ever return a refusal — so it is not published at all, rather than spending a
+    ///     declaration and a model's attention on a capability that cannot work. This is the
+    ///     reasoning <see cref="ToolPackBuilder.Build"/> already applies one level up, where a pack
+    ///     whose required capabilities the host did not grant is never asked for its tools, applied
+    ///     one level finer. The question asked is
+    ///     <see cref="PathPolicy.AnyLocationIsWritable"/> — a fact about the whole policy, not about
+    ///     any path — so a policy granting a read-only workspace and a writable session location
+    ///     publishes every tool, because writing there is genuinely possible.
+    ///     </para>
+    ///     <para>
+    ///     <c>text_file_copy_lines</c> is deliberately not among the write-gated tools: it consults
+    ///     only the read decision, by the design decision recorded on
+    ///     <see cref="TextFileCopyLinesTool"/>, and so can succeed under any policy that permits
+    ///     reading at all.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The search, read, create, write, replace, cut, copy and paste tools, in that
-    ///     order.</returns>
+    /// <returns>
+    ///     The search, read, create, write, replace, cut, copy and paste tools, in that order, when
+    ///     the policy permits writing in at least one location; otherwise just the search, read and
+    ///     copy tools, in that order. Never null and never containing a null element.
+    /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -150,19 +196,41 @@ public sealed class TextFilePack : IToolPack
 
         // One buffer per composition, shared by write, cut, copy and paste: a range cut here can be
         // pasted back here, content a write displaced can be restored here, and two separately
-        // composed tool sets never share slots.
+        // composed tool sets never share slots. Allocated even under a read-only policy, because
+        // copy is still published and still needs somewhere to put what it copies.
         var buffers = new TextFileLineBuffers();
 
-        return
+        // Asked once, of the policy as a whole: can this composition write anywhere at all? The
+        // five tools that can act only by writing are published only when it can.
+        var writable = policy.AnyLocationIsWritable;
+
+        // Search and read consult only the read decision, so they open the family under any policy.
+        List<AIFunction> tools =
         [
             TextFileSearchTool.Create(policy),
-            TextFileReadTool.Create(policy),
-            TextFileCreateTool.Create(policy),
-            TextFileWriteTool.Create(policy, buffers),
-            TextFileReplaceTool.Create(policy),
-            TextFileCutLinesTool.Create(policy, buffers),
-            TextFileCopyLinesTool.Create(policy, buffers),
-            TextFilePasteLinesTool.Create(policy, buffers)
+            TextFileReadTool.Create(policy)
         ];
+
+        // The four write-performing tools that precede copy in the fixed order.
+        if (writable)
+        {
+            tools.Add(TextFileCreateTool.Create(policy));
+            tools.Add(TextFileWriteTool.Create(policy, buffers));
+            tools.Add(TextFileReplaceTool.Create(policy));
+            tools.Add(TextFileCutLinesTool.Create(policy, buffers));
+        }
+
+        // Copy consults the read decision only, so it survives a read-only policy. It is added
+        // between the two write-gated groups rather than after them, because the published order is
+        // part of the contract and copy sits seventh in it.
+        tools.Add(TextFileCopyLinesTool.Create(policy, buffers));
+
+        // Paste is the buffer's only reader and writes what it drains, so it is write-gated too.
+        if (writable)
+        {
+            tools.Add(TextFilePasteLinesTool.Create(policy, buffers));
+        }
+
+        return tools;
     }
 }

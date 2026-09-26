@@ -63,6 +63,12 @@ public enum HostCapabilities
 ///     already have been offered to the model.
 ///     </para>
 ///     <para>
+///     <b>Which of its tools a pack publishes is the pack's own decision, and may depend on the
+///     policy.</b> The two gates are distinct and complementary: the host capability decides
+///     whether a pack is asked for tools at all, and the policy it is then handed decides which of
+///     them it returns. See <see cref="CreateTools"/>.
+///     </para>
+///     <para>
 ///     Implementations are expected to be stateless and safe for concurrent use;
 ///     <see cref="CreateTools"/> receives everything it needs as an argument.
 ///     </para>
@@ -117,12 +123,28 @@ public interface IToolPack
     ///     Creates this pack's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Called once per <see cref="ToolPackBuilder.Build"/>, and not called at all when the
     ///     host does not provide <see cref="RequiredCapabilities"/>.
+    ///     </para>
+    ///     <para>
+    ///     <b>A pack may return a subset of its family, chosen from the policy.</b> The contract is
+    ///     that the collection is never null, holds no null element, and that every name it holds
+    ///     carries <see cref="FamilyPrefix"/> — it is deliberately <em>not</em> that the same tools,
+    ///     or the same number of them, are returned under every policy. An implementation is
+    ///     encouraged to withhold a tool the policy could never permit to succeed, because a tool
+    ///     whose only possible outcome is a refusal spends a declaration and the model's attention
+    ///     to achieve nothing. <see cref="PathPolicy.AnyLocationIsWritable"/> exists for exactly
+    ///     this decision: it answers, before the pack has any path to test, whether writing is
+    ///     possible anywhere at all under this policy. A pack that withholds tools should keep the
+    ///     survivors in their usual relative order, so a model sees the family shortened rather
+    ///     than rearranged.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool must observe.</param>
     /// <returns>
-    ///     The pack's tools. Must not be <see langword="null"/>, and must not contain a
+    ///     The pack's tools, which may be the subset of its family this policy could permit to
+    ///     succeed. Must not be <see langword="null"/>, and must not contain a
     ///     <see langword="null"/> element.
     /// </returns>
     IEnumerable<AIFunction> CreateTools(PathPolicy policy);

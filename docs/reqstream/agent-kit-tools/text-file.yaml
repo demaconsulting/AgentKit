@@ -13,14 +13,18 @@ sections:
           - id: AgentKitTools-TextFile-FamilyComposition
             title: >-
               The text file family shall publish eight content tools — search, read, create, write,
-              replace, cut-lines, copy-lines and paste-lines — under the text_file family prefix, and
-              shall require no host capability.
+              replace, cut-lines, copy-lines and paste-lines — under the text_file family prefix
+              when the access policy permits writing somewhere, and shall require no host
+              capability.
             justification: |
               An application attaches a capability as one pack rather than as a handful of
               individually registered tools, so the family must be the unit of attachment.
               Publishing every tool under one prefix keeps this family's names from colliding with
               those of any other library an application combines, and requiring no host capability
               means ordinary text file access works without an operator declaring anything first.
+              The full set of eight is what the family offers when the policy could permit every
+              one of them to succeed; which of them it offers otherwise is stated separately, so
+              that the host-capability question and the access-policy question stay distinct.
             children:
               - AgentKitTools-TextFile-SearchTool-ToolName
               - AgentKitTools-TextFile-ReadTool-ToolName
@@ -38,6 +42,34 @@ sections:
             tests:
               - TextFile_Family_ComposedThroughBuilder_PublishesTheEightContentTools
               - TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily
+
+          - id: AgentKitTools-TextFile-WriteToolsRequireAWriteGrant
+            title: >-
+              The text file family shall offer only those of its tools the access policy could
+              permit to succeed, withholding every tool that can act only by writing when the
+              policy permits no writing anywhere, and offering all of them whenever the policy
+              permits writing in any location.
+            tags: [security]
+            justification: |
+              A tool whose only possible outcome is a refusal costs an operator nothing to
+              configure and costs the agent on every turn: it occupies the model's attention, it
+              invites a request that can only fail, and a model that meets a refusal it cannot
+              avoid tends to retry it in another form rather than take the path that works.
+              Offering only what the configuration could permit means an agent given a read-only
+              configuration sees a coherent reading capability rather than a full editing
+              capability that silently cannot function. Searching, reading and copying a range of
+              lines can each succeed wherever reading is permitted, so none of them is withheld;
+              copying in particular fills a holding area whose only consumer is the paste tool, and
+              is still offered, because whether the configuration could permit a tool to succeed is
+              a question the family can answer while whether a tool is useful is not. Offering
+              every tool whenever writing is permitted anywhere is what keeps the read-wide,
+              write-narrow configuration working: an agent that may read a workspace and write a
+              separate session location must be able to edit, even though the location its relative
+              names resolve against cannot be written.
+            children:
+              - AgentKitTools-TextFile-Pack-SuppressesWriteToolsWithoutAWriteGrant
+            tests:
+              - TextFile_Family_ComposedThroughBuilder_PublishesTheEightContentTools
 
           - id: AgentKitTools-TextFile-GuardedConstruction
             title: >-

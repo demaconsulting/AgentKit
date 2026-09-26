@@ -47,7 +47,8 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's eight tools are published, each under the family prefix
+        // Assert: the family's eight tools are published, each under the family prefix. The policy
+        // permits writing, which is what publishes the five write-performing tools.
         Assert.Equal(
             [
                 "text_file_search",
@@ -76,7 +77,8 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's four tools are published, each under the family prefix
+        // Assert: the family's four tools are published, each under the family prefix. The policy
+        // permits writing, which is what publishes copy, move and delete.
         Assert.Equal(
             ["file_list", "file_copy", "file_move", "file_delete"],
             tools.Select(tool => tool.Name));
@@ -225,6 +227,186 @@ public class AgentKitToolsTests
 
         // Assert: the delegation requirement is unmet, so the family contributes nothing
         Assert.Empty(tools);
+    }
+
+    /// <summary>
+    ///     Proves that all seven families composed over one policy that permits no writing anywhere
+    ///     publish exactly the tools that policy could permit to succeed, so an agent is never
+    ///     offered a tool whose only possible outcome would be a refusal.
+    /// </summary>
+    /// <remarks>
+    ///     This is the system-level statement of the rule: the pack declares what tools exist, the
+    ///     policy decides which can function, and the published set is the intersection. The exact
+    ///     ordered list is asserted rather than set membership, because both which tools survive and
+    ///     the order a model sees them in are observable and are part of the contract.
+    /// </remarks>
+    [Fact]
+    public void AgentKitTools_SystemComposition_ReadOnlyPolicy_PublishesOnlyTheToolsThePolicyCanPermit()
+    {
+        // Arrange: every grant is read-only, and a host granting every capability so that nothing
+        // is withheld by the capability gate and the policy is the only filter in play
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+        var builder = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision | HostCapabilities.Delegation)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new MarkdownPack())
+            .Add(new ImagePack())
+            .Add(new MemoryPack(new Memory.StubEmbeddingGenerator()))
+            .Add(new TodoPack())
+            .Add(new AgentPack([], (_, _) => Task.FromResult<string?>("done"), []));
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: 3 text-file + 1 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 16,
+        // in pack-add order. The eight write-performing tools are absent.
+        Assert.Equal(16, tools.Count);
+        Assert.Equal(
+            [
+                "text_file_search",
+                "text_file_read",
+                "text_file_copy_lines",
+                "file_list",
+                "markdown_outline",
+                "image_read",
+                "image_crop",
+                "memory_file",
+                "memory_recall",
+                "memory_update",
+                "memory_revise",
+                "memory_forget",
+                "todo_list",
+                "todo_set",
+                "todo_remove",
+                "agent_run"
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that the same seven-family composition over a policy granting a read-only
+    ///     workspace and a writable session location publishes every tool, because the write
+    ///     question is asked of the policy as a whole rather than of the location relative names
+    ///     anchor to.
+    /// </summary>
+    [Fact]
+    public void AgentKitTools_SystemComposition_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool()
+    {
+        // Arrange: the mixed shape — read the user's documents, write artifacts somewhere else
+        using var fixture = new TextFile.TempDirectoryFixture();
+        var session = Path.Combine(fixture.Outside, "session");
+        Directory.CreateDirectory(session);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(session)]);
+        var builder = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Vision | HostCapabilities.Delegation)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new MarkdownPack())
+            .Add(new ImagePack())
+            .Add(new MemoryPack(new Memory.StubEmbeddingGenerator()))
+            .Add(new TodoPack())
+            .Add(new AgentPack([], (_, _) => Task.FromResult<string?>("done"), []));
+
+        // Act: build the tool list
+        var tools = builder.Build();
+
+        // Assert: 8 text-file + 4 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 24,
+        // in pack-add order
+        Assert.Equal(24, tools.Count);
+        Assert.Equal(
+            [
+                "text_file_search",
+                "text_file_read",
+                "text_file_create",
+                "text_file_write",
+                "text_file_replace",
+                "text_file_cut_lines",
+                "text_file_copy_lines",
+                "text_file_paste_lines",
+                "file_list",
+                "file_copy",
+                "file_move",
+                "file_delete",
+                "markdown_outline",
+                "image_read",
+                "image_crop",
+                "memory_file",
+                "memory_recall",
+                "memory_update",
+                "memory_revise",
+                "memory_forget",
+                "todo_list",
+                "todo_set",
+                "todo_remove",
+                "agent_run"
+            ],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that a child whose profile narrows the policy to a read-only grant receives a
+    ///     policy-filtered tool set, and that a write tool its allow-list names is simply absent
+    ///     rather than an error.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     This is emergent behavior worth asserting rather than leaving to be discovered. The
+    ///     agent pack composes a child through a fresh builder over the child's own policy, so
+    ///     policy-derived suppression applies at every depth with no agent-pack change. The profile
+    ///     then intersects its allow-list with what that composition published — the profile is a
+    ///     filter over what was published, never a source of tools — so naming a tool the child's
+    ///     policy suppressed yields absence, not a failure.
+    ///     </para>
+    ///     <para>
+    ///     The profile below deliberately names <c>text_file_write</c>, a tool that would be
+    ///     published to the read-write parent and is withheld from the read-only child. A test whose
+    ///     profile named only read tools would pass whether or not suppression reached the child.
+    ///     </para>
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitTools_SystemComposition_DelegatedAgentWithReadOnlyProfile_ReceivesOnlyReadTools()
+    {
+        // Arrange: a read-write parent, and a profile narrowing the same root to read-only whose
+        // allow-list names one write tool alongside three tools the child can genuinely use
+        using var fixture = new TextFile.TempDirectoryFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
+        var profile = new AgentProfile(
+            "reader",
+            "You read and report, and never change anything.",
+            ["text_file_search", "text_file_read", "text_file_write", "file_list"],
+            [PathRule.ReadOnly(fixture.Root)]);
+
+        // The runner stands in for a real child agent, capturing what it was handed.
+        IReadOnlyList<AIFunction> childTools = [];
+        Task<string?> Runner(ChildAgentRequest request, CancellationToken token)
+        {
+            childTools = request.Tools;
+            return Task.FromResult<string?>("read and reported");
+        }
+
+        var tools = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Delegation)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new AgentPack([profile], Runner, [new TextFilePack(), new FilePack()]))
+            .Build();
+
+        // Act: confirm the parent holds the write tool, then delegate to the read-only child
+        var parentHasWrite = tools.Any(tool => tool.Name == "text_file_write");
+        await tools.Single(tool => tool.Name == "agent_run").InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reader", ["task"] = "Report what you find." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the parent could write; the child received only the three named tools its own
+        // read-only policy published, with the named write tool simply absent
+        Assert.True(parentHasWrite);
+        Assert.Equal(
+            ["text_file_search", "text_file_read", "file_list"],
+            childTools.Select(tool => tool.Name));
     }
 
     /// <summary>

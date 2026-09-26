@@ -36,7 +36,7 @@ The subsystem contains ten units:
 | `TextFileCopyLinesTool`  | Publishes `text_file_copy_lines`: captures a line range, source intact   |
 | `TextFilePasteLinesTool` | Publishes `text_file_paste_lines`: inserts a captured line range         |
 | `TextFileLineBuffers`    | Stores named text slots shared by write, cut, copy and paste tools       |
-| `TextFilePack`           | Publishes the eight tools as one family under the `text_file` prefix     |
+| `TextFilePack`           | Publishes the text tools as one family under the `text_file` prefix      |
 
 `TextLines` and `TextFileBinaryGuard` are internal shared helpers rather than modeled units, in the
 same way `MemoryEmbedding` and `MemoryDenials` are for the Memory subsystem; both are described
@@ -81,6 +81,19 @@ sit in decreasing order of scope — bring a file into existence, set its whole 
 its content — so the two tools a write is most easily confused with sit either side of it. The order
 is observable in tool selection, so it is a contract rather than an incidental collection order. The
 helper unit is modeled because it is shared state, but it is not a published tool.
+
+**Write-performing tools need a write grant to be published.** Five of the eight — create, write,
+replace, cut-lines and paste-lines — can act only by writing, so under a policy holding no
+read-write grant anywhere they could only ever answer a refusal, and the pack does not publish them
+at all. The three that remain — search, read and copy-lines — consult only the read decision and
+are published under every policy. Copy-lines is the one that needs saying out loud: it is a
+write-shaped verb that performs no write, and it stays published by the same design decision that
+lets it copy from a read-only location. The consequence, stated rather than hidden, is that under a
+read-only policy the buffer copy fills has no drain, because paste is the buffer's only reader.
+That is accepted because the rule a pack can actually evaluate is "could the policy permit this
+tool to succeed", not "is this tool useful". The surviving tools keep their relative order, so a
+model sees the family shortened, never rearranged. See *Policy-derived publication* in the system
+design for the rule and the whole-family table.
 
 **Shared helpers.** `TextLines` is the one place the family decides what a line is. It splits and
 streams text into lines that each keep their own terminator, converts between a line number and a

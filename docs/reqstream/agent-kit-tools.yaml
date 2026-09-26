@@ -23,6 +23,48 @@ sections:
         tests:
           - AgentKitTools_SystemComposition_EmptyBuilder_ContributesNoTools
 
+      - id: AgentKitTools-PolicyDerivedPublication
+        title: >-
+          The library shall offer an agent only those tools the access policy the application
+          supplied could permit to succeed, so that a policy permitting no writing anywhere
+          presents no tool whose only outcome would be a refusal, while a policy permitting
+          writing in any location presents every tool, and a delegated agent is offered only what
+          its own narrowed policy could permit.
+        tags: [system, security]
+        justification: |
+          An application already decides which families an agent receives; what it could not
+          previously decide is that a family stop advertising the parts of itself its own
+          configuration forbids. A tool whose only possible outcome is a refusal is not free: it
+          occupies the model's attention on every turn, it invites a request that can only fail,
+          and a model that meets an unavoidable refusal commonly retries it in another form rather
+          than taking the path that works — so an agent configured to read is measurably worse off
+          being shown the ability to edit than not being shown it. Making the offered set the
+          intersection of what a family provides and what the configuration could permit turns the
+          list of tools into a truthful statement of what the agent can do, which is the same
+          reason a family the host cannot support is never offered at all rather than offered and
+          refused later. The question must be asked of the whole configuration rather than of one
+          location, or the common read-wide, write-narrow arrangement would lose its editing tools
+          the moment its writable location sat outside the workspace. Families whose work touches
+          no governed location are unaffected, and no family infers permission to write from
+          permission to read. Because a delegated agent is composed against its own narrowed
+          configuration, the same rule reaches every depth without a delegating family doing
+          anything, and a tool named for a child that its configuration cannot support is absent
+          rather than an error — which is what makes a child restricted to reading genuinely
+          read-only in what it is offered, not merely in what it is permitted.
+        children:
+          - AgentKitCore-PathPolicy-WriteGrantVisible
+          - AgentKitTools-TextFile-WriteToolsRequireAWriteGrant
+          - AgentKitTools-File-WriteToolsRequireAWriteGrant
+          - AgentKitTools-Image-Pack-PublishedUnderEveryPolicy
+          - AgentKitTools-Markdown-Pack-PublishedUnderEveryPolicy
+          - AgentKitTools-Memory-Pack-PublishedUnderEveryPolicy
+          - AgentKitTools-Todo-Pack-PublishedUnderEveryPolicy
+          - AgentKitTools-Agent-Pack-PublishedUnderEveryPolicy
+        tests:
+          - AgentKitTools_SystemComposition_ReadOnlyPolicy_PublishesOnlyTheToolsThePolicyCanPermit
+          - AgentKitTools_SystemComposition_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
+          - AgentKitTools_SystemComposition_DelegatedAgentWithReadOnlyProfile_ReceivesOnlyReadTools
+
       - id: AgentKitTools-TextFileFamily-GuardedTextFileAccess
         title: >-
           The library shall provide a text file family that searches, reads, creates and edits the
@@ -30,6 +72,7 @@ sections:
           interpreting the paths a model states as relative to the workspace, paging a read to a
           line-numbered window, editing by exact content match and by captured line range, setting a
           file's whole content with the content it displaces captured for recovery,
+          offering the editing tools only where the policy could permit them to succeed,
           publishing every tool under one family prefix and refusing rather than throwing when the
           policy does not permit a request.
         tags: [system, security]
@@ -64,8 +107,9 @@ sections:
           deletes files of any type under the access policy the composing application supplies,
           judging each endpoint by the policy decision that matches it, refusing to overwrite an
           existing destination unless overwrite is explicitly permitted, deleting only a single
-          file and never a directory, publishing every tool under one family prefix and refusing
-          rather than throwing when the policy does not permit a request.
+          file and never a directory, offering the copying, moving and deleting tools only where
+          the policy could permit them to succeed, publishing every tool under one family prefix
+          and refusing rather than throwing when the policy does not permit a request.
         tags: [system, security]
         justification: |
           Managing the files an agent works with — listing what exists, copying, moving and
@@ -117,7 +161,8 @@ sections:
           and refusing a region that is not wholly inside it, writing that region to a destination
           a read-write grant permits when the caller names one, interpreting the paths a model
           states
-          as relative to the workspace, publishing every tool under one family
+          as relative to the workspace, offering both of its tools under every policy including
+          one that permits no writing, publishing every tool under one family
           prefix, delivering the content to the caller rather than a serialized copy of it, and
           registering the family only for a host that declares it can present visual content to a
           model.

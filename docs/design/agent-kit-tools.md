@@ -185,6 +185,67 @@ description of.
 4. **Output**: One ordered tool list, governed by the single policy — the tools of every family the
    application attached, in the order it attached them
 
+### Policy-derived publication
+
+The registration check above decides _whether a family is asked for its tools_. A second, finer
+decision then happens inside each family, and the two must not be confused: the policy the family
+is handed decides _which of its tools it returns_. The rule is one sentence:
+
+> A pack publishes a tool when the policy could permit that tool to succeed.
+
+The question a family asks is `PathPolicy.AnyLocationIsWritable`, which reports whether the policy
+holds any read-write grant at all. It is deliberately a fact about the whole policy and not about
+any one path: a policy granting a read-only workspace and a read-write session location can
+genuinely write, so it must keep its editing tools even though the location its relative names
+resolve against cannot be written. Asking the per-path question instead would be the wrong rule and
+would break that common read-wide, write-narrow arrangement.
+
+The rationale is the same one that gates a whole family on host capability. A tool whose only
+possible outcome is a refusal is not free: it occupies the model's attention on every turn, it
+invites a request that can only fail, and a model met with an unavoidable refusal tends to retry it
+in another form rather than take the path that works. Making the offered set the intersection of
+what a family provides and what the policy could permit turns the tool list into a truthful
+statement of what the agent can do.
+
+| Family | Filters? | Needs a write grant | Read-only total |
+| --- | --- | ---: | ---: |
+| TextFile | Yes | 5 of 8 | 8 → **3** |
+| File | Yes | 3 of 4 | 4 → **1** |
+| Image | No | none | 2 → **2** |
+| Markdown | No | none | 1 → **1** |
+| Memory | No | none | 5 → **5** |
+| Todo | No | none | 3 → **3** |
+| Agent | No | none | 1 → **1** |
+
+The five TextFile tools that need a write grant are `text_file_create`, `text_file_write`,
+`text_file_replace`, `text_file_cut_lines` and `text_file_paste_lines`; `text_file_search`,
+`text_file_read` and `text_file_copy_lines` are published under every policy. The three File tools
+that need one are `file_copy`, `file_move` and `file_delete`, leaving `file_list` published under
+every policy.
+
+Eight tools in total need a write grant: five in the TextFile family and three in the File family.
+All seven families composed over a policy that permits no writing anywhere therefore publish
+3 + 1 + 2 + 1 + 5 + 3 + 1 = 16 tools, against 24 under a policy that permits writing somewhere.
+
+Why each non-filtering family does not filter:
+
+- **Image** — both tools succeed under a read-only policy. Reading an image is a read, and
+  cropping without a destination returns image content rather than writing a file. The crop tool's
+  optional `destination` does need a write grant, but the rule is "could this tool ever succeed",
+  not "could every argument ever succeed"; see _Image Pack Design_ and _Image Crop Tool Design_.
+- **Markdown** — `markdown_outline` consults only the read decision.
+- **Memory** and **Todo** — both families accept the policy and ignore it. Their state is the
+  pack's own store, not a location the policy governs, so a read-only _path_ policy narrows
+  nothing they do.
+- **Agent** — `agent_run` writes no file. Its use of the policy is to bound what a child may be
+  granted. A child is composed through a fresh builder over the _child's_ own policy, so
+  policy-derived publication reaches every depth automatically; a profile's allow-list is then
+  intersected with what that composition published, so a write tool a profile names for a
+  read-only child is simply absent rather than an error.
+
+Nothing reports which tools were withheld. That is the same decision `ToolPackBuilder` makes about
+skipped packs, and for the same reason; see _Tool Pack Builder Design_.
+
 ## Design Constraints
 
 - **Peer, not a layer**: The package depends on AgentKitCore, the Base Class Library and the one

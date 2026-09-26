@@ -51,6 +51,24 @@ public class AgentPackTests
     }
 
     /// <summary>
+    ///     Proves a read-only path policy still publishes the delegation tool, because starting a
+    ///     child agent writes no file — the policy's role here is to bound what a child may be
+    ///     granted, not to permit an action this tool performs.
+    /// </summary>
+    [Fact]
+    public void AgentPack_CreateTools_ReadOnlyPolicy_StillPublishesTheRunTool()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: compose the family under that policy
+        var tools = new AgentPack([], FixedAnswer, []).CreateTools(policy).ToList();
+
+        // Assert: the delegation tool survives
+        Assert.Equal([AgentRunTool.ToolName], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
     ///     Proves the pack requires a policy to create its tools, since the policy is what a child's
     ///     grants are judged against.
     /// </summary>
