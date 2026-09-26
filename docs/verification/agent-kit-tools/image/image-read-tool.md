@@ -42,7 +42,7 @@ than treated as one.
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-six scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-five scenarios below pass without error or exception beyond
 those explicitly asserted. Image content arriving as a `JsonElement`, a permitted file that does not
 read, a relative name that is not read from the working directory, a refused file whose content
 leaks, a PDF routed through the image result path, a truncated result where a refusal was required,

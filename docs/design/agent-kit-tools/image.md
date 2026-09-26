@@ -21,10 +21,12 @@ returning a truncated image.
 
 The boundary is narrow and deliberate. The subsystem reads the visual content a vision host can
 render: the raster image types `png`, `jpg`/`jpeg`, `gif` and `webp`, and the paginated document
-type `pdf`. It does not write, list, convert or interpret content, and it does not read vector
-formats: an `.svg` is text a text tool reads, and an `.svgz` is that content compressed, which no
-tool in this family reads. Each of those would be a separate decision an operator should be able to
-grant or withhold separately, and none of them is needed for the "let the agent look at this file"
+type `pdf`. It does not list, convert or interpret content, and the one thing it writes is a
+cropped region of an image it was permitted to read — a single new PNG file, at a destination the
+policy's write decision permits and nowhere else. It does not read vector formats: an `.svg` is
+text a text tool reads, and an `.svgz` is that content compressed, which no tool in this family
+reads. Each of those would be a separate decision an operator should be able to grant or withhold
+separately, and none of them is needed for the "let the agent look at this file"
 loop this family exists to support.
 
 **A second, narrower boundary governs region extraction**, and the two are held in one place so the
@@ -187,11 +189,15 @@ interprets no path itself: it passes the model's text to the policy, which holds
 relative name is measured against. An absolute path remains expressible and remains subject to the
 same containment decision.
 
-**One decision per read.** Both tools consult `TryResolveRead`, and nothing in the subsystem
-consults the write decision, combines the two, or re-implements either. The decision is made on the
-path's normalized location, so a request outside the permitted location is refused without the
-tool having to reason about containment, and it is made before anything is learned about the file,
-so a refused path never discloses whether it exists.
+**One read decision per source, one independent write decision per destination.** Both tools
+consult `TryResolveRead` for the file they are asked to look at, and `ImageCropTool` additionally
+consults `TryResolveWrite` for a destination it is asked to write. The two are taken separately
+and neither is derived from the other, so a path an agent may read is refused for writing unless a
+write grant permits that as well — which is what keeps a read-wide, write-narrow configuration
+meaningful. Nothing in the subsystem combines the two decisions or re-implements either. Each is
+made on the path's normalized location, so a request outside the permitted location is refused
+without the tool having to reason about containment, and each is made before anything is learned
+about the file, so a refused path never discloses whether it exists.
 
 **The type is decided from the extension.** `ImageMediaTypes` maps an extension to the media type
 the family reads it as, because the media type is what a provider is told the content is and a

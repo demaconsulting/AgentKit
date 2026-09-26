@@ -25,12 +25,11 @@ provider-specific adapters, and the only one outside Core.
 
 ### Features Used
 
-- Header inspection for PNG and JPEG — reports the dimensions a file declares, and the channel
-  count and alpha flag of the encoding the *file* uses, reading only a signature and a header
-  chunk (PNG) or a bounded scan of leading marker segments (JPEG). Deliberately reports a
-  file's declared dimensions without enforcing what it will decode, which is what makes it usable
-  for deciding whether a decode is affordable. The same report states whether the library expects
-  a full decode of those bytes to succeed
+- Header inspection for PNG and JPEG — reports the dimensions a file declares, reading only a
+  signature and a header chunk (PNG) or a bounded scan of leading marker segments (JPEG).
+  Deliberately reports a file's declared dimensions without enforcing what it will decode, which
+  is what makes it usable for deciding whether a decode is affordable. The same report states
+  whether the library expects a full decode of those bytes to succeed
 - PNG decoding — every color type the specification defines, at every bit depth that
   specification permits for that color type, including palette-indexed and grayscale files, with
   palette indices resolved through the file's own palette
@@ -51,6 +50,13 @@ gains or loses a capability is reflected without a change here.
 
 Nothing in the library's vector, drawing, text or font surface is used, and no type from the
 library appears in any AgentKit signature.
+
+**The header report also carries a channel count and an alpha flag, and this family deliberately
+consumes neither.** Both describe the encoding the *file* uses — a palette-indexed PNG declares one
+channel per pixel — while a decoded pixel buffer is always 32-bit RGBA. A decode budget computed
+from the declared channel count would therefore under-count exactly the format a hostile caller
+would choose, by a factor of four, so the budget uses a fixed four bytes per pixel instead and
+neither field is read anywhere in this package.
 
 ### Integration Pattern
 

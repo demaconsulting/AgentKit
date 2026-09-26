@@ -45,7 +45,7 @@ the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all seventeen scenarios below pass without error or exception
+A subsystem test run passes when all nineteen scenarios below pass without error or exception
 beyond those explicitly asserted. A tool published outside the family prefix, image content
 arriving as a `JsonElement`, a family registered for a non-vision host, a pack consulted despite
 an unmet capability, a refusal raised as an exception rather than returned, a policy refusal that

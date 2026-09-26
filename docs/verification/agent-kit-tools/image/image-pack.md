@@ -28,7 +28,7 @@ Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-dir
 
 #### Acceptance Criteria
 
-A unit test run passes when all eight scenarios below pass without error or exception beyond those
+A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. A prefix that differs between the constant and the contract, a capability
 requirement other than vision, a tool count other than one, a null element, a tool outside the
 family prefix, an accepted null policy, and a created tool that does not observe the supplied policy
