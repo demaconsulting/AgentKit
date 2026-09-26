@@ -5,9 +5,10 @@ This document describes the unit-level verification strategy for the `ImagePack`
 #### Verification Approach
 
 Nothing is mocked or stubbed. The pack has no dependency worth substituting: it reads no state,
-calls one factory in this same subsystem, and passes on the access policy it was given. What must be
+calls the two tool factories in this same subsystem, and passes on the access policy it was given.
+What must be
 verified is what a composing application can observe — the prefix it claims, the capability it
-requires, the tool it produces, and that the policy supplied is the one governing it.
+requires, the tools it produces, and that the policy supplied is the one governing them.
 
 The last of those is asserted **behaviorally** rather than by reference comparison: the scenario
 creates the pack's tool from a policy rooted at one location, then reads one permitted path and one
@@ -30,9 +31,9 @@ Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-dir
 
 A unit test run passes when all nine scenarios below pass without error or exception beyond those
 explicitly asserted. A prefix that differs between the constant and the contract, a capability
-requirement other than vision, a tool count other than one, a null element, a tool outside the
-family prefix, an accepted null policy, and a created tool that does not observe the supplied policy
-each constitute a failure.
+requirement other than vision, a tool count other than two, a tool named anything other than
+`image_read` or `image_crop`, a null element, a tool outside the family prefix, an accepted null
+policy, and a created tool that does not observe the supplied policy each constitute a failure.
 
 #### Test Scenarios
 
