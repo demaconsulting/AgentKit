@@ -96,6 +96,16 @@ public static class AgentComposition
     ///     the workspace is the anchor, so it is addressed by bare relative names, while the session
     ///     folder lies outside the anchor and can only be addressed absolutely.
     ///     </para>
+    ///     <para>
+    ///     <b>The figure-preparation sentences extend the create-in-the-session-folder thread
+    ///     rather than opening a new one.</b> They sit immediately after it and before the
+    ///     refusal-handling guidance, because they are the same fact applied to a second kind of
+    ///     artifact: the session folder is the only location writable in both workspace modes, so
+    ///     a <c>.png</c> destination stated as that folder's absolute path is the only destination
+    ///     that always works. Naming the workspace instead would be wrong under
+    ///     <c>--read-only-workspace</c>, and stating the extension up front means the agent learns
+    ///     the rule from the instructions rather than only by being refused.
+    ///     </para>
     /// </remarks>
     /// <param name="workspaceRoot">The absolute workspace path named in the instructions.</param>
     /// <param name="sessionRoot">The absolute session path named in the instructions.</param>
@@ -115,7 +125,8 @@ public static class AgentComposition
             "session folder is '" + sessionRoot + "' (read-write); it lies outside the workspace, " +
             "so only its full absolute path reaches it. You can search and read text files, create " +
             "and edit them, list, copy, move and delete files of any type, outline a Markdown " +
-            "file's sections, and (when a vision tool is offered) look at images — but only within " +
+            "file's sections, and (when a vision tool is offered) look at images and cut a region " +
+            "out of one — but only within " +
             "those two locations, and only where you have write access. A path outside them will " +
             "be refused, and that is by design. You have no shell, terminal, code-execution, or " +
             "web/fetch tool; do not claim otherwise. " +
@@ -130,6 +141,11 @@ public static class AgentComposition
             "files in the session " +
             "folder using its full absolute path exactly as given above — a relative name is " +
             "always interpreted against the workspace, so it will not reach any other location. " +
+            "When an image holds the detail that matters, crop the region that matters into the " +
+            "session folder with image_crop, giving it the destination's full absolute path " +
+            "ending in '.png', then reference that produced file from the document you are " +
+            "writing. Cropping with no destination shows you the region; cropping with one " +
+            "produces a file you can point at. " +
             "When a tool refuses a request, read the refusal: it echoes what you asked for, states " +
             "how it was interpreted, and lists every permitted location with its access level, " +
             "which is enough to reissue the request correctly. Do not retry the identical call, " +

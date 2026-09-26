@@ -8,7 +8,8 @@ namespace DemaConsulting.AgentKit.Samples.DocumentAssistant.Tests;
 ///     the two locations the run granted. These scenarios pin that: both absolute paths appear, the
 ///     workspace access level follows the grant, and the statements the sample relies on for its
 ///     demonstrations — no shell or web tool, discovery by a no-argument listing, the
-///     relative-versus-absolute dialect, and reading a refusal instead of retrying it — survive the
+///     relative-versus-absolute dialect, the figure-preparation loop, and reading a refusal instead
+///     of retrying it — survive the
 ///     change from a constant to a builder.
 /// </remarks>
 public class AgentCompositionTests
@@ -127,5 +128,48 @@ public class AgentCompositionTests
                 "always interpreted against the workspace",
                 instructions,
                 StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    ///     Proves the figure-preparation workflow is discoverable from the instructions.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The guidance is judged as one span of prose rather than as three substrings that could
+    ///     each have come from somewhere else in the instructions — <c>.png</c> in particular
+    ///     appears in unrelated examples elsewhere in the sample's documentation, and a test that
+    ///     found it anywhere would pass on prose that said nothing about cropping.
+    ///     </para>
+    ///     <para>
+    ///     Each of the three assertions is a separate way the guidance could be wrong. Without the
+    ///     tool named, the workflow is not discoverable at all. Without the session folder named,
+    ///     the destination the agent is pointed at would be the workspace, which is refused under
+    ///     <c>--read-only-workspace</c> — the session folder is the only location writable in both
+    ///     modes. Without the extension stated, the agent learns the rule only by being refused.
+    ///     </para>
+    /// </remarks>
+    [Fact]
+    public void AgentComposition_BuildInstructions_AnyRun_DescribesTheCropToFileWorkflow()
+    {
+        // Arrange: the instructions for an ordinary run
+        var instructions = AgentComposition.BuildInstructions(WorkspacePath, SessionPath, false);
+
+        // Act: isolate the figure-preparation guidance, which sits between the create-in-the-
+        // session-folder thread it extends and the refusal-handling guidance that follows it
+        var start = instructions.IndexOf("When an image holds", StringComparison.Ordinal);
+        Assert.True(start >= 0, "The instructions describe no figure-preparation workflow.");
+
+        var remainder = instructions[start..];
+        var end = remainder.IndexOf("When a tool refuses", StringComparison.Ordinal);
+        Assert.True(end > 0, "The figure-preparation guidance is not followed by the refusal guidance.");
+
+        var guidance = remainder[..end];
+
+        // Assert: the tool is named, the destination is the location writable in both modes, and
+        // the extension rule is stated up front rather than learned from a refusal
+        Assert.Multiple(
+            () => Assert.Contains("image_crop", guidance, StringComparison.Ordinal),
+            () => Assert.Contains("session folder", guidance, StringComparison.Ordinal),
+            () => Assert.Contains(".png", guidance, StringComparison.Ordinal));
     }
 }
