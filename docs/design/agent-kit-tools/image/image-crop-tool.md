@@ -354,6 +354,15 @@ genuine defect still surfaces during development. **A failure inside the encoder
 this unit constructed, is a defect rather than anything a model can provoke, and is allowed to
 propagate** — the same dividing line the read tool draws.
 
+**Cancellation is not classified, so a canceled call propagates as the runtime expects.** A
+cancellation is not an access failure, and reporting it as one would tell the model a destination
+was unwritable when the caller simply stopped waiting. It has one consequence worth stating: the
+`FileStream` is disposed with whatever bytes reached it, so a cancellation arriving mid-write
+leaves a partial `.png` at the destination. A retry meets that file as an existing one and is
+refused, which is the correct answer — the partial file is the operator's to remove, and deleting
+it here would mean a canceled tool call performing a file deletion the agent never asked for.
+`text_file_create` carries the same exposure for the same reason.
+
 **Neither the decoding library's own exception text nor the operating system's ever reaches a
 model.** Both are developer-facing and may echo values read out of the file or details of the
 host's layout, neither of which belongs in a transcript that leaves the process. Every message this

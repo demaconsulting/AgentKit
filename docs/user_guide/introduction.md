@@ -285,9 +285,10 @@ read-wide, write-narrow policy be expressed rather than approximated: point the 
 a folder you only want read, point a read-write grant at the folder you want artifacts produced in,
 and the agent can crop from the first into the second and nowhere else. The refusal for a
 destination outside the write grant enumerates the locations that are writable, with their access
-levels, so the agent recovers rather than guesses. **The destination must end in `.png`**, because
-a region is always encoded as PNG and a file named otherwise would be one every later reader is
-entitled to misread, and **an existing file is never replaced** — the same guarantee
+levels, so the agent recovers rather than guesses. **The destination must name a `.png` file** —
+matched case-insensitively, as every extension this family reads is — because a region is always
+encoded as PNG and a file named otherwise would be one every later reader is entitled to misread,
+and **an existing file is never replaced** — the same guarantee
 `text_file_create` makes. No directory is created for a destination whose parent does not exist.
 
 Three of the families carry state or collaborators beyond the path policy, and an application
