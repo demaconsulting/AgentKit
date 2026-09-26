@@ -105,8 +105,8 @@ the next allocates anything:
 10. The header is read. A header that will not read is refused as `UnsupportedMediaType` stating
     that the file is not readable as the resolved type — **and stating no size, because none was
     read**
-11. A PNG declaring interlaced storage is refused as `UnsupportedMediaType`, naming interlacing and
-    the declared size
+11. A file the header reader reports as one the decoder will not decode is refused as
+    `UnsupportedMediaType`, stating that the file is well formed and naming the declared size
 12. The decode budget is checked against the declared dimensions
 13. The region is checked against the declared dimensions
 14. The image is decoded and the region copied out of it — the first step that allocates pixel data
@@ -186,6 +186,18 @@ change.
 without reading the whole image again: `Cropped region 120,80 400x300 of a 1920x1080 image/png
 image, returned as image/png.`
 
+**Every pixel buffer this unit creates is released.** The decoded image is disposed as soon as the
+region has been copied out of it, because the region copy is independent of its source and nothing
+the region needs outlives the surface it came from; the region itself is disposed once it has been
+encoded, which is why the encode precedes the disposal rather than following it. The library
+documents that disposal releases nothing in the current release — the buffer is a plain managed
+array — so honoring the contract now is what keeps this unit correct when a future release backs
+that buffer with a pooled array, rather than a change that would then have to be found.
+
+**The encoder sits outside the decode's `catch`, deliberately.** Widening that clause to span the
+encode would convert a defect on a buffer this unit constructed into a "pixel data could not be
+decoded" refusal, which is a false statement about the file and hides the defect.
+
 #### Error Handling
 
 Everything a model controls produces a returned refusal, never an exception: an exception raised
@@ -206,26 +218,28 @@ echo values read out of the file, neither of which belongs in a transcript that 
 Every message this unit composes is its own.
 
 **Three undecodable conditions are distinguished, and the distinction is the size.** A file whose
-header will not read is refused with no size stated, because none was read. A file declaring
-interlaced storage is refused naming interlacing and the size, because the file is entirely well
-formed and describing it as damaged would be false. A file whose header read and whose body did not
-is refused naming the size and stating that the pixel data could not be decoded. Interlacing is
-detected from the header rather than inferred from a failed decode, because a decoder reports an
-interlaced file and a corrupt file with the same exception type; see *Image Subsystem Design*.
+header will not read is refused with no size stated, because none was read. A file the header
+reader reports as one the decoder will not decode is refused stating that it is well formed and
+naming the size, because describing an intact file as damaged would be false. A file whose header
+read and whose body did not is refused naming the size and stating that the pixel data could not
+be decoded. The middle condition is established from the header's own feasibility report rather
+than from any format knowledge this subsystem holds, so it generalizes to any feature the decoder
+declines; see *Image Subsystem Design*.
 
 Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
 `PathPolicy` message unchanged, disclosing the request, its interpretation and the permitted
 locations. Every refusal this unit composes itself interpolates only integers and the resolved
 media type — no absolute path, no permitted location, no directory separator. **Each refusal states
-a fact and stops**, and none of them names a sibling tool: the interlacing refusal hands over the
-declared size itself rather than sending the model elsewhere for it, and the non-croppable-type
-refusals state what the format is and which formats a region can be taken from.
+a fact and stops**, and none of them names a sibling tool: the well-formed-but-undecodable refusal
+hands over the declared size itself rather than sending the model elsewhere for it, and the
+non-croppable-type refusals state what the format is and which formats a region can be taken from.
 
 #### Dependencies
 
 `PathPolicy` and `ToolLimits` for the read decision and both ceilings, `ImageMediaTypes` for the
 croppable-type resolution and its refusals, `ImageProbe` for the header read that yields the
-declared size and the interlace flag, `ToolResult` for every result it returns, and
+declared size and whether the decoder expects to decode it, `ToolResult` for every result it
+returns, and
 `GuardedToolFactory` for construction. From the Base Class Library: `File`, `FileInfo`, `Directory`
 and `MemoryStream`. From the `CanvasNet` OTS item: the decoders, the pixel buffer's rectangular
 sub-region copy, the published per-axis bound and the encoder; see *CanvasNet Design*. **No type

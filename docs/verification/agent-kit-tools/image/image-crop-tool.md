@@ -47,8 +47,9 @@ explicitly asserted. A region arriving as a `JsonElement`, any pixel of a return
 from the source's, an out-of-bounds region answered with content rather than a refusal, a refusal
 that omits the image's real dimensions where they were read, a refusal that states dimensions that
 were never read, an oversized declared image that is decoded before being refused, a decode budget
-that accepts a palette-indexed image it would refuse in truecolor form, a well-formed interlaced
-file described as damaged, a refusal carrying the decoding library's own wording, a non-croppable
+that accepts a palette-indexed image it would refuse in truecolor form, a well-formed file the
+decoder will not decode described as damaged, a refusal carrying the decoding library's own
+wording, a non-croppable
 type refused with a sibling tool named, an exception or framework error raised at a malformed or
 omitted request, or a policy refusal that omits the request, permitted location or access level
 each constitute a failure.
@@ -259,16 +260,19 @@ The counterpart: JPEG bytes in a file named `.png`. Asserts by pattern that **no
 — nothing was read, so nothing is claimed — and asserts that no text from the decoding library
 reaches the model, since its messages are developer-facing and may echo values read out of the file.
 
-##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: An Interlaced PNG Is Refused Clearly
+##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: A Well-Formed File the Decoder Declines Is Refused
 
 **Test**: `ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions`
 
-Interlacing is the one thing a well-formed, specification-conforming file can declare that this
-unit will not decode, so the file is **not damaged** and must not be described as though it were.
-Asserts the refusal names interlacing specifically and states the declared size, and asserts it
-names **no sibling tool**: handing over the size directly serves the model better than sending it
-to another tool for the same fact, and naming a tool here would be a route to the content the
-refusal withheld rather than a statement of what the file is.
+Adam7 interlacing is today the one thing a well-formed, specification-conforming file can declare
+that this unit will not decode, so the file is **not damaged** and must not be described as though
+it were. Asserts the refusal states the file is well formed but uses a feature the tool does not
+decode, states the declared size, and is specifically **not** the undecodable refusal — the
+distinction is drawn from the header reader's feasibility report rather than from an exception, so
+the unit needed no knowledge of the PNG format to draw it. Asserts it names **no sibling tool**:
+handing over the size directly serves the model better than sending it to another tool for the
+same fact, and naming a tool here would be a route to the content the refusal withheld rather than
+a statement of what the file is.
 
 ##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: An Empty File Is Refused
 

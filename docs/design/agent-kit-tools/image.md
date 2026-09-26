@@ -86,7 +86,7 @@ to depend on its types to use the family.
 
 **The shared header probe.** `ImageProbe` answers what an image file declares about itself, from
 its header alone. It reports the declared pixel dimensions for the two formats this subsystem can
-read headers of, and — for a PNG — whether the file declares interlaced storage.
+read headers of, and whether the decoder expects a full decode to succeed.
 
 *Nothing it does allocates a pixel buffer.* A PNG header is 33 bytes; a JPEG header is found by a
 bounded scan of leading marker segments. That is what lets a caller consult the helper *before*
@@ -97,14 +97,17 @@ the tools want different things from a failure: for the read tool a failed probe
 its dimensions and nothing else. Neither the tools nor the helper ever surfaces the library's own
 exception text, which is developer-facing and may echo values read out of the file.
 
-*Interlacing is read from the header rather than inferred from a failed decode.* The decoder
-reports an interlaced file and a corrupt file with the same exception type, so the two are
-indistinguishable after the fact, and matching on an exception's message would be both fragile and
-a route for developer-facing text to reach a model. One named byte offset — the last byte of the
-PNG header payload — lets a refusal tell a model the true, specific reason rather than leaving it
-to guess whether its file is damaged. The cost is a single constant of format knowledge in a
-subsystem that otherwise decides an image's type from its extension; the alternative was a refusal
-that said only "could not be decoded" about a file that is not damaged at all.
+*Decode feasibility is read from the header rather than inferred from a failed decode.* The
+library itself reports, from the header, whether it expects to decode the file — so the subsystem
+holds no format knowledge of its own: no byte offset, no feature name, nothing that would have to
+be revisited when a decoder gains or loses a capability. A refusal can therefore tell a model that
+its file is well formed and merely of a kind this tool does not decode, rather than leaving it to
+guess whether the file is damaged, and the rule generalizes to any feature the decoder declines
+rather than the one variant this subsystem happened to know how to detect. The cost is that the
+refusal names no feature, because the report names none — the only feature token the library
+offers is reachable solely by attempting the decode this refusal exists to avoid. The distinction
+being protected is *damaged versus not damaged*, and that is stated directly; the alternative was
+a refusal that said only "could not be decoded" about a file that is not damaged at all.
 
 **The read caption carries the image's pixel dimensions.** A model can see a picture but cannot
 measure one, so without the size stated alongside the content it has no coordinate space in which
@@ -115,7 +118,9 @@ it hands a permitted file's bytes to the provider, whose own decoder is the auth
 a header this library cannot read costs the caption its dimensions and nothing else. Refusing on a
 failed enrichment would narrow the tool for no safety gain, since the bytes were already inside
 the binary ceiling and were already going to be returned. The rule is live rather than defensive:
-`gif`, `webp` and `pdf` are in the read tool's admitted set and have no probe at all.
+`gif`, `webp` and `pdf` are in the read tool's admitted set and have no probe at all, which makes
+them the common case rather than the edge case, and a malformed or truncated header may still
+belong to a file a provider renders.
 
 **A region is returned inline, refused rather than clamped, and bounded before it is decoded.**
 `ImageCropTool` returns the region a caller names in pixels as image content, carrying the source's

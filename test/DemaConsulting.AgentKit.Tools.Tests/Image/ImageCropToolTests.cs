@@ -704,14 +704,18 @@ public class ImageCropToolTests
     }
 
     /// <summary>
-    ///     Proves an interlaced PNG is refused clearly, naming the reason and the declared size.
+    ///     Proves a well-formed file the decoder will not decode is refused clearly, naming the
+    ///     kind of refusal and the declared size.
     /// </summary>
     /// <remarks>
-    ///     Interlacing is the one thing a well-formed, specification-conforming file of this type
-    ///     can declare that this tool will not decode, so the file is not damaged and must not be
-    ///     described as though it were. The refusal names the true reason and hands over the
-    ///     declared size directly — rather than naming the read tool, which would be a route to
-    ///     the content this refusal withheld rather than a statement of what the file is.
+    ///     Adam7 interlacing is today the one thing a well-formed, specification-conforming file
+    ///     of this type can declare that the decoder will not decode, so the file is not damaged
+    ///     and must not be described as though it were. The distinction is drawn from the header
+    ///     reader's feasibility report rather than from this library's own knowledge of the PNG
+    ///     format, so the refusal names no feature — the report names none — and generalizes to
+    ///     any feature a decoder later declines. The refusal hands over the declared size
+    ///     directly rather than naming the read tool, which would be a route to the content this
+    ///     refusal withheld rather than a statement of what the file is.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -725,10 +729,12 @@ public class ImageCropToolTests
         // Act: ask for a region of it
         var result = await InvokeAsync(tool, file, 4, 4, 8, 8);
 
-        // Assert: refused for interlacing specifically, with the size stated and no tool named
+        // Assert: refused as well formed but undecodable, with the size stated and no tool named
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("Adam7 interlacing", text, StringComparison.Ordinal);
+        Assert.Contains("well formed", text, StringComparison.Ordinal);
+        Assert.Contains("does not decode", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not be decoded", text, StringComparison.Ordinal);
         Assert.Contains("64x32 pixels", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
     }

@@ -364,7 +364,9 @@ public static class ImageCropTool
     /// <remarks>
     ///     <b>Every refusal here is decided before the step that would have made it expensive.</b>
     ///     The header is read first, so a file whose bytes are not of the type its extension
-    ///     claims is refused without any size being stated — because none was read. The declared
+    ///     claims is refused without any size being stated — because none was read. A file the
+    ///     header reader reports as one the decoder will not decode is refused next, before any
+    ///     budget arithmetic, since no budget could make it decodable. The declared
     ///     size is then checked against the decode budget, so a file declaring more pixels than
     ///     the host sanctioned is refused before a pixel buffer exists. The region is checked
     ///     against the declared size, so a request that could never have been satisfied is
@@ -381,25 +383,28 @@ public static class ImageCropTool
         // Nothing can be said about a file whose header will not read: it is not content of the
         // type its extension claimed, or it is truncated before its header ends, or it is empty.
         // The refusal states no size, because none was read.
-        if (!ImageProbe.TryReadSize(data, mediaType, out var imageWidth, out var imageHeight))
+        if (!ImageProbe.TryReadSize(
+                data,
+                mediaType,
+                out var imageWidth,
+                out var imageHeight,
+                out var canDecode))
         {
             return ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
                 "The file is not readable as " + mediaType + " content.");
         }
 
-        // Interlaced storage is the one thing a well-formed image of this type can declare that
-        // this tool will not decode. It is read from the header rather than inferred from a
-        // failed decode, so the model is told the true, specific reason instead of being left to
-        // guess whether its file is damaged. The declared size is handed over directly rather
-        // than the model being sent to another tool for it.
-        if (string.Equals(mediaType, ImageMediaTypes.Png, StringComparison.Ordinal)
-            && ImageProbe.IsInterlacedPng(data))
+        // A well-formed file the decoder will not decode is refused in those terms, from the
+        // header report rather than from any format knowledge of this library's own. The refusal
+        // hands over the declared size directly rather than sending the model to another tool
+        // for it, and names no feature, because the report names none.
+        if (!canDecode)
         {
             return ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
-                "This PNG uses Adam7 interlacing, which this tool does not decode. The image "
-                + "declares " + Size(imageWidth, imageHeight) + " pixels.");
+                "This image is well formed but uses a feature this tool does not decode. The "
+                + "image declares " + Size(imageWidth, imageHeight) + " pixels.");
         }
 
         // The decode budget, decided from the declared dimensions alone. Both bounds are named
@@ -455,7 +460,15 @@ public static class ImageCropTool
     ///     <para>
     ///     A failure inside the encoder, on a pixel buffer this tool constructed, is a defect
     ///     rather than anything a model can provoke, and is allowed to propagate — the same
-    ///     dividing line <see cref="IsAccessFailure"/> draws.
+    ///     dividing line <see cref="IsAccessFailure"/> draws. The encoder therefore sits outside
+    ///     the decode's <c>catch</c>: widening that clause to span it would silently report a
+    ///     defect as content that could not be decoded.
+    ///     </para>
+    ///     <para>
+    ///     <b>Every pixel buffer this method creates is released.</b> The decoded image is
+    ///     disposed as soon as the region has been copied out of it, because the copy is
+    ///     independent of its source; the region itself is disposed once it has been encoded,
+    ///     which is why the encode precedes the disposal rather than following it.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy whose ceilings apply.</param>
@@ -479,9 +492,10 @@ public static class ImageCropTool
         {
             using var source = new MemoryStream(data, writable: false);
 
-            // The pixel buffer type is not disposable, so nothing here is disposed and no
-            // 'using' governs a surface; both are ordinary managed objects.
-            var surface = string.Equals(mediaType, ImageMediaTypes.Png, StringComparison.Ordinal)
+            // The decoded image is released as soon as the region has been copied out of it:
+            // the copy is independent of its source, so nothing the region needs outlives the
+            // surface it came from.
+            using var surface = string.Equals(mediaType, ImageMediaTypes.Png, StringComparison.Ordinal)
                 ? PngCodec.Load(source)
                 : JpegCodec.Load(source);
 
@@ -492,39 +506,47 @@ public static class ImageCropTool
             // The header read but the body did not. The size is stated because it was read, which
             // is what makes this refusal distinguishable from the unreadable-header one. The
             // decoder's own message is never surfaced: it is developer-facing and may echo values
-            // read out of the file.
+            // read out of the file. This clause additionally covers the library's
+            // well-formed-but-unsupported exception type, which is the backstop should the
+            // header's feasibility report ever lag what the decoder actually accepts.
             return ToolResult.Denied(
                 DenialReason.UnsupportedMediaType,
                 "The image declares " + Size(imageWidth, imageHeight)
                 + " pixels, but its pixel data could not be decoded.");
         }
 
-        using var encoded = new MemoryStream();
-        PngCodec.Save(cropped, encoded, PngColorType.Rgba);
-        var bytes = encoded.ToArray();
-
-        // A large region of a compressed source, re-encoded losslessly, can genuinely exceed a
-        // ceiling the source file sat well inside. The same ceiling governs everything this
-        // family hands a provider, whatever produced the bytes.
-        if (bytes.Length > policy.Limits.MaxBinaryBytes)
+        // The region is released once it has been encoded. The encoder runs outside the catch
+        // above deliberately: a failure on a pixel buffer this tool constructed is a defect, not
+        // a refusal.
+        using (cropped)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
-                "The cropped image is " + Number(bytes.Length)
-                + " bytes, which exceeds the " + Number(policy.Limits.MaxBinaryBytes)
-                + "-byte binary limit.");
-        }
+            using var encoded = new MemoryStream();
+            PngCodec.Save(cropped, encoded, PngColorType.Rgba);
+            var bytes = encoded.ToArray();
 
-        // The caption restates the region AND the source's dimensions, so a follow-up region can
-        // be aimed without reading the whole image again. ToolResult.Image, never
-        // ToolResult.Structured: the latter is serialized to JSON by design, which would destroy
-        // the content the guarded factory exists to deliver intact.
-        return ToolResult.Image(
-            bytes,
-            ImageMediaTypes.Png,
-            "Cropped region " + region.Describe()
-            + " of a " + Size(imageWidth, imageHeight) + " " + mediaType
-            + " image, returned as " + ImageMediaTypes.Png + ".");
+            // A large region of a compressed source, re-encoded losslessly, can genuinely exceed
+            // a ceiling the source file sat well inside. The same ceiling governs everything this
+            // family hands a provider, whatever produced the bytes.
+            if (bytes.Length > policy.Limits.MaxBinaryBytes)
+            {
+                return ToolResult.Denied(
+                    DenialReason.ResourceTooLarge,
+                    "The cropped image is " + Number(bytes.Length)
+                    + " bytes, which exceeds the " + Number(policy.Limits.MaxBinaryBytes)
+                    + "-byte binary limit.");
+            }
+
+            // The caption restates the region AND the source's dimensions, so a follow-up region
+            // can be aimed without reading the whole image again. ToolResult.Image, never
+            // ToolResult.Structured: the latter is serialized to JSON by design, which would
+            // destroy the content the guarded factory exists to deliver intact.
+            return ToolResult.Image(
+                bytes,
+                ImageMediaTypes.Png,
+                "Cropped region " + region.Describe()
+                + " of a " + Size(imageWidth, imageHeight) + " " + mediaType
+                + " image, returned as " + ImageMediaTypes.Png + ".");
+        }
     }
 
     /// <summary>

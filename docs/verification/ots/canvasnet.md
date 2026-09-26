@@ -6,7 +6,8 @@ This document provides the verification evidence for the `CanvasNet` OTS softwar
 
 `CanvasNet` supplies the raster imaging capability the image family is built on: reading the pixel
 dimensions an image file declares in its header without decoding any pixel data — including for a
-file whose declared dimensions exceed what it will decode — decoding PNG and JPEG files into an
+file whose declared dimensions exceed what it will decode — reporting, from the header alone,
+whether a full decode is expected to succeed, decoding PNG and JPEG files into an
 addressable pixel buffer including a PNG whose pixels are stored as palette indices, copying a
 rectangular sub-region of such a buffer, and
 encoding a buffer back to a form that reproduces every pixel exactly when decoded again.
@@ -86,6 +87,18 @@ that the encoding alters none of them.
 
 **Requirement coverage**: `AgentKit-OTS-CanvasNet-Crop`, `AgentKit-OTS-CanvasNet-Encode`.
 
+#### ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions
+
+**Scenario**: A complete, well-formed PNG declaring Adam7 interlacing — today the one well-formed
+input this library does not decode — is offered to the image crop tool.
+
+**Expected**: A refusal stating the file is well formed but uses a feature the tool does not
+decode, naming the size the header declared, and specifically **not** the undecodable refusal —
+so the feasibility was reported from the header, before any decode was attempted, and the
+consuming tool needed no knowledge of the PNG format to say so.
+
+**Requirement coverage**: `AgentKit-OTS-CanvasNet-DecodeFeasibility`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-CanvasNet-HeaderProbe`**:
@@ -99,3 +112,5 @@ that the encoding alters none of them.
   ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
 - **`AgentKit-OTS-CanvasNet-Encode`**:
   ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+- **`AgentKit-OTS-CanvasNet-DecodeFeasibility`**:
+  ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions

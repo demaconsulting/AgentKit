@@ -76,3 +76,24 @@ sections:
             tags: [ots]
             tests:
               - ImageCropTool_Crop_ReturnedRegion_CarriesTheSourcePixelsExactly
+
+          - id: AgentKit-OTS-CanvasNet-DecodeFeasibility
+            title: >-
+              CanvasNet shall report, from an image file's header alone, whether decoding that
+              file is expected to succeed.
+            justification: |
+              The crop tool must tell a model the difference between a file that is damaged and a
+              file that is entirely well formed and merely uses a feature the decoder does not
+              implement, because the two call for different actions and describing the second as
+              damaged would be false. Establishing that difference after a failed decode means
+              matching on an exception, and establishing it before the decode means AgentKit
+              holding format knowledge of its own — the knowledge a consumer of a decoder should
+              never carry. A header reader that reports decode feasibility removes both, and
+              generalizes the refusal to any feature the decoder does not implement rather than
+              the one this library happened to know how to detect. AgentKit's own test, which
+              offers a complete, well-formed Adam7-interlaced PNG to the crop tool and asserts a
+              refusal stating the file is well formed rather than undecodable, proves the report
+              behaves as required.
+            tags: [ots]
+            tests:
+              - ImageCropTool_Crop_Adam7InterlacedPng_IsRefusedNamingTheDimensions

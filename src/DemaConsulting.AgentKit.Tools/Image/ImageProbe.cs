@@ -22,14 +22,21 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     deciding whether decoding the file is affordable at all.
 ///     </para>
 ///     <para>
+///     <b>The header also reports whether the decoder expects a full decode to succeed.</b> The
+///     report comes from the decoding library, so this family holds no format knowledge of its
+///     own — no byte offset, no feature name — and a caller can refuse a file that is entirely
+///     well formed and merely of a kind the decoder does not handle, in those terms, without
+///     attempting the decode it is trying to avoid.
+///     </para>
+///     <para>
 ///     <b>Every probe is offered, never required.</b> A header this library cannot read costs the
 ///     caller the dimensions and nothing else: the methods report failure rather than throwing,
 ///     because for the read tool the enrichment is optional, and for the crop tool the failure is
-///     a refusal the tool composes in its own words. Three input classes make this a live rule
+///     a refusal the tool composes in its own words. Two input classes make this a live rule
 ///     rather than a defensive one: <c>gif</c>, <c>webp</c> and <c>pdf</c> are types the family
-///     reads and this helper has no probe for at all; a truncated or malformed header may still
-///     render at a provider; and a JPEG whose frame header sits beyond the bounded probe cap is
-///     perfectly decodable yet has no readable header here.
+///     reads and this helper has no probe for at all, which makes them the common case rather
+///     than the edge case; and a truncated or malformed header may still belong to a file a
+///     provider renders.
 ///     </para>
 ///     <para>
 ///     <b>No type from the decoding library crosses this boundary.</b> The methods take bytes and
@@ -45,19 +52,8 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 internal static class ImageProbe
 {
     /// <summary>
-    ///     The offset, in bytes from the start of a PNG file, of the interlace-method byte.
-    /// </summary>
-    /// <remarks>
-    ///     A PNG begins with an 8-byte signature, then the <c>IHDR</c> chunk frame: a 4-byte
-    ///     length and a 4-byte type, followed by the 13-byte payload
-    ///     <c>width(4) height(4) bitDepth(1) colorType(1) compression(1) filter(1)
-    ///     interlace(1)</c>. The interlace byte is therefore the last payload byte, at
-    ///     <c>8 + 4 + 4 + 12</c>.
-    /// </remarks>
-    private const int PngInterlaceMethodOffset = 28;
-
-    /// <summary>
-    ///     Reads the pixel dimensions an image file declares in its header.
+    ///     Reads the pixel dimensions an image file declares in its header, and whether the
+    ///     decoder expects a full decode of those bytes to succeed.
     /// </summary>
     /// <remarks>
     ///     Dispatches on the media type the family resolved from the file's extension rather than
@@ -77,6 +73,10 @@ internal static class ImageProbe
     /// <param name="mediaType">The media type the file's extension resolved to.</param>
     /// <param name="width">On success, the width in pixels the header declares; otherwise zero.</param>
     /// <param name="height">On success, the height in pixels the header declares; otherwise zero.</param>
+    /// <param name="canDecode">
+    ///     On success, whether the decoder expects a full decode of these bytes to succeed;
+    ///     otherwise <see langword="false"/>.
+    /// </param>
     /// <returns>
     ///     <see langword="true"/> when the header was read and declared its dimensions;
     ///     <see langword="false"/> when the media type carries no probe, or the header could not
@@ -86,7 +86,12 @@ internal static class ImageProbe
     ///     Thrown when <paramref name="data"/> or <paramref name="mediaType"/> is
     ///     <see langword="null"/>.
     /// </exception>
-    internal static bool TryReadSize(byte[] data, string mediaType, out int width, out int height)
+    internal static bool TryReadSize(
+        byte[] data,
+        string mediaType,
+        out int width,
+        out int height,
+        out bool canDecode)
     {
         // Missing arguments are a programming error in the calling tool, not anything a model can
         // provoke: by the time a tool reaches here it has read a permitted file and resolved its
@@ -96,6 +101,7 @@ internal static class ImageProbe
 
         width = 0;
         height = 0;
+        canDecode = false;
 
         try
         {
@@ -122,6 +128,7 @@ internal static class ImageProbe
 
             width = info.Width;
             height = info.Height;
+            canDecode = info.CanDecode;
             return true;
         }
         catch (Exception exception) when (IsUnreadableHeader(exception))
@@ -131,48 +138,6 @@ internal static class ImageProbe
             // read out of the file, neither of which belongs in a model's transcript.
             return false;
         }
-    }
-
-    /// <summary>
-    ///     Determines whether a PNG file declares that its pixels are stored interlaced.
-    /// </summary>
-    /// <remarks>
-    ///     <b>Read from the header rather than inferred from a failed decode.</b> A decoder
-    ///     reports an interlaced file and a corrupt file with the same exception type, so the two
-    ///     are indistinguishable after the fact, and matching on an exception's message would be
-    ///     both fragile and a route for developer-facing text to reach a model. One named byte
-    ///     offset lets the caller tell a model the true, specific reason instead of leaving it to
-    ///     guess whether its file is damaged.
-    ///     <para>
-    ///     Call only for a PNG whose header has already been read successfully, since that is what
-    ///     establishes that the signature, the chunk length and the header's own checksum are all
-    ///     sound and therefore that the byte at this offset is the one the specification puts
-    ///     there. A file too short to contain a header reports <see langword="false"/>, leaving
-    ///     the caller's ordinary unreadable-content path to handle it.
-    ///     </para>
-    /// </remarks>
-    /// <param name="data">The PNG file's bytes, as already read.</param>
-    /// <returns>
-    ///     <see langword="true"/> when the header declares an interlace method other than none;
-    ///     otherwise <see langword="false"/>.
-    /// </returns>
-    /// <exception cref="ArgumentNullException">
-    ///     Thrown when <paramref name="data"/> is <see langword="null"/>.
-    /// </exception>
-    internal static bool IsInterlacedPng(byte[] data)
-    {
-        // A missing argument is a programming error in the calling tool.
-        ArgumentNullException.ThrowIfNull(data);
-
-        // A file too short to hold a header cannot be judged here; the caller's unreadable-header
-        // path owns that case, and reporting false keeps this method from claiming otherwise.
-        if (data.Length <= PngInterlaceMethodOffset)
-        {
-            return false;
-        }
-
-        // Zero is the specification's "no interlacing"; the only other defined value is Adam7.
-        return data[PngInterlaceMethodOffset] != 0;
     }
 
     /// <summary>

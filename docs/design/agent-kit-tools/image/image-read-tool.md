@@ -57,10 +57,9 @@ whose own decoder is the authority on them, and the probe exists only to enrich 
 Refusing a file because an *optional enrichment* failed would narrow a tool whose whole promise is
 to hand the model what the file holds, and would buy nothing — the bytes were already inside the
 binary ceiling and were already going to be returned. The rule is live rather than defensive.
-Three input classes reach it routinely: `gif`, `webp` and `pdf` are in this unit's admitted set and
-have no header probe at all, so they are the common case rather than the edge case; a malformed or
-truncated header may belong to a file a provider still renders; and a JPEG whose frame header lies
-beyond the probe's bounded cap is perfectly decodable yet unmeasurable here. **The caption never
+Two input classes reach it routinely: `gif`, `webp` and `pdf` are in this unit's admitted set and
+have no header probe at all, so they are the common case rather than the edge case; and a
+malformed or truncated header may belong to a file a provider still renders. **The caption never
 states a size it did not read.**
 
 #### Key Methods

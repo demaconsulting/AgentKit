@@ -143,9 +143,10 @@ sections:
                   Whether the size is stated is the fact that distinguishes the three ways
                   content can fail, and a model needs the distinction. A file whose header will
                   not read is not content of the kind its name claimed, so nothing is claimed
-                  about it. A file that declares interlaced storage is entirely well formed and
-                  merely of a kind this tool does not decode, so describing it as damaged would
-                  be false. A file whose header read and whose body did not is damaged, and
+                  about it. A file that is entirely well formed but uses a feature the decoder
+                  does not implement is merely of a kind this tool does not decode, so describing
+                  it as damaged would be false. A file whose header read and whose body did not
+                  is damaged, and
                   stating the size it did declare is what tells the model so. No message reveals
                   the decoding library's own wording, which is developer-facing and may echo
                   values read out of the file.

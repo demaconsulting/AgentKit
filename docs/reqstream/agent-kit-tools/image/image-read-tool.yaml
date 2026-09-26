@@ -86,10 +86,10 @@ sections:
                   whatever — the bytes were already inside the binary ceiling and were already
                   going to be returned. The rule is live rather than defensive: the animated and
                   paginated types this tool admits declare their size somewhere this library does
-                  not read at all, a malformed header may still render at a provider, and a file
-                  whose header sits beyond a bounded probe is decodable yet unmeasurable here.
-                  Stating no size it did not read is what keeps the caption trustworthy in all
-                  three cases.
+                  not read at all, which makes them the common case rather than the edge case,
+                  and a malformed or truncated header may still belong to a file a provider
+                  renders. Stating no size it did not read is what keeps the caption trustworthy
+                  in both cases.
                 tests:
                   - ImageReadTool_Read_SupportedPng_CaptionStatesThePixelDimensions
                   - ImageReadTool_Read_SupportedJpeg_CaptionStatesThePixelDimensions

@@ -173,8 +173,8 @@ internal static class ImageTestImages
     ///     sound and still has to be refused. The file is complete — header, pixel data and
     ///     terminator — so that nothing but the interlace declaration can be what a refusal is
     ///     responding to. The pixel data is not itself laid out in Adam7 passes, which no code
-    ///     path under test reaches: a reader refuses on the header's declaration long before the
-    ///     layout would matter.
+    ///     path under test reaches: the header reader reports the file as one the decoder will
+    ///     not decode, and the tool refuses on that report, long before the layout would matter.
     /// </remarks>
     /// <param name="width">The width of the image, in pixels.</param>
     /// <param name="height">The height of the image, in pixels.</param>

@@ -57,9 +57,8 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     is to hand the model what the file holds, for no safety gain whatever — the bytes were
 ///     already inside the binary ceiling and were already going to be returned. The rule is live
 ///     rather than defensive: <c>gif</c>, <c>webp</c> and <c>pdf</c> are in this tool's admitted
-///     set and have no header probe at all; a malformed header may still belong to a file a
-///     provider renders; and a JPEG whose frame header sits beyond the probe's bounded cap is
-///     decodable yet unmeasurable here.
+///     set and have no header probe at all, so they are the common case rather than the edge
+///     case; and a malformed or truncated header may still belong to a file a provider renders.
 ///     </para>
 ///     <para>
 ///     Every refusal is returned rather than thrown. A refusal this tool composes itself — an
@@ -307,7 +306,7 @@ public static class ImageReadTool
     {
         // The size is stated only when it was actually read; otherwise the caption is exactly
         // what it has always been.
-        if (!ImageProbe.TryReadSize(data, mediaType, out var width, out var height))
+        if (!ImageProbe.TryReadSize(data, mediaType, out var width, out var height, out _))
         {
             return CaptionPrefix + mediaType + ".";
         }

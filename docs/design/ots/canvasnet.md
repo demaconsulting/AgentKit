@@ -29,7 +29,8 @@ provider-specific adapters, and the only one outside Core.
   count and alpha flag of the encoding the *file* uses, reading only a signature and a header
   chunk (PNG) or a bounded scan of leading marker segments (JPEG). Deliberately reports a
   file's declared dimensions without enforcing what it will decode, which is what makes it usable
-  for deciding whether a decode is affordable
+  for deciding whether a decode is affordable. The same report states whether the library expects
+  a full decode of those bytes to succeed
 - PNG decoding — every color type the specification defines, at every bit depth that
   specification permits for that color type, including palette-indexed and grayscale files, with
   palette indices resolved through the file's own palette
@@ -42,8 +43,11 @@ provider-specific adapters, and the only one outside Core.
 - PNG encoding — writes a pixel buffer back out losslessly, so a region returned to a model
   carries the source's pixels rather than a re-compressed approximation of them
 
-Adam7-interlaced PNG is the one well-formed input the decoder refuses; the image family detects it
-from the header and refuses it in its own words rather than surfacing the library's.
+The library reports decode feasibility from the header itself, so the image family holds no format
+knowledge of its own and refuses a well-formed file the decoder declines in its own words rather
+than surfacing the library's. Adam7-interlaced PNG is today the only input the report marks as
+undecodable; because the family reads the report rather than the format, a decoder that later
+gains or loses a capability is reflected without a change here.
 
 Nothing in the library's vector, drawing, text or font surface is used, and no type from the
 library appears in any AgentKit signature.
@@ -56,11 +60,14 @@ attaches the image family needs it present at run time and must receive it trans
 reached from exactly two places in the subsystem — the shared header-probe helper and the crop
 tool — so the surface that would have to change if the dependency were ever replaced is two files.
 
-There is no initialization, no configuration object and no disposal step. The pixel buffer type is
-**not** disposable, so no `using` governs one; buffers are ordinary managed objects the collector
-reclaims. Every entry point the family uses is static, and every one is called on bytes already
-read and already inside the policy's binary ceiling, so the library is never given a path, never
-opens a file and never touches the file system.
+There is no initialization and no configuration object. The pixel buffer type is disposable, and
+every buffer the family creates is governed by a `using`: a decoded image is released as soon as
+the region has been copied out of it, and the region once it has been encoded. The library
+documents that disposal releases nothing in this release — the buffer is a plain managed array
+rather than a rented one — so honoring the contract now is what keeps the family correct when a
+future release backs that buffer with a pooled array. Every entry point the family uses is static,
+and every one is called on bytes already read and already inside the policy's binary ceiling, so
+the library is never given a path, never opens a file and never touches the file system.
 
 **Release precondition.** The dependency is currently published only as a prerelease. A non-
 prerelease release of `AgentKitTools` therefore requires a non-prerelease release of this

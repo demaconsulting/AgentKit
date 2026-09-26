@@ -158,6 +158,7 @@ sections:
           - AgentKit-OTS-CanvasNet-Decode
           - AgentKit-OTS-CanvasNet-Crop
           - AgentKit-OTS-CanvasNet-Encode
+          - AgentKit-OTS-CanvasNet-DecodeFeasibility
         tests:
           - AgentKitTools_SystemComposition_ImagePack_ContributesTheImageFamily
           - AgentKitTools_SystemComposition_ImagePackWithoutVision_ContributesNoTools
