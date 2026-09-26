@@ -168,19 +168,22 @@ public class ImageMediaTypesTests
     }
 
     /// <summary>
-    ///     Proves a <c>.gif</c> is refused as animated, naming the types that can be cropped.
+    ///     Proves a <c>.gif</c> is refused because its frame cannot be established, naming the
+    ///     types that can be cropped.
     /// </summary>
     [Fact]
-    public void ImageMediaTypes_DenyNonCroppableType_Gif_StatesItIsAnimatedAndNamesTheCroppableTypes()
+    public void ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes()
     {
-        // Act: refuse an animated raster image
+        // Act: refuse a format whose frame count nothing this family reads reports
         var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("animation.gif"));
 
-        // Assert: states what the format is and what may be cropped, and names no sibling tool —
-        // a .gif genuinely is an image, so naming the reader would be a route to the content this
+        // Assert: states what is actually true of the file — more than one frame is possible and
+        // the tool cannot tell — and what may be cropped, and names no sibling tool: a .gif
+        // genuinely is an image, so naming the reader would be a route to the content this
         // refusal withheld rather than a classification of the file
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("animated raster image", text, StringComparison.Ordinal);
+        Assert.Contains("may hold more than one frame", text, StringComparison.Ordinal);
+        Assert.Contains("cannot tell how many", text, StringComparison.Ordinal);
         Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ImageReadTool.ToolName, text, StringComparison.Ordinal);
     }
@@ -194,7 +197,7 @@ public class ImageMediaTypesTests
         // Act: refuse a still raster image this family hands over without decoding
         var text = Assert.IsType<string>(ImageMediaTypes.DenyNonCroppableType("picture.webp"));
 
-        // Assert: its own reason rather than the animated one, and no sibling tool named
+        // Assert: its own reason rather than the .gif's, and no sibling tool named
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
         Assert.Contains("does not decode", text, StringComparison.Ordinal);
         Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);

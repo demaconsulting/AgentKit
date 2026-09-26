@@ -51,9 +51,10 @@ sections:
                   already does.
                 justification: |
                   A model told only that its request failed will retry with different
-                  coordinates; a model told the format has no single frame, or is one this
-                  library does not decode, or is a paginated document needing a page and a
-                  resolution chosen, can choose something else instead. Naming the types a region
+                  coordinates; a model told that the frame a region would come from cannot be
+                  established, or that the format is one this library does not decode, or that it
+                  is a paginated document needing a page and a resolution chosen, can choose
+                  something else instead. Naming the types a region
                   can be taken from tells it what it may ask for and not only what it may not.
                   None of these refusals names a sibling tool: a file of one of these types
                   genuinely is an image, so naming the reader would not classify it — it would
@@ -63,7 +64,7 @@ sections:
                   cannot read at all is answered by the existing refusal, unchanged, so the
                   family speaks with one voice.
                 tests:
-                  - ImageMediaTypes_DenyNonCroppableType_Gif_StatesItIsAnimatedAndNamesTheCroppableTypes
+                  - ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes
                   - ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes
                   - ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired
                   - ImageMediaTypes_DenyNonCroppableType_Svg_RedirectsToTextFileRead

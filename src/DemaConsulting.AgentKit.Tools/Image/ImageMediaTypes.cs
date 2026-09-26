@@ -97,28 +97,38 @@ public static class ImageMediaTypes
     private const string CroppableTypes = "png, jpg and jpeg";
 
     /// <summary>
-    ///     The refusal used when the request names an animated raster file.
+    ///     The refusal used when the request names a GIF file.
     /// </summary>
     /// <remarks>
+    ///     <b>The reason is that the frame is unknowable, not that the file is animated.</b> A
+    ///     single-frame <c>.gif</c> is the common case, so refusing one as "animated" would state
+    ///     something untrue about the very file the model named. What is true is that the format
+    ///     may carry any number of frames and nothing this family reads reports how many, so a
+    ///     region could only be taken from the first and returned as though it were the whole
+    ///     answer — a partial answer to a different question, which is the failure this family
+    ///     exists to refuse.
+    ///     <para>
     ///     <b>Names no sibling tool.</b> A <c>.gif</c> genuinely is an image, so naming the read
     ///     tool would not be a classification of the file — it would be a route to the content
     ///     this refusal withheld, and one that hands the model the whole image after it asked to
     ///     examine a part closely. Reasoning confidently about a region it never examined is the
     ///     failure this family exists to prevent, so the refusal states what the file is and what
     ///     the alternative types are, and stops.
+    ///     </para>
     /// </remarks>
-    private const string GifIsAnimated =
-        "A .gif file is an animated raster image, which has no single frame to take a region of. "
-        + "A region can be taken from a " + CroppableTypes + " file.";
+    private const string GifFrameIsUnknowable =
+        "A .gif file may hold more than one frame and this tool cannot tell how many, so a region "
+        + "of it would silently be a region of the first frame alone. A region can be taken from a "
+        + CroppableTypes + " file.";
 
     /// <summary>
     ///     The refusal used when the request names a WebP file.
     /// </summary>
     /// <remarks>
     ///     Its own wording rather than a shared one, because the reason is its own: WebP is a
-    ///     format this family hands to a provider without decoding, not a format it decodes and
-    ///     then declines to cut. Names no sibling tool, on the same basis as
-    ///     <see cref="GifIsAnimated"/>.
+    ///     format this family hands to a provider without decoding, not a format whose frame
+    ///     count it cannot establish. Names no sibling tool, on the same basis as
+    ///     <see cref="GifFrameIsUnknowable"/>.
     /// </remarks>
     private const string WebpNotDecoded =
         "A .webp file is a raster image this tool does not decode, so no region can be taken "
@@ -306,8 +316,8 @@ public static class ImageMediaTypes
 
         return Extension(path) switch
         {
-            // An animated raster image has no single frame to take a region of.
-            ".gif" => ToolResult.Denied(DenialReason.UnsupportedMediaType, GifIsAnimated),
+            // A file that may hold any number of frames, none of which this family can count.
+            ".gif" => ToolResult.Denied(DenialReason.UnsupportedMediaType, GifFrameIsUnknowable),
 
             // A still raster image the family hands to a provider without ever decoding it.
             ".webp" => ToolResult.Denied(DenialReason.UnsupportedMediaType, WebpNotDecoded),

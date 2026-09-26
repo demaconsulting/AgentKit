@@ -91,7 +91,7 @@ public class ImageCropToolTests
         var data = Assert.IsType<DataContent>(content[1]);
         Assert.Equal(ImageMediaTypes.Png, data.MediaType);
 
-        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
         Assert.Equal(10, decoded.Width);
         Assert.Equal(7, decoded.Height);
     }
@@ -121,7 +121,7 @@ public class ImageCropToolTests
         var data = Assert.IsType<DataContent>(content[1]);
         Assert.Equal(ImageMediaTypes.Png, data.MediaType);
 
-        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
         Assert.Equal(16, decoded.Width);
         Assert.Equal(12, decoded.Height);
     }
@@ -144,7 +144,7 @@ public class ImageCropToolTests
         var sourceBytes = ImageTestImages.Png(16, 16);
         var file = WriteBytes(fixture.Root, "detail.png", sourceBytes);
         var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
-        var source = ImageTestImages.Decode(sourceBytes);
+        using var source = ImageTestImages.Decode(sourceBytes);
 
         // Act: take a region whose origin is not the image's origin
         var result = await InvokeAsync(tool, file, 4, 5, 6, 7);
@@ -152,7 +152,7 @@ public class ImageCropToolTests
         // Assert: every pixel of the region, alpha included, is the source's own
         var content = Assert.IsType<List<AIContent>>(result);
         var data = Assert.IsType<DataContent>(content[1]);
-        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
 
         Assert.Equal(6, decoded.Width);
         Assert.Equal(7, decoded.Height);
@@ -227,7 +227,7 @@ public class ImageCropToolTests
 
         // Assert: accepted, so the bound is inclusive rather than something a caller must guess
         var content = Assert.IsType<List<AIContent>>(result);
-        var decoded = ImageTestImages.Decode(Assert.IsType<DataContent>(content[1]).Data.ToArray());
+        using var decoded = ImageTestImages.Decode(Assert.IsType<DataContent>(content[1]).Data.ToArray());
         Assert.Equal(20, decoded.Width);
         Assert.Equal(14, decoded.Height);
     }
@@ -249,7 +249,7 @@ public class ImageCropToolTests
 
         // Assert: accepted, pinning the other end of the same boundary
         var content = Assert.IsType<List<AIContent>>(result);
-        var decoded = ImageTestImages.Decode(Assert.IsType<DataContent>(content[1]).Data.ToArray());
+        using var decoded = ImageTestImages.Decode(Assert.IsType<DataContent>(content[1]).Data.ToArray());
         Assert.Equal(1, decoded.Width);
         Assert.Equal(1, decoded.Height);
     }
@@ -636,7 +636,7 @@ public class ImageCropToolTests
         // Assert: the region comes back with its indices resolved through the palette
         var content = Assert.IsType<List<AIContent>>(result);
         var data = Assert.IsType<DataContent>(content[1]);
-        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
 
         Assert.Equal(4, decoded.Width);
         Assert.Equal(4, decoded.Height);
@@ -898,7 +898,7 @@ public class ImageCropToolTests
     }
 
     /// <summary>
-    ///     Proves an animated raster file is refused, naming the types a region can be taken from.
+    ///     Proves a <c>.gif</c> is refused, naming the types a region can be taken from.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -912,15 +912,15 @@ public class ImageCropToolTests
         // Act: ask for a region of it
         var result = await InvokeAsync(tool, file, 0, 0, 4, 4);
 
-        // Assert: refused, stating what the format is and what may be cropped instead
+        // Assert: refused, stating what is true of the file and what may be cropped instead
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (UnsupportedMediaType)", text, StringComparison.Ordinal);
-        Assert.Contains("animated raster image", text, StringComparison.Ordinal);
+        Assert.Contains("may hold more than one frame", text, StringComparison.Ordinal);
         Assert.Contains("png, jpg and jpeg", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves the animated-raster refusal names no sibling tool.
+    ///     Proves the <c>.gif</c> refusal names no sibling tool.
     /// </summary>
     /// <remarks>
     ///     The explicit no-redirect assertion. A <c>.gif</c> genuinely is an image, so naming the
@@ -1074,7 +1074,7 @@ public class ImageCropToolTests
         var written = Path.Combine(fixture.Root, "panel.png");
         Assert.True(System.IO.File.Exists(written));
 
-        var decoded = ImageTestImages.Decode(
+        using var decoded = ImageTestImages.Decode(
             await System.IO.File.ReadAllBytesAsync(written, TestContext.Current.CancellationToken));
         Assert.Equal(10, decoded.Width);
         Assert.Equal(7, decoded.Height);
@@ -1098,14 +1098,14 @@ public class ImageCropToolTests
         var sourceBytes = ImageTestImages.Png(16, 16);
         var file = WriteBytes(fixture.Root, "detail.png", sourceBytes);
         var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
-        var source = ImageTestImages.Decode(sourceBytes);
+        using var source = ImageTestImages.Decode(sourceBytes);
 
         // Act: write a region whose origin is not the image's origin
         var result = await InvokeAsync(tool, file, 4, 5, 6, 7, "figure.png");
 
         // Assert: every pixel of the written region, alpha included, is the source's own
         Assert.IsType<string>(result);
-        var decoded = ImageTestImages.Decode(
+        using var decoded = ImageTestImages.Decode(
             await System.IO.File.ReadAllBytesAsync(
                 Path.Combine(fixture.Root, "figure.png"), TestContext.Current.CancellationToken));
 
@@ -1146,12 +1146,20 @@ public class ImageCropToolTests
     }
 
     /// <summary>
-    ///     Proves the confirmation names the destination, the region and the source's dimensions.
+    ///     Proves the confirmation names the destination, the region and the source's dimensions,
+    ///     and reports a workspace destination in the workspace's own dialect.
     /// </summary>
     /// <remarks>
     ///     Each of the three is load-bearing: the destination so the model can reference the file
     ///     it just produced, and the region and the source's dimensions so a second, adjacent
     ///     figure can be aimed without reading the image again.
+    ///     <para>
+    ///     The fourth assertion is what makes the path dialect a real choice rather than a
+    ///     coincidence: a destination inside the anchor comes back relative, so the workspace
+    ///     root must appear nowhere in the confirmation. Without it, always reporting the
+    ///     absolute path would satisfy every other assertion in the suite, including the sibling
+    ///     scenario that pins the absolute branch.
+    ///     </para>
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -1170,6 +1178,9 @@ public class ImageCropToolTests
         Assert.Contains("panel.png", text, StringComparison.Ordinal);
         Assert.Contains("5,6 10x7", text, StringComparison.Ordinal);
         Assert.Contains("40x30", text, StringComparison.Ordinal);
+
+        // Assert: the name is relative to the workspace, so no host layout reaches the model
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1225,7 +1236,7 @@ public class ImageCropToolTests
             Path.Combine(fixture.Root, "panel.png"), TestContext.Current.CancellationToken);
         Assert.Equal<byte[]>([0x89, 0x50, 0x4E, 0x47], written[..4]);
 
-        var decoded = ImageTestImages.Decode(written);
+        using var decoded = ImageTestImages.Decode(written);
         Assert.Equal(16, decoded.Width);
         Assert.Equal(12, decoded.Height);
     }
@@ -1454,7 +1465,7 @@ public class ImageCropToolTests
         var text = Assert.IsType<string>(result);
         Assert.Contains("Wrote the cropped region", text, StringComparison.Ordinal);
 
-        var decoded = ImageTestImages.Decode(
+        using var decoded = ImageTestImages.Decode(
             await System.IO.File.ReadAllBytesAsync(
                 Path.Combine(fixture.Root, "PANEL.PNG"), TestContext.Current.CancellationToken));
         Assert.Equal(4, decoded.Width);

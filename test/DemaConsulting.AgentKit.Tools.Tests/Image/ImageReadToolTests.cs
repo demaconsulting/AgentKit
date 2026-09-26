@@ -22,8 +22,11 @@ namespace DemaConsulting.AgentKit.Tools.Tests.Image;
 public class ImageReadToolTests
 {
     /// <summary>
-    ///     One byte sequence standing in for image content; the tool does not parse it, so
-    ///     arbitrary bytes suffice and their distinctness is what proves the real file was read.
+    ///     One byte sequence standing in for image content. It is deliberately not a well-formed
+    ///     header — the eight bytes open like a PNG signature and then diverge — so the header
+    ///     probe the tool now runs on them fails. That failure is what makes this the fixture for
+    ///     the scenarios proving the caption degrades rather than refusing when no size can be
+    ///     established, and the bytes' distinctness is what proves the real file was read.
     /// </summary>
     private static readonly byte[] SampleBytes = [0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04];
 

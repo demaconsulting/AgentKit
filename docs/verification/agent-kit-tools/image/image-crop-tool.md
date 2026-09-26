@@ -371,14 +371,15 @@ A real case rather than a theoretical one: a region of a compressed source, retu
 altering a pixel, can exceed a ceiling the source file sat well inside. The ceiling is chosen to
 admit the source and refuse the result, so only the second check can be what fires.
 
-##### AgentKitTools-Image-CropTool-RefusesNonCroppableType: An Animated Raster File Is Refused
+##### AgentKitTools-Image-CropTool-RefusesNonCroppableType: A gif File Is Refused
 
 **Test**: `ImageCropTool_Crop_GifFile_ReturnsDenialNamingTheCroppableTypes`
 
-Error path: the refusal states that the format is an animated raster image with no single frame,
-and names the types a region can be taken from, so the model is told what it may ask for.
+Error path: the refusal states that the format may hold more than one frame and that this tool
+cannot tell how many, and names the types a region can be taken from, so the model is told what it
+may ask for.
 
-##### AgentKitTools-Image-CropTool-RefusesNonCroppableType: The Animated-Raster Refusal Names No Sibling Tool
+##### AgentKitTools-Image-CropTool-RefusesNonCroppableType: The gif Refusal Names No Sibling Tool
 
 **Test**: `ImageCropTool_Crop_GifDenial_NamesNoSiblingTool`
 
@@ -391,8 +392,8 @@ whole image after it asked to examine one part closely.
 
 **Test**: `ImageCropTool_Crop_WebpFile_ReturnsDenialNamingTheCroppableTypes`
 
-Its own reason rather than the animated one: WebP is a format the family hands to a provider
-without decoding, not one it decodes and then declines to cut.
+Its own reason rather than the `.gif`'s: WebP is a format the family hands to a provider
+without decoding, not one whose frame count it cannot establish.
 
 ##### AgentKitTools-Image-CropTool-RefusesNonCroppableType: A PDF Names Rasterization
 
@@ -447,7 +448,11 @@ in it.
 
 Each of the three is load-bearing and each is asserted separately: the destination so the model can
 reference the file it just produced, and the region and the source's dimensions so a second,
-adjacent figure can be aimed without reading the image again.
+adjacent figure can be aimed without reading the image again. A fourth assertion pins the relative
+half of the path dialect: the destination lies inside the anchor, so the confirmation must name it
+relatively and the workspace root must appear nowhere in the text. That assertion is what makes the
+dialect a decision the suite can detect — without it, reporting the absolute path in every case
+would satisfy both this scenario and the absolute-branch scenario below.
 
 ##### AgentKitTools-Image-CropTool-WritesRegionToDestination: A Destination Outside the Anchor Is Confirmed Absolutely
 

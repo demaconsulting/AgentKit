@@ -78,7 +78,7 @@ internal static class ImageTestImages
     /// <returns>The encoded PNG file.</returns>
     internal static byte[] Png(int width, int height)
     {
-        var surface = BuildDistinguishableSurface(width, height);
+        using var surface = BuildDistinguishableSurface(width, height);
 
         using var stream = new MemoryStream();
         PngCodec.Save(surface, stream, PngColorType.Rgba);
@@ -98,7 +98,7 @@ internal static class ImageTestImages
     /// <returns>The encoded JPEG file.</returns>
     internal static byte[] Jpeg(int width, int height)
     {
-        var surface = BuildDistinguishableSurface(width, height);
+        using var surface = BuildDistinguishableSurface(width, height);
 
         using var stream = new MemoryStream();
         JpegCodec.Save(surface, stream, quality: 90);
@@ -219,9 +219,16 @@ internal static class ImageTestImages
     ///     Offered here so a test asserting that a region's pixels survived does not have to name
     ///     the decoding library itself; the fixture builder is the one place in the test project
     ///     that knows how an image is encoded, so it is the right place to know how one is read.
+    ///     <para>
+    ///     <b>The returned buffer is the caller's to dispose.</b> The pixel buffer type is
+    ///     disposable, and the production code is documented as honoring that contract so the
+    ///     family stays correct when a future release backs the buffer with a pooled array. Test
+    ///     code that ignored the contract would teach the opposite pattern, so every caller here
+    ///     takes the result under a <c>using</c>.
+    ///     </para>
     /// </remarks>
     /// <param name="data">The encoded PNG file.</param>
-    /// <returns>The decoded pixel buffer.</returns>
+    /// <returns>The decoded pixel buffer, which the caller disposes.</returns>
     internal static Surface Decode(byte[] data)
     {
         using var stream = new MemoryStream(data, writable: false);

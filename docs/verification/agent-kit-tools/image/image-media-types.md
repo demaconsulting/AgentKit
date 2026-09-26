@@ -101,21 +101,23 @@ Error path, run as a theory over `gif`, `webp`, `pdf` and an extension the famil
 all. Asserts the croppable set is genuinely narrower than the readable set, which is what keeps a
 region request from becoming an accidental format conversion.
 
-##### AgentKitTools-Image-MediaTypes-RefusesNonCroppableType: A gif Is Stated to Be Animated
+##### AgentKitTools-Image-MediaTypes-RefusesNonCroppableType: A gif Is Refused Because Its Frame Is Unknowable
 
-**Test**: `ImageMediaTypes_DenyNonCroppableType_Gif_StatesItIsAnimatedAndNamesTheCroppableTypes`
+**Test**: `ImageMediaTypes_DenyNonCroppableType_Gif_StatesTheFrameIsUnknowableAndNamesTheCroppableTypes`
 
-Error path: the refusal states that the format is an animated raster image with no single frame,
+Error path: the refusal states that the format may hold more than one frame and that this tool
+cannot tell how many, so a region of it would silently be a region of the first frame alone. It
 names the types a region can be taken from, and names **no sibling tool** — a `.gif` genuinely is
 an image, so naming the reader would offer a route to the content the refusal withheld rather than
-classify the file.
+classify the file. The reason asserted is the unknowable frame rather than animation, because a
+single-frame `.gif` is the common case and would make an "animated" refusal false.
 
 ##### AgentKitTools-Image-MediaTypes-RefusesNonCroppableType: A webp Is Refused in Its Own Words
 
 **Test**: `ImageMediaTypes_DenyNonCroppableType_Webp_StatesItIsNotDecodedAndNamesTheCroppableTypes`
 
-Error path with its own reason rather than the animated one: WebP is a format the family hands to
-a provider without decoding, not one it decodes and then declines to cut.
+Error path with its own reason rather than the `.gif`'s: WebP is a format the family hands to
+a provider without decoding, not one whose frame count it cannot establish.
 
 ##### AgentKitTools-Image-MediaTypes-RefusesNonCroppableType: A pdf Names Rasterization
 

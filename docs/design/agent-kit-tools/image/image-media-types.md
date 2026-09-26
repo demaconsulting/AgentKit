@@ -92,12 +92,16 @@ Composes the refusal for a file whose extension no region can be extracted from.
 **Preconditions:** called only once `TryResolveCroppableMediaType` has reported the type
 uncroppable, so the refusal is always an `UnsupportedMediaType`.
 
-**Algorithm:** chooses on the extension. A `.gif` is stated to be an animated raster image with no
-single frame to take a region of. A `.webp` is stated to be a raster image this family does not
-decode — its own wording, because its reason is its own rather than the animated one. A `.pdf` is
-stated to be a paginated document whose region could only be taken by choosing a page and a
-resolution to rasterize it at, which no tool here does; it earns its own refusal because it is the
-one admitted type that *looks* croppable and is not, and without the reason stated a model would
+**Algorithm:** chooses on the extension. A `.gif` is stated to be a file that may hold more than
+one frame, whose frame count nothing this family reads reports, so a region of it would silently be
+a region of the first frame alone — the reason is the unknowable frame rather than animation,
+because a single-frame `.gif` is the common case and refusing one as "animated" would state
+something untrue about the file the model just named. A `.webp` is stated to be a raster image this
+family does not decode — its own wording, because its reason is its own rather than the `.gif`'s. A
+`.pdf` is stated to be a paginated document whose region could only be taken by choosing a page
+and a resolution to rasterize it at, which no tool here does; it earns its own refusal because it
+is the one admitted type that *looks* croppable and is not, and without the reason stated a model
+would
 reasonably retry with different coordinates. Each of the three additionally names the set of types
 a region *can* be taken from, so the model is told what it may ask for and not only what it may
 not. Any extension the family cannot read at all is delegated to `DenyUnsupportedType`, so the

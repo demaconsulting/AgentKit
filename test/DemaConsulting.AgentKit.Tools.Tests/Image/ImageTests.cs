@@ -247,7 +247,7 @@ public class ImageTests
         var data = Assert.IsType<DataContent>(content[1]);
         Assert.Equal(ImageMediaTypes.Png, data.MediaType);
 
-        var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
         Assert.Equal(12, decoded.Width);
         Assert.Equal(9, decoded.Height);
     }
@@ -536,7 +536,7 @@ public class ImageTests
         var text = Assert.IsType<string>(result);
         Assert.Contains("figure.png", text, StringComparison.Ordinal);
 
-        var decoded = ImageTestImages.Decode(
+        using var decoded = ImageTestImages.Decode(
             await System.IO.File.ReadAllBytesAsync(
                 Path.Combine(fixture.Root, "figure.png"), TestContext.Current.CancellationToken));
         Assert.Equal(12, decoded.Width);
