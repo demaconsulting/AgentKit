@@ -10,8 +10,8 @@ through the published tool list by name and argument dictionary, exactly as an a
 it. Nothing is mocked. The access policy and file system are real, because the properties under
 verification belong to the real host boundary.
 
-The scenarios here assert what belongs to the family as a whole: seven content tools, the shared line
-buffer helper and `TextFilePack`. They verify that search, read, create, replace, cut-lines,
+The scenarios here assert what belongs to the family as a whole: eight content tools, the shared text
+buffer helper and `TextFilePack`. They verify that search, read, create, write, replace, cut-lines,
 copy-lines and paste-lines use one policy and the same workspace names. The algorithm of any single
 tool is verified in that unit's own document.
 
@@ -34,7 +34,7 @@ Subsystem tests reside in `TextFile/TextFileTests.cs` within the
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all 7 requirement scenarios below, covering 14 listed test method
+A subsystem test run passes when all 7 requirement scenarios below, covering 15 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing tool, a wrong
 family prefix, an ignored policy decision, a containment escape, a thrown refusal, incorrect relative-path
 behavior, unsafe mutation, or a ceiling violation returned as truncated content constitutes a
@@ -44,11 +44,11 @@ failure.
 
 #### AgentKitTools-TextFile-FamilyComposition: Family Composition
 
-**Test**: `TextFile_Family_ComposedThroughBuilder_PublishesTheSevenContentTools`
+**Test**: `TextFile_Family_ComposedThroughBuilder_PublishesTheEightContentTools`
 
 **Test**: `TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily`
 
-The listed tests prove a composition attaching the family publishes the seven content tools in order;
+The listed tests prove a composition attaching the family publishes the eight content tools in order;
 a host declaring no capability still receives the family.
 
 #### AgentKitTools-TextFile-GuardedConstruction: Guarded Construction
@@ -76,7 +76,7 @@ is never surfaced by search.
 **Test**: `TextFile_Family_SearchReadEditLoop_WorksByRelativeNames`
 
 The listed tests prove the search-read-edit loop works end to end by the bare relative names a model
-sends, sharing one workspace across all seven tools.
+sends, sharing one workspace across all eight tools.
 
 #### AgentKitTools-TextFile-ContentEditing: Content Editing
 
@@ -84,10 +84,15 @@ sends, sharing one workspace across all seven tools.
 
 **Test**: `TextFile_Family_LargeBlockDuplication_CopiesCreatesAndPastes`
 
+**Test**: `TextFile_Family_WriteThenPaste_RestoresTheOverwrittenContent`
+
 The listed tests prove the search-read-edit loop works end to end by the bare relative names a model
-sends, sharing one workspace across all seven tools; and the large-block duplication scenario copies
+sends, sharing one workspace across all eight tools; the large-block duplication scenario copies
 a few hundred lines, creates a new file, pastes the block into it and confirms it, leaving the source
-byte-identical.
+byte-identical; and the write-then-paste scenario overwrites a file through the composed tools, then
+reproduces what the write displaced — carriage returns, blank line and trailing newline included —
+by pasting the `overwritten` slot into a fresh file, so the family's recoverability invariant is
+shown to survive a wholesale overwrite.
 
 #### AgentKitTools-TextFile-DenialsAreResults: Denials Are Results
 

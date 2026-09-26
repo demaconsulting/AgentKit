@@ -5,7 +5,7 @@ This document describes the unit-level verification strategy for the `TextFilePa
 #### Verification Approach
 
 Nothing is mocked or stubbed. Each scenario uses the public pack boundary; prefix, capabilities,
-seven-tool order, no-null contract, shared buffers and supplied-policy behavior are checked. This
+eight-tool order, no-null contract, shared buffers and supplied-policy behavior are checked. This
 keeps verification at the same boundary the runtime or composing application uses, rather than
 proving a substitute behaves consistently with itself.
 
@@ -26,7 +26,7 @@ Unit tests reside in `TextFile/TextFilePackTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 7 requirement scenarios below, covering 10 listed test method
+A unit test run passes when all 7 requirement scenarios below, covering 11 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -49,13 +49,13 @@ the same prefix the class publishes as a constant.
 
 The listed tests prove the family asks nothing of its host.
 
-##### AgentKitTools-TextFile-Pack-RegistersSevenTools: Registers Seven Tools
+##### AgentKitTools-TextFile-Pack-RegistersEightTools: Registers Eight Tools
 
-**Test**: `TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder`
+**Test**: `TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder`
 
 **Test**: `TextFilePack_CreateTools_Policy_ReturnsNoNullTool`
 
-The listed tests prove the pack creates the seven tools in the fixed, documented order; the pack
+The listed tests prove the pack creates the eight tools in the fixed, documented order; the pack
 honors the contract obligation to return no null tool.
 
 ##### AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix: Tools Carry Family Prefix

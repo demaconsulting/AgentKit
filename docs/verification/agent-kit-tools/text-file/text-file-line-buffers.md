@@ -5,7 +5,8 @@ This document describes the unit-level verification strategy for the `TextFileLi
 #### Verification Approach
 
 Nothing is mocked or stubbed. Each scenario uses a fresh in-memory buffer store; default slots,
-named slots, non-consuming paste and validation are exercised directly. This keeps verification at
+named slots, the distinct overwrite slot, non-consuming paste and validation are exercised
+directly. This keeps verification at
 the same boundary the runtime or composing application uses, rather than proving a substitute
 behaves consistently with itself.
 
@@ -26,7 +27,7 @@ Unit tests reside in `TextFile/TextFileLineBuffersTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 5 requirement scenarios below, covering 10 listed test method
+A unit test run passes when all 6 requirement scenarios below, covering 11 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -42,6 +43,14 @@ returned content that violates a configured ceiling constitutes a failure.
 
 The listed tests prove the default slot name is published for the omitted-name case; distinct slots
 hold independent fragments.
+
+##### AgentKitTools-TextFile-Buffers-OverwrittenSlot: Overwritten Slot
+
+**Test**: `TextFileLineBuffers_OverwrittenSlot_IsPublished`
+
+The listed tests prove a distinct well-known slot name is published for content displaced by a
+wholesale overwrite, and that it is not the default slot — so a capture the model never requested
+cannot displace a fragment it is holding mid-move.
 
 ##### AgentKitTools-TextFile-Buffers-CaptureAndPaste: Capture And Paste
 

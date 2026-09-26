@@ -19,7 +19,7 @@ package set flat: applications attach the families they want, in any combination
 dependency being forced upon a family that does not need it.
 
 The system contains the **TextFile** subsystem: the text file tool family, publishing
-`text_file_search`, `text_file_read`, `text_file_create`, `text_file_replace`,
+`text_file_search`, `text_file_read`, `text_file_create`, `text_file_write`, `text_file_replace`,
 `text_file_cut_lines`, `text_file_copy_lines` and `text_file_paste_lines` under the `text_file`
 family prefix and attached to an application as one pack.
 

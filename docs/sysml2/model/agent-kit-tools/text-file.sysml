@@ -10,6 +10,7 @@ package AgentKitTools {
         part textFileSearchTool : TextFileSearchTool;
         part textFileReadTool : TextFileReadTool;
         part textFileCreateTool : TextFileCreateTool;
+        part textFileWriteTool : TextFileWriteTool;
         part textFileReplaceTool : TextFileReplaceTool;
         part textFileCutLinesTool : TextFileCutLinesTool;
         part textFileCopyLinesTool : TextFileCopyLinesTool;

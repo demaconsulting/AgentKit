@@ -28,7 +28,8 @@ sections:
           The library shall provide a text file family that searches, reads, creates and edits the
           contents of text files under the access policy the composing application supplies,
           interpreting the paths a model states as relative to the workspace, paging a read to a
-          line-numbered window, editing by exact content match and by captured line range,
+          line-numbered window, editing by exact content match and by captured line range, setting a
+          file's whole content with the content it displaces captured for recovery,
           publishing every tool under one family prefix and refusing rather than throwing when the
           policy does not permit a request.
         tags: [system, security]
@@ -41,9 +42,11 @@ sections:
           name — so the family must read it that way, or an operator's correctly configured agent
           is refused every legitimate request. Paging a read lets a model work with a file larger
           than a single result; editing by exact content match lets it change one line without
-          rewriting the file; and a cut always captures what it removes so every deletion is
-          recoverable. Refusing rather than throwing keeps a denied request from ending the
-          agent's turn.
+          rewriting the file; setting a file's whole content lets it produce a document outright
+          rather than assembling it by repeated edits; and every operation that destroys content —
+          a cut of a range, an overwrite of everything — captures what it destroys first, so nothing
+          the family removes is unrecoverable. Refusing rather than throwing keeps a denied request
+          from ending the agent's turn.
         children:
           - AgentKitTools-TextFile-FamilyComposition
           - AgentKitTools-TextFile-GuardedConstruction

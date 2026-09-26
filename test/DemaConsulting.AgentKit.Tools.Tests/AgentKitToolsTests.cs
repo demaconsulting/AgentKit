@@ -47,12 +47,13 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's seven tools are published, each under the family prefix
+        // Assert: the family's eight tools are published, each under the family prefix
         Assert.Equal(
             [
                 "text_file_search",
                 "text_file_read",
                 "text_file_create",
+                "text_file_write",
                 "text_file_replace",
                 "text_file_cut_lines",
                 "text_file_copy_lines",

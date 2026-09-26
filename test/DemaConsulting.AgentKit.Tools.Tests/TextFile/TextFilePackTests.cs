@@ -44,22 +44,23 @@ public class TextFilePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates the seven tools in the fixed, documented order.
+    ///     Proves the pack creates the eight tools in the fixed, documented order.
     /// </summary>
     [Fact]
-    public void TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder()
+    public void TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder()
     {
         var pack = new TextFilePack();
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
 
         var tools = pack.CreateTools(policy).ToList();
 
-        Assert.Equal(7, tools.Count);
+        Assert.Equal(8, tools.Count);
         Assert.Equal(
             [
                 TextFileSearchTool.ToolName,
                 TextFileReadTool.ToolName,
                 TextFileCreateTool.ToolName,
+                TextFileWriteTool.ToolName,
                 TextFileReplaceTool.ToolName,
                 TextFileCutLinesTool.ToolName,
                 TextFileCopyLinesTool.ToolName,
@@ -136,6 +137,42 @@ public class TextFilePackTests
 
         Assert.Equal(
             "one\ntwo\nthree\n",
+            await System.IO.File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves the write and paste tools one composition produces share a buffer, so content a
+    ///     write displaced is recoverable through the paste tool's named slot.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFilePack_CreateTools_WriteAndPaste_ShareOneBufferPerComposition()
+    {
+        using var fixture = new TempDirectoryFixture();
+        var path = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "one\ntwo\nthree\n");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root)]);
+        var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
+        var write = tools.Single(tool => tool.Name == TextFileWriteTool.ToolName);
+        var paste = tools.Single(tool => tool.Name == TextFilePasteLinesTool.ToolName);
+
+        // Overwrite the file, then empty it and restore the captured content from the named slot.
+        await write.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt", ["content"] = "replacement\n" },
+            TestContext.Current.CancellationToken);
+        await write.InvokeAsync(
+            new AIFunctionArguments { ["path"] = "note.txt", ["content"] = string.Empty },
+            TestContext.Current.CancellationToken);
+        await paste.InvokeAsync(
+            new AIFunctionArguments
+            {
+                ["path"] = "note.txt",
+                ["name"] = TextFileLineBuffers.OverwrittenSlot
+            },
+            TestContext.Current.CancellationToken);
+
+        // The second write captured "replacement\n", which is what the paste restores.
+        Assert.Equal(
+            "replacement\n",
             await System.IO.File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
     }
 

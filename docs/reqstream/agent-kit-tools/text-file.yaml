@@ -12,9 +12,9 @@ sections:
         requirements:
           - id: AgentKitTools-TextFile-FamilyComposition
             title: >-
-              The text file family shall publish seven content tools — search, read, create, replace,
-              cut-lines, copy-lines and paste-lines — under the text_file family prefix, and shall
-              require no host capability.
+              The text file family shall publish eight content tools — search, read, create, write,
+              replace, cut-lines, copy-lines and paste-lines — under the text_file family prefix, and
+              shall require no host capability.
             justification: |
               An application attaches a capability as one pack rather than as a handful of
               individually registered tools, so the family must be the unit of attachment.
@@ -25,35 +25,39 @@ sections:
               - AgentKitTools-TextFile-SearchTool-ToolName
               - AgentKitTools-TextFile-ReadTool-ToolName
               - AgentKitTools-TextFile-CreateTool-ToolName
+              - AgentKitTools-TextFile-WriteTool-ToolName
               - AgentKitTools-TextFile-ReplaceTool-ToolName
               - AgentKitTools-TextFile-CutTool-ToolName
               - AgentKitTools-TextFile-CopyTool-ToolName
               - AgentKitTools-TextFile-PasteTool-ToolName
               - AgentKitTools-TextFile-Pack-FamilyPrefix
               - AgentKitTools-TextFile-Pack-NoCapabilityRequired
-              - AgentKitTools-TextFile-Pack-RegistersSevenTools
+              - AgentKitTools-TextFile-Pack-RegistersEightTools
               - AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
               - AgentKitTools-TextFile-Buffers-DefaultSlot
             tests:
-              - TextFile_Family_ComposedThroughBuilder_PublishesTheSevenContentTools
+              - TextFile_Family_ComposedThroughBuilder_PublishesTheEightContentTools
               - TextFile_Family_HostDeclaringNoCapability_StillReceivesTheFamily
 
           - id: AgentKitTools-TextFile-GuardedConstruction
             title: >-
               Every tool in the text file family shall be constructed through the guarded
-              construction path and shall take its access policy at construction, and the cut and
-              paste tools shall share one buffer per composition.
+              construction path and shall take its access policy at construction, and the write, cut,
+              copy and paste tools shall share one buffer per composition.
             tags: [security]
             justification: |
               A tool built any other way has its result flattened into JSON before a provider sees
               it, and a tool that received its policy later — or not at all — could be attached to
               an agent while governed by nothing. Allocating one buffer per composition gives the
-              cut/paste buffer exactly the lifetime of the tools and keeps two independently
-              composed tool sets from sharing slots.
+              recovery buffer exactly the lifetime of the tools and keeps two independently
+              composed tool sets from sharing slots. Because the write tool receives that buffer at
+              construction too, a write tool that could destroy content without capturing it is
+              impossible to build.
             children:
               - AgentKitTools-TextFile-SearchTool-GuardedConstruction
               - AgentKitTools-TextFile-ReadTool-GuardedConstruction
               - AgentKitTools-TextFile-CreateTool-GuardedConstruction
+              - AgentKitTools-TextFile-WriteTool-GuardedConstruction
               - AgentKitTools-TextFile-ReplaceTool-GuardedConstruction
               - AgentKitTools-TextFile-CutTool-GuardedConstruction
               - AgentKitTools-TextFile-CopyTool-GuardedConstruction
@@ -69,7 +73,7 @@ sections:
             title: >-
               The text file family shall judge each request with the policy decision matching the
               operation — the read decision for search, read and copy, the write decision for create,
-              replace, cut and paste — interpreting a path a model states relative to the
+              write, replace, cut and paste — interpreting a path a model states relative to the
               workspace, and refusing a request whose location lies outside a permitted location.
             tags: [security]
             justification: |
@@ -85,6 +89,7 @@ sections:
               - AgentKitTools-TextFile-SearchTool-PolicyFiltered
               - AgentKitTools-TextFile-SearchTool-Scoped
               - AgentKitTools-TextFile-CreateTool-PolicyGoverned
+              - AgentKitTools-TextFile-WriteTool-PolicyGoverned
               - AgentKitTools-TextFile-ReplaceTool-PolicyGoverned
               - AgentKitTools-TextFile-CutTool-PolicyGoverned
               - AgentKitTools-TextFile-CopyTool-PolicyGoverned
@@ -118,23 +123,30 @@ sections:
 
           - id: AgentKitTools-TextFile-ContentEditing
             title: >-
-              The text file family shall edit a file's contents by creating a new file, replacing an
-              exact unique match, and cutting, copying and pasting a range of lines, with every cut
-              captured into a recoverable buffer, every copy captured while leaving its source
-              byte-identical, and a cut/paste round-trip reproducing the file exactly.
+              The text file family shall edit a file's contents by creating a new file, setting a
+              file's whole content, replacing an exact unique match, and cutting, copying and
+              pasting a range of lines, with every cut captured into a recoverable buffer, every
+              overwrite capturing the content it displaces, every copy captured while leaving its
+              source byte-identical, and a cut/paste round-trip reproducing the file exactly.
             justification: |
               Editing one line of a file without rewriting the whole file is what makes an agent's
-              edits precise and reviewable. A create refuses to clobber an existing file, a replace
-              matches exactly once so an ambiguous edit is refused rather than misapplied, a cut
-              always captures what it removes so every deletion is recoverable by pasting it back,
-              and a copy captures a range for pasting without ever mutating its source. Every tool
-              that mutates a file reports the line span it affected and the file's resulting line
-              count, because an edit renumbers every line below it and evaluation measured models
-              re-reading an entire file immediately after every edit purely to re-derive numbering
-              the result had not given them.
+              edits precise and reviewable. A create refuses to clobber an existing file, a write
+              makes a file's content be a given text and captures whatever it displaces so the
+              displaced content stays recoverable, a replace matches exactly once so an ambiguous
+              edit is refused rather than misapplied, a cut always captures what it removes so every
+              deletion is recoverable by pasting it back, and a copy captures a range for pasting
+              without ever mutating its source. Three separate names rather than one tool with a
+              mode switch is what lets each description say one clear thing, so a model choosing
+              between adding a file, setting all of it and changing part of it can tell them apart.
+              Every tool that mutates a file reports the line span it affected and the file's
+              resulting line count, because an edit renumbers every line below it and evaluation
+              measured models re-reading an entire file immediately after every edit purely to
+              re-derive numbering the result had not given them.
             children:
               - AgentKitTools-TextFile-CreateTool-CreatesNew
               - AgentKitTools-TextFile-CreateTool-RefusesExisting
+              - AgentKitTools-TextFile-WriteTool-SetsContent
+              - AgentKitTools-TextFile-WriteTool-CapturesPreviousContent
               - AgentKitTools-TextFile-ReplaceTool-UniqueMatch
               - AgentKitTools-TextFile-ReplaceTool-Ambiguity
               - AgentKitTools-TextFile-ReplaceTool-InsertAndDelete
@@ -147,9 +159,11 @@ sections:
               - AgentKitTools-TextFile-PasteTool-EmptyBuffer
               - AgentKitTools-TextFile-Buffers-CaptureAndPaste
               - AgentKitTools-TextFile-Buffers-Replace
+              - AgentKitTools-TextFile-Buffers-OverwrittenSlot
             tests:
               - TextFile_Family_SearchReadEditLoop_WorksByRelativeNames
               - TextFile_Family_LargeBlockDuplication_CopiesCreatesAndPastes
+              - TextFile_Family_WriteThenPaste_RestoresTheOverwrittenContent
 
           - id: AgentKitTools-TextFile-DenialsAreResults
             title: >-
@@ -167,6 +181,9 @@ sections:
               - AgentKitTools-TextFile-ReadTool-MalformedRequest
               - AgentKitTools-TextFile-ReadTool-BinaryRefused
               - AgentKitTools-TextFile-CreateTool-MalformedRequest
+              - AgentKitTools-TextFile-WriteTool-MalformedRequest
+              - AgentKitTools-TextFile-WriteTool-CreatesNoDirectory
+              - AgentKitTools-TextFile-WriteTool-RefusesNonTextTarget
               - AgentKitTools-TextFile-ReplaceTool-MissingFile
               - AgentKitTools-TextFile-PasteTool-MissingFile
               - AgentKitTools-TextFile-PasteTool-PopulatedSlotGuidance

@@ -7,8 +7,8 @@ The `TextFilePack` class publishes the text-file tool family under the `text_fil
 #### Purpose
 
 To be the single public attachment point for policy-governed text content tools. The pack claims the
-`text_file` prefix, publishes the seven tools in fixed order, and creates the one cut/paste buffer
-shared by the line-range tools in that composition.
+`text_file` prefix, publishes the eight tools in fixed order, and creates the one recovery buffer
+shared by the write and line-range tools in that composition.
 
 The pack itself grants nothing. It receives the `PathPolicy` from the `ToolPackBuilder` composition
 and passes that same policy to every tool factory.
@@ -25,8 +25,8 @@ field on the pack.
 | `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host      |
 
 The returned tool collection contains, in order, `TextFileSearchTool`, `TextFileReadTool`,
-`TextFileCreateTool`, `TextFileReplaceTool`, `TextFileCutLinesTool`, `TextFileCopyLinesTool`, and
-`TextFilePasteLinesTool`.
+`TextFileCreateTool`, `TextFileWriteTool`, `TextFileReplaceTool`, `TextFileCutLinesTool`,
+`TextFileCopyLinesTool`, and `TextFilePasteLinesTool`.
 
 #### Key Methods
 
@@ -46,12 +46,12 @@ Creates the family's tools.
 
 **Preconditions:** `policy` is non-null.
 
-**Algorithm:** validates `policy`, allocates a new `TextFileLineBuffers`, and returns the seven tools
-in fixed order. Search, read, create and replace receive only the policy. Cut, copy and paste receive
-the same policy and the same buffer instance.
+**Algorithm:** validates `policy`, allocates a new `TextFileLineBuffers`, and returns the eight tools
+in fixed order. Search, read, create and replace receive only the policy. Write, cut, copy and paste
+receive the same policy and the same buffer instance.
 
 **Postconditions:** all returned tools carry the `text_file` prefix, observe the same policy, and the
-cut, copy and paste tools share one buffer with the same lifetime as the returned tools.
+write, cut, copy and paste tools share one buffer with the same lifetime as the returned tools.
 
 #### Error Handling
 
@@ -64,8 +64,8 @@ not issue capability-related refusals.
 #### Dependencies
 
 `IToolPack`, `HostCapabilities`, `PathPolicy`, and `ToolPackBuilder` conventions from AgentKitCore;
-`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and all seven text-file tool units. It also
-allocates `TextFileLineBuffers` as internal shared state for cut, copy and paste.
+`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and all eight text-file tool units. It also
+allocates `TextFileLineBuffers` as internal shared state for write, cut, copy and paste.
 
 #### Callers
 

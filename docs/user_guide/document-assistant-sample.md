@@ -106,7 +106,8 @@ dotnet run --project samples/document-assistant -- \
 ```
 
 With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_file_create`,
-`text_file_replace`, `text_file_cut_lines`, `text_file_copy_lines`, `text_file_paste_lines`,
+`text_file_write`, `text_file_replace`, `text_file_cut_lines`, `text_file_copy_lines`,
+`text_file_paste_lines`,
 `file_list`, `file_copy`,
 `file_move`, `file_delete`, `markdown_outline`, `image_read`, and `image_crop`; with `--no-vision`
 both image tools

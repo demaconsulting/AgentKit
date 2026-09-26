@@ -73,12 +73,14 @@ software items, specifically:
 - **TextFileSearchTool (Unit)** — Publishes the `text_file_search` tool
 - **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
 - **TextFileCreateTool (Unit)** — Publishes the `text_file_create` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
 - **TextFileReplaceTool (Unit)** — Publishes the `text_file_replace` tool
 - **TextFileCutLinesTool (Unit)** — Publishes the `text_file_cut_lines` tool
 - **TextFileCopyLinesTool (Unit)** — Publishes the `text_file_copy_lines` tool
 - **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
-- **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
-  and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
+- **TextFileLineBuffers (Unit)** — Holds the recoverable named text buffers that `text_file_cut_lines`
+  and `text_file_copy_lines` capture into, that `text_file_write` captures displaced content into,
+  and that `text_file_paste_lines` restores from
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
   of files of any type, published as one capability-gated pack
@@ -280,7 +282,8 @@ being told them.
 
 `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
-own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
+own subsystem: `TextFile`, which searches, reads, creates, sets, replaces and moves line ranges
+within
 text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
 `Markdown`, which outlines a document's headings with their line ranges;
 `Image`, which reads images and PDF documents for a vision-capable agent; `Todo`, which gives an
@@ -401,12 +404,13 @@ src/DemaConsulting.AgentKit.Tools/
     ├── TextFileCreateTool.cs    — the text_file_create tool
     ├── TextFileCutLinesTool.cs  — the text_file_cut_lines tool
     ├── TextFileCopyLinesTool.cs — the text_file_copy_lines tool
-    ├── TextFileLineBuffers.cs   — the recoverable named line buffers cut, copy and paste share
+    ├── TextFileLineBuffers.cs   — the recoverable named text buffers write, cut, copy and paste share
     ├── TextFilePack.cs          — publishes the text file family as one pack
     ├── TextFilePasteLinesTool.cs — the text_file_paste_lines tool
     ├── TextFileReadTool.cs      — the text_file_read tool
     ├── TextFileReplaceTool.cs   — the text_file_replace tool
     ├── TextFileSearchTool.cs    — the text_file_search tool
+    ├── TextFileWriteTool.cs     — the text_file_write tool
     └── TextLines.cs             — shared line-oriented reading and rewriting helper
 ```
 

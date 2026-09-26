@@ -70,7 +70,8 @@ before any family is added and that the package is a peer composed like any othe
 Verifies that attaching the TextFile pack contributes that family's tools to a composition, under
 the one family prefix the pack claims. Constructs a real access policy, adds `TextFilePack` to a
 `ToolPackBuilder` governed by it, and asserts the composed list is exactly `text_file_search`,
-`text_file_read`, `text_file_create`, `text_file_replace`, `text_file_cut_lines`,
+`text_file_read`, `text_file_create`, `text_file_write`, `text_file_replace`,
+`text_file_cut_lines`,
 `text_file_copy_lines` and `text_file_paste_lines`. Confirms at the system level that a family is
 attached as
 one pack rather than tool by tool, and that the package now contributes a capability rather than

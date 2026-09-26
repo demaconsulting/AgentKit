@@ -19,6 +19,21 @@ sections:
                   - TextFileLineBuffers_DefaultSlot_IsPublished
                   - TextFileLineBuffers_DistinctSlots_HoldIndependentFragments
 
+              - id: AgentKitTools-TextFile-Buffers-OverwrittenSlot
+                title: >-
+                  The line buffer store shall publish a distinct well-known slot name for content
+                  displaced by a wholesale overwrite, separate from the default slot.
+                justification: |
+                  The default slot is the model's working clipboard, so a capture the model never
+                  requested must not land there: a model part-way through a cut-and-paste is holding
+                  a fragment in the default slot, and displacing it would turn a safety net into a
+                  second act of destruction. The name is fixed rather than chosen by the model
+                  because the write tool's description has to be able to state unconditionally where
+                  displaced content went, and because a name the model chose could be the default
+                  one.
+                tests:
+                  - TextFileLineBuffers_OverwrittenSlot_IsPublished
+
               - id: AgentKitTools-TextFile-Buffers-CaptureAndPaste
                 title: >-
                   The line buffer store shall return captured text from a slot without consuming it,

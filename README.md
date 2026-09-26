@@ -38,7 +38,8 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
 
 - **Guarded tool families**: each family is bound at construction to the policy, store, or
   collaborators that constrain what it may touch, and is added as a pack. The families shipping in
-  `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, replace, and
+  `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, set a file's whole
+  content, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type), **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel

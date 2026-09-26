@@ -16,26 +16,27 @@ out of model-facing output, and honoring the ceilings the policy carries instead
 truncating.
 
 The boundary is narrow and deliberate. The subsystem reads and edits the contents of text files. It
-searches across files, reads a ranged and line-numbered window of one file, creates a new file,
-replaces exact text that appears exactly once, and cuts, copies and pastes ranges of lines. It does
-not list,
+searches across files, reads a ranged and line-numbered window of one file, creates a new file, sets
+a file's whole content, replaces exact text that appears exactly once, and cuts, copies and pastes
+ranges of lines. It does not list,
 copy, move or delete files as file-system entities; those type-agnostic operations belong to the
 sibling File subsystem. It also does not parse Markdown section structure; the Markdown subsystem
 reports section ranges that compose into these line-based tools.
 
-The subsystem contains nine units:
+The subsystem contains ten units:
 
 | Unit                     | Responsibility                                                           |
 | ------------------------ | ------------------------------------------------------------------------ |
 | `TextFileSearchTool`     | Publishes `text_file_search`: finds text in permitted files grep-style   |
 | `TextFileReadTool`       | Publishes `text_file_read`: returns one permitted file's numbered window |
 | `TextFileCreateTool`     | Publishes `text_file_create`: creates one new permitted text file        |
+| `TextFileWriteTool`      | Publishes `text_file_write`: sets a file's whole content, capturing it   |
 | `TextFileReplaceTool`    | Publishes `text_file_replace`: replaces one exact occurrence of text     |
 | `TextFileCutLinesTool`   | Publishes `text_file_cut_lines`: removes and captures a line range       |
 | `TextFileCopyLinesTool`  | Publishes `text_file_copy_lines`: captures a line range, source intact   |
 | `TextFilePasteLinesTool` | Publishes `text_file_paste_lines`: inserts a captured line range         |
-| `TextFileLineBuffers`    | Stores named cut/paste text slots shared by cut, copy and paste tools    |
-| `TextFilePack`           | Publishes the seven tools as one family under the `text_file` prefix     |
+| `TextFileLineBuffers`    | Stores named text slots shared by write, cut, copy and paste tools       |
+| `TextFilePack`           | Publishes the eight tools as one family under the `text_file` prefix     |
 
 `TextLines` and `TextFileBinaryGuard` are internal shared helpers rather than modeled units, in the
 same way `MemoryEmbedding` and `MemoryDenials` are for the Memory subsystem; both are described
@@ -73,11 +74,13 @@ delegate. There is no other construction path, no setter and no default policy, 
 unguarded, or governed by a policy other than the composition's, is unrepresentable rather than
 merely discouraged.
 
-**Fixed tool order.** The pack returns the seven public tools in the order a model should learn them:
-`text_file_search`, `text_file_read`, `text_file_create`, `text_file_replace`,
-`text_file_cut_lines`, `text_file_copy_lines`, then `text_file_paste_lines`. The order is observable
-in tool selection, so it is a contract rather than an incidental collection order. The helper unit is
-modeled because it is shared state, but it is not a published tool.
+**Fixed tool order.** The pack returns the eight public tools in the order a model should learn them:
+`text_file_search`, `text_file_read`, `text_file_create`, `text_file_write`, `text_file_replace`,
+`text_file_cut_lines`, `text_file_copy_lines`, then `text_file_paste_lines`. The three editing tools
+sit in decreasing order of scope — bring a file into existence, set its whole content, change part of
+its content — so the two tools a write is most easily confused with sit either side of it. The order
+is observable in tool selection, so it is a contract rather than an incidental collection order. The
+helper unit is modeled because it is shared state, but it is not a published tool.
 
 **Shared helpers.** `TextLines` is the one place the family decides what a line is. It splits and
 streams text into lines that each keep their own terminator, converts between a line number and a
@@ -85,15 +88,17 @@ character offset, and renders the span phrase a confirmation names — so the li
 numbers is the same line the cut tool removes and the paste tool restores. `TextFileBinaryGuard` is
 the one place the family decides whether a permitted file is text at all, sniffing a leading window
 for a recognized byte-order mark or valid UTF-8 so that binary content is refused before anything
-tries to decode it as text. Both are `internal static` and hold no state; neither is a modeled unit,
-because each exists only so that several tools of this family reach one decision rather than seven.
+tries to decode it as text — read and search refuse it so they never surface garbled text, and write
+refuses it because content that cannot be captured for recovery must not be destroyed. Both are
+`internal static` and hold no state; neither is a modeled unit,
+because each exists only so that several tools of this family reach one decision rather than eight.
 
-**One decision per operation.** Search, read and copy consult the read decision. Create, replace, cut
-and paste consult the write decision. A copy mutates nothing, so it does to the source exactly what
-read does and consults the read decision — the deliberate inverse of cut's write decision, which
-permits a copy from a read-only grant. Nothing in the subsystem combines read and write or
-re-implements either decision. This is what makes an operator's read-wide, write-narrow configuration
-real rather than decorative.
+**One decision per operation.** Search, read and copy consult the read decision. Create, write,
+replace, cut and paste consult the write decision. A copy mutates nothing, so it does to the source
+exactly what read does and consults the read decision — the deliberate inverse of cut's write
+decision, which permits a copy from a read-only grant. Nothing in the subsystem combines read and
+write or re-implements either decision. This is what makes an operator's read-wide, write-narrow
+configuration real rather than decorative.
 
 **Navigation is by line number; editing in place is by content.** Search reports `path:line:content`,
 read returns a `path lines A-B of N` header plus numbered body lines, and cut removes a numbered line
@@ -106,12 +111,25 @@ the actual file text it intends to change.
 number, a `|` delimiter, then the raw line content without its terminator. The prefix is not part of
 the file. Replace arguments are raw file content and must not include those prefixes.
 
-**Cut, copy and paste are buffer operations.** A cut always captures the exact raw line slice into a
-named buffer slot before removing it; a copy captures the same slice while leaving its source
+**Cut, copy, paste and write are buffer operations.** A cut always captures the exact raw line slice
+into a named buffer slot before removing it; a copy captures the same slice while leaving its source
 byte-identical, its non-destructive sibling. Paste inserts the stored text without consuming it, so a
-copied block can be pasted more than once. The buffer is one instance per `CreateTools` call, shared
-only by that composition's cut, copy and paste tools, so separate tool compositions do not leak slots
-to each other.
+copied block can be pasted more than once. A write captures the file's entire previous content before
+replacing it, so a wholesale overwrite is no less recoverable than a cut — but into the distinct,
+well-known slot `overwritten` rather than the default slot, because the default slot is the model's
+working clipboard and a capture the model never requested must not displace a fragment it is holding
+mid-move. Because that slot is fixed, only the most recent overwrite is recoverable, and both the
+tool description and its confirmation say so rather than implying an unbounded undo history. The
+buffer is one instance per `CreateTools` call, shared only by that composition's write, cut, copy and
+paste tools, so separate tool compositions do not leak slots to each other.
+
+**Write paths enforce no content ceiling, and that is a decision.** `MaxReadBytes` and
+`MaxResultCharacters` reason from the model's context budget and are therefore applied to content
+flowing *to* the model. Content arriving *from* the model — the `content` argument of create and
+write, the `newText` of replace — is already in the transcript, so refusing it would spend a turn
+rejecting text the provider has already accepted and would save no context. Content captured into the
+buffer never reaches a result, so it spends none either. No write path in the family consults a
+ceiling, and the silence is deliberate rather than an omission.
 
 **Refusals are results.** Every condition a model can provoke — an absent argument, a refused path,
 a missing file, a directory where a file was expected, an ambiguous replacement, an empty paste slot,

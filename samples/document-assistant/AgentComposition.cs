@@ -137,7 +137,9 @@ public static class AgentComposition
             "workspace using the plain relative names the " +
             "listing shows for it (for example 'welcome.txt'). text_file_read prefixes each line " +
             "with its 1-based number and a '| ' delimiter, which are not part of the file; to edit, " +
-            "give text_file_replace the file's raw text, not the numbered prefixes. Create new " +
+            "give text_file_replace the file's raw text, not the numbered prefixes. Use " +
+            "text_file_write when a file's whole content should become the text you supply, and " +
+            "text_file_replace when only part of it should change. Create new " +
             "files in the session " +
             "folder using its full absolute path exactly as given above — a relative name is " +
             "always interpreted against the workspace, so it will not reach any other location. " +

@@ -234,6 +234,7 @@ row.
 | Text file | `text_file_search`      | Searches permitted text files for a pattern      | None                |
 | Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None                |
 | Text file | `text_file_create`      | Creates a new text file within the policy        | None                |
+| Text file | `text_file_write`       | Sets a file's whole content, capturing the old   | None                |
 | Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None                |
 | Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None                |
 | Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None                |

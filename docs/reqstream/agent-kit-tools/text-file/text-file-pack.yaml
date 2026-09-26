@@ -28,15 +28,17 @@ sections:
                 tests:
                   - TextFilePack_RequiredCapabilities_Pack_RequiresNoHostCapability
 
-              - id: AgentKitTools-TextFile-Pack-RegistersSevenTools
+              - id: AgentKitTools-TextFile-Pack-RegistersEightTools
                 title: >-
-                  The pack shall create its seven tools — search, read, create, replace, cut, copy
-                  and paste — in a fixed, documented order, with no null entry.
+                  The pack shall create its eight tools — search, read, create, write, replace, cut,
+                  copy and paste — in a fixed, documented order, with no null entry.
                 justification: |
                   The order a model sees the tools in is observable, so it is fixed rather than
-                  incidental.
+                  incidental. It descends in scope through the three editing tools — bring a file
+                  into existence, set its whole content, change part of its content — so the two
+                  tools a write is most easily confused with sit either side of it.
                 tests:
-                  - TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder
+                  - TextFilePack_CreateTools_Policy_CreatesTheEightToolsInOrder
                   - TextFilePack_CreateTools_Policy_ReturnsNoNullTool
 
               - id: AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
@@ -69,11 +71,15 @@ sections:
 
               - id: AgentKitTools-TextFile-Pack-SharedBuffer
                 title: >-
-                  The cut and paste tools one composition produces shall share one buffer, and two
-                  separate compositions shall not share buffer slots.
+                  The write, cut and paste tools one composition produces shall share one buffer, so
+                  a range a cut removed and content a write displaced are both recoverable through
+                  the paste tool, and two separate compositions shall not share buffer slots.
                 justification: |
-                  A buffer allocated per composition gives cut and paste a shared clipboard while
-                  keeping two independently composed tool sets isolated.
+                  A buffer allocated per composition gives the destructive tools and the paste tool
+                  a shared clipboard while keeping two independently composed tool sets isolated.
+                  Sharing it with the write tool is what extends the family's recoverability promise
+                  from a removed range to a wholesale overwrite.
                 tests:
                   - TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition
+                  - TextFilePack_CreateTools_WriteAndPaste_ShareOneBufferPerComposition
                   - TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots

@@ -16,7 +16,8 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     </para>
 ///     <para>
 ///     <b>This family reads and edits the <em>contents</em> of a text file.</b> It searches across
-///     files, reads a ranged, line-numbered window of one, creates a new file, replaces exact text,
+///     files, reads a ranged, line-numbered window of one, creates a new file, sets a file's whole
+///     content, replaces exact text,
 ///     and cuts, copies and pastes ranges of lines. Managing the files themselves — listing, copying,
 ///     moving
 ///     and deleting them regardless of type — belongs to the sibling <c>file</c> family, and reading
@@ -30,11 +31,12 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     replacing by matched content — so the family offers both rather than forcing one.
 ///     </para>
 ///     <para>
-///     <b>The cut, copy and paste tools share one buffer per composition.</b> Every call to
+///     <b>The write, cut, copy and paste tools share one buffer per composition.</b> Every call to
 ///     <see cref="CreateTools"/> allocates a fresh <see cref="TextFileLineBuffers"/> and gives it to
-///     the cut, copy and paste tools, so a range cut or copied in one call can be pasted back in
-///     another against the same file set, while two independently composed tool sets never share
-///     slots. The buffer lives exactly as long as the tools do.
+///     the write, cut, copy and paste tools, so a range cut or copied in one call can be pasted back
+///     in another against the same file set, and content a write displaced can be restored from the
+///     slot it was captured into, while two independently composed tool sets never share slots. The
+///     buffer lives exactly as long as the tools do.
 ///     </para>
 ///     <para>
 ///     <see cref="FamilyPrefix"/> is published as a constant as well as through the contract, so that
@@ -54,10 +56,10 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 /// <example>
 ///     <para>
 ///     Attaching the family. The pack requires no host capability, so it is registered by every
-///     composition. It publishes seven tools, in this order: <c>text_file_search</c>,
-///     <c>text_file_read</c>, <c>text_file_create</c>, <c>text_file_replace</c>,
-///     <c>text_file_cut_lines</c>, <c>text_file_copy_lines</c>, and <c>text_file_paste_lines</c>.
-///     Every one of them is governed by
+///     composition. It publishes eight tools, in this order: <c>text_file_search</c>,
+///     <c>text_file_read</c>, <c>text_file_create</c>, <c>text_file_write</c>,
+///     <c>text_file_replace</c>, <c>text_file_cut_lines</c>, <c>text_file_copy_lines</c>, and
+///     <c>text_file_paste_lines</c>. Every one of them is governed by
 ///     the policy the builder was constructed with — the pack itself grants nothing.
 ///     </para>
 ///     <code>
@@ -125,15 +127,18 @@ public sealed class TextFilePack : IToolPack
     ///     Creates the family's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
-    ///     The order — search, read, create, replace, cut, copy, paste — is fixed rather than
-    ///     incidental, because the order a model sees the tools in is observable. A fresh
-    ///     <see cref="TextFileLineBuffers"/> is allocated here and shared between the cut, copy and
-    ///     paste tools, giving the buffer exactly the lifetime of this composition's tools. The policy
-    ///     is passed to each tool's factory and captured there, so no tool in the family can observe a
-    ///     different policy from its neighbor.
+    ///     The order — search, read, create, write, replace, cut, copy, paste — is fixed rather than
+    ///     incidental, because the order a model sees the tools in is observable. It descends in
+    ///     scope through the three editing tools: bring a file into existence, set its whole content,
+    ///     change part of its content. A fresh
+    ///     <see cref="TextFileLineBuffers"/> is allocated here and shared between the write, cut, copy
+    ///     and paste tools, giving the buffer exactly the lifetime of this composition's tools. The
+    ///     policy is passed to each tool's factory and captured there, so no tool in the family can
+    ///     observe a different policy from its neighbor.
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The search, read, create, replace, cut, copy and paste tools, in that order.</returns>
+    /// <returns>The search, read, create, write, replace, cut, copy and paste tools, in that
+    ///     order.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -143,8 +148,9 @@ public sealed class TextFilePack : IToolPack
         // composing application's mistake at the point it was made.
         ArgumentNullException.ThrowIfNull(policy);
 
-        // One buffer per composition, shared by cut and paste: a range cut here can be pasted back
-        // here, and two separately composed tool sets never share slots.
+        // One buffer per composition, shared by write, cut, copy and paste: a range cut here can be
+        // pasted back here, content a write displaced can be restored here, and two separately
+        // composed tool sets never share slots.
         var buffers = new TextFileLineBuffers();
 
         return
@@ -152,6 +158,7 @@ public sealed class TextFilePack : IToolPack
             TextFileSearchTool.Create(policy),
             TextFileReadTool.Create(policy),
             TextFileCreateTool.Create(policy),
+            TextFileWriteTool.Create(policy, buffers),
             TextFileReplaceTool.Create(policy),
             TextFileCutLinesTool.Create(policy, buffers),
             TextFileCopyLinesTool.Create(policy, buffers),

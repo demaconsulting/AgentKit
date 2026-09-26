@@ -73,12 +73,14 @@ constituent software items, specifically:
 - **TextFileSearchTool (Unit)** — Publishes the `text_file_search` tool
 - **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
 - **TextFileCreateTool (Unit)** — Publishes the `text_file_create` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
 - **TextFileReplaceTool (Unit)** — Publishes the `text_file_replace` tool
 - **TextFileCutLinesTool (Unit)** — Publishes the `text_file_cut_lines` tool
 - **TextFileCopyLinesTool (Unit)** — Publishes the `text_file_copy_lines` tool
 - **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
-- **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
-  and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
+- **TextFileLineBuffers (Unit)** — Holds the recoverable named text buffers that `text_file_cut_lines`
+  and `text_file_copy_lines` capture into, that `text_file_write` captures displaced content into,
+  and that `text_file_paste_lines` restores from
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
   of files of any type, published as one capability-gated pack
