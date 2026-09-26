@@ -80,7 +80,11 @@ The listed tests prove the policy the composer supplies is the one governing the
 
 **Test**: `TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition`
 
+**Test**: `TextFilePack_CreateTools_WriteAndPaste_ShareOneBufferPerComposition`
+
 **Test**: `TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots`
 
 The listed tests prove the cut and paste tools one composition produces share a buffer, so a range
-cut through one is pasteable through the other; two separate compositions do not share buffer slots.
+cut through one is pasteable through the other; the write and paste tools of that same composition
+share it too, so content a write displaced is recoverable through the paste tool's `overwritten`
+slot; and two separate compositions do not share buffer slots.
