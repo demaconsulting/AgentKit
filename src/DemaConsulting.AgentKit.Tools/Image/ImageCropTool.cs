@@ -330,9 +330,9 @@ public static class ImageCropTool
     ///     self-contradictory region — or a destination that cannot hold PNG bytes under its own
     ///     name — is the model's mistake and needs no file to diagnose. The
     ///     policy decision comes before anything is learned about the file, so a refused path
-    ///     never reveals whether it exists. The file's size is judged before it is opened, its
-    ///     declared dimensions before it is decoded, and the region against those dimensions
-    ///     before a single pixel is allocated.
+    ///     never reveals whether it exists. The file's size is judged from the handle it was
+    ///     opened on and before any of its content is read, its declared dimensions before it is
+    ///     decoded, and the region against those dimensions before a single pixel is allocated.
     ///     <para>
     ///     <b>The destination's file-system checks sit after the source's and before the first
     ///     byte is read.</b> After, because the source is the subject of the request: when both
