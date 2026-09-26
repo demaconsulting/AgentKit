@@ -387,3 +387,4 @@ sections:
                   never reaches a transcript that leaves the process.
                 tests:
                   - ImageCropTool_Crop_UnusableDestination_IsRefused
+                  - ImageCropTool_Crop_UnwritableDestination_IsRefusedWithoutDisclosingTheFailure

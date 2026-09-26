@@ -1506,6 +1506,41 @@ public class ImageCropToolTests
     }
 
     /// <summary>
+    ///     Proves a permitted destination the file system refuses is reported as a plain fact,
+    ///     with no file left behind and none of the host's own wording.
+    /// </summary>
+    /// <remarks>
+    ///     The refusal is provoked by a file name longer than a single path component may be —
+    ///     255 characters on NTFS, ext4 and APFS alike — so the failure comes from the host
+    ///     rather than from anything this unit checked, which is the only way to reach the
+    ///     branch. It is the component limit and not the total path length that is exceeded, so
+    ///     the scenario does not depend on a host's long-path configuration. Every such failure
+    ///     arrives as an <see cref="IOException"/>, which is what the unit classifies as an
+    ///     access failure; the refusal it composes states that the region could not be written
+    ///     and stops, because the unit does not know why the operating system refused.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_UnwritableDestination_IsRefusedWithoutDisclosingTheFailure()
+    {
+        // Arrange: a permitted image, and a destination name no file system will accept
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "picture.png", ImageTestImages.Png(20, 20));
+        var tool = ImageCropTool.Create(RootedPolicy(fixture.Root));
+        var destination = new string('a', 300) + ".png";
+
+        // Act: name it as the destination
+        var result = await InvokeAsync(tool, file, 1, 1, 4, 4, destination);
+
+        // Assert: refused with the fact alone, nothing written, and no host wording disclosed
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("The cropped region could not be written.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
+        Assert.Equal(file, Assert.Single(Directory.GetFiles(fixture.Root)));
+    }
+
+    /// <summary>
     ///     Proves every destination refusal this tool composes itself names no host path.
     /// </summary>
     /// <remarks>
@@ -1562,12 +1597,16 @@ public class ImageCropToolTests
     ///     Creates a policy that may read one location and write a different one.
     /// </summary>
     /// <remarks>
-    ///     <b>This is the configuration every destination guarantee is decided in.</b> A policy
-    ///     granting read-write over a single root cannot distinguish a write decision from a read
-    ///     decision, so a tool that resolved a destination through the read decision would pass
-    ///     every scenario written against <see cref="RootedPolicy"/>. It is also the shape a real
-    ///     application configures: a workspace to read and a separate session folder to produce
-    ///     into.
+    ///     <b>This is the configuration the grant distinction is decided in.</b> A policy granting
+    ///     read-write over a single root cannot distinguish a write decision from a read decision,
+    ///     so a tool that resolved a destination through the read decision would pass every
+    ///     scenario written against <see cref="RootedPolicy"/>; only a scenario built on this
+    ///     helper can catch it, which is why the two scenarios that turn on the distinction are
+    ///     built here and the rest, whose answers do not depend on which grant admitted the
+    ///     destination, are not. A third scenario uses this helper for a different reason: a
+    ///     destination outside the anchor must still be permitted, which needs a second granted
+    ///     location rather than a second access level. It is also the shape a real application
+    ///     configures: a workspace to read and a separate session folder to produce into.
     /// </remarks>
     /// <param name="readRoot">The location that may be read and is the anchor for relative paths.</param>
     /// <param name="writeRoot">The separate location that may be read and written.</param>

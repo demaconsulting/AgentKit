@@ -31,13 +31,31 @@ Unit tests reside in `Image/ImageCropToolTests.cs`, reusing the shared temporary
 from `TextFile/TempDirectoryFixture.cs` and the shared fixture builder from
 `Image/ImageTestImages.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
-**Every destination scenario runs under an asymmetric policy**, built by the file's own
-`AsymmetricPolicy` helper: one location granted read-only and a separate location granted
-read-write. This is not a stylistic choice. A policy granting read-write over a single root cannot
-distinguish a write decision from a read decision, so a unit that resolved a destination through
-the read decision would pass every scenario written against the symmetric `RootedPolicy` helper —
-the feature's central guarantee would be untestable. It is also the shape a real application
-configures: a workspace to read and a separate session folder to produce into.
+**The scenarios that turn on the grant distinction run under an asymmetric policy**, built by the
+file's own `AsymmetricPolicy` helper: one location granted read-only and a separate location
+granted read-write. A policy granting read-write over a single root cannot distinguish a write
+decision from a read decision, so only a scenario built on this helper can catch a unit that
+derived the destination from the read decision. Two scenarios exist for exactly that — a
+destination under a read-only grant refused while the writable location is disclosed, and a refused
+destination that leaves no file behind — and substituting the read decision for the write decision
+in the unit fails precisely those two here, together with the subsystem's own read-only-grant
+scenario, and nothing else. A third scenario uses the helper for a different reason: a destination
+outside the working directory must still be permitted before it can be confirmed by its absolute
+path, and that needs a second granted location rather than a second access level. The asymmetric
+shape is also the one a real application configures: a workspace to read and a separate session
+folder to produce into.
+
+**The remaining destination scenarios use the symmetric `RootedPolicy` helper deliberately.** They
+verify what a permitted destination produces — the written file and its decoded size, the pixel
+fidelity of what was written, the PNG bytes a JPEG source yields, the confirmation's three facts,
+the absence of image content, the acceptance of a capitalized extension, and the inline outcome an
+omitted destination still returns — and the refusals the destination itself provokes: a non-PNG
+name, an occupied name, a name equal to the source, a directory, a missing parent, a name the file
+system will not accept, and the rule that none of those texts names a host path. None of those
+answers depends on which grant admitted the destination, so granting the two separately would add a
+variable to a scenario that is not about grants. The one destination refusal the policy itself
+composes is stated both ways: outside every grant under `RootedPolicy`, and inside a read-only
+grant under `AsymmetricPolicy`.
 
 **A written file is read back and decoded, never merely counted.** "A PNG was written" is asserted
 against the decoded pixels of the file on disk, so a scenario cannot pass on bytes that happen to
@@ -78,8 +96,9 @@ file left behind after a refused destination; an existing file replaced; a non-P
 accepted; a written region whose pixels differ from the source's; a confirmation that omits the
 destination, the region or the source's dimensions; image content returned alongside a
 confirmation; a directory materialized on the way to a destination whose parent did not exist; a
-destination refusal this unit composes that names a host path; and an inline crop altered in any
-observable way by the parameter's existence.
+destination the file system refuses reported with the operating system's own wording or not refused
+at all; a destination refusal this unit composes that names a host path; and an inline crop altered
+in any observable way by the parameter's existence.
 
 #### Test Scenarios
 
@@ -523,13 +542,27 @@ extension rule is judged first — which is why the directory case uses a direct
 `panel.png`. Both cases assert that no directory was materialized, because silently creating a tree
 on a mistyped path would scatter directories the agent then believes are real.
 
+##### AgentKitTools-Image-CropTool-RefusesUnusableDestination: An Unwritable Destination Is Refused
+
+**Test**: `ImageCropTool_Crop_UnwritableDestination_IsRefusedWithoutDisclosingTheFailure`
+
+The destination is permitted by the policy, is named `.png`, does not exist, and has an existing
+parent directory, so every check this unit makes passes and the write itself is what fails: the
+name is longer than a single path component may be, which no file system in use permits — 255
+characters on NTFS, ext4 and APFS alike. It is the component limit rather than the total path
+length that is exceeded, so the scenario is deterministic on Windows, Linux and macOS and does not
+depend on a host's long-path configuration. The refusal is asserted to state that the region could
+not be written and nothing further — no operating system wording, no host path — and the permitted
+location is asserted to hold no new file.
+
 ##### AgentKitTools-Image-CropTool-DenialDisclosure: Destination Refusals Name No Host Path
 
 **Test**: `ImageCropTool_Crop_DestinationDenials_NameNoHostPath`
 
-All four refusals this unit composes for a destination — wrong extension, directory, existing file,
-missing parent — are provoked in one scenario and each is asserted to contain no directory
-separator of either form and no part of the workspace path. The refusal text reaches a model and
-the resulting transcript leaves the process, so nothing about the host's layout may be composed
-into one. The success confirmation is governed by the opposite rule and is covered by the dialect
-scenarios above.
+Four of the five refusals this unit composes for a destination — wrong extension, directory,
+existing file, missing parent — are provoked in one scenario and each is asserted to contain no
+directory separator of either form and no part of the workspace path. The refusal text reaches a
+model and the resulting transcript leaves the process, so nothing about the host's layout may be
+composed into one. The success confirmation is governed by the opposite rule and is covered by the
+dialect scenarios above. The fifth, the unwritable-destination refusal, is a fixed string with
+nothing interpolated into it and is asserted to name no host path by the scenario above.
