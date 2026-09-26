@@ -536,8 +536,10 @@ public static class ImageCropTool
     ///     type a region can be taken from.
     /// </summary>
     /// <remarks>
-    ///     The file's size is judged from its directory entry before it is opened, so an
-    ///     oversized file is never read into memory merely to discover it was oversized. An
+    ///     The file is opened once and its size is read from that open handle, so the ceiling is
+    ///     bound to the very bytes the read then takes: an oversized file is still never read
+    ///     into memory merely to discover it was oversized, and a file that grows or is replaced
+    ///     after the size was taken cannot enlarge what is loaded. An
     ///     encoded result is judged against the same ceiling before it is returned <em>inline</em>,
     ///     because a large region of a compressed source re-encoded losslessly can genuinely
     ///     exceed a ceiling the source file sat well inside. A result written to a file is not
@@ -566,9 +568,21 @@ public static class ImageCropTool
 
         try
         {
-            // Size is judged before the file is opened, so an oversized file is never read into
-            // memory merely to discover it was oversized.
-            var length = new FileInfo(realPath).Length;
+            // The file is opened once, and the size the ceiling is judged against is read from
+            // that same open handle rather than from a separate directory lookup. Judging a size
+            // and then reopening the path to read it would leave a window in which the file could
+            // grow or be replaced, and the larger content would be loaded despite the ceiling.
+            await using var stream = new FileStream(
+                realPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096,
+                useAsync: true);
+
+            // Nothing is allocated before the ceiling has passed, so an oversized file is still
+            // never read into memory merely to discover it was oversized.
+            var length = stream.Length;
             if (length > policy.Limits.MaxBinaryBytes)
             {
                 return ToolResult.Denied(
@@ -578,8 +592,12 @@ public static class ImageCropTool
                     + "-byte binary limit.");
             }
 
-            data = await System.IO.File.ReadAllBytesAsync(realPath, cancellationToken)
-                .ConfigureAwait(false);
+            // Exactly the count that was validated is read, so a file growing under the read
+            // cannot enlarge what is loaded. A file that SHRINKS instead ends the read early,
+            // which surfaces as an EndOfStreamException — an IOException, and therefore already
+            // an access failure by the classification below.
+            data = new byte[length];
+            await stream.ReadExactlyAsync(data, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {

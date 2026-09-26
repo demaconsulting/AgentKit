@@ -129,11 +129,15 @@ sections:
                   the declared dimensions alone is what makes the refusal cost nothing: the
                   decision is made before any pixel data exists. Both bounds are named because
                   one bounds each axis and the other bounds their product, neither implies the
-                  other, and a model needs both to form a request that would be accepted.
+                  other, and a model needs both to form a request that would be accepted. The
+                  pixel bound is read from the policy the host configured rather than from the
+                  published default, so a host on a constrained container lowers the ceiling and
+                  the tool refuses against the number that host chose.
                 tests:
                   - ImageCropTool_Crop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
                   - ImageCropTool_Crop_HeaderDeclaringAnOversizedAxis_IsRefusedNamingTheBounds
                   - ImageCropTool_Crop_PalettizedPngNearThePixelCeiling_IsRefusedNamingTheBudget
+                  - ImageCropTool_Crop_HeaderExceedingAHostLoweredPixelCeiling_IsRefusedNamingThatCeiling
 
               - id: AgentKitTools-Image-CropTool-RefusesUndecodableContent
                 title: >-
@@ -183,9 +187,12 @@ sections:
                   same ceiling, naming the ceiling in both cases.
                 justification: |
                   The same ceiling governs everything this family hands a provider, whatever
-                  produced the bytes. Judging the source file's size from its directory entry
-                  means an oversized file is never read into memory merely to discover it was
-                  oversized. Judging the result separately is not redundant: a region of a
+                  produced the bytes. Judging the source file's size from the handle it was
+                  opened on, before any content is read, means an oversized file is never read
+                  into memory merely to discover it was oversized and means the bytes the ceiling
+                  admitted are the bytes the read takes — a file that grew after a separate size
+                  lookup could otherwise be loaded whole despite the ceiling. Judging the result
+                  separately is not redundant: a region of a
                   compressed source, returned in a form that alters no pixel, can genuinely
                   exceed a ceiling the source file sat well inside. Naming the ceiling lets the
                   model ask for a smaller region rather than guess. The ceiling governs what this

@@ -238,8 +238,11 @@ public static class ImageReadTool
     /// <remarks>
     ///     The binary ceiling is the single budget that applies to content this tool returns:
     ///     unlike text, an image is not charged against the context window by the same route, so
-    ///     a byte ceiling is the right control. Size is judged before the file is opened, so an
-    ///     oversized file is never read into memory merely to discover it was oversized.
+    ///     a byte ceiling is the right control. The file is opened once and its size is read from
+    ///     that open handle, so the ceiling is bound to the very bytes the read then takes: an
+    ///     oversized file is still never read into memory merely to discover it was oversized,
+    ///     and a file that grows or is replaced after the size was taken cannot enlarge what is
+    ///     handed to a provider.
     /// </remarks>
     /// <param name="policy">The access policy whose ceiling applies.</param>
     /// <param name="realPath">The real location of the permitted file.</param>
@@ -254,9 +257,22 @@ public static class ImageReadTool
     {
         try
         {
-            // Size is judged before the file is opened, so an oversized file is never read into
-            // memory merely to discover it was oversized.
-            var length = new FileInfo(realPath).Length;
+            // The file is opened once, and the size the ceiling is judged against is read from
+            // that same open handle rather than from a separate directory lookup. Judging a size
+            // and then reopening the path to read it would leave a window in which the file could
+            // grow or be replaced, and the larger content would reach the provider despite the
+            // ceiling.
+            await using var stream = new FileStream(
+                realPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096,
+                useAsync: true);
+
+            // Nothing is allocated before the ceiling has passed, so an oversized file is still
+            // never read into memory merely to discover it was oversized.
+            var length = stream.Length;
             if (length > policy.Limits.MaxBinaryBytes)
             {
                 return ToolResult.Denied(
@@ -266,8 +282,13 @@ public static class ImageReadTool
                     + "-byte binary limit.");
             }
 
-            var data = await System.IO.File.ReadAllBytesAsync(realPath, cancellationToken)
-                .ConfigureAwait(false);
+            // Exactly the count that was validated is read, so a file growing under the read
+            // cannot enlarge what is returned. A file that SHRINKS instead ends the read early,
+            // which surfaces as an EndOfStreamException — an IOException, and therefore already
+            // an access failure by the classification below.
+            var data = new byte[length];
+            await stream.ReadExactlyAsync(data, cancellationToken).ConfigureAwait(false);
+
             var caption = ComposeCaption(data, mediaType);
 
             // A PDF is not an image/ media type, so it is returned through Binary, whose guard

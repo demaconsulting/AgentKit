@@ -230,9 +230,12 @@ path outside a permitted location — deliberately discloses the request, its in
 permitted locations, so a confined model learns where it may work.
 
 **The ceiling refuses, it does not truncate.** `MaxBinaryBytes` bounds what the tool may return;
-the tool judges the file's size before opening it and refuses an overrun with the ceiling named,
+the tool opens the file once, judges its size from that open handle before reading any content, and
+refuses an overrun with the ceiling named,
 never returning a truncated image, because a partial image is corruption the model cannot detect and
-will reason past.
+will reason past. Reading exactly the count the ceiling admitted, from the handle the size was read
+from, is what binds the ceiling to the bytes actually taken rather than to a size that might already
+have changed.
 
 **The family is gated on Vision.** `ImagePack` declares `HostCapabilities.Vision`, so a host that
 has not declared it receives none of the family's tools — and receives none because the composition

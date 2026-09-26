@@ -84,7 +84,9 @@ explicitly asserted. A region arriving as a `JsonElement`, any pixel of a return
 from the source's, an out-of-bounds region answered with content rather than a refusal, a refusal
 that omits the image's real dimensions where they were read, a refusal that states dimensions that
 were never read, an oversized declared image that is decoded before being refused, a decode budget
-that accepts a palette-indexed image it would refuse in truecolor form, a well-formed file the
+that accepts a palette-indexed image it would refuse in truecolor form, a decode budget enforced
+against the published default rather than against the ceiling the host configured, a well-formed
+file the
 decoder will not decode described as damaged, a refusal carrying the decoding library's own
 wording, a non-croppable
 type refused with a sibling tool named, an exception or framework error raised at a malformed or
@@ -291,6 +293,19 @@ factor of four and **accept** it. Palette-indexed content also compresses best, 
 what a hostile caller would reach for. The fixture differs from the truecolor one above only in its
 declared color type, so nothing but the estimate can be what changes the answer.
 
+##### AgentKitTools-Image-CropTool-RefusesOversizedDecode: A Host-Lowered Pixel Ceiling Is the One Enforced
+
+**Test**: `ImageCropTool_Crop_HeaderExceedingAHostLoweredPixelCeiling_IsRefusedNamingThatCeiling`
+
+**The scenario that makes a configured ceiling falsifiable.** Every other decode scenario runs at
+the published default, so a unit that consulted the default constant in place of the policy's own
+value would pass all of them and the configured ceiling would be a setting nothing exercised. The
+fixture here declares 100 by 100 — ten thousand pixels, far above the ceiling this host lowers to
+and far below the default — so only the configured value can produce the refusal. The refusal is
+asserted to name that value and to **not** name the default, because naming a bound that is not in
+force would aim the model's next request at the wrong number. The fixture carries no pixel data,
+so a unit that decoded before triaging would produce the undecodable refusal instead.
+
 ##### AgentKitTools-Image-CropTool-RefusesUndecodableContent: A Truncated Body Is Refused With Its Size
 
 **Test**: `ImageCropTool_Crop_TruncatedPngBody_ReturnsDenialNamingTheDeclaredDimensions`
@@ -361,7 +376,9 @@ type is judged before existence.
 
 Boundary condition: the fixture is a real, decodable image, so a tool that parsed before checking
 the ceiling would succeed rather than fail. Asserting the ceiling's refusal is therefore evidence
-the size was judged first.
+the size was judged first. The refusal is asserted **by its whole text**, and the encoded region's
+refusal by its absence: both messages name the same ceiling, so an assertion on the ceiling alone
+would be satisfied by the region check firing after the source check had been removed entirely.
 
 ##### AgentKitTools-Image-CropTool-ObservesBinaryCeiling: An Oversized Returned Region Is Refused
 

@@ -614,6 +614,44 @@ public class ImageCropToolTests
     }
 
     /// <summary>
+    ///     Proves the pixel ceiling the tool enforces is the one the host configured, not the
+    ///     published default.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The scenario that makes a configured ceiling falsifiable.</b> Every other decode
+    ///     scenario runs at the default ceiling, so a tool that read
+    ///     <c>ToolLimits.DefaultMaxImagePixels</c> in place of the policy's own value would pass
+    ///     all of them — the configured ceiling would be a setting nothing exercised. This
+    ///     fixture declares 100 by 100, ten thousand pixels: far above the ceiling this host
+    ///     lowers to and far below the published default, so the refusal can only come from the
+    ///     configured value. The refusal is asserted to name that value and <em>not</em> the
+    ///     default, because naming the default while refusing on the configured one would tell
+    ///     the model to aim at a bound that is not in force. As elsewhere, the fixture carries no
+    ///     pixel data, so a tool that decoded before triaging would produce the undecodable
+    ///     refusal instead.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageCropTool_Crop_HeaderExceedingAHostLoweredPixelCeiling_IsRefusedNamingThatCeiling()
+    {
+        // Arrange: a modest declaration, and a host ceiling deliberately below it
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(fixture.Root, "modest.png", ImageTestImages.PngHeaderOnly(100, 100));
+        var tool = ImageCropTool.Create(
+            RootedPolicy(fixture.Root, new ToolLimits(maxImagePixels: 4096)));
+
+        // Act: ask for a small region of an image the default ceiling would have admitted
+        var result = await InvokeAsync(tool, file, 0, 0, 10, 10);
+
+        // Assert: refused against the host's ceiling, which is the only bound that can refuse it
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("100x100 pixels", text, StringComparison.Ordinal);
+        Assert.Contains("4096 pixels in total", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("16777216", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a palette-indexed image within the budget is cropped successfully.
     /// </summary>
     /// <remarks>
@@ -848,7 +886,10 @@ public class ImageCropToolTests
     /// <remarks>
     ///     The fixture is a real image, so a tool that parsed before checking the ceiling would
     ///     succeed rather than fail; asserting the ceiling's refusal is therefore evidence the
-    ///     size was judged first.
+    ///     size was judged first. <b>The refusal is asserted by its whole text, and the encoded
+    ///     region's refusal by its absence</b>: both messages name the same ceiling, so an
+    ///     assertion on the ceiling alone would be satisfied by the region check firing after
+    ///     the source check had been removed entirely.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -862,10 +903,11 @@ public class ImageCropToolTests
         // Act: ask for a small region of it
         var result = await InvokeAsync(tool, file, 0, 0, 4, 4);
 
-        // Assert: a refusal naming the ceiling
+        // Assert: the source file's own refusal, naming the ceiling, and not the region's
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
-        Assert.Contains("8-byte binary limit", text, StringComparison.Ordinal);
+        Assert.Contains("The file exceeds the 8-byte binary limit.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("The cropped image is", text, StringComparison.Ordinal);
     }
 
     /// <summary>

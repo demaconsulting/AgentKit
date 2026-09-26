@@ -103,9 +103,12 @@ governed by the supplied policy for the rest of its life.
    before the file system is consulted for size or content, so a file is never read only to be
    discarded
 5. A non-existent file is refused as `TargetNotFound`, stating the fact and prescribing nothing
-6. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size is
-   judged before the file is opened, so an oversized file is never loaded merely to discover it was
-   oversized
+6. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. The
+   file is opened once and its size read from that open handle, before any content is read, so
+   nothing is loaded merely to discover a file was oversized and no file can grow between the size
+   being judged and the bytes being taken. Exactly the number of bytes the ceiling admitted is
+   then read; a file that shrinks under the read ends it early, which surfaces as an
+   `EndOfStreamException` and is refused as an unreadable file
 7. Otherwise the bytes are read and returned with a caption naming the media type and, where the
    header yields it, the image's pixel dimensions: an `image/*` type through `ToolResult.Image`,
    and `application/pdf` through `ToolResult.Binary`. The header probe runs on the bytes already
@@ -132,7 +135,10 @@ error in the composing application — the same dividing line `PathPolicy` and `
 
 File system failures are caught by an explicit classification — `IOException`,
 `UnauthorizedAccessException`, `NotSupportedException`, `SecurityException` — and reported as an
-`InvalidRequest` refusal. The classification is enumerated rather than catching everything so that a
+`InvalidRequest` refusal. That classification already covers the read ending early because the file
+shrank beneath it: `EndOfStreamException` derives from `IOException`, so a file truncated between
+the size being judged and the bytes being taken is refused as an unreadable file rather than
+propagating. The classification is enumerated rather than catching everything so that a
 genuine defect still surfaces during development instead of being reported to a model as an
 unreadable file. Cancellation is not classified, so a canceled read propagates as the runtime
 expects.
@@ -159,7 +165,7 @@ composes — because there the naming *is* the statement of what the file is, on
 `PathPolicy` and `ToolLimits` for the decision and the ceiling, `ImageMediaTypes` for the type
 resolution and the unsupported-type refusal, `ImageProbe` for the header read that yields the
 caption's pixel dimensions, `ToolResult` for every result it returns, and
-`GuardedToolFactory` for construction. From the Base Class Library: `File`, `FileInfo` and
+`GuardedToolFactory` for construction. From the Base Class Library: `File`, `FileStream` and
 `Directory`. `AIFunction` and the content types, from `Microsoft.Extensions.AI.Abstractions`, are
 the form the constructed tool and its result take.
 

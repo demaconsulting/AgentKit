@@ -85,7 +85,8 @@ transpose, and so the steps and the messages cannot disagree about which value i
 
 Two ceilings from `PathPolicy.Limits` bound the operation:
 
-- `MaxBinaryBytes` bounds the source file, judged from its directory entry before it is opened, and
+- `MaxBinaryBytes` bounds the source file, judged from the handle the file was opened on and before
+  any of its content is read, and
   the **inline** returned region, judged after it is encoded. The second is not redundant: a region
   of a compressed source, returned losslessly, can genuinely exceed a ceiling the source file sat
   well inside. It does **not** bound a region written to a file; see *The Binary Ceiling and the
@@ -151,8 +152,12 @@ the next allocates anything:
     policy's own message; an existing directory refuses as `InvalidRequest`; an existing file
     refuses as `InvalidRequest`; an absent parent directory refuses as `TargetNotFound`. See
     *The Destination* below for why this step sits here
-11. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. Size
-    is judged from the directory entry before the file is opened
+11. A file larger than `MaxBinaryBytes` is refused as `ResourceTooLarge`, naming the ceiling. The
+    file is opened once and its size read from that open handle, before any content is read, so
+    nothing is loaded to discover a file was oversized and no file can grow between the size being
+    judged and the bytes being taken. Exactly the number of bytes the ceiling admitted is then
+    read; a file that shrinks under the read ends it early, which surfaces as an
+    `EndOfStreamException` and is refused as an unreadable file
 12. The header is read. A header that will not read is refused as `UnsupportedMediaType` stating
     that the file is not readable as the resolved type — **and stating no size, because none was
     read**
@@ -348,7 +353,10 @@ File system failures are caught by an explicit classification — `IOException`,
 `UnauthorizedAccessException`, `NotSupportedException`, `SecurityException` — and reported as an
 `InvalidRequest` refusal. The same classification covers the write: every way a `FileStream` create
 can fail for a reason the model provoked is one of those four, and the defects that must stay loud
-are excluded from all of them. Decode failures are caught by a second explicit classification and
+are excluded from all of them. It also already covers the source read ending early because the file
+shrank beneath it: `EndOfStreamException` derives from `IOException`, so a file truncated between
+the size being judged and the bytes being taken is refused as an unreadable file rather than
+propagating. Decode failures are caught by a second explicit classification and
 reported as `UnsupportedMediaType`. Both are enumerated rather than catching everything, so a
 genuine defect still surfaces during development. **A failure inside the encoder, on a pixel buffer
 this unit constructed, is a defect rather than anything a model can provoke, and is allowed to
@@ -403,7 +411,7 @@ for the croppable-type resolution, the destination's extension check and its ref
 `ImageProbe` for the header read that yields the
 declared size and whether the decoder expects to decode it, `ToolResult` for every result it
 returns, and
-`GuardedToolFactory` for construction. From the Base Class Library: `File`, `FileInfo`, `Directory`,
+`GuardedToolFactory` for construction. From the Base Class Library: `File`, `Directory`,
 `FileStream` and `MemoryStream`. From the `CanvasNet` OTS item: the decoders, the pixel buffer's
 rectangular
 sub-region copy, the published per-axis bound and the encoder; see *CanvasNet Design*. **No type
