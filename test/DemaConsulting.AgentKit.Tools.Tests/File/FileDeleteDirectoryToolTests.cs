@@ -303,6 +303,110 @@ public class FileDeleteDirectoryToolTests
     }
 
     /// <summary>
+    ///     Proves a tree holding exactly as many entries as the ceiling permits is removed whole.
+    /// </summary>
+    /// <remarks>
+    ///     The boundary the walk's early abandon sits on. Paths stop being retained once the
+    ///     running count passes the ceiling, so a plan of exactly the ceiling must still be
+    ///     complete — an off-by-one there would leave the last entry behind while the
+    ///     confirmation reported the whole tree removed, which is a silent partial removal
+    ///     reported as a success. The largest permitted tree is the only place that shows.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_TreeExactlyAtTheEntryCeiling_RemovesEveryEntry()
+    {
+        // Arrange: a four-entry tree under a host that permits exactly four entries per removal
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        TempDirectoryFixture.WriteFile(tree, "one.txt", "content");
+        TempDirectoryFixture.WriteFile(Path.Combine(tree, "nested"), "two.txt", "content");
+        var tool = FileDeleteDirectoryTool.Create(BoundedPolicy(fixture.Root, 4));
+
+        // Act: ask for the whole tree
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: accepted, all four reported, and nothing at all left behind
+        var text = Assert.IsType<string>(result);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
+        Assert.Contains("4 entries", text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(tree));
+    }
+
+    /// <summary>
+    ///     Proves a file-system failure during the planning walk is returned as a refusal rather
+    ///     than thrown out of the tool.
+    /// </summary>
+    /// <remarks>
+    ///     The walk is the one part of this unit that touches an arbitrary tree, so it is the one
+    ///     part that meets a directory the process may not enumerate, or a child that has gone
+    ///     since the parent was listed. The family's load-bearing rule is that a refusal is a
+    ///     result and never an exception, and an exception escaping here would leave the agent
+    ///     runtime — not the tool — deciding what the model is told.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_TreeHoldingAnUnreadableDirectory_ReturnsDenialRatherThanThrowing()
+    {
+        // Arrange: a permitted tree whose sub-directory cannot be looked inside
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        var inside = TempDirectoryFixture.WriteFile(tree, "output.txt", "content");
+        var closedPath = Path.Combine(tree, "closed");
+        Directory.CreateDirectory(closedPath);
+        using var closed = RestrictedDirectory.Unreadable(closedPath);
+        var tool = FileDeleteDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the whole tree, which the walk cannot plan
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: a returned refusal carrying no host path, and nothing removed — the walk
+        // mutates nothing, so the plain refusal is the whole truth
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("could not be deleted", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(tree));
+        Assert.True(System.IO.File.Exists(inside));
+    }
+
+    /// <summary>
+    ///     Proves a removal that fails part way through says how much of the tree is already
+    ///     gone.
+    /// </summary>
+    /// <remarks>
+    ///     Every other refusal this unit composes states that nothing was deleted, so a bare
+    ///     "the directory could not be deleted" would be read as "the tree is intact". Naming the
+    ///     figure is what lets a model tell a tree it still has from one it partly lost — the
+    ///     phase-two failure the two-phase design bounds but cannot prevent.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_RemovalFailingPartWayThrough_ReportsHowManyEntriesWereRemoved()
+    {
+        // Arrange: a four-entry tree whose nested file cannot be removed. The walk plans it
+        // whole, so the failure lands in phase two after the first file has already gone.
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        var removable = TempDirectoryFixture.WriteFile(tree, "output.txt", "content");
+        var nested = Path.Combine(tree, "nested");
+        TempDirectoryFixture.WriteFile(nested, "kept.txt", "content");
+        using var locked = RestrictedDirectory.ContentsUndeletable(nested);
+        var tool = FileDeleteDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: ask for the whole tree
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: refused, naming what went and what the plan covered, and the first file really
+        // is gone — so the figure describes the tree as it now is
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("1 of 4 entries were removed", text, StringComparison.Ordinal);
+        Assert.False(System.IO.File.Exists(removable));
+        Assert.True(Directory.Exists(nested));
+    }
+
+    /// <summary>
     ///     Composes a policy over one read-write location.
     /// </summary>
     /// <param name="root">The permitted location.</param>

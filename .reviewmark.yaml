@@ -724,6 +724,7 @@ reviews:
       - "docs/verification/agent-kit-tools/file/file-delete-directory-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteDirectoryTool.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteDirectoryToolTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/RestrictedDirectory.cs"  # permission-withdrawal test fixture
 
   # AgentKitTools-File-FilePack Review (one per unit)
   - id: AgentKitTools-File-FilePack

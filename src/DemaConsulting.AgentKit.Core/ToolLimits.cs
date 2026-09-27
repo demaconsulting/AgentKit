@@ -71,7 +71,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     directory, comfortably above one project's whole build output, and well below the trees an
 ///     agent must never remove by mistake — a source tree, a test tree, or an installed package
 ///     directory, which run from several thousand to tens of thousands of entries. Ordinary
-///     housekeeping succeeds; a mistaken "remove the workspace" is refused.
+///     housekeeping succeeds; a mistaken "remove the workspace" is refused. Enforcing it costs one
+///     metadata-only traversal of the tree, which the approved case was going to make anyway; it
+///     does not cost the memory to hold a tree that is about to be refused, because the walk stops
+///     retaining paths once the running count passes this ceiling and only keeps counting.
 ///     </para>
 ///     <para>
 ///     <b>Every ceiling here is a default, and every one is overridable.</b> A host that wants

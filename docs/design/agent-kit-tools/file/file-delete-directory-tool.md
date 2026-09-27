@@ -58,21 +58,38 @@ governed by the supplied policy for the rest of its life.
 4. A missing directory is refused as `TargetNotFound`.
 5. A `path` that is **itself a link** takes the link branch: the link entry alone is removed,
    unfollowed, and the confirmation says what it pointed at was not touched.
-6. **Phase one** walks the tree and builds the complete removal plan, mutating nothing. The walk
-   never descends into a link. The first link it meets — file or directory — ends the walk and the
-   whole request is refused as `InvalidRequest`, naming the entry.
+6. **Phase one** walks the tree iteratively, over an explicit stack, and builds the removal plan,
+   mutating nothing. The walk never descends into a link. The first link it meets — file or
+   directory — ends the walk and the whole request is refused as `InvalidRequest`, naming the
+   entry. A file-system failure during the walk is classified and refused as `InvalidRequest`,
+   never thrown.
 7. The plan's entry count, which **includes the named directory itself**, is compared against
    `policy.Limits.MaxDeleteEntries`. A plan exceeding it is refused as `ResourceTooLarge`, naming
-   the exact count and the ceiling.
+   the exact count and the ceiling. The count is exact even for a tree far past the ceiling: the
+   walk keeps counting past it and stops only retaining the paths.
 8. **Phase two** removes exactly the approved plan: every file, then every directory in reverse
-   collection order so each is empty when it goes. The confirmation reports the entry count.
+   collection order so each is empty when it goes. The confirmation reports the entry count; a
+   failure part way through reports how many entries had already been removed.
 
 #### Design Decisions
 
 **The two phases are a requirement, not an optimization.** A single-pass walk that discovered a
 link, or crossed the ceiling, mid-flight would leave a half-destroyed tree — the worst outcome
 available and the one hardest to reason about afterwards. Deciding before acting is also what
-makes both guards enforceable with one shape rather than two.
+makes both guards enforceable with one shape rather than two. What the two phases guarantee is
+exact: **no removal begins until the whole plan is approved.** They cannot guarantee that a
+removal, once begun, completes — the file system can refuse an entry at any point, and a file
+another process holds open is the ordinary Windows case. The tool's answer there is to report the
+figure rather than to claim the tree is intact; see *Error Handling*.
+
+**The walk is iterative, over an explicit stack.** Recursion costs one stack frame per directory
+level, and a tree deep enough to exhaust the thread's stack raises `StackOverflowException` —
+which cannot be caught and terminates the host process, before the entry ceiling is ever
+consulted. That would defeat the ceiling on exactly the input the ceiling exists for. An explicit
+stack moves depth onto the heap, so depth costs the same bounded resource breadth already does.
+Children are pushed in reverse so they pop in the order the directory reported them, which keeps
+the visiting order — and therefore which entry a tree holding several links is refused for —
+identical to the order the recursive walk produced.
 
 **No recursive framework delete is ever issued.** Deleting a tree recursively was measured on
 Windows to throw when the tree contains a directory junction, and to leave the tree *partly
@@ -108,25 +125,43 @@ buys is that a *mistake* — a wrong path, a model confusion, an off-by-one in a
 is survivable and observable rather than total in one call. The documentation must not be read as
 claiming more.
 
-**The count is exact, and the enumeration cost is accepted.** "More than the limit" tells a model
-nothing about whether subdividing would help; a real figure does. A very large tree is therefore
-enumerated in full only to be refused. The enumeration is metadata-only, happens once per refused
-call, and covers a tree that was about to be enumerated anyway — a trade recorded here so a later
-reader meets it rather than rediscovering it.
+**The count is exact, and the enumeration cost is accepted — but not the retention cost.** "More
+than the limit" tells a model nothing about whether subdividing would help; a real figure does. A
+very large tree is therefore enumerated in full only to be refused. The enumeration is
+metadata-only, happens once per refused call, and covers a tree that was about to be enumerated
+anyway — a trade recorded here so a later reader meets it rather than rediscovering it. Holding
+that tree is a separate cost and is *not* accepted: once the running count passes
+`MaxDeleteEntries` the walk stops appending paths and only keeps counting, so the exact figure is
+still reported while the request too large to approve accumulates nothing. Under
+`PathRule.Unrestricted(AccessLevel.ReadWrite)` — a supported configuration — that is the
+difference between a refusal and a refusal that first materializes every path on the volume.
 
 #### Error Handling
 
-Everything a model controls produces a returned refusal. The only exception the unit raises is
-`ArgumentNullException` for a null policy at construction.
+Everything a model controls produces a returned refusal, and so does every file-system failure the
+unit can meet. The only exception the unit raises is `ArgumentNullException` for a null policy at
+construction.
 
 File system failures are caught by explicit classification — `IOException`,
 `UnauthorizedAccessException`, `NotSupportedException`, `SecurityException` — and reported as an
-`InvalidRequest` refusal that the directory could not be deleted. The refusal carries no exception
-text, which is developer-facing and can name a host path the policy never disclosed.
+`InvalidRequest` refusal. **Both phases are classified, not just the removal.** The planning walk
+enumerates an arbitrary tree, so it meets a sub-directory the process may not enumerate, and a
+child that vanishes between one step and the next — the plan-and-execute race this design reasons
+about. Leaving those to escape would break the family's rule that a refusal is a result on the one
+tool that walks a tree it did not choose. The refusal carries no exception text, which is
+developer-facing and can name a host path the policy never disclosed.
 
-A failure during phase two can leave a partly removed tree; nothing can prevent that, since the
-file system is the thing that failed. Phase one is what guarantees the tool never *chooses* to
-stop part way through.
+The two phases refuse differently, because they leave the file system in different states:
+
+- **Phase one** mutates nothing, so its refusal says the directory could not be deleted and that
+  is the whole truth.
+- **Phase two** may already have removed part of the plan, so its refusal names **how many entries
+  were removed** out of how many the plan covered. Every other refusal this tool composes states
+  that nothing was deleted; a bare "could not be deleted" would therefore be read as "the tree is
+  intact", and a model would act on a tree that is no longer there. Nothing can prevent the
+  partial removal itself — the file system is the thing that failed — but the outcome is reported
+  rather than concealed. Phase one is what guarantees the tool never *chooses* to stop part way
+  through.
 
 #### Dependencies
 

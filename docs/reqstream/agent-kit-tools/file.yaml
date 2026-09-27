@@ -86,11 +86,16 @@ sections:
               than the model believed; both are refused before anything is removed, so the failure
               mode is a refusal rather than a half-destroyed workspace. The ceiling is honest
               about what it is: it bounds the damage of a mistake, not the reach of an agent that
-              intends the destruction and could remove a tree one file at a time.
+              intends the destruction and could remove a tree one file at a time. What deciding
+              before acting guarantees is that no removal begins until the whole plan is approved;
+              it cannot guarantee that a removal, once begun, completes, so a removal the file
+              system stops part way through reports how far it got rather than reading, against
+              every other refusal in the family, as though nothing had happened.
             children:
               - AgentKitTools-File-DeleteDirectoryTool-NeverFollowsALink
               - AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
               - AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
+              - AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval
             tests:
               - File_Family_RecursiveDelete_LinkOutOfTheGrant_IsNeverFollowed
 
@@ -177,13 +182,17 @@ sections:
               An exception raised while a model is calling a tool ends the agent's turn and strands
               it, whereas a returned refusal lets it read the reason and choose a permitted
               alternative. A denial states a fact and never prescribes a remedy; naming another tool
-              to run is a prescription the refusal must not make.
+              to run is a prescription the refusal must not make. The rule covers what the file
+              system refuses as well as what the model gets wrong: a tool that walks an arbitrary
+              tree meets entries it may not read, and those failures are classified and returned
+              in exactly the same shape.
             children:
               - AgentKitTools-File-CopyTool-MissingSource
               - AgentKitTools-File-MoveTool-MissingSource
               - AgentKitTools-File-DeleteTool-MissingFile
               - AgentKitTools-File-MoveDirectoryTool-MissingSource
               - AgentKitTools-File-DeleteDirectoryTool-MissingDirectory
+              - AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused
             tests:
               - File_Family_DeniedRequest_ReturnsAResultWithoutThrowing
 

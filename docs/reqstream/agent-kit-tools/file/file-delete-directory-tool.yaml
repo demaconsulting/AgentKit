@@ -82,8 +82,9 @@ sections:
                 title: >-
                   The delete-directory tool shall refuse a directory holding more entries than the
                   configured ceiling, naming the exact count and the ceiling and removing nothing,
-                  and shall count the named directory itself so that a ceiling of zero forbids
-                  recursive removal entirely.
+                  shall count the named directory itself so that a ceiling of zero forbids
+                  recursive removal entirely, and shall remove every entry of a tree holding
+                  exactly as many entries as the ceiling permits.
                 tags: [security]
                 justification: |
                   The ceiling bounds what a mistake can destroy in one call — a wrong path, a
@@ -92,12 +93,51 @@ sections:
                   be more: an agent that intends the destruction can remove a tree a file at a
                   time and the ceiling will not stop it. The count is exact because a vague
                   "more than the limit" tells a model nothing about whether subdividing would
-                  help, while a real figure does. Counting the named directory is what makes zero
+                  help, while a real figure does; it stays exact past the ceiling because the walk
+                  keeps counting after it stops retaining paths, and the boundary is stated
+                  explicitly so that a tree of exactly the ceiling is removed whole rather than
+                  one entry short with a confirmation claiming otherwise. Counting the named
+                  directory is what makes zero
                   the expressible way for a host to attach the family and withhold this capability.
                 tests:
                   - FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_ReturnsDenialNamingTheCountAndTheLimit
                   - FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_RemovesNothing
+                  - FileDeleteDirectoryTool_Delete_TreeExactlyAtTheEntryCeiling_RemovesEveryEntry
                   - FileDeleteDirectoryTool_Delete_ZeroEntryCeiling_RefusesEvenAnEmptyDirectory
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused
+                title: >-
+                  The delete-directory tool shall return a refusal, rather than throwing, when the
+                  file system refuses the planning walk, leaving the tree untouched.
+                tags: [security]
+                justification: |
+                  The planning walk is the one part of this unit that touches an arbitrary tree,
+                  so it is the part that meets a sub-directory the process may not enumerate, or a
+                  child that has gone since its parent was listed. Neither is a defect and neither
+                  is something the model can correct by being told less. The family's load-bearing
+                  rule is that a refusal is a result and never an exception; an exception escaping
+                  here would leave the agent runtime, rather than the tool, deciding what the
+                  model is told, on the one tool whose reach is not stated by the request. The
+                  walk mutates nothing, so the refusal is also the whole truth: the tree is
+                  exactly as it was.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnUnreadableDirectory_ReturnsDenialRatherThanThrowing
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval
+                title: >-
+                  The delete-directory tool shall report how many entries were removed when a
+                  removal fails part way through the approved plan.
+                justification: |
+                  Deciding before acting guarantees that no removal begins until the whole plan is
+                  approved; it cannot guarantee that a removal, once begun, completes, because the
+                  file system is the thing that fails — a file another process holds open is the
+                  ordinary case. Every other refusal this tool composes states that nothing was
+                  deleted, so a bare "the directory could not be deleted" reads as "the tree is
+                  intact" and a model would go on to act on a tree that is no longer there.
+                  Naming the figure is what turns an unpreventable partial removal into one the
+                  model can see and reason about.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_RemovalFailingPartWayThrough_ReportsHowManyEntriesWereRemoved
 
               - id: AgentKitTools-File-DeleteDirectoryTool-PolicyGoverned
                 title: >-

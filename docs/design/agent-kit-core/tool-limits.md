@@ -53,6 +53,7 @@ case a host can be billed for finite and small.
 **Every ceiling is a default, and every one is overridable.** A host that wants different budgets
 supplies them through the optional parameters of the `ToolLimits` constructor and hands the result
 to the three-argument `PathPolicy` constructor; a host that configures nothing receives `Default`.
+
 **`MaxImagePixels` = 16,777,216 (4096 × 4096).** This bounds how many pixels a tool may decode out
 of one image, counted from the dimensions that image declares. It is a count of pixels and not of
 bytes, deliberately, and the reasoning is worth stating in full because it is the kind of thing a
@@ -116,6 +117,17 @@ Counting the named directory itself is what makes an empty directory cost one en
 what makes a ceiling of zero forbid recursive removal entirely — the expressible way for a host to
 attach the family and withhold the capability, exactly as a zero delegation depth does for the
 agent family.
+
+**What enforcing this ceiling costs.** The refusal names the exact entry count rather than "more
+than the limit", because a real figure is what tells a model whether subdividing the request would
+help. An exact figure requires the whole tree to be walked, even the tree that is about to be
+refused. That walk is metadata-only and covers a tree the approved case was going to enumerate
+anyway, so the cost is a traversal rather than a read. It is *not* the cost of holding the tree:
+the walk stops retaining paths once the running count passes the ceiling and only keeps counting,
+so the request too large to approve is also the request that accumulates nothing. The traversal is
+iterative over an explicit stack rather than recursive, so a deep tree reaches this ceiling rather
+than exhausting the thread's stack first — a stack overflow cannot be caught and would take the
+host process with it, which is the one outcome a damage ceiling must not have.
 
 ### Data Model
 

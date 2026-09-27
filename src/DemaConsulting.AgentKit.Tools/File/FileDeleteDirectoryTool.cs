@@ -20,8 +20,21 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <b>The removal happens in two phases, and the first phase changes nothing.</b> The tool
 ///     first walks the tree and builds the complete list of entries the removal would take; only
 ///     if that whole list is acceptable does it remove anything. Deciding before acting is what
-///     makes both guards below enforceable, and it is what avoids the worst outcome of all: a
-///     half-destroyed tree that neither the model nor the operator can reason about afterwards.
+///     makes both guards below enforceable, and what it guarantees is precise: no removal ever
+///     <em>begins</em> until the whole plan is approved. It does not guarantee that a removal,
+///     once begun, completes — the file system can refuse an entry part way through, and a file
+///     another process holds open is the ordinary case. What the design adds there is that the
+///     outcome is <em>reported</em>: a failure mid-removal names how many entries had already
+///     gone, so a partly removed tree is one the model knows it is looking at rather than one it
+///     cannot see.
+///     </para>
+///     <para>
+///     <b>The walk is iterative, over an explicit stack.</b> A recursive walk spends one stack
+///     frame per directory level, and a tree deep enough to exhaust the thread's stack raises
+///     <c>StackOverflowException</c> — which cannot be caught and takes the host process with it,
+///     before the entry ceiling below is ever consulted. An explicit stack moves the depth onto
+///     the heap, so depth costs the same bounded resource breadth already does and the ceiling is
+///     reached rather than overtaken by a failure the tool cannot report.
 ///     </para>
 ///     <para>
 ///     <b>The walk never follows a link, and a link found inside the tree refuses the whole
@@ -58,8 +71,12 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     confusion, an off-by-one in a constructed path — is survivable and observable rather than
 ///     total in one call. The count is exact rather than approximate, because "more than a
 ///     thousand" tells a model nothing about whether one subdivision would suffice while a real
-///     figure in the tens of thousands tells it to take a different approach; the cost is one
-///     metadata-only enumeration of a tree that was about to be enumerated anyway.
+///     figure in the tens of thousands tells it to take a different approach. That exactness
+///     costs a full metadata-only enumeration even of a tree that is about to be refused — a walk
+///     the approved case was going to make anyway — but it does not cost the memory to hold that
+///     tree: once the running count passes the ceiling the walk stops retaining paths and only
+///     keeps counting, so a refusal names the exact figure without ever having accumulated the
+///     tree it refuses.
 ///     </para>
 ///     <para>
 ///     <b>A path the model <em>names</em> that traverses a link is resolved lexically and
@@ -97,7 +114,8 @@ public static class FileDeleteDirectoryTool
         + "directory; a directory containing such a link is refused rather than partly removed. "
         + "Refuses a directory holding more entries than the configured limit, naming the count "
         + "and the limit. Returns a confirmation reporting how many entries were removed, or a "
-        + "denial explaining why the request was refused.";
+        + "denial explaining why the request was refused; a removal that fails part way through "
+        + "reports how many entries had already gone.";
 
     /// <summary>
     ///     The refusal used when the request carries no path at all.
@@ -143,9 +161,30 @@ public static class FileDeleteDirectoryTool
         + "nothing was deleted. Delete part of it first, or have the application raise the limit.";
 
     /// <summary>
-    ///     The refusal used when a permitted removal cannot be completed for a file-system reason.
+    ///     The refusal used when a permitted removal cannot be completed for a file-system reason
+    ///     before anything has been removed.
     /// </summary>
+    /// <remarks>
+    ///     Used for the planning walk, which mutates nothing, and for the removal of a link the
+    ///     request named directly, which is one entry and so either happens or does not. A
+    ///     removal that fails part way through a tree reports the figure instead; see
+    ///     <see cref="PartialDeleteFailed"/>.
+    /// </remarks>
     private const string DeleteFailed = "The directory could not be deleted.";
+
+    /// <summary>
+    ///     The refusal used when a removal fails part way through the approved plan.
+    /// </summary>
+    /// <remarks>
+    ///     The placeholders receive the number of entries already removed and the number the
+    ///     approved plan covered, in that order. Every other refusal this tool composes says that
+    ///     nothing was deleted, so this one has to say the opposite plainly: a model told only
+    ///     that the removal failed would reasonably conclude the tree is intact, and act on a
+    ///     tree that is no longer there.
+    /// </remarks>
+    private const string PartialDeleteFailed =
+        "The directory could not be fully deleted: {0} of {1} entries were removed before the "
+        + "removal failed. List the directory to see what remains.";
 
     /// <summary>
     ///     The confirmation used when the named path was itself a link.
@@ -239,10 +278,30 @@ public static class FileDeleteDirectoryTool
         }
 
         // Phase one: plan the whole removal, touching nothing. The walk refuses on the first link
-        // it meets rather than descending into it.
+        // it meets rather than descending into it, and stops retaining paths once the running
+        // count passes the ceiling, since a plan past the ceiling can never be approved.
+        //
+        // The walk is guarded by exactly the classification the removal is. Enumeration is a file
+        // system operation on an arbitrary tree: a sub-directory whose permissions forbid
+        // enumeration, or a child that vanishes between one step and the next, is the plan and
+        // execute race this design exists to reason about, not a defect. Leaving it to escape as
+        // a thrown exception would break the family's rule that a refusal is a result.
         List<string> directories = [];
         List<string> files = [];
-        var offendingEntry = Plan(realPath, directories, files);
+        string? offendingEntry;
+        int entryCount;
+
+        try
+        {
+            offendingEntry = Plan(
+                realPath, directories, files, policy.Limits.MaxDeleteEntries, out entryCount);
+        }
+        catch (Exception exception) when (IsAccessFailure(exception))
+        {
+            // Phase one mutates nothing, so the plain refusal is the whole truth here.
+            return ToolResult.Denied(DenialReason.InvalidRequest, DeleteFailed);
+        }
+
         if (offendingEntry is not null)
         {
             return ToolResult.Denied(
@@ -255,7 +314,6 @@ public static class FileDeleteDirectoryTool
 
         // The named directory counts as an entry, so an empty directory costs one and a ceiling
         // of zero forbids recursive removal entirely.
-        var entryCount = directories.Count + files.Count;
         if (entryCount > policy.Limits.MaxDeleteEntries)
         {
             return ToolResult.Denied(
@@ -302,6 +360,12 @@ public static class FileDeleteDirectoryTool
     ///     Directories are removed in reverse collection order, and the collection is built
     ///     shallowest-first, so every directory is empty by the time it is removed. No recursive
     ///     delete is ever issued, so no call can walk into something the plan did not approve.
+    ///     <para>
+    ///     A failure here cannot be undone — the file system is the thing that failed — so the
+    ///     refusal reports how far the removal got. Saying only that the removal failed would
+    ///     read, against every other refusal this tool composes, as though the tree were still
+    ///     whole.
+    ///     </para>
     /// </remarks>
     /// <param name="directories">The planned directories, shallowest first.</param>
     /// <param name="files">The planned files.</param>
@@ -309,16 +373,20 @@ public static class FileDeleteDirectoryTool
     /// <returns>A confirmation, or a refusal naming its reason.</returns>
     private static object Execute(List<string> directories, List<string> files, int entryCount)
     {
+        var removed = 0;
+
         try
         {
             foreach (var file in files)
             {
                 System.IO.File.Delete(file);
+                removed++;
             }
 
             for (var index = directories.Count - 1; index >= 0; index--)
             {
                 Directory.Delete(directories[index], recursive: false);
+                removed++;
             }
 
             return ToolResult.Text(
@@ -326,57 +394,118 @@ public static class FileDeleteDirectoryTool
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {
-            return ToolResult.Denied(DenialReason.InvalidRequest, DeleteFailed);
+            return ToolResult.Denied(
+                DenialReason.InvalidRequest,
+                string.Format(
+                    CultureInfo.InvariantCulture, PartialDeleteFailed, removed, entryCount));
         }
     }
 
     /// <summary>
-    ///     Walks the tree, recording every entry the removal would take, and stops at the first
-    ///     link it meets.
+    ///     Walks the tree, counting every entry the removal would take, recording the entries a
+    ///     plan within the ceiling would need, and stopping at the first link it meets.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Nothing is mutated here: the walk is what makes deciding before acting affordable,
     ///     which is why both the link guard and the entry ceiling can act before any removal.
+    ///     </para>
+    ///     <para>
+    ///     The traversal is iterative over an explicit stack rather than recursive, so a deep
+    ///     tree costs heap rather than the thread's stack; see the type remarks. Children are
+    ///     pushed in reverse so they pop in the order the directory reported them, which keeps
+    ///     the visiting order — and therefore which entry a tree holding several links is refused
+    ///     for — identical to the depth-first order a recursive walk produced.
+    ///     </para>
+    ///     <para>
+    ///     Counting continues past <paramref name="ceiling"/> but recording does not. A plan past
+    ///     the ceiling can only be refused, and the refusal needs the exact figure rather than
+    ///     the paths, so retaining them would buy nothing and cost the whole tree's worth of
+    ///     strings on precisely the request that is too large.
+    ///     </para>
     /// </remarks>
-    /// <param name="directory">The directory to walk. Never itself a link.</param>
-    /// <param name="directories">The directories collected so far, shallowest first.</param>
-    /// <param name="files">The files collected so far.</param>
+    /// <param name="root">The directory to walk. Never itself a link.</param>
+    /// <param name="directories">The directories recorded so far, shallowest first.</param>
+    /// <param name="files">The files recorded so far.</param>
+    /// <param name="ceiling">The largest number of entries a plan may record.</param>
+    /// <param name="entryCount">
+    ///     Receives the exact number of entries the walk counted, whether or not they were all
+    ///     recorded.
+    /// </param>
     /// <returns>
     ///     The resolved path of the first link found beneath the directory, or
     ///     <see langword="null"/> when the tree holds none.
     /// </returns>
-    private static string? Plan(string directory, List<string> directories, List<string> files)
+    private static string? Plan(
+        string root,
+        List<string> directories,
+        List<string> files,
+        int ceiling,
+        out int entryCount)
     {
-        directories.Add(directory);
+        entryCount = 0;
 
-        // A file may be a link too, and removing one would destroy a connection the request never
-        // named, so files are judged by the same rule as directories.
-        foreach (var file in Directory.GetFiles(directory))
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
         {
-            if (IsLink(new FileInfo(file)))
+            var directory = pending.Pop();
+
+            // A directory is classified before it is entered, so a link is never descended into.
+            // The named root arrives here already known not to be a link, so this costs one
+            // redundant classification and removes a special case from the loop.
+            if (IsLink(new DirectoryInfo(directory)))
             {
-                return file;
+                return directory;
             }
 
-            files.Add(file);
-        }
+            Record(directory, directories, ceiling, ref entryCount);
 
-        // A link is never descended into; it is reported and the walk stops.
-        foreach (var child in Directory.GetDirectories(directory))
-        {
-            if (IsLink(new DirectoryInfo(child)))
+            // A file may be a link too, and removing one would destroy a connection the request
+            // never named, so files are judged by the same rule as directories.
+            foreach (var file in Directory.GetFiles(directory))
             {
-                return child;
+                if (IsLink(new FileInfo(file)))
+                {
+                    return file;
+                }
+
+                Record(file, files, ceiling, ref entryCount);
             }
 
-            var offendingEntry = Plan(child, directories, files);
-            if (offendingEntry is not null)
+            var children = Directory.GetDirectories(directory);
+            for (var index = children.Length - 1; index >= 0; index--)
             {
-                return offendingEntry;
+                pending.Push(children[index]);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    ///     Counts one planned entry, and records its path while a plan is still within the
+    ///     ceiling.
+    /// </summary>
+    /// <remarks>
+    ///     The count is what the refusal names and is therefore always exact; the path is what
+    ///     the removal needs and is therefore only worth keeping while a removal is still
+    ///     possible.
+    /// </remarks>
+    /// <param name="entry">The resolved path of the entry the walk reached.</param>
+    /// <param name="planned">The collection the entry belongs to.</param>
+    /// <param name="ceiling">The largest number of entries a plan may record.</param>
+    /// <param name="entryCount">The running count, updated in place.</param>
+    private static void Record(
+        string entry, List<string> planned, int ceiling, ref int entryCount)
+    {
+        entryCount++;
+
+        if (entryCount <= ceiling)
+        {
+            planned.Add(entry);
+        }
     }
 
     /// <summary>

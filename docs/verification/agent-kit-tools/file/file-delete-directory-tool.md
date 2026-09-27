@@ -52,13 +52,15 @@ same project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 9 requirement scenarios below, covering 13 listed test method
+A unit test run passes when all 11 requirement scenarios below, covering 16 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an ignored policy decision, a link followed out of
 the tree, a link's target disturbed, a link's target named in a refusal, a tree partly removed
-after a refusal, a ceiling not observed, a removal count misreported, a leaked path, a malformed
-request thrown as a framework error, or a link scenario that is skipped rather than run
-constitutes a failure.
+after a refusal, a partial removal reported as though nothing happened, a tree at exactly the
+ceiling removed short of whole, a file-system failure
+thrown rather than returned, a ceiling not observed, a removal count misreported, a leaked path, a
+malformed request thrown as a framework error, or a link or permission scenario that is skipped
+rather than run constitutes a failure.
 
 #### Test Scenarios
 
@@ -85,6 +87,32 @@ the target directory and the file inside it are confirmed intact. Without this b
 refusal above would be a dead end — a workspace containing a link would be permanently undeletable
 by the agent, since the single-file deletion refuses a directory and a link is a directory — so
 this scenario is what proves the denial teaches rather than merely stops.
+
+##### AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused: A Planning Failure Is Returned, Not Thrown
+
+**Test**: `FileDeleteDirectoryTool_Delete_TreeHoldingAnUnreadableDirectory_ReturnsDenialRatherThanThrowing`
+
+Error condition, and the one the planning walk alone can meet. A real sub-directory inside a
+permitted tree has its read permission withdrawn by `RestrictedDirectory`, so the entry is still
+visible to its parent's enumeration but cannot be looked inside — the state a walk over a
+workspace holding something the process does not own actually meets. The test asserts the tool
+returns an `InvalidRequest` denial rather than throwing, that the denial discloses no host path,
+and that the tree and its file are untouched, which is what makes the refusal's silence about
+removal true. The fixture fails the test rather than skipping when the platform leaves the
+directory readable, so no continuous-integration leg can report this covered without evidence.
+
+##### AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval: A Partial Removal Is Reported
+
+**Test**: `FileDeleteDirectoryTool_Delete_RemovalFailingPartWayThrough_ReportsHowManyEntriesWereRemoved`
+
+Error condition, in the phase the two-phase design bounds but cannot prevent. A four-entry tree is
+built whose nested file cannot be removed — a withdrawn write permission on the POSIX platforms,
+the read-only attribute on Windows — so the walk plans the tree whole and the failure lands in
+phase two, after the first file has already gone. The test asserts the denial names `1 of 4
+entries were removed`, and confirms independently that the first file really is gone and the
+nested directory really does remain, so the figure describes the tree as it now is rather than as
+the tool hoped. Without this, a model reading the tool's other refusals would conclude the tree is
+intact.
 
 ##### AgentKitTools-File-DeleteDirectoryTool-ToolName: Tool Name
 
@@ -116,13 +144,19 @@ the tool handles, is removed as well.
 
 **Test**: `FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_RemovesNothing`
 
+**Test**: `FileDeleteDirectoryTool_Delete_TreeExactlyAtTheEntryCeiling_RemovesEveryEntry`
+
 **Test**: `FileDeleteDirectoryTool_Delete_ZeroEntryCeiling_RefusesEvenAnEmptyDirectory`
 
 Security control. A four-entry tree is offered to a tool whose host configured a ceiling of two.
 The first test asserts the refusal is `ResourceTooLarge` and names both the real count and the
 host's ceiling, so the model is told a number it can act on rather than "more than the limit". The
 second asserts every entry survives, pinning the same before-acting property as the link guard.
-The third asserts that a ceiling of zero refuses even an empty directory, which is the behavior
+The third offers the same four-entry tree to a host that configured a ceiling of exactly four and
+asserts it is removed whole with all four reported: the walk stops retaining paths once the
+running count passes the ceiling, so the largest permitted tree is the one place an off-by-one in
+that cutoff would show — as a partial removal reported as a complete one. The fourth asserts that
+a ceiling of zero refuses even an empty directory, which is the behavior
 that makes zero the expressible way for a host to withhold the capability entirely — and which
 only holds because the named directory itself counts as an entry.
 
