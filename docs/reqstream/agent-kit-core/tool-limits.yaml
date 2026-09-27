@@ -48,6 +48,7 @@ sections:
               - ToolLimits_Constructor_NegativeMaxBinaryBytes_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxAgentDepth_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException
+              - ToolLimits_Constructor_NegativeMaxDeleteEntries_ThrowsArgumentOutOfRangeException
               - ToolLimits_Constructor_ZeroCeiling_IsAccepted
 
           - id: AgentKitCore-ToolLimits-DelegationDepth
@@ -66,6 +67,28 @@ sections:
             tests:
               - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
               - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues
+
+          - id: AgentKitCore-ToolLimits-DeleteCeiling
+            title: >-
+              Tool limits shall carry, with the other ceilings, a bound on how many entries one
+              removal may take, defaulting to a published value, overridable by the host, and
+              settable to zero to forbid recursive removal entirely.
+            tags: [security]
+            justification: |
+              Removing a directory with everything beneath it is the one tool operation whose
+              reach is not stated by the request itself, so its bound belongs with the other
+              budgets a host sets once and every tool observes, not as a constant on whichever
+              tool happens to recurse. Holding it here means a refusal names a number the host
+              chose, a host on a workspace of a few hundred files can lower it, and a host doing
+              large build-output housekeeping can raise it. What the ceiling buys is honest and
+              limited: it bounds the damage a mistake does in a single call so the outcome is
+              survivable and observable, and it does not pretend to bound an agent that intends
+              the destruction and could remove a tree one file at a time. Zero is the expressible
+              way for a host to attach the family and withhold the capability entirely.
+            tests:
+              - ToolLimits_Default_AllCeilings_MatchPublishedDefaults
+              - ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues
+              - ToolLimits_Constructor_ZeroCeiling_IsAccepted
 
           - id: AgentKitCore-ToolLimits-DecodeCeiling
             title: >-

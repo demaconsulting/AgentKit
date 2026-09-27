@@ -34,18 +34,26 @@ public class FilePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates its four tools in the documented order when the policy permits
-    ///     writing, which is the condition under which the whole family is published.
+    ///     Proves the pack creates every tool it publishes in the documented order when the policy
+    ///     permits writing, which is the condition under which the whole family is published.
     /// </summary>
     [Fact]
-    public void FilePack_CreateTools_WriteGrantingPolicy_RegistersListCopyMoveDeleteInOrder()
+    public void FilePack_CreateTools_WriteGrantingPolicy_RegistersEveryToolInOrder()
     {
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new FilePack().CreateTools(policy).ToList();
 
-        Assert.Equal(4, tools.Count);
+        Assert.Equal(7, tools.Count);
         Assert.Equal(
-            ["file_list", "file_copy", "file_move", "file_delete"],
+            [
+                "file_list",
+                "file_copy",
+                "file_move",
+                "file_delete",
+                "file_create_directory",
+                "file_move_directory",
+                "file_delete_directory"
+            ],
             tools.Select(tool => tool.Name));
     }
 
@@ -62,7 +70,7 @@ public class FilePackTests
         // Act: ask the pack what it publishes under that policy
         var tools = new FilePack().CreateTools(policy).ToList();
 
-        // Assert: listing survives; copy, move and delete are withheld
+        // Assert: listing survives; the six file-system-changing tools are withheld
         Assert.Single(tools);
         Assert.Equal(["file_list"], tools.Select(tool => tool.Name));
     }
@@ -86,10 +94,18 @@ public class FilePackTests
         // Act: ask the pack what it publishes under the mixed policy
         var tools = new FilePack().CreateTools(policy).ToList();
 
-        // Assert: all four, in the documented order — writing is possible, just not at the anchor
-        Assert.Equal(4, tools.Count);
+        // Assert: all seven, in the documented order — writing is possible, just not at the anchor
+        Assert.Equal(7, tools.Count);
         Assert.Equal(
-            ["file_list", "file_copy", "file_move", "file_delete"],
+            [
+                "file_list",
+                "file_copy",
+                "file_move",
+                "file_delete",
+                "file_create_directory",
+                "file_move_directory",
+                "file_delete_directory"
+            ],
             tools.Select(tool => tool.Name));
     }
 

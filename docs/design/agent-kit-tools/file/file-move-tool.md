@@ -10,8 +10,15 @@ To move one source file from a path the access policy permits the agent to write
 path the policy also permits the agent to write. A move changes both endpoints: it removes the
 source and creates or replaces the destination.
 
+**A destination in the same directory renames the file.** There is no separate rename tool,
+because a rename is this same operation with a destination that happens to share the source's
+directory, and a second tool issuing it would cost tokens on every request forever and create a
+selection ambiguity. The description a model reads states the rename, since a capability a model
+cannot discover is one the library does not really offer.
+
 The tool refuses an existing destination unless `overwrite` is `true`, refuses directories, and
-creates no missing parent directory.
+creates no missing parent directory. Moving a *directory* is a separate capability with its own
+rules; see *FileMoveDirectoryTool Design*.
 
 #### Data Model
 

@@ -364,13 +364,15 @@ The path-safety API:
 The system additionally exposes the tool-contract API:
 
 - **new ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int
-  maxAgentDepth, int maxImagePixels)**: Creates a set of resource ceilings. Every parameter is
+  maxAgentDepth, int maxImagePixels, int maxDeleteEntries)**: Creates a set of resource ceilings.
+  Every parameter is
   optional and
   defaults to the corresponding published constant. Throws `ArgumentOutOfRangeException` for a
   negative ceiling; a ceiling of zero is accepted and disables the operation.
 - **ToolLimits.Default**: The shared set of ceilings a host receives when it configures nothing.
 - **ToolLimits.MaxReadBytes**, **MaxResultCharacters**, **MaxBinaryBytes**,
-  **MaxAgentDepth**, **MaxImagePixels**: Read-only properties exposing the configured ceilings.
+  **MaxAgentDepth**, **MaxImagePixels**, **MaxDeleteEntries**: Read-only properties exposing the
+  configured ceilings.
 - **ToolResult.Text(string text)**: Returns the supplied text. Throws `ArgumentNullException`
   for a null text; an empty text is permitted.
 - **ToolResult.Structured(object value)**: Returns the supplied value, which the guarded

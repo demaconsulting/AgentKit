@@ -83,11 +83,15 @@ constituent software items, specifically:
   and that `text_file_paste_lines` restores from
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
-  of files of any type, published as one capability-gated pack
+  of files of any type, and creating, moving and recursively deleting the directories that hold
+  them, published as one capability-gated pack
 - **FileListTool (Unit)** — Publishes the `file_list` tool
 - **FileCopyTool (Unit)** — Publishes the `file_copy` tool
 - **FileMoveTool (Unit)** — Publishes the `file_move` tool
 - **FileDeleteTool (Unit)** — Publishes the `file_delete` tool
+- **FileCreateDirectoryTool (Unit)** — Publishes the `file_create_directory` tool
+- **FileMoveDirectoryTool (Unit)** — Publishes the `file_move_directory` tool
+- **FileDeleteDirectoryTool (Unit)** — Publishes the `file_delete_directory` tool
 - **FilePack (Unit)** — Publishes the file family as one pack
 - **Markdown (Subsystem)** — The Markdown tool family: policy-governed outlining of a Markdown file's
   heading structure, published as one capability-gated pack

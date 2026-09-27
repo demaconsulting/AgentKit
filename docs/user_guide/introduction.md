@@ -146,8 +146,9 @@ bare "no".
 ## Tool Limits
 
 `ToolLimits` carries the ceilings a tool observes: the bytes it may read, the characters its
-result may return to the model, the bytes of binary content it may return, and how deep a chain
-of delegated agents may run. Limits are carried with
+result may return to the model, the bytes of binary content it may return, how deep a chain
+of delegated agents may run, how many pixels one image may be decoded into, and how many entries
+one recursive directory removal may take. Limits are carried with
 the policy, through `PathPolicy.Limits`, so every
 tool an application attaches observes one budget rather than each inventing its own. A host that
 configures nothing still operates within the published defaults.
@@ -160,6 +161,19 @@ returned before any child is composed or started, so a refused delegation costs 
 Setting the ceiling to zero forbids delegation entirely, which is the expressible way for a host
 to attach the agent family and then withhold its use. Every ceiling accepts zero for the same
 reason; a negative ceiling has no meaning and is rejected.
+
+**Recursive removal is bounded — and the bound is modest about itself.** `MaxDeleteEntries`
+counts every entry `file_delete_directory` would remove, including the named directory itself, so
+an empty directory costs one entry and a ceiling of zero forbids the operation entirely. Its
+default is a thousand, chosen so that ordinary housekeeping succeeds while a mistaken request
+naming a source tree, a test tree or an installed package directory is refused. The refusal names
+the real entry count alongside the ceiling, because a model told "more than the limit" learns
+nothing about whether subdividing the request would help.
+
+**This ceiling bounds a mistake, not an intention.** An agent that means to destroy a tree can
+remove it a file at a time with `file_delete`, and the ceiling will not stop it. What it buys is
+that a wrong path or a model confusion is survivable and observable rather than total in one call.
+Treat it as a blast-radius limit, not as a security boundary against a hostile agent.
 
 ## Tool Names and Guarded Construction
 
@@ -253,6 +267,9 @@ row.
 | File      | `file_copy`             | Copies a file within the policy                  | None         | Yes         |
 | File      | `file_move`             | Moves a file within the policy                   | None         | Yes         |
 | File      | `file_delete`           | Deletes a single file within the policy          | None         | Yes         |
+| File      | `file_create_directory` | Creates a directory, with missing parents        | None         | Yes         |
+| File      | `file_move_directory`   | Moves or renames a directory within the policy   | None         | Yes         |
+| File      | `file_delete_directory` | Deletes a directory and all it contains          | None         | Yes         |
 | Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None         | No          |
 | Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`     | No          |
 | Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`     | No          |
@@ -269,11 +286,11 @@ row.
 The **Capability** column is the host capability the family requires; the **Write grant** column
 says whether the tool is published only when the access policy permits writing somewhere.
 
-**A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eight
-of the twenty-four tools are marked `Yes`: five in the text file family and three in the file
+**A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
+of the twenty-seven tools are marked `Yes`: five in the text file family and six in the file
 family. If every grant an application configures is read-only — or it configures no grants at all —
-those eight are absent from the composed list, and the seven families together publish sixteen
-tools rather than twenty-four. The text file family offers `text_file_search`, `text_file_read` and
+those eleven are absent from the composed list, and the seven families together publish sixteen
+tools rather than twenty-seven. The text file family offers `text_file_search`, `text_file_read` and
 `text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
 agent families are unaffected.
 

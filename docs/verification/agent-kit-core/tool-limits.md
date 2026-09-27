@@ -9,7 +9,7 @@ properties. There are no dependencies to substitute — the unit depends only on
 library — so every scenario exercises the real type.
 
 The default-value scenario asserts against **literal numbers** rather than against the published
-constants. Asserting a constant against itself is vacuous, and those five values appear in
+constants. Asserting a constant against itself is vacuous, and those six values appear in
 _ToolLimits Unit Design_, in the requirement text and in the public API surface; this scenario is
 what stops them drifting silently.
 
@@ -25,7 +25,7 @@ Unit tests reside in `ToolLimitsTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all twelve scenarios below pass without error or exception beyond those
+A unit test run passes when all fourteen scenarios below pass without error or exception beyond those
 explicitly asserted. Any published default that has drifted, any ceiling that fails to take
 effect, any negative ceiling that is accepted, and any zero ceiling that is rejected constitutes
 a failure.
@@ -36,8 +36,8 @@ a failure.
 
 **Test**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`
 
-Reads all five ceilings from the shared default instance and asserts the literal values 65,536,
-32,000, 8,388,608, 2 and 16,777,216. Pins the published API surface against silent drift.
+Reads all six ceilings from the shared default instance and asserts the literal values 65,536,
+32,000, 8,388,608, 2, 16,777,216 and 1,000. Pins the published API surface against silent drift.
 
 #### AgentKitCore-ToolLimits-Defaults: Construction With No Arguments Matches the Default
 
@@ -50,7 +50,7 @@ that the default instance and the default construction path cannot diverge.
 
 **Test**: `ToolLimits_Constructor_SingleCeilingOverridden_RetainsOtherDefaults`
 
-Supplies only the binary-content ceiling by name and asserts the other four remain at their
+Supplies only the binary-content ceiling by name and asserts the other five remain at their
 published defaults. This is the behavior that delivers per-ceiling customization without a
 builder.
 
@@ -58,7 +58,7 @@ builder.
 
 **Test**: `ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues`
 
-Supplies five mutually distinguishable values positionally and asserts each lands on its own
+Supplies six mutually distinguishable values positionally and asserts each lands on its own
 property, so a transposed parameter order cannot pass.
 
 #### AgentKitCore-ToolLimits-RejectNegative: A Negative Read Ceiling Is Refused
@@ -90,6 +90,12 @@ Asserts every ceiling is validated, including the delegation budget.
 
 **Test**: `ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException`
 
+Asserts every ceiling is validated, including the image budget.
+
+#### AgentKitCore-ToolLimits-RejectNegative: A Negative Removal-Entry Ceiling Is Refused
+
+**Test**: `ToolLimits_Constructor_NegativeMaxDeleteEntries_ThrowsArgumentOutOfRangeException`
+
 Asserts every ceiling is validated, including the last. A ceiling appended to the constructor is
 exactly the one a validation call is most easily forgotten for, so it carries its own scenario.
 
@@ -107,7 +113,7 @@ other ceiling rather than from a constant of its own.
 **Test**: `ToolLimits_Constructor_ZeroCeiling_IsAccepted`
 
 Boundary condition: zero is the expressible way for a host to disable an operation entirely, so
-it must not be rejected alongside a negative value. Asserts all five zero ceilings are accepted
+it must not be rejected alongside a negative value. Asserts all six zero ceilings are accepted
 and reported back unchanged.
 
 #### AgentKitCore-ToolLimits-DecodeCeiling: The Image-Decode Ceiling Is Carried With the Others
@@ -120,3 +126,15 @@ supplied when a host replaces it, so a tool that decodes an image reads its budg
 object as every other ceiling rather than from a constant of its own. The default scenario's
 literal assertion is what pins the published value, since a refusal a model receives names this
 number.
+
+#### AgentKitCore-ToolLimits-DeleteCeiling: The Removal-Entry Ceiling Is Carried With the Others
+
+**Tests**: `ToolLimits_Default_AllCeilings_MatchPublishedDefaults`,
+`ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues`,
+`ToolLimits_Constructor_ZeroCeiling_IsAccepted`
+
+Asserts the removal-entry ceiling is published with a default of 1,000, is exposed as supplied
+when a host replaces it, and accepts zero — so a tool that removes a directory tree reads its
+bound from the same object as every other ceiling rather than from a constant of its own, and a
+host can forbid the capability outright by configuring zero. The default scenario's literal
+assertion is what pins the published value, since a refusal a model receives names this number.

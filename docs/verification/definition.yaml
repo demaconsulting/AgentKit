@@ -49,6 +49,9 @@ input-files:
   - docs/verification/agent-kit-tools/file/file-copy-tool.md
   - docs/verification/agent-kit-tools/file/file-move-tool.md
   - docs/verification/agent-kit-tools/file/file-delete-tool.md
+  - docs/verification/agent-kit-tools/file/file-create-directory-tool.md
+  - docs/verification/agent-kit-tools/file/file-move-directory-tool.md
+  - docs/verification/agent-kit-tools/file/file-delete-directory-tool.md
   - docs/verification/agent-kit-tools/file/file-pack.md
   - docs/verification/agent-kit-tools/markdown.md
   - docs/verification/agent-kit-tools/markdown/markdown-outline-tool.md

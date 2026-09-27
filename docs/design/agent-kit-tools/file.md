@@ -3,7 +3,8 @@
 ![AgentKit Tools File Structure](FileView.svg)
 
 The File subsystem is the type-agnostic file tool family: the pack an application attaches to give an
-agent policy-governed listing, copying, moving and deletion of files of any type.
+agent policy-governed listing, copying, moving and deletion of files of any type, and creation,
+moving and recursive deletion of the directories that hold them.
 
 ### Overview
 
@@ -14,19 +15,24 @@ therefore about making each operation use the right decision, refuse unsafe side
 model-actionable denials instead of throwing.
 
 The boundary is type-agnostic on purpose. Listing, copying, moving and deleting a file are the same
-operations whether the file holds text, an image, a PDF, or any other content. Reading or editing the
+operations whether the file holds text, an image, a PDF, or any other content. The directory
+structure those files live in belongs here too, for the same reason: it is the container rather
+than the content. Reading or editing the
 contents belongs to content families such as TextFile and Markdown. The File subsystem treats the
 file as the thing being managed.
 
-The subsystem contains five units:
+The subsystem contains eight units:
 
-| Unit             | Responsibility                                                        |
-| ---------------- | --------------------------------------------------------------------- |
-| `FileListTool`   | Publishes `file_list`: lists permitted files of any type              |
-| `FileCopyTool`   | Publishes `file_copy`: copies one readable file to one writable path  |
-| `FileMoveTool`   | Publishes `file_move`: moves one writable source to one writable path |
-| `FileDeleteTool` | Publishes `file_delete`: deletes one writable file                    |
-| `FilePack`       | Publishes the file tools as one family under the `file` prefix        |
+| Unit                      | Responsibility                                                          |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `FileListTool`            | Publishes `file_list`: lists permitted files of any type                |
+| `FileCopyTool`            | Publishes `file_copy`: copies one readable file to one writable path    |
+| `FileMoveTool`            | Publishes `file_move`: moves one writable source to one writable path   |
+| `FileDeleteTool`          | Publishes `file_delete`: deletes one writable file                      |
+| `FileCreateDirectoryTool` | Publishes `file_create_directory`: creates a directory and its parents  |
+| `FileMoveDirectoryTool`   | Publishes `file_move_directory`: moves or renames a whole directory     |
+| `FileDeleteDirectoryTool` | Publishes `file_delete_directory`: removes a directory tree, bounded    |
+| `FilePack`                | Publishes the file tools as one family under the `file` prefix          |
 
 ### Interfaces
 
@@ -54,12 +60,15 @@ through `GuardedToolFactory.Create`, capturing the policy in the tool's delegate
 construction path, no setter and no default policy, so a file operation outside the policy is not
 representable.
 
-**Fixed tool order.** The pack returns the four public tools in the order `file_list`, `file_copy`,
-`file_move`, then `file_delete`. The order a model sees is observable, so the pack makes it fixed
-rather than incidental.
+**Fixed tool order.** The pack returns the seven public tools in the order `file_list`,
+`file_copy`, `file_move`, `file_delete`, `file_create_directory`, `file_move_directory`, then
+`file_delete_directory`. The file tools come first and the directory tools follow as a block, so
+the family reads as "files, then directories". The order a model sees is observable, so the pack
+makes it fixed rather than incidental.
 
-**Write-performing tools need a write grant to be published.** Three of the four — copy, move and
-delete — each change the file system, so under a policy holding no read-write grant anywhere they
+**Write-performing tools need a write grant to be published.** Six of the seven — copy, move,
+delete, and all three directory tools — each change the file system, so under a policy holding no
+read-write grant anywhere they
 could only ever answer a refusal, and the pack does not publish them at all. `file_list` remains,
 because it needs only the read decision to report what exists and consults the write decision only
 to annotate a listed root as writable. The surviving tool keeps its place, so a model sees the
@@ -67,8 +76,9 @@ family shortened, never rearranged. See *Policy-derived publication* in the syst
 rule and the whole-family table.
 
 **Endpoint decisions match the side effect.** Listing and a copy source use the read decision. A copy
-destination uses the write decision. Move source, move destination and delete path all use the write
-decision because those operations change or remove the named endpoint. Nothing in the subsystem
+destination uses the write decision. Move source, move destination, delete path, directory creation,
+both directory-move endpoints and the directory-removal path all use the write decision because
+those operations change or remove the named endpoint. Nothing in the subsystem
 combines decisions or treats a readable path as writable.
 
 **List is discovery.** `file_list` replaces the old text-file listing operation and lists files of
@@ -80,9 +90,27 @@ caller's dialect so names can be handed back to sibling tools.
 `overwrite` is explicitly `true`. They also refuse a missing destination parent rather than creating
 a directory tree the operator did not request.
 
-**Delete is single-file only.** `file_delete` removes one file and never a directory. It never
-recurses and does not quarantine the deleted content. Recovery is source control, the same mechanism
-used for any other unwanted workspace change.
+**Moving a file or a directory is also how it is renamed.** A destination in the same parent
+renames, so no rename tool exists; both `file_move` and `file_move_directory` say so in the
+descriptions a model reads, because a capability a model cannot discover is one the family does not
+really offer.
+
+**Directory operations are separate from the file operations, deliberately.** Creating a directory
+is idempotent and reports which of its two outcomes occurred. Moving a directory admits **no
+overwrite at all**, because replacing a directory is a recursive destruction wearing a moving verb.
+Removing a directory is the only operation in the subsystem whose reach is not stated by the
+request itself, so it is the only one carrying controls of its own: a pre-flight walk that refuses
+to follow a link out of the tree, and a ceiling — `ToolLimits.MaxDeleteEntries` — on how many
+entries one call may take. The ceiling bounds the damage of a *mistake*; it is not protection
+against an agent that intends the destruction, which could remove a tree one file at a time. See
+*FileDeleteDirectoryTool Design* for the two-phase algorithm and the rejected alternatives.
+
+**Single-file deletion stays single-file.** `file_delete` removes one file, never a directory, and
+never recurses. It does not quarantine the deleted content; recovery is source control, the same
+mechanism used for any other unwanted workspace change. Keeping it apart from
+`file_delete_directory` is the safety property rather than an accident of increments: it is what
+stops "delete this" ever meaning "delete this tree", which is why no recursive option was added to
+it.
 
 **No host capability is required.** Managing files needs nothing special from the model or host, so
 `FilePack.RequiredCapabilities` is `HostCapabilities.None`.

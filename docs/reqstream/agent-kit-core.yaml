@@ -183,6 +183,7 @@ sections:
           - AgentKitCore-ToolLimits-RejectNegative
           - AgentKitCore-ToolLimits-DelegationDepth
           - AgentKitCore-ToolLimits-DecodeCeiling
+          - AgentKitCore-ToolLimits-DeleteCeiling
           - AgentKitCore-PathPolicy-CarriesLimits
         tests:
           - AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues

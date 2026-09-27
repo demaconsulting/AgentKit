@@ -1,0 +1,83 @@
+---
+# Software Unit Requirements for FileCreateDirectoryTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileCreateDirectoryTool Requirements
+            requirements:
+              - id: AgentKitTools-File-CreateDirectoryTool-ToolName
+                title: >-
+                  The create-directory tool shall be published under the name
+                  file_create_directory, exposed as a constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the
+                  only basis it has for choosing it.
+                tests:
+                  - FileCreateDirectoryTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-File-CreateDirectoryTool-GuardedConstruction
+                title: >-
+                  The create-directory tool shall be constructed only through the guarded
+                  construction path with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded create-directory tool
+                  impossible to build.
+                tests:
+                  - FileCreateDirectoryTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-CreateDirectoryTool-CreatesDirectory
+                title: >-
+                  The create-directory tool shall create a directory at a permitted path,
+                  including every directory above it that does not yet exist.
+                justification: |
+                  Making a place to write into is the tool's reason to exist, and the dominant use
+                  is ensuring a whole path exists before writing into it. Refusing because a
+                  middle component is missing would force a model into a create-one-level-at-a-time
+                  loop that buys no safety, since every level created lies inside the same
+                  permitted location the policy already approved.
+                tests:
+                  - FileCreateDirectoryTool_CreateDirectory_PermittedPath_CreatesIt
+                  - FileCreateDirectoryTool_CreateDirectory_NestedPath_CreatesEveryMissingParent
+
+              - id: AgentKitTools-File-CreateDirectoryTool-ExistingDirectory
+                title: >-
+                  The create-directory tool shall report that a directory already existed rather
+                  than claiming to have created it, leaving its contents untouched, and shall
+                  declare that behavior to the model.
+                justification: |
+                  Creating a directory that is already there destroys nothing, so refusing would
+                  borrow a rule from a situation that does not apply. What does carry over is that
+                  a model must never be left guessing which thing happened, so the two outcomes
+                  are reported in different words and the declaration says so — a model that could
+                  not tell the difference, or could not learn that a repeat request is safe, would
+                  be no better served than by a silent success.
+                tests:
+                  - FileCreateDirectoryTool_CreateDirectory_ExistingDirectory_ReportsItExistedAndLeavesContents
+                  - FileCreateDirectoryTool_Create_Description_NamesBothOutcomes
+
+              - id: AgentKitTools-File-CreateDirectoryTool-RefusesExistingFile
+                title: >-
+                  The create-directory tool shall refuse a path already occupied by a file,
+                  changing nothing.
+                justification: |
+                  A file is never replaced by a directory: that would be a destructive act wearing
+                  a creating verb, which is exactly the kind of thing this library exists to make
+                  impossible to express by accident.
+                tests:
+                  - FileCreateDirectoryTool_CreateDirectory_ExistingFile_ReturnsDenialAndLeavesTheFile
+
+              - id: AgentKitTools-File-CreateDirectoryTool-PolicyGoverned
+                title: >-
+                  The create-directory tool shall consult the write decision alone, refusing a
+                  creation in a location that may be read but not written.
+                tags: [security]
+                justification: |
+                  Materializing a directory changes the file system, so a read-only grant must
+                  stay genuinely read-only. Inferring permission to write from permission to read
+                  would give away in one tool what every other tool in the family protects.
+                tests:
+                  - FileCreateDirectoryTool_CreateDirectory_ReadOnlyLocation_ReturnsDenialAndCreatesNothing

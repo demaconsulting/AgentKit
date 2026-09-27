@@ -55,6 +55,9 @@ includes:
   - docs/reqstream/agent-kit-tools/file/file-copy-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-move-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-delete-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-create-directory-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-move-directory-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-delete-directory-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-pack.yaml
   - docs/reqstream/agent-kit-tools/markdown.yaml
   - docs/reqstream/agent-kit-tools/markdown/markdown-outline-tool.yaml

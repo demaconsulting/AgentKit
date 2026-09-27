@@ -25,6 +25,13 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     replacement was intended.
 ///     </para>
 ///     <para>
+///     <b>A destination in the same directory renames the file.</b> There is no separate rename
+///     tool, because a rename is this same operation with a destination that happens to share the
+///     source's directory. A second tool issuing the identical operation would cost tokens on
+///     every request forever and leave the model choosing between two names for one act; the
+///     description states the capability instead.
+///     </para>
+///     <para>
 ///     <b>The tool moves a single file and creates no directory.</b> A source that is a directory is
 ///     refused rather than moved recursively, and a missing destination parent is refused rather than
 ///     materialized. Recovery from a mistaken move is the same as for any other change in a governed
@@ -54,7 +61,8 @@ public static class FileMoveTool
     /// </summary>
     private const string ToolDescription =
         "Moves a file from a source the agent may write to a destination it may write, removing the "
-        + "source. Paths are relative to the workspace root. Refuses to overwrite an existing "
+        + "source. A destination in the same directory renames the file. Paths are relative to the "
+        + "workspace root. Refuses to overwrite an existing "
         + "destination unless overwrite is true. Returns a confirmation, or a denial explaining why "
         + "the request was refused.";
 

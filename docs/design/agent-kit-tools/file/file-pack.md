@@ -7,8 +7,8 @@ The `FilePack` class publishes the file tool family under the `file` prefix.
 #### Purpose
 
 To be the single public attachment point for policy-governed file-entity tools. The pack claims the
-`file` prefix and publishes, in fixed order, those of its four tools — list, copy, move and delete —
-that the policy could permit to succeed.
+`file` prefix and publishes, in fixed order, those of its seven tools — list, copy, move and delete
+a file, and create, move and delete a directory — that the policy could permit to succeed.
 
 The pack itself grants nothing. It receives the `PathPolicy` from the `ToolPackBuilder` composition
 and passes that same policy to every tool factory.
@@ -23,9 +23,10 @@ The class is sealed and stateless.
 | `IToolPack.FamilyPrefix` | `string`           | Explicit implementation returning `FamilyPrefix` |
 | `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host    |
 
-The returned tool collection contains, in order, `FileListTool`, `FileCopyTool`, `FileMoveTool`, and
-`FileDeleteTool` — the whole family of four — when `policy.AnyLocationIsWritable` is true. When it
-is false the collection contains only `FileListTool`: one tool rather than four.
+The returned tool collection contains, in order, `FileListTool`, `FileCopyTool`, `FileMoveTool`,
+`FileDeleteTool`, `FileCreateDirectoryTool`, `FileMoveDirectoryTool` and `FileDeleteDirectoryTool`
+— the whole family of seven — when `policy.AnyLocationIsWritable` is true. When it
+is false the collection contains only `FileListTool`: one tool rather than seven.
 
 #### Key Methods
 
@@ -47,13 +48,16 @@ Creates the family's tools.
 
 **Algorithm:** validates `policy`, returns `FileListTool.Create(policy)`, then asks the policy one
 question — `AnyLocationIsWritable` — and appends `FileCopyTool.Create(policy)`,
-`FileMoveTool.Create(policy)` and `FileDeleteTool.Create(policy)` in that fixed order only when the
+`FileMoveTool.Create(policy)`, `FileDeleteTool.Create(policy)`,
+`FileCreateDirectoryTool.Create(policy)`, `FileMoveDirectoryTool.Create(policy)` and
+`FileDeleteDirectoryTool.Create(policy)` in that fixed order only when the
 answer is true.
 
 **Postconditions:** all returned tools carry the `file` prefix and observe the same policy. When
-the policy permits writing somewhere, all four are returned; otherwise only the list tool is.
+the policy permits writing somewhere, all seven are returned; otherwise only the list tool is.
 
-**Which tools are withheld, and why.** Copy, move and delete each change the file system, so under
+**Which tools are withheld, and why.** Copy, move, delete and all three directory tools each change
+the file system, so under
 a policy holding no read-write grant anywhere every one of them could only answer a refusal, and
 none of them is published. List is never withheld: it consults the read decision to choose what to
 report, and the write decision only to annotate a reported root as writable, so it stays fully
@@ -71,7 +75,7 @@ not issue capability-related refusals.
 #### Dependencies
 
 `IToolPack`, `HostCapabilities`, `PathPolicy`, and `ToolPackBuilder` conventions from AgentKitCore;
-`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and the four file tool units.
+`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and the seven file tool units.
 
 #### Callers
 

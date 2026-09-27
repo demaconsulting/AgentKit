@@ -618,6 +618,7 @@ reviews:
       - "docs/design/agent-kit-tools/file.md"                      # subsystem design
       - "docs/verification/agent-kit-tools/file.md"                # subsystem verification
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs"  # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/DirectoryLink.cs"  # directory-link test fixture
 
   # AgentKitTools-File-FileListTool Review (one per unit)
   - id: AgentKitTools-File-FileListTool
@@ -678,6 +679,51 @@ reviews:
       - "docs/verification/agent-kit-tools/file/file-delete-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteTool.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileCreateDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileCreateDirectoryTool
+    title: Review that AgentKitTools File FileCreateDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-create-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-create-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-create-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileCreateDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileCreateDirectoryToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileMoveDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileMoveDirectoryTool
+    title: Review that AgentKitTools File FileMoveDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-move-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-move-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-move-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileMoveDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileMoveDirectoryToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileDeleteDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileDeleteDirectoryTool
+    title: Review that AgentKitTools File FileDeleteDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-delete-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-delete-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-delete-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteDirectoryToolTests.cs"  # unit tests
 
   # AgentKitTools-File-FilePack Review (one per unit)
   - id: AgentKitTools-File-FilePack

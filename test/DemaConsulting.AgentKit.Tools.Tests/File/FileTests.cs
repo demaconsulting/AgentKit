@@ -17,21 +17,24 @@ namespace DemaConsulting.AgentKit.Tools.Tests.File;
 public class FileTests
 {
     /// <summary>
-    ///     Proves a composition attaching the family publishes list, copy, move and delete tools.
+    ///     Proves a composition attaching the family publishes every tool the family has.
     /// </summary>
     [Fact]
-    public void File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete()
+    public void File_Family_ComposedThroughBuilder_PublishesTheWholeFamily()
     {
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new ToolPackBuilder(policy).Add(new FilePack()).Build();
 
-        Assert.Equal(4, tools.Count);
+        Assert.Equal(7, tools.Count);
         Assert.Equal(
             [
                 FileListTool.ToolName,
                 FileCopyTool.ToolName,
                 FileMoveTool.ToolName,
-                FileDeleteTool.ToolName
+                FileDeleteTool.ToolName,
+                FileCreateDirectoryTool.ToolName,
+                FileMoveDirectoryTool.ToolName,
+                FileDeleteDirectoryTool.ToolName
             ],
             tools.Select(tool => tool.Name));
     }
@@ -48,12 +51,12 @@ public class FileTests
             .Add(new FilePack())
             .Build();
 
-        Assert.Equal(4, tools.Count);
+        Assert.Equal(7, tools.Count);
     }
 
     /// <summary>
-    ///     Proves a file outside the permitted root is never listed, copied, moved or deleted —
-    ///     no tool in the family can breach containment.
+    ///     Proves a file or directory outside the permitted root is never listed, copied, moved,
+    ///     deleted, created over or removed — no tool in the family can breach containment.
     /// </summary>
     /// <remarks>
     ///     The bait is placed where an unguarded operation would genuinely find it: the grant covers
@@ -73,6 +76,8 @@ public class FileTests
             fixture.Root,
             "secret.txt",
             "outside-content");
+        var outsideDirectory = Path.Combine(fixture.Root, "secrets");
+        TempDirectoryFixture.WriteFile(outsideDirectory, "held.txt", "outside-content");
         var tools = Compose(workspace);
 
         // Act: list the ungranted parent, then attempt every mutating operation against the bait
@@ -88,15 +93,41 @@ public class FileTests
             new AIFunctionArguments { ["source"] = outsideFile, ["destination"] = "moved.txt" });
         var deleteResult = await InvokeAsync(
             tools, FileDeleteTool.ToolName, new AIFunctionArguments { ["path"] = outsideFile });
+        var createDirectoryResult = await InvokeAsync(
+            tools,
+            FileCreateDirectoryTool.ToolName,
+            new AIFunctionArguments { ["path"] = Path.Combine(fixture.Root, "made") });
+        var moveDirectoryResult = await InvokeAsync(
+            tools,
+            FileMoveDirectoryTool.ToolName,
+            new AIFunctionArguments { ["source"] = outsideDirectory, ["destination"] = "taken" });
+        var deleteDirectoryResult = await InvokeAsync(
+            tools,
+            FileDeleteDirectoryTool.ToolName,
+            new AIFunctionArguments { ["path"] = outsideDirectory });
 
-        // Assert: the listing is refused and never names the bait; the copy, move and delete are
-        // refused; and the bait still exists untouched
+        // Assert: the listing is refused and never names the bait; every mutating request is
+        // refused; and both baits still exist untouched
         var listText = Assert.IsType<string>(listResult);
         Assert.Contains("Denied (PathNotPermitted)", listText, StringComparison.Ordinal);
         Assert.DoesNotContain("secret.txt", listText, StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(copyResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(moveResult), StringComparison.Ordinal);
         Assert.Contains("Denied (PathNotPermitted)", Assert.IsType<string>(deleteResult), StringComparison.Ordinal);
+        Assert.Contains(
+            "Denied (PathNotPermitted)",
+            Assert.IsType<string>(createDirectoryResult),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Denied (PathNotPermitted)",
+            Assert.IsType<string>(moveDirectoryResult),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Denied (PathNotPermitted)",
+            Assert.IsType<string>(deleteDirectoryResult),
+            StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "made")));
+        Assert.True(Directory.Exists(outsideDirectory));
         Assert.Equal(
             "outside-content",
             await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
@@ -144,6 +175,86 @@ public class FileTests
         // Assert: the backup exists and the original is gone
         Assert.True(System.IO.File.Exists(Path.Combine(fixture.Root, "backup.txt")));
         Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "notes.txt")));
+    }
+
+    /// <summary>
+    ///     Proves an agent can create a directory, move — and thereby rename — it, and remove it
+    ///     with everything beneath it, through the composed family and by bare relative names.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task File_Family_DirectoryLifecycle_CreateMoveDelete_WorksEndToEnd()
+    {
+        // Arrange: an empty workspace the family is composed over
+        using var fixture = new TempDirectoryFixture();
+        var tools = Compose(fixture.Root);
+
+        // Act: create a nested directory, put a file in it, rename it beside itself, then remove
+        // the whole thing
+        await InvokeAsync(
+            tools,
+            FileCreateDirectoryTool.ToolName,
+            new AIFunctionArguments { ["path"] = "reports/drafts" });
+        TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Root, "reports", "drafts"), "note.txt", "content");
+        await InvokeAsync(
+            tools,
+            FileMoveDirectoryTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["source"] = "reports/drafts",
+                ["destination"] = "reports/final"
+            });
+        var renamedHoldsTheFile = System.IO.File.Exists(
+            Path.Combine(fixture.Root, "reports", "final", "note.txt"));
+        var deleteResult = await InvokeAsync(
+            tools,
+            FileDeleteDirectoryTool.ToolName,
+            new AIFunctionArguments { ["path"] = "reports" });
+
+        // Assert: the rename carried the content, the removal reported its scale, and nothing of
+        // the tree is left
+        Assert.True(renamedHoldsTheFile);
+        Assert.Contains(
+            "3 entries", Assert.IsType<string>(deleteResult), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "reports")));
+    }
+
+    /// <summary>
+    ///     Proves a recursive removal composed through the family never follows a link out of the
+    ///     directory it was given.
+    /// </summary>
+    /// <remarks>
+    ///     The security property verified here belongs to the family rather than to one unit: an
+    ///     application attaches the pack, and what it must be able to rely on is that no tool it
+    ///     received can remove content the request never named. The link is real — a junction on
+    ///     Windows, a symbolic link elsewhere — because the decision under test is made about real
+    ///     reparse points.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task File_Family_RecursiveDelete_LinkOutOfTheGrant_IsNeverFollowed()
+    {
+        // Arrange: a permitted tree holding a link to an ungranted sibling that holds a file
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        Directory.CreateDirectory(tree);
+        var outsideFile = TempDirectoryFixture.WriteFile(
+            fixture.Outside, "secret.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(tree, "escape"), fixture.Outside);
+        var tools = Compose(fixture.Root);
+
+        // Act: ask the composed family to remove the whole tree
+        var result = await InvokeAsync(
+            tools, FileDeleteDirectoryTool.ToolName, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: refused, the tree is untouched, and what lay beyond the link is intact
+        Assert.Contains(
+            "Denied (InvalidRequest)", Assert.IsType<string>(result), StringComparison.Ordinal);
+        Assert.True(Directory.Exists(tree));
+        Assert.Equal(
+            "outside-content",
+            await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
     }
 
     /// <summary>

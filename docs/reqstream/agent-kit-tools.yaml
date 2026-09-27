@@ -104,26 +104,40 @@ sections:
       - id: AgentKitTools-FileFamily-GuardedFileManagement
         title: >-
           The library shall provide a type-agnostic file family that lists, copies, moves and
-          deletes files of any type under the access policy the composing application supplies,
+          deletes files of any type, and creates, moves and recursively deletes the directories
+          that hold them, under the access policy the composing application supplies,
           judging each endpoint by the policy decision that matches it, refusing to overwrite an
-          existing destination unless overwrite is explicitly permitted, deleting only a single
-          file and never a directory, offering the copying, moving and deleting tools only where
+          existing destination unless overwrite is explicitly permitted, never replacing a
+          directory, deleting only a single
+          file and never a directory through its single-file deletion, bounding a recursive
+          deletion so that it never follows a link out of the directory it was given and never
+          exceeds the configured entry ceiling, offering the tools that change the file system
+          only where
           the policy could permit them to succeed, publishing every tool under one family prefix
           and refusing rather than throwing when the policy does not permit a request.
         tags: [system, security]
         justification: |
           Managing the files an agent works with — listing what exists, copying, moving and
           deleting — is the same operation whatever a file holds, so it belongs to a family that
-          treats a file as an entity rather than as a kind of content. Providing it as one
+          treats a file as an entity rather than as a kind of content; and the directory structure
+          those files live in belongs to the same family, because it is the container rather than
+          the content. Providing it as one
           policy-governed family means an application grants file management in a single, auditable
-          step, with containment applied to every endpoint. Refusing to clobber a destination and
-          refusing to delete a directory make the two most dangerous, least reversible operations
+          step, with containment applied to every endpoint. Refusing to clobber a destination,
+          never replacing a directory, and
+          refusing to delete a directory through the single-file deletion make the most dangerous,
+          least reversible operations
           impossible to perform by accident; recovery from a mistaken change is source control,
-          which is why an agent should be run in a repository. This family replaces the listing the
+          which is why an agent should be run in a repository. The one operation whose reach is
+          not stated by the request itself — removing a directory with everything beneath it — is
+          bounded by a link guard and an entry ceiling, so a mistake is survivable and observable
+          rather than total. This family replaces the listing the
           text family used to provide, so listing is now type-agnostic rather than wearing a text
           prefix.
         children:
           - AgentKitTools-File-FamilyComposition
+          - AgentKitTools-File-DirectoryManagement
+          - AgentKitTools-File-RecursiveDeletionIsBounded
           - AgentKitTools-File-GuardedConstruction
           - AgentKitTools-File-PolicyGoverned
           - AgentKitTools-File-DenialsAreResults

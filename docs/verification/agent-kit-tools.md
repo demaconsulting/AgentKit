@@ -87,7 +87,8 @@ Verifies that attaching the File pack contributes that family's tools to a compo
 the one family prefix the pack claims. Constructs a real access policy that permits writing, adds
 `FilePack` to a
 `ToolPackBuilder` governed by it, and asserts the composed list is exactly `file_list`,
-`file_copy`, `file_move` and `file_delete` — the whole family of four, which is what a
+`file_copy`, `file_move`, `file_delete`, `file_create_directory`, `file_move_directory` and
+`file_delete_directory` — the whole family of seven, which is what a
 write-permitting policy publishes.
 
 ### Composition: The Markdown Family Is Contributed to a Composition
@@ -187,7 +188,7 @@ play. Asserts the composed list is exactly sixteen tools, in pack-add order: `te
 `image_crop`, `memory_file`, `memory_recall`, `memory_update`, `memory_revise`, `memory_forget`,
 `todo_list`, `todo_set`, `todo_remove` and `agent_run`.
 
-The eight write-performing tools — five in the TextFile family, three in the File family — are
+The eleven write-performing tools — five in the TextFile family, six in the File family — are
 absent. The exact ordered list is asserted rather than set membership, because both which tools
 survive and the order a model sees them in are observable and part of the contract.
 
@@ -197,11 +198,11 @@ survive and the order a model sees them in are observable and part of the contra
 
 Verifies that the write question is asked of the whole policy rather than of the location relative
 names anchor to. Composes the same seven families over a policy granting the workspace read-only
-and a separate session location read-write, and asserts the composed list is exactly twenty-four
+and a separate session location read-write, and asserts the composed list is exactly twenty-seven
 tools in pack-add order — every tool of every family.
 
 This is the scenario the plausible wrong rule breaks. Had the question been "is the working
-directory writable", this composition would lose all eight write-performing tools even though
+directory writable", this composition would lose all eleven write-performing tools even though
 writing is genuinely possible, and the common read-wide, write-narrow arrangement would be left
 unable to edit anything.
 

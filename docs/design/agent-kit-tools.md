@@ -24,10 +24,11 @@ The system contains the **TextFile** subsystem: the text file tool family, publi
 family prefix and attached to an application as one pack.
 
 The system contains the **File** subsystem: the type-agnostic file tool family, publishing
-`file_list`, `file_copy`, `file_move` and `file_delete` under the `file` family prefix and
+`file_list`, `file_copy`, `file_move`, `file_delete`, `file_create_directory`,
+`file_move_directory` and `file_delete_directory` under the `file` family prefix and
 attached to an application as one pack. It manages files of any content type — listing,
-copying, moving and deleting — while reading and editing a file's contents belong to the
-content families.
+copying, moving and deleting — and the directories that hold them, while reading and editing a
+file's contents belong to the content families.
 
 The system contains the **Markdown** subsystem: the markdown tool family, publishing
 `markdown_outline` under the `markdown` family prefix and attached to an application as one
@@ -210,7 +211,7 @@ statement of what the agent can do.
 | Family | Filters? | Needs a write grant | Read-only total |
 | --- | --- | ---: | ---: |
 | TextFile | Yes | 5 of 8 | 8 → **3** |
-| File | Yes | 3 of 4 | 4 → **1** |
+| File | Yes | 6 of 7 | 7 → **1** |
 | Image | No | none | 2 → **2** |
 | Markdown | No | none | 1 → **1** |
 | Memory | No | none | 5 → **5** |
@@ -219,13 +220,14 @@ statement of what the agent can do.
 
 The five TextFile tools that need a write grant are `text_file_create`, `text_file_write`,
 `text_file_replace`, `text_file_cut_lines` and `text_file_paste_lines`; `text_file_search`,
-`text_file_read` and `text_file_copy_lines` are published under every policy. The three File tools
-that need one are `file_copy`, `file_move` and `file_delete`, leaving `file_list` published under
+`text_file_read` and `text_file_copy_lines` are published under every policy. The six File tools
+that need one are `file_copy`, `file_move`, `file_delete`, `file_create_directory`,
+`file_move_directory` and `file_delete_directory`, leaving `file_list` published under
 every policy.
 
-Eight tools in total need a write grant: five in the TextFile family and three in the File family.
+Eleven tools in total need a write grant: five in the TextFile family and six in the File family.
 All seven families composed over a policy that permits no writing anywhere therefore publish
-3 + 1 + 2 + 1 + 5 + 3 + 1 = 16 tools, against 24 under a policy that permits writing somewhere.
+3 + 1 + 2 + 1 + 5 + 3 + 1 = 16 tools, against 27 under a policy that permits writing somewhere.
 
 Why each non-filtering family does not filter:
 

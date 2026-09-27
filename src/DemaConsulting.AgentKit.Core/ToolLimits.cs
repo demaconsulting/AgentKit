@@ -60,6 +60,20 @@ namespace DemaConsulting.AgentKit.Core;
 ///     rather than the host billed for the decode.
 ///     </para>
 ///     <para>
+///     <see cref="DefaultMaxDeleteEntries"/> is 1,000. It bounds how many entries one recursive
+///     removal may take, counting the named directory itself, and it is the one ceiling here that
+///     bounds <em>damage</em> rather than spend. <b>It is not protection against a determined
+///     agent.</b> An agent that means to destroy a tree can remove it a file at a time and this
+///     ceiling will not stop it. What the ceiling buys is that a <em>mistake</em> — a wrong path, a
+///     model confusion, an off-by-one in a constructed path — is survivable and observable rather
+///     than total in one call, and the documentation must not be read as claiming more. The value
+///     was chosen against measured trees: three orders of magnitude above a hand-made scratch
+///     directory, comfortably above one project's whole build output, and well below the trees an
+///     agent must never remove by mistake — a source tree, a test tree, or an installed package
+///     directory, which run from several thousand to tens of thousands of entries. Ordinary
+///     housekeeping succeeds; a mistaken "remove the workspace" is refused.
+///     </para>
+///     <para>
 ///     <b>Every ceiling here is a default, and every one is overridable.</b> A host that wants
 ///     different budgets supplies them through the optional parameters of this type's
 ///     constructor and hands the result to the three-argument <see cref="PathPolicy"/>
@@ -126,6 +140,17 @@ public sealed class ToolLimits
     public const int DefaultMaxImagePixels = 16 * 1024 * 1024;
 
     /// <summary>
+    ///     The default ceiling on how many entries one recursive removal may take.
+    /// </summary>
+    /// <remarks>
+    ///     The count includes the named directory itself, so an empty directory is one entry and a
+    ///     ceiling of zero forbids recursive removal entirely. The value bounds the damage a
+    ///     mistake can do in a single call; it is not a defense against an agent that intends the
+    ///     destruction, which can proceed one file at a time.
+    /// </remarks>
+    public const int DefaultMaxDeleteEntries = 1000;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ToolLimits"/> class.
     /// </summary>
     /// <remarks>
@@ -154,6 +179,10 @@ public sealed class ToolLimits
     ///     dimensions that image declares. Must not be negative; zero forbids image decoding
     ///     entirely.
     /// </param>
+    /// <param name="maxDeleteEntries">
+    ///     The ceiling on how many entries one recursive removal may take, counting the named
+    ///     directory itself. Must not be negative; zero forbids recursive removal entirely.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     Thrown when any of the supplied ceilings is negative.
     /// </exception>
@@ -162,7 +191,8 @@ public sealed class ToolLimits
         int maxResultCharacters = DefaultMaxResultCharacters,
         int maxBinaryBytes = DefaultMaxBinaryBytes,
         int maxAgentDepth = DefaultMaxAgentDepth,
-        int maxImagePixels = DefaultMaxImagePixels)
+        int maxImagePixels = DefaultMaxImagePixels,
+        int maxDeleteEntries = DefaultMaxDeleteEntries)
     {
         // Validate before any assignment so a rejected instance never exists even briefly. A
         // negative ceiling is a programming error in the host's configuration code, not a
@@ -172,12 +202,14 @@ public sealed class ToolLimits
         ArgumentOutOfRangeException.ThrowIfNegative(maxBinaryBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(maxAgentDepth);
         ArgumentOutOfRangeException.ThrowIfNegative(maxImagePixels);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxDeleteEntries);
 
         MaxReadBytes = maxReadBytes;
         MaxResultCharacters = maxResultCharacters;
         MaxBinaryBytes = maxBinaryBytes;
         MaxAgentDepth = maxAgentDepth;
         MaxImagePixels = maxImagePixels;
+        MaxDeleteEntries = maxDeleteEntries;
     }
 
     /// <summary>
@@ -225,4 +257,16 @@ public sealed class ToolLimits
     ///     decodes images and then withhold that use.
     /// </remarks>
     public int MaxImagePixels { get; }
+
+    /// <summary>
+    ///     Gets the ceiling on how many entries one recursive removal may take.
+    /// </summary>
+    /// <remarks>
+    ///     Counted over everything the removal would take, including the named directory itself,
+    ///     so an empty directory costs one entry. Zero forbids recursive removal entirely, which
+    ///     is the expressible way for a host to attach a family that removes directory trees and
+    ///     then withhold that use. The ceiling bounds what one mistaken call can destroy; it does
+    ///     not bound what a determined agent can destroy across many calls.
+    /// </remarks>
+    public int MaxDeleteEntries { get; }
 }

@@ -49,6 +49,9 @@ input-files:
   - docs/design/agent-kit-tools/file/file-copy-tool.md
   - docs/design/agent-kit-tools/file/file-move-tool.md
   - docs/design/agent-kit-tools/file/file-delete-tool.md
+  - docs/design/agent-kit-tools/file/file-create-directory-tool.md
+  - docs/design/agent-kit-tools/file/file-move-directory-tool.md
+  - docs/design/agent-kit-tools/file/file-delete-directory-tool.md
   - docs/design/agent-kit-tools/file/file-pack.md
   - docs/design/agent-kit-tools/markdown.md
   - docs/design/agent-kit-tools/markdown/markdown-outline-tool.md

@@ -41,7 +41,10 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, set a file's whole
   content, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
-  delete files of any type), **markdown** (outline a document's headings with their line ranges),
+  delete files of any type, and create, move or rename, and recursively delete the directories that
+  hold them — a recursive delete never follows a link out of the directory it was given and refuses
+  a tree larger than the configured entry ceiling),
+  **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
   dimensions, and return a rectangular region of a PNG or JPEG named in those pixels, inline or
   written as a new PNG where a read-write grant permits it; gated on the

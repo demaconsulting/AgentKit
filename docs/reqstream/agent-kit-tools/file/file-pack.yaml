@@ -26,26 +26,31 @@ sections:
                 tests:
                   - FilePack_RequiredCapabilities_IsNone
 
-              - id: AgentKitTools-File-Pack-RegistersFourTools
+              - id: AgentKitTools-File-Pack-RegistersEveryTool
                 title: >-
-                  The pack shall create its four tools — list, copy, move and delete — in a fixed,
+                  The pack shall create every tool in the family — listing, copying, moving and
+                  deleting a file, and creating, moving and deleting a directory — in a fixed,
                   documented order, whenever the access policy permits writing in any location.
                 justification: |
                   The order a model sees the tools in is observable, so it is fixed rather than
-                  incidental. Any location being writable is enough: an agent that may write only a
-                  session location outside the workspace still receives every management tool,
-                  because every one of them could succeed there.
+                  incidental, and the file tools precede the directory tools as a block so the
+                  family reads in one shape. The requirement names no count, because a count baked
+                  into a requirement is a staleness generator. Any location being writable is
+                  enough: an agent that may write only a session location outside the workspace
+                  still receives every management tool, because every one of them could succeed
+                  there.
                 tests:
-                  - FilePack_CreateTools_WriteGrantingPolicy_RegistersListCopyMoveDeleteInOrder
+                  - FilePack_CreateTools_WriteGrantingPolicy_RegistersEveryToolInOrder
                   - FilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
 
               - id: AgentKitTools-File-Pack-SuppressesWriteToolsWithoutAWriteGrant
                 title: >-
-                  The pack shall withhold copying, moving and deleting when the access policy
-                  permits no writing anywhere, offering only listing.
+                  The pack shall withhold copying, moving and deleting a file, and creating,
+                  moving and deleting a directory, when the access policy permits no writing
+                  anywhere, offering only listing.
                 tags: [security]
                 justification: |
-                  Copying, moving and deleting each change the file system, so under a
+                  Each of those six operations changes the file system, so under a
                   configuration that permits no writing anywhere every one of them could only
                   answer a refusal. Withholding them is what stops an agent spending turns on a
                   capability that cannot work and keeps the tools it is offered a truthful

@@ -77,10 +77,18 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: the family's four tools are published, each under the family prefix. The policy
-        // permits writing, which is what publishes copy, move and delete.
+        // Assert: the family's seven tools are published, each under the family prefix. The policy
+        // permits writing, which is what publishes the six that change the file system.
         Assert.Equal(
-            ["file_list", "file_copy", "file_move", "file_delete"],
+            [
+                "file_list",
+                "file_copy",
+                "file_move",
+                "file_delete",
+                "file_create_directory",
+                "file_move_directory",
+                "file_delete_directory"
+            ],
             tools.Select(tool => tool.Name));
     }
 
@@ -260,7 +268,7 @@ public class AgentKitToolsTests
         var tools = builder.Build();
 
         // Assert: 3 text-file + 1 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 16,
-        // in pack-add order. The eight write-performing tools are absent.
+        // in pack-add order. The eleven write-performing tools are absent.
         Assert.Equal(16, tools.Count);
         Assert.Equal(
             [
@@ -313,9 +321,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: 8 text-file + 4 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 24,
+        // Assert: 8 text-file + 7 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 27,
         // in pack-add order
-        Assert.Equal(24, tools.Count);
+        Assert.Equal(27, tools.Count);
         Assert.Equal(
             [
                 "text_file_search",
@@ -330,6 +338,9 @@ public class AgentKitToolsTests
                 "file_copy",
                 "file_move",
                 "file_delete",
+                "file_create_directory",
+                "file_move_directory",
+                "file_delete_directory",
                 "markdown_outline",
                 "image_read",
                 "image_crop",

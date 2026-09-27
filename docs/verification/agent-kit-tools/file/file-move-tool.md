@@ -27,7 +27,7 @@ project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 6 requirement scenarios below, covering 6 listed test method
+A unit test run passes when all 7 requirement scenarios below, covering 7 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -52,6 +52,15 @@ The listed tests prove a missing policy is a programming error rather than a den
 **Test**: `FileMoveTool_Move_RelativePaths_MovesTheFileAndRemovesTheSource`
 
 The listed tests prove a permitted move relocates the file and removes the source.
+
+##### AgentKitTools-File-MoveTool-Renames: Renames
+
+**Test**: `FileMoveTool_Move_DestinationInTheSameDirectory_RenamesTheFile`
+
+The listed test proves a destination in the same directory renames the file, and asserts that the
+description a model reads names the rename. The description assertion is part of the scenario
+rather than a separate one, because there is no rename tool to find: a rename a model cannot
+discover from the move tool's declaration is a capability the family does not really offer.
 
 ##### AgentKitTools-File-MoveTool-PolicyGoverned: Policy Governed
 
