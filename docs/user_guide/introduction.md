@@ -343,7 +343,8 @@ image's own one-pixel border, never assumed** — so a dark-themed screenshot, a
 export with a transparent margin all trim correctly, where a tool comparing against white would
 return the picture unchanged while reporting success. **A pixel within a small fixed tolerance of
 that background counts as background**, so anti-aliased edges and compression artifacts do not
-defeat the trim; the tolerance is deliberately *not* a parameter, because a caller that cannot see
+defeat the trim; that tolerance is 8 per channel out of 255, compared on red, green, blue and
+alpha independently, and it is deliberately *not* a parameter, because a caller that cannot see
 the image cannot choose one better than the default, and the result stays a pure function of the
 file and the padding. **Padding that would run past an edge is clamped, never refused** — content
 flush to an edge is ordinary, and a padding larger than every margin simply yields the whole image.

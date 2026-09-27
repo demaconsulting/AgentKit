@@ -486,6 +486,7 @@ public static class ImageAutoCropTool
         }
 
         Surface trimmed;
+        Region region;
 
         // The decoded image is released as soon as the region has been copied out of it: the
         // copy is independent of its source, so nothing the region needs outlives the surface it
@@ -519,14 +520,17 @@ public static class ImageAutoCropTool
             var right = Math.Min(surface.Width - 1, maxX + padding);
             var bottom = Math.Min(surface.Height - 1, maxY + padding);
 
-            var region = new Region(left, top, right - left + 1, bottom - top + 1);
+            region = new Region(left, top, right - left + 1, bottom - top + 1);
             trimmed = surface.Crop(region.X, region.Y, region.Width, region.Height);
-
-            return await EncodeRegionAsync(
-                    policy, trimmed, region, imageWidth, imageHeight, mediaType, padding,
-                    destination, cancellationToken)
-                .ConfigureAwait(false);
         }
+
+        // Outside the block on purpose: the decoded source is already released, so the encode and
+        // any write run holding only the region's own copy. Keeping the call inside would hold the
+        // whole decoded image alive for the length of an I/O operation that cannot use it.
+        return await EncodeRegionAsync(
+                policy, trimmed, region, imageWidth, imageHeight, mediaType, padding,
+                destination, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
