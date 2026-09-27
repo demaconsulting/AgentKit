@@ -21,7 +21,7 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | Member            | Type     | Invariant                                                     |
 | ----------------- | -------- | ------------------------------------------------------------- |
 | `ToolName`        | `string` | `file_create_directory`; public constant; carries the prefix  |
-| `ToolDescription` | `string` | Non-empty; states both outcomes and the parent creation       |
+| `ToolDescription` | `string` | Non-empty; states both outcomes and the parent boundary       |
 | Denial messages   | `string` | Tool-composed constants; policy denials come from policy      |
 | Success messages  | `string` | Two constants; created and already-present are never the same |
 
@@ -47,12 +47,16 @@ governed by the supplied policy for the rest of its life.
 
 1. An absent, empty or whitespace `path` is refused as `InvalidRequest`.
 2. `policy.TryResolveWrite(path, …)` is called. A refusal is returned as `PathNotPermitted`.
-3. An existing **file** at the path is refused as `InvalidRequest`. A file is never replaced by a
+3. Every directory **above** the target that would have to be created is judged by the same write
+   decision. The walk climbs from the target's parent and stops at the first ancestor that already
+   exists; each missing one must be permitted by a read-write grant, or the request is refused as
+   `PathNotPermitted` and **nothing at any level is created**.
+4. An existing **file** at the path is refused as `InvalidRequest`. A file is never replaced by a
    directory.
-4. Whether the directory already exists is recorded **before** the creation, because afterwards
+5. Whether the directory already exists is recorded **before** the creation, because afterwards
    the two outcomes are indistinguishable.
-5. The directory is created, along with every missing directory above it, and the tool returns the
-   confirmation matching what step 4 observed.
+6. The directory is created, along with every missing directory above it, and the tool returns the
+   confirmation matching what step 5 observed.
 
 The write decision happens before file-system observations, so a refused path discloses nothing
 about whether anything exists outside permitted write locations.
@@ -65,10 +69,36 @@ caller into a list-then-create dance that buys no safety. What does carry over f
 instinct is that the model must never be left guessing: the two outcomes carry two distinct texts,
 so a caller can always tell which happened.
 
-**Why missing parents are created rather than refused.** Every directory created lies inside the
-same permitted location the policy already approved, so there is no containment question to
-answer. Refusing because a middle component is absent would only force a model into a
-create-one-level-at-a-time loop, spending turns to reach the same state.
+**Why missing parents are created rather than refused.** Refusing because a middle component is
+absent would only force a model into a create-one-level-at-a-time loop, spending turns to reach the
+same state. The condition that makes this safe is that every directory created lies inside a
+location the policy permits writing — and that is checked, not assumed; see below.
+
+**Why every ancestor is judged, not just the named path.** `Directory.CreateDirectory` materializes
+*every* missing component of the path it is given, so the writes one call performs are the named
+directory plus each absent directory above it. Only the named one passed through
+`TryResolveWrite`. A grant root need not exist — `RealPathResolver` is lexical and requires no
+component to be present — so a grant rooted at `workspace/new-root` authorized `new-root/child`
+while the same call created `workspace/new-root` and, if they were missing, its own parents too:
+writes in a location no grant covers. Nothing is destroyed by that, which is why it was a
+containment gap rather than a destructive one; but containment is the library's central promise,
+and a tool that can create directories the operator never granted is expressing an operation the
+policy was supposed to make inexpressible. Each missing ancestor is therefore tested against the
+read-write grants directly — the ancestors are already resolved real locations, so re-resolving
+them through `TryResolveWrite` would re-interpret paths the tool produced rather than paths a model
+supplied.
+
+*The alternative — creating the ancestors at or below the grant root and refusing the rest — was
+rejected because it collapses into the same behavior.* A directory cannot be created inside a
+parent that does not exist, so that rule still has to refuse the moment an ancestor above the grant
+root is missing; the only difference is that it refuses after leaving a half-built tree behind.
+Refusing up front says the same thing with one decision and keeps this unit's promise identical to
+the rest of the family's: a refusal means nothing happened. The refusal names no path, because the
+offending directory lies above every permitted location and its name is a host location the policy
+never disclosed; the tool's description states the boundary instead, so a model is not invited into
+a request whose only possible outcome is a refusal it could not have predicted. **A grant root that
+does not yet exist is still created**, because the root is itself a permitted location — the rule
+bites on ancestors the grants do not reach, not on missing ancestors as such.
 
 **Why this unit carries no linked-ancestor guard, deliberately.** `file_delete_directory` and
 `file_move_directory` refuse a path they are asked to reach *through* a link, because path
@@ -78,7 +108,9 @@ link writes outside the grant but **destroys nothing**. The narrowing those two 
 justified by a blast radius of a whole tree; here the worst outcome is an empty directory in an
 unexpected place, which the lexical resolution the rest of the library uses already accepts. If
 the library later decides the question for every tool, this unit follows that decision rather than
-carrying a private one.
+carrying a private one. The ancestor check above is a different question and is *not* a link rule:
+it asks whether the policy permits a location, not what the location leads to, and so it applies to
+a lexical path exactly as the write decision does.
 
 #### Error Handling
 
@@ -92,10 +124,11 @@ exception text, which is developer-facing and can name a host path the policy ne
 
 #### Dependencies
 
-`PathPolicy` for the write decision, `ToolResult` for results, and `GuardedToolFactory` for
-construction. From the Base Class Library it uses `Directory`, `File`, and directory-creation
-exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the constructed tool
-type.
+`PathPolicy` for the write decision and for the grants each would-be ancestor is judged against,
+`PathRule.Allows` for judging an already-resolved ancestor, `ToolResult` for results, and
+`GuardedToolFactory` for construction. From the Base Class Library it uses `Directory`, `File`,
+`Path`, and directory-creation exceptions. `AIFunction`, from
+`Microsoft.Extensions.AI.Abstractions`, is the constructed tool type.
 
 #### Callers
 

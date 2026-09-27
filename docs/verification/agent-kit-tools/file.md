@@ -84,6 +84,14 @@ path, and the path *named* through a link, for both the recursive deletion and t
 move — are verified against the units in *FileDeleteDirectoryTool Unit Verification Design* and
 *FileMoveDirectoryTool Unit Verification Design*.
 
+**What this scenario is evidence of.** It verifies the guard as the units define it: a pre-flight
+check over paths, taken before anything is removed. It is not evidence of race resistance, and
+neither the subsystem nor its units claim any — portable .NET exposes no handle-relative,
+no-follow directory removal or move, so a process writing inside a location the operator already
+granted can replace a checked component and no second path check would stop it. What the unit
+scenarios bound is the cost of that race: every removal the family issues is non-following, so a
+swapped component is removed as a link rather than traversed.
+
 #### AgentKitTools-File-WriteToolsRequireAWriteGrant: Only What the Policy Can Permit Is Offered
 
 **Test**: `File_Family_ComposedThroughBuilder_PublishesTheWholeFamily`

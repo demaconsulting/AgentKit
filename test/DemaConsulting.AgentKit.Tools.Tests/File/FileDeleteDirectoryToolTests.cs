@@ -196,6 +196,55 @@ public class FileDeleteDirectoryToolTests
     }
 
     /// <summary>
+    ///     Proves a deeper grant whose denied patterns reject the target does not become the
+    ///     boundary and hide a link above it.
+    /// </summary>
+    /// <remarks>
+    ///     The boundary the ancestor walk stops at has to be a grant that actually authorized the
+    ///     request. A grant that merely encloses the target lexically, while its denied patterns
+    ///     refuse it, authorized nothing — the request stands on the shallower grant above the
+    ///     link, so it is that grant's interior the walk must cover. Taking the deeper grant
+    ///     anyway stops the walk below the link and reopens the escape by a second route: run
+    ///     against a boundary chosen on containment alone, this scenario reports a successful
+    ///     removal and the tree outside every grant is gone.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_DeeperGrantDenyingTheTarget_DoesNotHideALinkAboveIt()
+    {
+        // Arrange: a shallow grant that permits the request, a link inside it leading out of the
+        // grant, and a deeper grant rooted beyond that link whose denied pattern rejects the very
+        // target being named — so the deeper grant permits nothing and must not be the boundary
+        using var fixture = new TempDirectoryFixture();
+        var bait = TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Outside, "victim", "keep"), "bait.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "escape"), fixture.Outside);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [
+                PathRule.ReadWrite(fixture.Root),
+                PathRule.ReadWrite(Path.Combine(fixture.Root, "escape", "victim"), ["keep"])
+            ]);
+        var tool = FileDeleteDirectoryTool.Create(policy);
+
+        // Act: name the target through the link, which the shallow grant authorizes
+        var result = await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "escape/victim/keep" });
+
+        // Assert: refused, the offending component named as the model spelled it, the link's
+        // target disclosed nowhere, and the tree outside every grant still whole
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("escape", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(Path.Combine(fixture.Outside, "victim", "keep")));
+        Assert.True(System.IO.File.Exists(bait));
+        Assert.Equal(
+            "outside-content",
+            await System.IO.File.ReadAllTextAsync(bait, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     Proves the published tool name is the family-qualified name the pack claims.
     /// </summary>
     [Fact]

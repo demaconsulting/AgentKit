@@ -89,9 +89,10 @@ sections:
               - id: AgentKitTools-File-MoveDirectoryTool-EndpointThroughALinkIsRefused
                 title: >-
                   The move-directory tool shall refuse a source or a destination whose resolved
-                  location is reached through a link lying between the grant root and that
-                  location, naming the offending component as the request spelled it, moving
-                  nothing, and leaving what the link points at intact.
+                  location is reached through a link lying between that location and the root of
+                  the deepest grant that both contains and permits it, naming the offending
+                  component as the request spelled it, moving nothing, and leaving what the link
+                  points at intact.
                 tags: [security]
                 justification: |
                   Path resolution in this library is lexical and documented as such, so a path
@@ -104,9 +105,20 @@ sections:
                   because a guard on one alone would leave the other open. The grant root itself,
                   and everything above it, is deliberately not classified: an application author
                   who roots a grant at a link has made that choice, while a link inside the grant
-                  has been vetted by nobody. This narrows what a caller may spell only where the
+                  has been vetted by nobody. The grant that bounds the walk is one that actually
+                  permits the endpoint rather than one that merely encloses it, because a grant
+                  whose denied patterns reject the path authorized nothing and would otherwise
+                  hide a link above itself. This narrows what a caller may spell only where the
                   blast radius is a whole tree — directory creation through a link writes outside
                   the grant but destroys nothing and is deliberately left alone.
+
+                  The classification is a pre-flight check over paths and claims nothing more: the
+                  endpoints are judged as they stand when the request is judged, before anything
+                  is moved. A process able to write inside a location the operator already granted
+                  can replace a component between that check and the move, and re-checking would
+                  only move the window rather than close it, because portable .NET offers no
+                  handle-relative, no-follow directory move. The guarantee is therefore stated as
+                  what it is rather than implied to be a race-resistant control.
                 tests:
                   - FileMoveDirectoryTool_Move_SourceReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
                   - FileMoveDirectoryTool_Move_DestinationReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact

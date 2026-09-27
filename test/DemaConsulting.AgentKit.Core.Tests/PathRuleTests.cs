@@ -92,6 +92,30 @@ public class PathRuleTests
     }
 
     /// <summary>
+    ///     Proves the access level enumeration declares exactly two levels: read-only and
+    ///     read-write.
+    /// </summary>
+    /// <remarks>
+    ///     "There are exactly two levels and no more" is a premise the library reasons from
+    ///     rather than a matter of taste. The file family's publication rule rests on it — a grant
+    ///     is read-only or read-write, so permission to write always carries permission to read,
+    ///     which is why only the writing tools are ever withheld. Adding a write-only level would
+    ///     make that documented reasoning false with nothing failing to say so, so the premise is
+    ///     pinned here and a third level breaks this test rather than the prose.
+    /// </remarks>
+    [Fact]
+    public void PathRule_AccessLevel_DeclaredLevels_AreExactlyReadOnlyAndReadWrite()
+    {
+        // Arrange & Act: read the levels the enumeration actually declares
+        var levels = Enum.GetValues<AccessLevel>();
+
+        // Assert: exactly two, and exactly these two
+        Assert.Equal(2, levels.Length);
+        Assert.Contains(AccessLevel.ReadOnly, levels);
+        Assert.Contains(AccessLevel.ReadWrite, levels);
+    }
+
+    /// <summary>
     ///     Proves that a rooted grant permits a location inside its root, at either access level.
     /// </summary>
     [Fact]

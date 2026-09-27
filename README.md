@@ -241,7 +241,14 @@ junctions and other reparse points are not a general protection boundary: path r
 lexical, so a path that reaches outside a granted location through a link is not detected. The two
 exceptions are the destructive directory tools — `file_delete_directory` and `file_move_directory`
 refuse a path they are asked to reach *through* a link, because there the content at stake is a
-whole tree rather than a single entry. The policy also decides which tools exist at all, in one
+whole tree rather than a single entry. That refusal is a **pre-flight check over paths**: the path
+a caller names is classified, and the recursive delete additionally refuses any link its walk
+discovers, both before anything is touched. It is not a race-resistant control — a process able to
+write inside a granted location can replace a component after the check, and no path-based API can
+close that window — though no removal these tools issue follows a link, so what a race costs is
+bounded by a single entry rather than a tree. `file_create_directory` judges every directory it
+would create, not only the one named, so a request whose missing parents would reach above every
+grant is refused with nothing created. The policy also decides which tools exist at all, in one
 specific way: a pack withholds the tools whose **writes** the policy governs, and only when no
 grant permits writing anywhere — the five editing tools of the text file family and the six
 management tools of the file family. The question is

@@ -37,11 +37,47 @@ sections:
                   Making a place to write into is the tool's reason to exist, and the dominant use
                   is ensuring a whole path exists before writing into it. Refusing because a
                   middle component is missing would force a model into a create-one-level-at-a-time
-                  loop that buys no safety, since every level created lies inside the same
-                  permitted location the policy already approved.
+                  loop that buys no safety, so long as every level created lies inside a location
+                  the policy permits writing — which is a condition to be checked rather than a
+                  fact to be assumed.
                 tests:
                   - FileCreateDirectoryTool_CreateDirectory_PermittedPath_CreatesIt
                   - FileCreateDirectoryTool_CreateDirectory_NestedPath_CreatesEveryMissingParent
+                  - FileCreateDirectoryTool_CreateDirectory_MissingGrantRootWhoseParentExists_CreatesBothLevels
+
+              - id: AgentKitTools-File-CreateDirectoryTool-NeverCreatesAnUngrantedParent
+                title: >-
+                  The create-directory tool shall refuse, creating nothing at any level, a request
+                  that could only be honored by creating a directory no read-write grant permits,
+                  and shall declare that boundary to the model.
+                tags: [security]
+                justification: |
+                  A single creation call materializes every missing component of the path it is
+                  given, so the writes one request performs are the named directory plus each
+                  absent directory above it. Only the named one was judged. A grant root need not
+                  exist — path resolution in this library is lexical and requires no component to
+                  be present — so a grant rooted at a location whose own parents are missing
+                  authorized the creation of those parents as a side effect, in a location no
+                  grant covers. Nothing is destroyed by that, which is why it is a containment gap
+                  rather than a destructive one; but containment is this library's central
+                  promise, and a tool that can create directories the operator never granted is
+                  expressing an operation the policy was supposed to make inexpressible. Judging
+                  every directory the call would create, by the same write decision, closes it
+                  without narrowing the ordinary case at all.
+
+                  The refusal is total rather than partial because the alternative collapses into
+                  it: a directory cannot be created inside a parent that does not exist, so a rule
+                  that created only the parents at or below the grant root would still have to
+                  refuse the moment one above it was missing, having first left a half-built tree
+                  behind. Refusing up front says the same thing with one decision and keeps this
+                  unit's promise identical to the rest of the family's — a refusal means nothing
+                  happened. The refusal names no path, because the offending directory lies above
+                  every permitted location and its name is a host location the policy never
+                  disclosed. The declaration states the boundary, so a model is not invited into a
+                  request whose only possible outcome is a refusal it could not have predicted.
+                tests:
+                  - FileCreateDirectoryTool_CreateDirectory_MissingParentAboveTheGrantRoot_ReturnsDenialAndCreatesNothing
+                  - FileCreateDirectoryTool_Create_Description_DeclaresTheParentBoundary
 
               - id: AgentKitTools-File-CreateDirectoryTool-ExistingDirectory
                 title: >-

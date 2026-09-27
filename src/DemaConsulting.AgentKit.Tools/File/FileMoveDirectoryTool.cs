@@ -67,6 +67,16 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     everything above it, is not classified — that ancestry is the application author's choice.
 ///     </para>
 ///     <para>
+///     <b>The endpoint classification is pre-flight, and promises only that.</b> It answers for
+///     the paths as they stand when the request is judged, before anything is moved. It is not a
+///     defense against a process racing the tool: one that can write inside a location the
+///     operator already granted may replace a component between the check and the
+///     <see cref="Directory.Move(string, string)"/>, and re-checking the path would only move
+///     that window rather than close it, because portable .NET offers no handle-relative,
+///     no-follow directory move. An adversary already writing inside a granted location is
+///     outside what a path-based API can defend against, and this unit does not claim otherwise.
+///     </para>
+///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks
 ///     on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
 ///     </para>

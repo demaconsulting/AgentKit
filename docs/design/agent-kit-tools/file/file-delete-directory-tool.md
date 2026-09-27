@@ -55,9 +55,10 @@ governed by the supplied policy for the rest of its life.
 1. An absent, empty or whitespace `path` is refused as `InvalidRequest`.
 2. `policy.TryResolveWrite(path, …)` is called. A refusal is returned as `PathNotPermitted`.
 3. The path the target is reached *through* is classified: `LinkGuard.FindLinkedAncestor` walks
-   from the resolved target up to the grant root, and a link on that path refuses the request as
-   `PathNotPermitted`, naming the offending component as the model spelled it. The grant root and
-   everything above it are not classified.
+   from the resolved target up to the root of the deepest read-write grant that both contains and
+   permits it, and a link on that path refuses the request as `PathNotPermitted`, naming the
+   offending component as the model spelled it. The grant root and everything above it are not
+   classified.
 4. A `path` that is **itself a link** takes the link branch, *before* anything is asked about what
    the path leads to: the link entry alone is removed, unfollowed, and the confirmation says what
    it pointed at was not touched. A link the host still reports as a directory is removed by the
@@ -155,8 +156,31 @@ who roots a grant at a link, or beneath one, has made that choice deliberately, 
 make the whole grant unusable. A link *inside* the grant has been vetted by nobody, which is exactly
 the difference the walk draws. Where a policy carries nested read-write grants the boundary is the
 *deepest* one containing the target, so a grant an author deliberately rooted beyond a link stays
-usable. An unrestricted read-write grant has no boundary at all — there is no outside to escape to —
-so nothing is classified under one.
+usable. **A grant only counts as the boundary if it actually permits the target**, not merely if it
+encloses it: a deeper grant whose denied patterns reject the path authorized nothing, so it is no
+statement about that location, and treating it as the boundary anyway stopped the walk *below* a
+link and reopened the escape by a second route — the request in truth stands on a shallower grant
+above that link, whose interior is what the walk exists to cover. An unrestricted read-write grant
+permitting the target has no boundary at all — there is no outside to escape to — so nothing is
+classified under one; an unrestricted grant whose denied patterns reject the target permits no
+writing there, so it does not suppress the walk either.
+
+**What the link rules guarantee, and what they do not.** Both are *pre-flight* checks over paths.
+The path the caller **names** is classified before anything is touched, and the planning walk
+refuses every link it **discovers** before a single entry is removed. Neither is a defense against a
+process racing the tool. One able to write inside a location the operator already granted can
+replace a component between the plan and the removal — a classic time-of-check-to-time-of-use
+window — and a second path check would only move that window rather than close it, because portable
+.NET exposes no handle-relative, no-follow directory removal. The window is therefore stated rather
+than papered over. What bounds it is that **no removal this tool issues follows a link**: measured,
+`File.Delete` unlinks a symbolic link rather than its target and raises
+`UnauthorizedAccessException` on a Windows junction, and `Directory.Delete(recursive: false)`
+removes a junction while leaving the target directory and its contents whole. A component swapped
+in after planning is therefore removed as the link it is. The residual exposure is a *leaf file
+path* whose intermediate directory was replaced by a link after planning, since the removal call
+then resolves through the new component; that costs a file outside the grant, never a tree, because
+every directory removal is non-recursive. An adversary already writing inside a granted location is
+outside what a path-based API can defend against, and this design does not claim otherwise.
 
 **The ceiling bounds a mistake, not an intention.** An agent that means to destroy a tree can
 remove it a file at a time with `file_delete` and this ceiling will not stop it. What the ceiling

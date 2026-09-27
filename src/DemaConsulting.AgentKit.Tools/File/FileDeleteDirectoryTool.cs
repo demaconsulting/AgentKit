@@ -98,6 +98,21 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     nobody.
 ///     </para>
 ///     <para>
+///     <b>Both link rules are pre-flight, and that is the whole of what they promise.</b> The path
+///     the caller <em>names</em> is classified before anything is touched, and the planning walk
+///     refuses every link it <em>discovers</em> before a single entry is removed. Neither is a
+///     defense against a process racing the tool: one that can write inside a location the
+///     operator already granted may replace a component between the plan and the removal, and a
+///     second path check would only move that window rather than close it, because portable .NET
+///     offers no handle-relative, no-follow directory removal. What bounds the race is that no
+///     removal this tool issues follows a link — measured, <see cref="System.IO.File.Delete"/>
+///     unlinks a symbolic link rather than its target and refuses a Windows junction outright,
+///     and <c>Directory.Delete(recursive: false)</c> removes a junction while leaving what it
+///     points at whole — so a component swapped after planning is removed as the link it is. An
+///     adversary already writing inside a granted location is outside what a path-based API can
+///     defend against, and this unit does not claim otherwise.
+///     </para>
+///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks
 ///     on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
 ///     </para>

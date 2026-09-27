@@ -34,6 +34,18 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     write through a link remains the documented, bounded behavior described in the README.
 ///     </para>
 ///     <para>
+///     <b>What the guard actually guarantees, and what it cannot.</b> This is a <em>pre-flight</em>
+///     check over paths: the location a caller <em>names</em> is classified before anything is
+///     touched, and a walk that later <em>discovers</em> a link refuses rather than following it.
+///     It is not a race-resistant control. A second process that can modify the tree — inside a
+///     location the operator already granted — may replace a component between the classification
+///     and the operation, and a second path check would only move the window rather than close it.
+///     Portable .NET exposes no handle-relative, no-follow directory removal or move, so that
+///     window cannot be closed at this layer, and the guarantee is stated as what it is rather
+///     than implied to be more. An adversary already able to write inside a granted location is
+///     outside what a path-based API can defend against.
+///     </para>
+///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
 ///     </para>
 /// </remarks>
@@ -85,17 +97,26 @@ internal static class LinkGuard
     ///     component strictly between the grant root and the target is classified.
     ///     </para>
     ///     <para>
-    ///     <b>The boundary is the deepest read-write grant containing the target.</b> A policy
-    ///     may grant a location and, separately, a location beneath it that is reached through a
-    ///     link; the deeper grant is the author's explicit statement about that location, so it
-    ///     is the boundary and the link above it is not reconsidered. Taking the shallowest grant
-    ///     instead would make the deeper grant impossible to use.
+    ///     <b>The boundary is the deepest read-write grant that contains and permits the
+    ///     target.</b> A policy may grant a location and, separately, a location beneath it that
+    ///     is reached through a link; the deeper grant is the author's explicit statement about
+    ///     that location, so it is the boundary and the link above it is not reconsidered. Taking
+    ///     the shallowest grant instead would make the deeper grant impossible to use. A grant
+    ///     that merely encloses the target while its denied patterns reject it is <em>not</em> a
+    ///     statement about that location and is never the boundary: the request was authorized by
+    ///     some other, shallower grant, and it is that grant's interior this walk has to cover.
     ///     </para>
     ///     <para>
-    ///     <b>An unrestricted write grant has no boundary, so nothing is classified.</b> Under a
-    ///     grant that permits writing anywhere there is no outside to escape to, and a refusal
-    ///     would be pure noise — on POSIX hosts it would also refuse ordinary temporary
-    ///     locations, which are routinely reached through a link.
+    ///     <b>An unrestricted write grant permitting the target has no boundary, so nothing is
+    ///     classified.</b> Under a grant that permits writing anywhere there is no outside to
+    ///     escape to, and a refusal would be pure noise — on POSIX hosts it would also refuse
+    ///     ordinary temporary locations, which are routinely reached through a link.
+    ///     </para>
+    ///     <para>
+    ///     <b>This is a pre-flight classification, not a race-resistant one.</b> It answers for
+    ///     the path as it stands when the request is judged. A process able to write inside a
+    ///     granted location may replace a component afterwards; see the type remarks for why that
+    ///     window cannot be closed by a path-based API.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy whose write grants bound the walk. Must be non-null.</param>
@@ -108,10 +129,10 @@ internal static class LinkGuard
     /// </returns>
     internal static string? FindLinkedAncestor(PathPolicy policy, string realPath)
     {
-        // Establish the boundary first. With no rooted read-write grant containing the target —
-        // an unrestricted grant, or none at all — there is no grant interior to protect and
-        // nothing to classify.
-        var boundary = DeepestWriteRootContaining(policy, realPath);
+        // Establish the boundary first. With no rooted read-write grant both containing and
+        // permitting the target — a permitting unrestricted grant, or none at all — there is no
+        // grant interior to protect and nothing to classify.
+        var boundary = DeepestPermittingWriteRoot(policy, realPath);
         if (boundary is null)
         {
             return null;
@@ -194,25 +215,51 @@ internal static class LinkGuard
     }
 
     /// <summary>
-    ///     Finds the deepest rooted read-write grant that contains a resolved path.
+    ///     Finds the deepest rooted read-write grant that both contains and permits a resolved
+    ///     path.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Only read-write grants are consulted, because this guard serves operations governed by
-    ///     the write decision and a read-only grant never permits them. An unrestricted grant
-    ///     carries no root and therefore no boundary, so it is skipped: it is reported as the
-    ///     absence of a boundary, which is what suppresses the walk entirely.
+    ///     the write decision and a read-only grant never permits them.
+    ///     </para>
+    ///     <para>
+    ///     <b>A grant must permit the path, not merely enclose it.</b> A grant that lexically
+    ///     encloses the target but whose denied patterns reject it authorized nothing, so it is
+    ///     no statement about that location and cannot be the boundary. Treating it as one moved
+    ///     the boundary <em>below</em> a link and left that link unclassified, which reopened the
+    ///     very escape the ancestor walk exists to close: the request was actually authorized by
+    ///     a shallower grant above the link, and it is that grant's interior the walk has to
+    ///     cover. Both conditions are therefore asked. They are separate questions —
+    ///     <see cref="Contains"/> asks whether the grant is an <em>ancestor</em>, which is what
+    ///     makes it a boundary at all, and <see cref="PathRule.Allows"/> asks whether the author
+    ///     granted this location — and the walk must not depend on one implying the other.
+    ///     </para>
+    ///     <para>
+    ///     An unrestricted grant carries no root and therefore no boundary, so a permitting one
+    ///     is reported as the absence of a boundary, which is what suppresses the walk entirely.
+    ///     It too must permit the path: an unrestricted grant whose denied patterns reject the
+    ///     target permits no writing there, so the "there is no outside to escape to" reasoning
+    ///     that justifies suppressing the walk does not apply to it.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy to consult.</param>
     /// <param name="realPath">The resolved, absolute location to locate.</param>
     /// <returns>
-    ///     The resolved root of the deepest containing read-write grant, or
-    ///     <see langword="null"/> when no rooted read-write grant contains the path.
+    ///     The resolved root of the deepest containing and permitting read-write grant, or
+    ///     <see langword="null"/> when no rooted read-write grant both contains and permits the
+    ///     path.
     /// </returns>
-    private static string? DeepestWriteRootContaining(PathPolicy policy, string realPath)
+    private static string? DeepestPermittingWriteRoot(PathPolicy policy, string realPath)
     {
-        // An unrestricted read-write grant permits writing anywhere, so there is no outside for
-        // a link to escape to and no boundary this guard could enforce.
-        if (policy.Grants.Any(grant => grant.Access == AccessLevel.ReadWrite && grant.Root is null))
+        // An unrestricted read-write grant that permits this path has no root, and therefore no
+        // interior a link could lead out of: there is no outside for this guard to defend and a
+        // refusal would be pure noise. A grant whose denied patterns reject the path authorized
+        // nothing here, so it does not suppress the walk.
+        if (policy.Grants.Any(grant =>
+                grant.Access == AccessLevel.ReadWrite &&
+                grant.Root is null &&
+                grant.Allows(realPath)))
         {
             return null;
         }
@@ -226,7 +273,11 @@ internal static class LinkGuard
                 continue;
             }
 
-            if (!Contains(grant.Root, realPath))
+            // Being an ancestor is what makes a grant a candidate boundary; permitting the path
+            // is what makes it the author's statement about this location. A grant failing
+            // either one is not the boundary, and skipping the second test would let a grant
+            // whose denied patterns reject the target hide a link above it.
+            if (!Contains(grant.Root, realPath) || !grant.Allows(realPath))
             {
                 continue;
             }

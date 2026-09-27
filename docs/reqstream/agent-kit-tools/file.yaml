@@ -98,6 +98,16 @@ sections:
               it cannot guarantee that a removal, once begun, completes, so a removal the file
               system stops part way through reports how far it got rather than reading, against
               every other refusal in the family, as though nothing had happened.
+
+              Both link rules are pre-flight checks over paths, and the family claims no more for
+              them: the path a caller names is classified before anything is touched, and the walk
+              refuses the links it discovers before a single entry goes. Neither defends against a
+              process racing the tool from inside a location the operator already granted, because
+              portable .NET exposes no handle-relative, no-follow directory removal or move and a
+              second path check would only move the window. What bounds that race is that no
+              removal these tools issue follows a link — measured, a file delete unlinks a
+              symbolic link rather than its target and a non-recursive directory delete removes a
+              junction while leaving what it points at whole.
             children:
               - AgentKitTools-File-DeleteDirectoryTool-NeverFollowsALink
               - AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
@@ -173,7 +183,9 @@ sections:
               strongest sense; consulting the decision that matches each endpoint keeps a read-only
               grant genuinely read-only. Creating and removing a directory change the file system
               just as plainly, so they are judged by the write decision alone and never infer it
-              from a read. Judging every endpoint against the permitted locations keeps
+              from a read. A directory creation is judged for every directory it would
+              materialize, not only the one the request names, because a single call creates the
+              missing ancestors too. Judging every endpoint against the permitted locations keeps
               an agent inside what its operator granted.
             children:
               - AgentKitTools-File-ListTool-PolicyGoverned
@@ -184,6 +196,7 @@ sections:
               - AgentKitTools-File-DeleteTool-DeletesFile
               - AgentKitTools-File-DeleteTool-PolicyGoverned
               - AgentKitTools-File-CreateDirectoryTool-PolicyGoverned
+              - AgentKitTools-File-CreateDirectoryTool-NeverCreatesAnUngrantedParent
               - AgentKitTools-File-MoveDirectoryTool-PolicyGoverned
               - AgentKitTools-File-DeleteDirectoryTool-PolicyGoverned
             tests:

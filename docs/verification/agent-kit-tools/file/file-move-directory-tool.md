@@ -118,6 +118,14 @@ the link is untouched and nothing was placed there. Run against an implementatio
 ancestor walk both answer `Moved the directory and everything beneath it`, with a tree taken out
 of, or placed into, a location outside every grant.
 
+**What the pair is evidence of.** It verifies *pre-flight* classification: both endpoints are
+judged as they stand when the request is judged, before anything is moved. It is deliberately not
+evidence of race resistance, and no scenario here claims to be — portable .NET exposes no
+handle-relative, no-follow directory move, so a process writing inside a location the operator
+already granted can replace a checked component between the classification and the
+`Directory.Move`, and a second path check would only move that window. The unit states that limit
+rather than testing for a guarantee it does not make.
+
 ##### AgentKitTools-File-MoveDirectoryTool-PolicyGoverned: Policy Governed
 
 **Test**: `FileMoveDirectoryTool_Move_ReadOnlySource_ReturnsDenialAndLeavesItInPlace`

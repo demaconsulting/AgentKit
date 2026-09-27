@@ -21,7 +21,18 @@ the file beyond the link genuinely destroyed, before the guard that stops it was
 guard is therefore known to be load-bearing rather than assumed to be. The fourth link scenario —
 a path *named* through a link — was authored the same way and against the same standard: it was
 observed to fail, with a tree outside every grant genuinely destroyed and the tool reporting
-success, before the ancestor walk that stops it was written.
+success, before the ancestor walk that stops it was written. The fifth — the same escape reached
+through a boundary chosen from a grant that does not permit the path — was observed to fail the
+same way, against the ancestor walk itself, before the walk was made to ask whether a grant
+authorizes a location as well as enclosing it.
+
+**What the link scenarios are evidence of.** They verify *pre-flight* classification: the path a
+caller names, and the entries the planning walk discovers, are judged before anything is removed.
+They are deliberately not evidence of race resistance, because the unit makes no such claim —
+portable .NET exposes no handle-relative, no-follow directory removal, so a process writing inside
+a granted location can replace a checked component and no second path check would stop it. What
+the scenarios do bound is the cost of such a race: the link-named-directly scenarios confirm on a
+real reparse point that the unit's removals do not follow links.
 
 **Link creation fails the test; it never skips it.** The `DirectoryLink` helper creates an NTFS
 junction through `cmd.exe /c mklink /J` on Windows and a symbolic link through the managed API
@@ -55,12 +66,13 @@ same project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 12 requirement scenarios below, covering 18 listed test method
+A unit test run passes when all 12 requirement scenarios below, covering 19 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an ignored policy decision, a link followed out of
-the tree, a path accepted that is reached through a link out of the permitted location, a link's
-target disturbed, a link named directly that is refused rather than removed on any platform, a
-link's target named in a refusal, a tree partly removed
+the tree, a path accepted that is reached through a link out of the permitted location, a boundary
+chosen from a grant that does not permit the path, a link's target disturbed, a link named
+directly that is refused rather than removed on any platform, a link's target named in a refusal,
+a tree partly removed
 after a refusal, a partial removal reported as though nothing happened, a tree at exactly the
 ceiling removed short of whole, a file-system failure
 thrown rather than returned, a ceiling not observed, a removal count misreported, a leaked path, a
@@ -87,6 +99,8 @@ the refusal is proven to be taken before anything is removed rather than part wa
 
 **Test**: `FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact`
 
+**Test**: `FileDeleteDirectoryTool_Delete_DeeperGrantDenyingTheTarget_DoesNotHideALinkAboveIt`
+
 Security control, and the one the discovered-entry guard above cannot reach. A real link is
 created inside the permitted location pointing at an ungranted sibling that holds a tree, and the
 request names a path *through* that link — `escape/victim` — which lexical resolution permits and
@@ -97,6 +111,26 @@ the assertion that matters — that the directory and the file beyond the link s
 their content unchanged. Run against an implementation without the ancestor walk the tool answers
 `Deleted the directory and everything beneath it: 2 entries removed` and the tree outside every
 grant is gone, so this scenario is known to be load-bearing rather than assumed to be.
+
+The second test pins the *boundary* the walk stops at, which is the second route to the same
+escape. The policy carries a shallow grant that permits the request, a real link inside it leading
+out of the grant, and a deeper grant rooted beyond that link whose denied pattern rejects the very
+target being named. A boundary chosen on containment alone picks the deeper grant — which
+authorized nothing — stops the walk below the link, and never classifies it. The test asserts the
+same four things the first does: a `PathNotPermitted` refusal, the offending component named as
+spelled, no host path disclosed, and the tree outside every grant whole. Run against a boundary
+that ignores what a grant permits, the tool answers `Deleted the directory and everything beneath
+it: 2 entries removed` and the external tree is destroyed, so this scenario too is measured rather
+than assumed.
+
+**What these scenarios can verify, and what no test at this layer can.** Both are checks over
+paths taken before anything is touched, and that is what they prove. Neither proves the tool is
+safe against a process replacing a checked component between the check and the removal; a test for
+that would be a test of a guarantee this unit does not make, because portable .NET exposes no
+handle-relative, no-follow directory removal. What is verified instead, and what bounds the race,
+is that every removal the unit issues is non-following: the link-named-directly scenarios below
+confirm on a real reparse point that a non-recursive `Directory.Delete` removes a junction and
+leaves its target's contents intact.
 
 ##### AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly: Removes a Link Named Directly
 

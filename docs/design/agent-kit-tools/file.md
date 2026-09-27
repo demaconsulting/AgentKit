@@ -116,14 +116,36 @@ link.** Path resolution is lexical — `RealPathResolver` says so — so a path 
 grant satisfies the write decision however far outside the grant the link actually leads, and
 `file_delete_directory`'s walk would never see the link because it starts past it. Both
 `file_delete_directory` and `file_move_directory` therefore classify the components a path is
-reached through, from the resolved target up to the grant root, using `LinkGuard`;
+reached through, from the resolved target up to the root of the deepest read-write grant that both
+contains and permits it, using `LinkGuard`;
 `file_move_directory` does so for its source and its destination alike. The grant root itself, and
 everything above it, is not classified: an author who roots a grant at a link has chosen that,
-while a link inside the grant has been vetted by nobody. This is a narrowing of what a caller may
+while a link inside the grant has been vetted by nobody. A grant that merely encloses the target
+while its denied patterns reject it is not the boundary either — it authorized nothing, and taking
+it as the boundary would stop the walk below a link the request actually traversed. This is a
+narrowing of what a caller may
 spell, and it is applied **only** where the blast radius is a whole tree. `file_create_directory`
 deliberately does not carry it, because creating through a link writes outside the grant but
 destroys nothing, and the rest of the library — `text_file_read` and every other path-taking tool
 — still resolves lexically, as the README describes.
+
+**Both link rules are pre-flight checks over paths, and the family claims no more for them.** The
+path a caller *names* is classified before anything is touched, and the recursive delete's walk
+refuses the links it *discovers* before a single entry goes. Neither defends against a process
+racing the tool from inside a location the operator already granted: it can replace a checked
+component before the removal or the move runs, and a second path check would only move that window,
+because portable .NET exposes no handle-relative, no-follow directory removal or move. What bounds
+the race is that no removal these tools issue follows a link — measured, `File.Delete` unlinks a
+symbolic link rather than its target and refuses a Windows junction outright, and
+`Directory.Delete(recursive: false)` removes a junction while leaving what it points at whole — so
+the cost of a swapped component is bounded by a single entry rather than a tree.
+
+**`file_create_directory` judges every directory it would create, not just the one named.** A
+single creation call materializes each missing component of the path, and a grant root need not
+exist, so a grant rooted beneath missing directories would have had them created too, in a location
+no grant covers. Each missing ancestor is judged by the same write decision, and a request that
+would reach above every grant is refused with nothing created at any level. This is a containment
+rule, not a link rule: it asks what the policy permits, never what a path leads to.
 
 **Single-file deletion stays single-file.** `file_delete` removes one file, never a directory, and
 never recurses. It does not quarantine the deleted content; recovery is source control, the same

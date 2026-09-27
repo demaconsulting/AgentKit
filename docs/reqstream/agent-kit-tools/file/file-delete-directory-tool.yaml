@@ -59,6 +59,17 @@ sections:
                   outcome available and the hardest to reason about afterwards. The refusal names
                   the entry so the model can act on it, and never the link's target, because the
                   target is the location the guard exists to protect.
+
+                  What the guard guarantees is bounded and stated as such: the walk classifies
+                  what it finds before anything is removed. It is not a defense against a process
+                  racing the tool — one able to write inside a location the operator already
+                  granted can replace an entry between the plan and the removal, and a second
+                  check would only move that window rather than close it, because portable .NET
+                  offers no handle-relative, no-follow directory removal. What bounds that race is
+                  that no removal this tool issues follows a link: measured, File.Delete unlinks a
+                  symbolic link rather than its target and refuses a Windows junction outright,
+                  and a non-recursive Directory.Delete removes a junction while leaving what it
+                  points at whole.
                 tests:
                   - FileDeleteDirectoryTool_Delete_TreeContainingALinkOutsideTheGrant_ReturnsDenialAndLeavesTheLinkTargetIntact
                   - FileDeleteDirectoryTool_Delete_TreeContainingALinkOutsideTheGrant_RemovesNothingFromTheTree
@@ -92,9 +103,9 @@ sections:
               - id: AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
                 title: >-
                   The delete-directory tool shall refuse a path whose resolved location is reached
-                  through a link lying between the grant root and that location, naming the
-                  offending component as the request spelled it, removing nothing, and leaving
-                  what the link points at intact.
+                  through a link lying between that location and the root of the deepest grant
+                  that both contains and permits it, naming the offending component as the request
+                  spelled it, removing nothing, and leaving what the link points at intact.
                 tags: [security]
                 justification: |
                   Path resolution in this library is lexical and documented as such, so a path
@@ -113,8 +124,22 @@ sections:
                   This narrows what a caller may spell only where the blast radius is a whole tree;
                   the rest of the library still resolves lexically, which remains the documented
                   behavior.
+
+                  The grant that bounds the walk must be one that actually permits the target, not
+                  merely one that encloses it. A deeper grant whose denied patterns reject the
+                  path authorized nothing, so it is no statement about that location; treating it
+                  as the boundary anyway stopped the walk below a link and reopened this very
+                  escape by a second route, with the request in truth standing on a shallower
+                  grant above that link whose interior the walk was then never asked about.
+
+                  The classification is a pre-flight check over paths and claims nothing more: the
+                  location the caller names is judged before anything is touched. A process able
+                  to write inside a location the operator already granted can replace a component
+                  afterwards, and no path-based API can close that window, so the guarantee is
+                  stated as what it is rather than implied to be a race-resistant control.
                 tests:
                   - FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
+                  - FileDeleteDirectoryTool_Delete_DeeperGrantDenyingTheTarget_DoesNotHideALinkAboveIt
 
               - id: AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
                 title: >-

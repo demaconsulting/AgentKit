@@ -151,6 +151,67 @@ public class FileCreateDirectoryToolTests
     }
 
     /// <summary>
+    ///     Proves a request whose missing parents reach above every permitted location is refused
+    ///     and creates nothing at all.
+    /// </summary>
+    /// <remarks>
+    ///     A grant root need not exist — path resolution is lexical and requires no component to
+    ///     be present — so a grant rooted at a location whose own parents are missing would have
+    ///     had those parents materialized by a single creation call, writing where no grant
+    ///     reaches. The refusal is total rather than partial because the two candidate rules
+    ///     coincide: a directory cannot be created inside a parent that does not exist, so
+    ///     creating only the permitted part would still have to stop here.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileCreateDirectoryTool_CreateDirectory_MissingParentAboveTheGrantRoot_ReturnsDenialAndCreatesNothing()
+    {
+        // Arrange: a grant rooted two levels below anything that exists, so honoring the request
+        // would materialize a directory above the grant root that no grant covers
+        using var fixture = new TempDirectoryFixture();
+        var ungranted = Path.Combine(fixture.Outside, "absent");
+        var grantRoot = Path.Combine(ungranted, "grant-root");
+        var policy = new PathPolicy(grantRoot, [PathRule.ReadWrite(grantRoot)]);
+        var tool = FileCreateDirectoryTool.Create(policy);
+
+        // Act: name a directory inside the grant, whose creation drags its ancestors with it
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "child" });
+
+        // Assert: refused, disclosing no host location, and nothing at any level was created
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(ungranted));
+        Assert.False(Directory.Exists(grantRoot));
+        Assert.False(Directory.Exists(Path.Combine(grantRoot, "child")));
+    }
+
+    /// <summary>
+    ///     Proves a grant root that does not yet exist is still created, so the refusal above is
+    ///     about ancestors the grant does not cover rather than about missing ancestors at all.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileCreateDirectoryTool_CreateDirectory_MissingGrantRootWhoseParentExists_CreatesBothLevels()
+    {
+        // Arrange: a grant rooted at a location that does not exist, but whose own parent does
+        using var fixture = new TempDirectoryFixture();
+        var grantRoot = Path.Combine(fixture.Root, "grant-root");
+        var policy = new PathPolicy(grantRoot, [PathRule.ReadWrite(grantRoot)]);
+        var tool = FileCreateDirectoryTool.Create(policy);
+
+        // Act: name a directory inside the grant
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "child" });
+
+        // Assert: created, root and all — the grant root is itself a permitted location, so
+        // materializing it is a write the policy approved
+        var text = Assert.IsType<string>(result);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(grantRoot));
+        Assert.True(Directory.Exists(Path.Combine(grantRoot, "child")));
+    }
+
+    /// <summary>
     ///     Proves the tool's description tells the model both outcomes are reported separately.
     /// </summary>
     [Fact]
@@ -165,6 +226,29 @@ public class FileCreateDirectoryToolTests
         var description = tool.Description;
         Assert.Contains("missing parent directories", description, StringComparison.Ordinal);
         Assert.Contains("already existed", description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the tool's description declares that parent creation stops at the permitted
+    ///     locations.
+    /// </summary>
+    /// <remarks>
+    ///     A model choosing this tool reads only the description. Declaring that missing parents
+    ///     are created "along the way" without declaring where that stops would invite a request
+    ///     whose only possible outcome is a refusal the model could not have predicted.
+    /// </remarks>
+    [Fact]
+    public void FileCreateDirectoryTool_Create_Description_DeclaresTheParentBoundary()
+    {
+        // Arrange / Act: build the tool a composition would publish
+        using var fixture = new TempDirectoryFixture();
+        var tool = FileCreateDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Assert: the declaration states that a parent outside a permitted location is refused,
+        // and that such a refusal creates nothing
+        var description = tool.Description;
+        Assert.Contains("outside every permitted location", description, StringComparison.Ordinal);
+        Assert.Contains("creating nothing at all", description, StringComparison.Ordinal);
     }
 
     /// <summary>

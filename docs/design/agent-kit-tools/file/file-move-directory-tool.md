@@ -50,7 +50,8 @@ governed by the supplied policy for the rest of its life.
 2. `policy.TryResolveWrite(source, …)` is called, then `policy.TryResolveWrite(destination, …)`.
    Either refusal is returned as `PathNotPermitted`.
 3. Each endpoint is then classified by the path it is reached *through*:
-   `LinkGuard.FindLinkedAncestor` walks from the resolved endpoint up to the grant root, and a link
+   `LinkGuard.FindLinkedAncestor` walks from the resolved endpoint up to the root of the deepest
+   read-write grant that both contains and permits it, and a link
    on that path refuses the request as `PathNotPermitted`, naming the offending component as the
    model spelled it. The source is classified first, in the same order the write decisions were
    taken, and the two refusals are reported separately so the model knows which path to re-address.
@@ -85,9 +86,21 @@ the same `LinkTarget is not null` predicate. **Both endpoints are classified, no
 guard applied to the source alone would leave the destination open, and the tests are written as a
 pair for that reason. The grant root, and everything above it, is not classified — an author who
 roots a grant at a link has made that choice, while a link inside the grant has been vetted by
-nobody. `file_create_directory` deliberately does **not** carry this rule: creating a directory
+nobody. The boundary is the deepest grant that both contains **and permits** the endpoint: a grant
+whose denied patterns reject the path authorized nothing, and treating it as the boundary anyway
+would stop the walk below a link the request actually traversed.
+`file_create_directory` deliberately does **not** carry this rule: creating a directory
 through a link writes outside the grant but destroys nothing, so it stays with the rest of the
 library's lexical resolution rather than being narrowed here.
+
+**The endpoint classification is pre-flight, and that is the whole claim.** It answers for the
+paths as they stand when the request is judged, before anything is moved. It is not a defense
+against a process racing the tool: one able to write inside a location the operator already granted
+can replace a component between the check and the `Directory.Move`, a time-of-check-to-time-of-use
+window that re-checking the path would move rather than close, because portable .NET exposes no
+handle-relative, no-follow directory move. The window is stated rather than papered over. An
+adversary already writing inside a granted location is outside what a path-based API can defend
+against, and this design does not claim otherwise.
 
 **The containment check compares path segments, not string prefixes.** A sibling whose name merely
 begins with the
