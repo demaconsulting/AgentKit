@@ -41,8 +41,8 @@
          example code block against the real API. Test-only; no runtime dependency is added to
          any shipped package. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.1" />
     <PackageReference Include="xunit.v3" Version="4.0.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -53,7 +53,7 @@
          hand-faked IOllamaApiClient would assert this project's beliefs about OllamaSharp back at
          it rather than test them, which has already cost one shipped defect here. Test-only; no
          runtime dependency is added to any shipped package. -->
-    <PackageReference Include="WireMock.Net" Version="2.15.0" />
+    <PackageReference Include="WireMock.Net" Version="2.16.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies -->
