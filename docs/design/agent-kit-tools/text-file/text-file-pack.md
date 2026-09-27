@@ -7,7 +7,7 @@ The `TextFilePack` class publishes the text-file tool family under the `text_fil
 #### Purpose
 
 To be the single public attachment point for policy-governed text content tools. The pack claims the
-`text_file` prefix, publishes the tools of the family that the policy could permit to succeed in
+`text_file` prefix, publishes the tools of the family whose writes the policy leaves possible, in
 fixed order, and creates the one recovery buffer
 shared by the write and line-range tools in that composition.
 

@@ -45,23 +45,31 @@ sections:
 
           - id: AgentKitTools-TextFile-WriteToolsRequireAWriteGrant
             title: >-
-              The text file family shall offer only those of its tools the access policy could
-              permit to succeed, withholding every tool that can act only by writing when the
-              policy permits no writing anywhere, and offering all of them whenever the policy
-              permits writing in any location.
+              The text file family shall withhold every tool that can act only by writing when the
+              access policy permits no writing anywhere, and shall offer all of its tools whenever
+              the policy permits writing in any location.
             tags: [security]
             justification: |
               A tool whose only possible outcome is a refusal costs an operator nothing to
               configure and costs the agent on every turn: it occupies the model's attention, it
               invites a request that can only fail, and a model that meets a refusal it cannot
               avoid tends to retry it in another form rather than take the path that works.
-              Offering only what the configuration could permit means an agent given a read-only
+              Withholding what the configuration has plainly disabled means an agent given a
+              read-only
               configuration sees a coherent reading capability rather than a full editing
               capability that silently cannot function. Searching, reading and copying a range of
               lines can each succeed wherever reading is permitted, so none of them is withheld;
               copying in particular fills a holding area whose only consumer is the paste tool, and
-              is still offered, because whether the configuration could permit a tool to succeed is
-              a question the family can answer while whether a tool is useful is not. Offering
+              is still offered, because whether the configuration permits writing at all is
+              a question the family can answer while whether a tool is useful is not.
+
+              Only writing is gated, so this is not a promise that every published tool can
+              succeed. Under a configuration granting nothing at all the three reading tools are
+              still offered and each refuses every path it is given. No symmetric reading check is
+              required: a grant is read-only or read-write and there is no write-only level, so
+              permission to write always carries permission to read, and a reading tool is
+              unusable only under a configuration that grants nothing whatever — one that yields
+              an agent unable to touch a file however its list of tools is trimmed. Offering
               every tool whenever writing is permitted anywhere is what keeps the read-wide,
               write-narrow configuration working: an agent that may read a workspace and write a
               separate session location must be able to edit, even though the location its relative

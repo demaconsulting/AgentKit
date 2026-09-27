@@ -59,7 +59,8 @@ public class FilePackTests
 
     /// <summary>
     ///     Proves a policy that permits no writing anywhere receives only the listing tool, so no
-    ///     tool is offered whose only possible outcome would be a refusal.
+    ///     tool is offered whose only possible outcome would be a refusal because nothing is
+    ///     writable.
     /// </summary>
     [Fact]
     public void FilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheListTool()

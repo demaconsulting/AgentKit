@@ -116,7 +116,8 @@ sections:
               Whether writing is possible at all is a question about the whole configuration, not
               about one path, and it is asked before any path exists to test. An application
               assembling an agent's capabilities needs the answer up front so it can decline to
-              offer a capability the configuration could never permit, rather than offering one
+              offer a writing capability the configuration could never permit, rather than
+              offering one
               whose only possible outcome is a refusal. Asking the per-path question instead would
               give the wrong answer for the common read-wide, write-narrow shape: a configuration
               that permits reading a workspace and writing a separate session location can

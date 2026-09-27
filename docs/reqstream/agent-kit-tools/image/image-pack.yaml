@@ -58,8 +58,9 @@ sections:
                   region to the model to look at rather than producing a file. Withholding any of
                   them would remove a capability that works. Both region tools also accept an
                   optional destination that does need permission to write, but the family is
-                  judged on whether a tool could ever succeed, not on whether every one of its
-                  arguments could — the opposite reading would require a gate for every optional
+                  judged on the writes a tool can only perform, not on whether every one of its
+                  arguments could be used — the opposite reading would require a gate for every
+                  optional
                   argument and would remove a primary, fully working mode over a secondary one.
                   Naming a destination where nothing may be written is answered by the ordinary
                   refusal, which states the locations that could be written, so the agent learns
@@ -67,6 +68,14 @@ sections:
                   same reason the description a model reads does not change with the
                   configuration: it is a single fixed statement, so a model is never shown a
                   capability described one way in one place and another way in another.
+
+                  Offering every tool under every policy includes a policy that grants nothing at
+                  all, under which examining an image refuses every path it is given. That case is
+                  left alone deliberately: a grant is read-only or read-write and there is no
+                  write-only level, so permission to write always carries permission to read, and
+                  a reading tool is unusable only where nothing whatever is granted — a
+                  configuration that yields an agent unable to touch a file however its list of
+                  tools is trimmed.
                 tests:
                   - ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesEveryTool
 

@@ -168,7 +168,7 @@ public sealed class TodoPack : IToolPack
     ///     </para>
     ///     <para>
     ///     <b>The consequence is that no tool here is ever withheld.</b> Where a file family
-    ///     publishes only those tools the policy could permit to succeed, a read-only path policy
+    ///     withholds the tools whose writes the path policy governs, a read-only path policy
     ///     narrows nothing in this family, because the task list is this pack's own and lives
     ///     nowhere under the policy's grants. Recording a task under a policy that permits no file
     ///     writing anywhere is correct and works.

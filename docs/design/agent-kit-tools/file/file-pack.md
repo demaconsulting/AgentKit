@@ -8,7 +8,7 @@ The `FilePack` class publishes the file tool family under the `file` prefix.
 
 To be the single public attachment point for policy-governed file-entity tools. The pack claims the
 `file` prefix and publishes, in fixed order, those of its seven tools — list, copy, move and delete
-a file, and create, move and delete a directory — that the policy could permit to succeed.
+a file, and create, move and delete a directory — whose writes the policy leaves possible.
 
 The pack itself grants nothing. It receives the `PathPolicy` from the `ToolPackBuilder` composition
 and passes that same policy to every tool factory.

@@ -92,7 +92,8 @@ sections:
           that can modify more than intended. Whether writing is possible anywhere at all is a
           question about the configuration rather than about any one path, and an application
           assembling an agent's capabilities needs the answer before it holds any path to test,
-          so that it can decline to offer a capability the configuration could never permit.
+          so that it can decline to offer a writing capability the configuration could never
+          permit.
         children:
           - AgentKitCore-PathRule-AccessLevel
           - AgentKitCore-PathRule-Unrestricted

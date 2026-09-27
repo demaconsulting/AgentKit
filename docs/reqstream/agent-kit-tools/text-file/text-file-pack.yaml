@@ -62,10 +62,15 @@ sections:
                   Copying a range needs only permission to read the file it copies from, by the
                   same decision that keeps it usable from a read-only location, so it is offered
                   too — even though the holding area it fills has no consumer while pasting is
-                  withheld, because whether the configuration could permit a tool to succeed is a
+                  withheld, because whether the configuration permits writing at all is a
                   question the pack can answer and whether a tool is useful is not. A configuration
-                  granting nothing at all behaves exactly as one granting only reading, so it is
-                  not a case the rule overlooks. The surviving tools keep their usual relative
+                  granting nothing at all withholds the same five, so it is
+                  not a case the rule overlooks — though the three it does offer then refuse every
+                  path, since nothing resolves under a configuration that grants nothing. That is
+                  not gated in turn, because a grant permits reading or reading and writing and
+                  there is no write-only level: permission to write always carries permission to
+                  read, so a reading tool is unusable only where nothing whatever is granted. The
+                  surviving tools keep their usual relative
                   order, so a model meets a shortened family rather than a rearranged one.
                 tests:
                   - TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools

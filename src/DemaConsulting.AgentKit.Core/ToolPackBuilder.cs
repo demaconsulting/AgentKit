@@ -13,7 +13,8 @@ namespace DemaConsulting.AgentKit.Core;
 ///     or rationalize around a refusal.
 ///     </para>
 ///     <para>
-///     <b>A tool the policy could never permit is likewise never offered.</b> The same reasoning
+///     <b>A tool whose writes the policy has disabled is likewise never offered.</b> The same
+///     reasoning
 ///     applies one level finer, and the two gates divide cleanly: the host capability decides
 ///     <em>whether a pack is asked for its tools</em>, and the policy the pack is handed decides
 ///     <em>which of its tools it returns</em>. A pack is free to withhold a tool that could only
@@ -179,7 +180,7 @@ public sealed class ToolPackBuilder
     ///     An unsupported pack is never asked to create its tools at all.
     ///     </para>
     ///     <para>
-    ///     A supported pack returns whichever of its tools the policy could permit to succeed,
+    ///     A supported pack returns whichever of its tools the policy leaves able to act,
     ///     which need not be its whole family and need not be the same set under every policy.
     ///     The builder takes what it is given and verifies it against the pack's declared prefix;
     ///     it does not know, and does not report, that a tool was withheld.

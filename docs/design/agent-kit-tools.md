@@ -193,7 +193,8 @@ The registration check above decides _whether a family is asked for its tools_. 
 decision then happens inside each family, and the two must not be confused: the policy the family
 is handed decides _which of its tools it returns_. The rule is one sentence:
 
-> A pack publishes a tool when the policy could permit that tool to succeed.
+> A pack withholds a tool whose writes the path policy governs when the policy permits no writing
+> anywhere, and publishes everything else.
 
 The question a family asks is `PathPolicy.AnyLocationIsWritable`, which reports whether the policy
 holds any read-write grant at all. It is deliberately a fact about the whole policy and not about
@@ -205,9 +206,20 @@ would break that common read-wide, write-narrow arrangement.
 The rationale is the same one that gates a whole family on host capability. A tool whose only
 possible outcome is a refusal is not free: it occupies the model's attention on every turn, it
 invites a request that can only fail, and a model met with an unavoidable refusal tends to retry it
-in another form rather than take the path that works. Making the offered set the intersection of
-what a family provides and what the policy could permit turns the tool list into a truthful
-statement of what the agent can do.
+in another form rather than take the path that works. Withholding the tools the policy has plainly
+disabled turns the tool list into a largely truthful statement of what the agent can do.
+
+**The rule is narrower than "only the tools that could succeed", and deliberately so.** Only
+_writing_ is gated. A policy holding **no grants at all** is a valid policy, and under it the read
+tools are published as usual — `text_file_search`, `text_file_read`, `text_file_copy_lines` and
+`image_read` — while every one of them refuses every path it is given, because no path resolves
+under a policy that grants nothing. A symmetric read-visibility check was considered and rejected
+as cost without benefit: `PathRule` offers only `ReadOnly` and `ReadWrite`, and `AccessLevel` has
+no write-only member, so **write access always implies read access**. A read tool is therefore
+unusable in exactly one configuration — the one that grants nothing anywhere — and that
+configuration produces an agent that can touch no file whatever its tool list says, so trimming
+the list would change nothing an operator would notice while adding a second publication question
+to every pack, every design document and every test that asserts a published set.
 
 | Family | Filters? | Needs a write grant | Read-only total |
 | --- | --- | ---: | ---: |
@@ -235,7 +247,8 @@ Why each non-filtering family does not filter:
 - **Image** — all three tools succeed under a read-only policy. Reading an image is a read, and
   taking a region without a destination returns image content rather than writing a file. The
   optional `destination` that `image_crop` and `image_auto_crop` both carry does need a write
-  grant, but the rule is "could this tool ever succeed", not "could every argument ever succeed";
+  grant, but the rule gates a tool on the writes it can only perform, not on whether every
+  argument can be used;
   see _Image Pack Design_, _Image Crop Tool Design_ and _Image Auto Crop Tool Design_.
 - **Markdown** — `markdown_outline` consults only the read decision.
 - **Memory** and **Todo** — both families accept the policy and ignore it. Their state is the

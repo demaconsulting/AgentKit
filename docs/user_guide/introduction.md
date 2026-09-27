@@ -234,11 +234,16 @@ wishes to attach. A pack whose required capabilities the host does not provide i
 create its tools at all, so the model is never offered a tool it cannot use.
 
 The same reasoning applies one level finer, to individual tools. A pack is handed the access policy
-before it has any path to test, and may publish only those of its tools the policy could permit to
-succeed — so a tool that can act only by writing, under a policy holding no read-write grant
+before it has any path to test, and may withhold those of its tools whose writes the policy
+governs — so a tool that can act only by writing, under a policy holding no read-write grant
 anywhere, is simply not offered rather than offered and refused on every use. The two gates divide
 cleanly: **the host capability decides whether a pack is asked for its tools; the policy decides
-which of its tools it returns.** The published set is the intersection. Nothing reports which tools
+which of its tools it returns.** Only writing is gated, so the published set is not a promise that
+every tool in it can succeed: a policy with **no grants at all** still publishes the reading tools,
+and each of them then refuses every path. That one case is deliberately not gated — a grant is
+read-only or read-write, so permission to write always carries permission to read, and a reading
+tool is therefore unusable only when nothing whatever is granted, which yields an agent that can
+touch no file however its tool list is trimmed. Nothing reports which tools
 were withheld, for the same reason nothing reports which packs were skipped — the application holds
 both the capability declaration and the policy, so it can already answer the question, and a list
 of excluded tools is an invitation to add them back by another route.
@@ -302,6 +307,14 @@ The question is asked once, of the **whole policy**, not of any particular path.
 a read-only workspace and a read-write session folder can genuinely write, so it publishes every
 tool — even though a relative name still lands in the read-only workspace and a write there is
 still refused. Only a policy with no read-write grant anywhere withholds them.
+
+**A policy with no grants at all is the one case where a published tool cannot work.** The eleven
+write-performing tools are withheld as above, and the seventeen survivors are published as usual —
+but `text_file_read`, `text_file_search`, `text_file_copy_lines`, `file_list` and `image_read` then
+refuse every path they are given, because no path resolves under a policy that grants nothing. That
+is not gated, and the reason is that it cannot arise any other way: a grant is either read-only or
+read-write, so permission to write always carries permission to read. The configuration is a
+non-functional agent whatever list it is handed, so trimming the list would not rescue it.
 
 Three families' tools are marked `No` for reasons worth stating. `text_file_copy_lines` consults
 only the read decision, so it works from a read-only location; note that under a read-only policy

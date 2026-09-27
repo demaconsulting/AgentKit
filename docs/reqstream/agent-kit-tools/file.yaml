@@ -110,10 +110,9 @@ sections:
 
           - id: AgentKitTools-File-WriteToolsRequireAWriteGrant
             title: >-
-              The file family shall offer only those of its tools the access policy could permit to
-              succeed, withholding copying, moving and deleting a file and creating, moving and
-              deleting a directory when the policy permits no writing
-              anywhere, and offering all of them whenever the policy permits writing in any
+              The file family shall withhold copying, moving and deleting a file and creating,
+              moving and deleting a directory when the access policy permits no writing
+              anywhere, and shall offer all of its tools whenever the policy permits writing in any
               location.
             tags: [security]
             justification: |
@@ -129,6 +128,13 @@ sections:
               to report, and consults the write decision only to mark a reported location as
               writable, so it stays fully useful. Offering every tool whenever writing is permitted
               anywhere is what keeps the read-wide, write-narrow configuration working.
+
+              Only writing is gated, so listing is still offered under a configuration that grants
+              nothing at all, and can then report nothing. That case is deliberately not gated: a
+              grant is read-only or read-write and there is no write-only level, so permission to
+              write always carries permission to read, and a reading tool is unusable only under a
+              configuration granting nothing whatever — one that yields an agent unable to touch a
+              file however its list of tools is trimmed.
             children:
               - AgentKitTools-File-Pack-SuppressesWriteToolsWithoutAWriteGrant
             tests:

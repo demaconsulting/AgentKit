@@ -239,14 +239,18 @@ public class AgentKitToolsTests
 
     /// <summary>
     ///     Proves that all seven families composed over one policy that permits no writing anywhere
-    ///     publish exactly the tools that policy could permit to succeed, so an agent is never
-    ///     offered a tool whose only possible outcome would be a refusal.
+    ///     withhold exactly the tools that can act only by writing, so an agent is never
+    ///     offered a tool whose only possible outcome would be a refusal because nothing is
+    ///     writable.
     /// </summary>
     /// <remarks>
     ///     This is the system-level statement of the rule: the pack declares what tools exist, the
-    ///     policy decides which can function, and the published set is the intersection. The exact
+    ///     policy decides which writes are possible, and the tools that can only write are
+    ///     withheld. The exact
     ///     ordered list is asserted rather than set membership, because both which tools survive and
-    ///     the order a model sees them in are observable and are part of the contract.
+    ///     the order a model sees them in are observable and are part of the contract. The grant is
+    ///     read-only rather than absent on purpose: under a read-only grant every surviving tool
+    ///     can genuinely succeed, which is what makes the published set a truthful statement here.
     /// </remarks>
     [Fact]
     public void AgentKitTools_SystemComposition_ReadOnlyPolicy_PublishesOnlyTheToolsThePolicyCanPermit()

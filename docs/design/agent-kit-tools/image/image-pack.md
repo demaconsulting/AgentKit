@@ -66,8 +66,9 @@ host provides the Vision capability.
 
 **This pack does not filter on the policy, and the reason is a decision rather than an oversight.**
 The rule the text-file and file families apply — described under *Policy-derived publication* in the
-system design — is "could this tool ever succeed under this policy", not "could every argument ever
-succeed". All three tools here clear that bar under a policy that permits no writing anywhere:
+system design — gates a tool on the writes it can only perform, not on whether every argument it
+accepts could be used. All three tools here clear that bar under a policy that permits no writing
+anywhere:
 reading an image is a read, and each region tool's primary mode returns the region inline as image
 content and writes nothing. The optional `destination` both region tools accept genuinely does need
 a write grant, but
@@ -76,6 +77,14 @@ treating a narrowable parameter as grounds for suppressing a tool would mean eve
 argument needs a gate of its own. A destination named under a read-only policy is answered by the
 ordinary write denial, which enumerates the writable locations, so the model learns its options in
 one turn instead of losing the tool permanently.
+
+**Not filtering includes the degenerate policy, and that is accepted rather than corrected.** Under
+a policy holding no grants at all, all three tools are published and `image_read` refuses every
+path it is given, because `PathPolicy.TryResolveRead` can admit none. A symmetric read-visibility
+check would remove that one case at the cost of a second publication question in every pack:
+`PathRule` offers only `ReadOnly` and `ReadWrite`, and `AccessLevel` has no write-only member, so
+write access always implies read access and a read tool is unusable only where nothing whatever is
+granted — a composition whose agent can touch no file however its tool list is trimmed.
 
 **Nor does either region tool's description vary with the policy.** That decision, and the
 compile-time constraint that forces it, are recorded in *Image Crop Tool Design* and apply

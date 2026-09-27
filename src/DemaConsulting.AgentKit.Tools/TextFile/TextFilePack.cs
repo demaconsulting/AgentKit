@@ -161,7 +161,8 @@ public sealed class TextFilePack : IToolPack
     ///     observe a different policy from its neighbor.
     ///     </para>
     ///     <para>
-    ///     <b>The pack declares what tools exist; the policy decides which can function.</b> A tool
+    ///     <b>The pack declares what tools exist; the policy decides which writes are possible.</b>
+    ///     A tool
     ///     that can act only by writing, under a policy holding no read-write grant anywhere, could
     ///     only ever return a refusal — so it is not published at all, rather than spending a
     ///     declaration and a model's attention on a capability that cannot work. This is the
@@ -171,6 +172,16 @@ public sealed class TextFilePack : IToolPack
     ///     <see cref="PathPolicy.AnyLocationIsWritable"/> — a fact about the whole policy, not about
     ///     any path — so a policy granting a read-only workspace and a writable session location
     ///     publishes every tool, because writing there is genuinely possible.
+    ///     </para>
+    ///     <para>
+    ///     <b>Only writing is gated, so the published set is not a promise that every survivor can
+    ///     succeed.</b> Under a policy holding no grants at all, search, read and copy are still
+    ///     published and every one of them refuses every path, because
+    ///     <see cref="PathPolicy.TryResolveRead"/> can admit none. No symmetric read check is made,
+    ///     because <see cref="PathRule"/> offers only <see cref="AccessLevel.ReadOnly"/> and
+    ///     <see cref="AccessLevel.ReadWrite"/>: write access always implies read access, so a read
+    ///     tool is unusable in exactly one configuration — the one that grants nothing anywhere —
+    ///     and that configuration yields an agent unable to touch a file whatever it is offered.
     ///     </para>
     ///     <para>
     ///     <c>text_file_copy_lines</c> is deliberately not among the write-gated tools: it consults

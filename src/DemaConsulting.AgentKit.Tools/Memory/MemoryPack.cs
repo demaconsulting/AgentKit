@@ -334,7 +334,7 @@ public sealed class MemoryPack : IToolPack
     ///     </para>
     ///     <para>
     ///     <b>The consequence is that no tool here is ever withheld.</b> Where a file family
-    ///     publishes only those tools the policy could permit to succeed, a read-only path policy
+    ///     withholds the tools whose writes the path policy governs, a read-only path policy
     ///     narrows nothing in this family, because the memories live in an
     ///     <see cref="IMemoryStore"/> the application supplied or this pack allocated — never on
     ///     disk under the policy's grants. Filing a memory under a policy that permits no file

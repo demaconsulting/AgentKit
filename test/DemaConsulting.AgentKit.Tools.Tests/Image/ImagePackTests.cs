@@ -101,7 +101,8 @@ public class ImagePackTests
     /// <remarks>
     ///     This records a deliberate decision rather than an incidental outcome. Both region tools
     ///     accept an optional <c>destination</c> that does require a write grant, but the rule a
-    ///     pack applies is "could this tool ever succeed", not "could every argument ever succeed".
+    ///     pack applies gates a tool on the writes it can only perform, not on whether every
+    ///     argument it accepts could be used.
     ///     Suppressing either would remove its primary, fully-working inline mode; naming a
     ///     destination under a read-only policy earns an ordinary denial that tells the model where
     ///     it could write instead.

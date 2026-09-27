@@ -130,13 +130,23 @@ public sealed class ImagePack : IToolPack
     ///     </para>
     ///     <para>
     ///     <b>This pack does not filter on the policy, deliberately.</b> The rule the file families
-    ///     apply is "could this tool ever succeed under this policy", not "could every argument ever
-    ///     succeed". All three tools here clear that bar under a read-only policy: each region
+    ///     apply gates a tool on the writes it can only perform, not on whether every argument it
+    ///     accepts could be used. All three tools here clear that bar under a read-only policy:
+    ///     each region
     ///     tool's primary mode returns image content inline and writes nothing, so withholding
     ///     one would remove a fully working capability over an optional argument. Narrowing a
     ///     parameter is a
     ///     different question from publishing a tool, and conflating the two would mean every
     ///     optional argument needs a gate of its own.
+    ///     </para>
+    ///     <para>
+    ///     <b>What that leaves un-gated.</b> A policy holding no grants at all still receives all
+    ///     three tools, and <c>image_read</c> then refuses every path it is given, because
+    ///     <see cref="PathPolicy.TryResolveRead"/> can admit none. That case is left alone on
+    ///     purpose: <see cref="PathRule"/> offers only <see cref="AccessLevel.ReadOnly"/> and
+    ///     <see cref="AccessLevel.ReadWrite"/>, so write access always implies read access and a
+    ///     read tool is unusable only when nothing whatever is granted — a composition that
+    ///     produces an agent unable to touch a file however its tool list is trimmed.
     ///     </para>
     ///     <para>
     ///     Nor does either region tool's description vary with the policy. The <c>destination</c>

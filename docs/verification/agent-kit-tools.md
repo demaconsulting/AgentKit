@@ -176,12 +176,13 @@ parent-bound tool list at the `agent_run` call site. Both stores are asserted be
 checked only the parent would pass against a composition that gave the child no list at all, and a
 test that checked only the child would pass against one where both wrote into the parent's.
 
-### Composition: A Read-Only Policy Publishes Only the Tools It Can Permit
+### Composition: A Read-Only Policy Withholds the Write-Performing Tools
 
 **Test**: `AgentKitTools_SystemComposition_ReadOnlyPolicy_PublishesOnlyTheToolsThePolicyCanPermit`
 
 Verifies the system-level statement of policy-derived publication: the pack declares what tools
-exist, the policy decides which can function, and the published set is the intersection. Composes
+exist, the policy decides which writes are possible, and the tools that can only write are
+withheld. Composes
 all seven families over one policy whose only grant is read-only, declaring both Vision and
 Delegation so that nothing is withheld by the capability gate and the policy is the only filter in
 play. Asserts the composed list is exactly seventeen tools, in pack-add order: `text_file_search`,
@@ -192,7 +193,10 @@ play. Asserts the composed list is exactly seventeen tools, in pack-add order: `
 
 The eleven write-performing tools — five in the TextFile family, six in the File family — are
 absent. The exact ordered list is asserted rather than set membership, because both which tools
-survive and the order a model sees them in are observable and part of the contract.
+survive and the order a model sees them in are observable and part of the contract. The scenario
+is deliberately run over a read-only grant rather than over an empty grant set: under a read-only
+grant every surviving tool can genuinely succeed, which a policy granting nothing would not
+support, since the survivors would then refuse every path.
 
 ### Composition: A Read-Only Workspace With a Writable Session Publishes Every Tool
 

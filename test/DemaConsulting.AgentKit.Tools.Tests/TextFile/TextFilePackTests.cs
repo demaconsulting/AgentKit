@@ -75,7 +75,7 @@ public class TextFilePackTests
     /// <summary>
     ///     Proves a policy that permits no writing anywhere receives only the three tools that
     ///     consult the read decision, in their documented relative order, so no tool is offered
-    ///     whose only possible outcome would be a refusal.
+    ///     whose only possible outcome would be a refusal because nothing is writable.
     /// </summary>
     [Fact]
     public void TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools()
@@ -134,15 +134,27 @@ public class TextFilePackTests
     }
 
     /// <summary>
-    ///     Proves a policy holding no grants at all behaves exactly as a read-only one does here,
-    ///     so a fully-confined composition is not a special case the filter overlooks.
+    ///     Proves a policy holding no grants at all publishes the same three tools a read-only one
+    ///     does, and that each of them then refuses every path — which is what the publication
+    ///     rule does and does not promise.
     /// </summary>
+    /// <remarks>
+    ///     The rule gates writing only, so it withholds the five write-performing tools here for
+    ///     the same reason it does under a read-only policy, and it does not claim the survivors
+    ///     are usable: under an empty grant set nothing resolves, so reading refuses too. That
+    ///     case is not gated because it cannot be reached any other way — a grant is read-only or
+    ///     read-write, so write access always implies read access — and the scenario asserts the
+    ///     refusal rather than implying a capability the composition does not have.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public void TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools()
+    public async Task TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools()
     {
         // Arrange: a valid, fully-confined policy that permits nothing anywhere
+        using var fixture = new TempDirectoryFixture();
+        var unreachable = TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "content");
         var pack = new TextFilePack();
-        var policy = new PathPolicy(Path.GetTempPath(), []);
+        var policy = new PathPolicy(fixture.Root, []);
 
         // Act: ask the pack what it publishes under that policy
         var tools = pack.CreateTools(policy).ToList();
@@ -156,6 +168,13 @@ public class TextFilePackTests
                 TextFileCopyLinesTool.ToolName
             ],
             tools.Select(tool => tool.Name));
+
+        // Assert: and what survived is published rather than usable — the read tool refuses the
+        // one file the composition's own working directory holds
+        var refused = await InvokeReadAsync(
+            tools.Single(tool => tool.Name == TextFileReadTool.ToolName), unreachable);
+        Assert.Contains(
+            "Denied (PathNotPermitted)", Assert.IsType<string>(refused), StringComparison.Ordinal);
     }
 
     /// <summary>

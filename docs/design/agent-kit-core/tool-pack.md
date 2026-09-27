@@ -93,10 +93,14 @@ pack's tools are never built, so none of them can reach the model by accident.
 **The contract admits a policy-derived subset.** What is promised is a non-null collection holding
 no null element, every name carrying the declared family prefix — not that the same tools, or the
 same number of them, come back under every policy. An implementation is encouraged to withhold a
-tool the policy could never permit to succeed, because a tool whose only possible outcome is a
+tool whose writes the policy governs when the policy permits no writing anywhere, because a tool
+whose only possible outcome is a
 refusal spends a declaration and the model's attention to achieve nothing.
 `PathPolicy.AnyLocationIsWritable` exists for exactly this decision: it answers, before the pack
-holds any path to test, whether writing is possible anywhere under this policy. A pack that
+holds any path to test, whether writing is possible anywhere under this policy. There is no
+companion question about reading, and none is needed: a grant is read-only or read-write, so
+write access always implies read access and a read tool could be judged unusable only under a
+policy carrying no grant at all. A pack that
 withholds tools should preserve the surviving tools' relative order, so a model meets a shortened
 family rather than a rearranged one. See the *AgentKitTools* system design for which shipped
 families filter and which do not.

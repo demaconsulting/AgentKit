@@ -132,19 +132,24 @@ public interface IToolPack
     ///     that the collection is never null, holds no null element, and that every name it holds
     ///     carries <see cref="FamilyPrefix"/> — it is deliberately <em>not</em> that the same tools,
     ///     or the same number of them, are returned under every policy. An implementation is
-    ///     encouraged to withhold a tool the policy could never permit to succeed, because a tool
+    ///     encouraged to withhold a tool whose writes the policy governs when the policy permits no
+    ///     writing anywhere, because a tool
     ///     whose only possible outcome is a refusal spends a declaration and the model's attention
     ///     to achieve nothing. <see cref="PathPolicy.AnyLocationIsWritable"/> exists for exactly
     ///     this decision: it answers, before the pack has any path to test, whether writing is
-    ///     possible anywhere at all under this policy. A pack that withholds tools should keep the
+    ///     possible anywhere at all under this policy. There is no companion question about
+    ///     reading, and none is needed: <see cref="PathRule"/> carries no write-only access level,
+    ///     so a policy that permits writing somewhere permits reading there too, and a read tool
+    ///     is unusable only under a policy granting nothing at all. A pack that withholds tools
+    ///     should keep the
     ///     survivors in their usual relative order, so a model sees the family shortened rather
     ///     than rearranged.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool must observe.</param>
     /// <returns>
-    ///     The pack's tools, which may be the subset of its family this policy could permit to
-    ///     succeed. Must not be <see langword="null"/>, and must not contain a
+    ///     The pack's tools, which may be the subset of its family this policy leaves able to
+    ///     write. Must not be <see langword="null"/>, and must not contain a
     ///     <see langword="null"/> element.
     /// </returns>
     IEnumerable<AIFunction> CreateTools(PathPolicy policy);

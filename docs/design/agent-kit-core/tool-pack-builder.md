@@ -16,7 +16,7 @@ tool refused — reasons its way around the refusal instead of abandoning the ap
 unsupported pack is not even asked to create its tools, so there is nothing that could reach the
 list by accident.
 
-**A tool the access policy could never permit is likewise never offered.** The same argument
+**A tool whose writes the access policy has disabled is likewise never offered.** The same argument
 applies one level finer, to individual tools rather than whole packs, and the two gates divide
 cleanly. The host capability decides *whether a pack is asked for its tools*; the policy the pack
 is then handed decides *which of its tools it returns*. A pack is free to withhold a tool whose

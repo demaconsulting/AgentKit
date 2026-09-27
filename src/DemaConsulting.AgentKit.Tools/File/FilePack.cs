@@ -134,7 +134,8 @@ public sealed class FilePack : IToolPack
     ///     there, so no tool in the family can observe a different policy from its neighbor.
     ///     </para>
     ///     <para>
-    ///     <b>The pack declares what tools exist; the policy decides which can function.</b> Copy,
+    ///     <b>The pack declares what tools exist; the policy decides which writes are possible.</b>
+    ///     Copy,
     ///     move, delete and all three directory tools each change the file system, so under a policy
     ///     holding no read-write grant anywhere they could only ever return a refusal — and are
     ///     therefore not published at all,
@@ -149,7 +150,12 @@ public sealed class FilePack : IToolPack
     ///     <para>
     ///     <c>file_list</c> is never withheld. It consults the read decision to choose what to list,
     ///     and the write decision only to annotate a listed root as writable, so it remains fully
-    ///     useful under a policy that permits no writing.
+    ///     useful under a policy that permits no writing. Under a policy that grants nothing at all
+    ///     it is still published and can then list nothing, which is the one case the gate does not
+    ///     cover: write access always implies read access — <see cref="PathRule"/> has no
+    ///     write-only level — so a read-consulting tool is unusable only when the policy grants
+    ///     nothing whatever, and such a composition yields an agent unable to touch a file however
+    ///     its tool list is trimmed.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>

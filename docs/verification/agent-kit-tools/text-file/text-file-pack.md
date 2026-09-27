@@ -74,9 +74,17 @@ return no null tool.
 The three listed tests prove that a policy whose every grant is read-only publishes exactly
 `text_file_search`, `text_file_read` and `text_file_copy_lines`, in that relative order, so the five
 tools that can act only by writing are withheld rather than offered and refused; that a policy
-holding no grants at all behaves identically, so the fully-confined case is not one the filter
+holding no grants at all withholds the same five, so the fully-confined case is not one the filter
 overlooks; and that the suppression lifts as soon as any location is writable, so the test set can
 distinguish a correct filter from one that suppresses unconditionally.
+
+**The no-grants test asserts what is true of the survivors, not that they are usable.** Under an
+empty grant set the three published tools each refuse every path, because no path resolves, so the
+test invokes the read tool against a real file in the composition's own working directory and
+asserts a `PathNotPermitted` denial. Only writing is gated, and no symmetric reading gate is built:
+a grant is read-only or read-write, so write access always implies read access, and a reading tool
+is unusable only under a policy granting nothing whatever — a policy whose agent can touch no file
+however its tool list is trimmed.
 
 The first two assert the exact ordered name list rather than set membership, because the surviving
 tools must keep their relative order — `text_file_copy_lines` sits between two withheld groups, so

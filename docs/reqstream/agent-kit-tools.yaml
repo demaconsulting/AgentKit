@@ -25,11 +25,13 @@ sections:
 
       - id: AgentKitTools-PolicyDerivedPublication
         title: >-
-          The library shall offer an agent only those tools the access policy the application
-          supplied could permit to succeed, so that a policy permitting no writing anywhere
-          presents no tool whose only outcome would be a refusal, while a policy permitting
+          The library shall withhold from an agent those tools whose writes the access policy the
+          application supplied governs, whenever that policy permits no writing anywhere, so that
+          such a policy
+          presents no tool whose only outcome would be a refusal because it can only write, while
+          a policy permitting
           writing in any location presents every tool, and a delegated agent is offered only what
-          its own narrowed policy could permit.
+          its own narrowed policy leaves able to act.
         tags: [system, security]
         justification: |
           An application already decides which families an agent receives; what it could not
@@ -38,9 +40,10 @@ sections:
           occupies the model's attention on every turn, it invites a request that can only fail,
           and a model that meets an unavoidable refusal commonly retries it in another form rather
           than taking the path that works — so an agent configured to read is measurably worse off
-          being shown the ability to edit than not being shown it. Making the offered set the
-          intersection of what a family provides and what the configuration could permit turns the
-          list of tools into a truthful statement of what the agent can do, which is the same
+          being shown the ability to edit than not being shown it. Withholding the tools the
+          configuration has plainly disabled turns the
+          list of tools into a largely truthful statement of what the agent can do, which is the
+          same
           reason a family the host cannot support is never offered at all rather than offered and
           refused later. The question must be asked of the whole configuration rather than of one
           location, or the common read-wide, write-narrow arrangement would lose its editing tools

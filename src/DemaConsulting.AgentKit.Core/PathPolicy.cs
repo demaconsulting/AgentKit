@@ -374,7 +374,11 @@ public sealed class PathPolicy
     ///     <c>IToolPack.CreateTools</c> before it has any path to test, and can use this to decide
     ///     which of its tools are worth publishing at all: a tool that can act only by writing,
     ///     under a policy holding no read-write grant anywhere, could only ever return a refusal,
-    ///     so the pack withholds it rather than spending a declaration on it. This is the
+    ///     so the pack withholds it rather than spending a declaration on it. There is
+    ///     deliberately no companion question about reading. A grant is read-only or read-write,
+    ///     so write access always implies read access, and a read tool could therefore be judged
+    ///     unusable only under a policy carrying no grant at all — a policy that yields an agent
+    ///     unable to touch a file however its tool list is trimmed. This is the
     ///     extensibility contract <see cref="WorkingDirectoryIsGranted"/> serves for the output
     ///     dialect, applied to publication.
     ///     </para>

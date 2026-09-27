@@ -193,8 +193,8 @@ conversation alive:
 - **Tool results**: text, structured data, binary, and image results, and refusals that carry a
   reason
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
-  gated on host capability and narrowed by the access policy — a pack publishes only the tools the
-  policy could permit to succeed
+  gated on host capability and narrowed by the access policy — a pack withholds the tools whose
+  writes the policy governs when no grant permits writing anywhere
 - **Session engine**: an agent session that compacts its own context, so a conversation outlives the
   provider's window. See [Sessions](#sessions) below.
 
@@ -241,12 +241,17 @@ junctions and other reparse points are not a general protection boundary: path r
 lexical, so a path that reaches outside a granted location through a link is not detected. The two
 exceptions are the destructive directory tools — `file_delete_directory` and `file_move_directory`
 refuse a path they are asked to reach *through* a link, because there the content at stake is a
-whole tree rather than a single entry. The policy also decides which tools exist at all:
-a pack publishes only the tools the policy could permit to succeed, so a policy holding no
-read-write grant anywhere withholds every tool that can act only by writing — the five editing
-tools of the text file family and the six management tools of the file family. The question is
+whole tree rather than a single entry. The policy also decides which tools exist at all, in one
+specific way: a pack withholds the tools whose **writes** the policy governs, and only when no
+grant permits writing anywhere — the five editing tools of the text file family and the six
+management tools of the file family. The question is
 asked of the whole policy, so a read-only workspace paired with a read-write session folder still
-publishes them all. Because the image family
+publishes them all. Read tools are not gated the same way, so a policy holding **no grants at all**
+still publishes `text_file_read`, `text_file_search`, `text_file_copy_lines` and `image_read`, and
+every one of them refuses every path it is given. That case is left alone deliberately: a grant is
+either read-only or read-write, so write access always implies read access, and read tools are
+therefore unusable only when nothing whatever is granted — a configuration that yields a
+non-functional agent however its tool list is trimmed. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tools only when the host
 declares that capability; a host that does not is never offered `image_read`, `image_crop` or
 `image_auto_crop`.
