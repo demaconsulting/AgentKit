@@ -128,9 +128,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: both of the family's tools are published, under the family prefix
+        // Assert: every one of the family's tools is published, under the family prefix
         Assert.Equal(
-            ["image_read", "image_crop"],
+            ["image_read", "image_crop", "image_auto_crop"],
             tools.Select(tool => tool.Name));
     }
 
@@ -267,9 +267,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: 3 text-file + 1 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 16,
+        // Assert: 3 text-file + 1 file + 1 markdown + 3 image + 5 memory + 3 todo + 1 agent = 17,
         // in pack-add order. The eleven write-performing tools are absent.
-        Assert.Equal(16, tools.Count);
+        Assert.Equal(17, tools.Count);
         Assert.Equal(
             [
                 "text_file_search",
@@ -279,6 +279,7 @@ public class AgentKitToolsTests
                 "markdown_outline",
                 "image_read",
                 "image_crop",
+                "image_auto_crop",
                 "memory_file",
                 "memory_recall",
                 "memory_update",
@@ -321,9 +322,9 @@ public class AgentKitToolsTests
         // Act: build the tool list
         var tools = builder.Build();
 
-        // Assert: 8 text-file + 7 file + 1 markdown + 2 image + 5 memory + 3 todo + 1 agent = 27,
+        // Assert: 8 text-file + 7 file + 1 markdown + 3 image + 5 memory + 3 todo + 1 agent = 28,
         // in pack-add order
-        Assert.Equal(27, tools.Count);
+        Assert.Equal(28, tools.Count);
         Assert.Equal(
             [
                 "text_file_search",
@@ -344,6 +345,7 @@ public class AgentKitToolsTests
                 "markdown_outline",
                 "image_read",
                 "image_crop",
+                "image_auto_crop",
                 "memory_file",
                 "memory_recall",
                 "memory_update",

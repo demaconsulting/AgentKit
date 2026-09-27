@@ -35,8 +35,9 @@ The system contains the **Markdown** subsystem: the markdown tool family, publis
 pack. It reports a Markdown file's heading structure as line ranges the text tools can then
 read or cut.
 
-The system also contains the **Image** subsystem: the image tool family, publishing `image_read`
-and `image_crop` under the `image` family prefix and attached to an application as one pack.
+The system also contains the **Image** subsystem: the image tool family, publishing `image_read`,
+`image_crop` and `image_auto_crop` under the `image` family prefix and attached to an application
+as one pack.
 Unlike the other families, it is gated on a host capability — it is registered only for a host
 that declares it can present visual content to a model — because its tools return image and PDF
 content that a non-vision host could not use. Each family this package provides is its own

@@ -795,6 +795,8 @@ reviews:
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageProbe.cs"                # shared header-probe helper
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAdmission.cs"            # shared admission helper
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageDestination.cs"          # shared destination helper
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTestImages.cs"    # shared fixture builder
 
   # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
@@ -841,6 +843,21 @@ reviews:
       - "docs/verification/agent-kit-tools/image/image-crop-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageCropTool.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageCropToolTests.cs"  # unit tests
+
+  # AgentKitTools-Image-ImageAutoCropTool Review (one per unit)
+  - id: AgentKitTools-Image-ImageAutoCropTool
+    title: Review that AgentKitTools Image ImageAutoCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-auto-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-auto-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-auto-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAutoCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageAutoCropToolTests.cs"  # unit tests
 
   # AgentKitTools-Image-ImagePack Review (one per unit)
   - id: AgentKitTools-Image-ImagePack

@@ -273,6 +273,7 @@ row.
 | Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None         | No          |
 | Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`     | No          |
 | Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`     | No          |
+| Image     | `image_auto_crop`       | Trims an image to its content, with padding      | `Vision`     | No          |
 | Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None         | No          |
 | Todo      | `todo_set`              | Records a step, or updates the step with that id | None         | No          |
 | Todo      | `todo_remove`           | Drops a step by id from the task list            | None         | No          |
@@ -287,10 +288,10 @@ The **Capability** column is the host capability the family requires; the **Writ
 says whether the tool is published only when the access policy permits writing somewhere.
 
 **A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
-of the twenty-seven tools are marked `Yes`: five in the text file family and six in the file
+of the twenty-eight tools are marked `Yes`: five in the text file family and six in the file
 family. If every grant an application configures is read-only — or it configures no grants at all —
-those eleven are absent from the composed list, and the seven families together publish sixteen
-tools rather than twenty-seven. The text file family offers `text_file_search`, `text_file_read` and
+those eleven are absent from the composed list, and the seven families together publish seventeen
+tools rather than twenty-eight. The text file family offers `text_file_search`, `text_file_read` and
 `text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
 agent families are unaffected.
 
@@ -306,10 +307,12 @@ the buffer it fills has no drain, because `text_file_paste_lines` is the buffer'
 solely to mark a listed location as writable. The todo and memory families keep their state in the
 composition's own store rather than on disk, so a read-only *path* policy governs nothing they do.
 
-`image_crop` is marked `No` and is offered under a read-only policy, because its primary mode
-returns the region as image content and writes nothing. Its optional `destination` does need a
+`image_crop` and `image_auto_crop` are marked `No` and are offered under a read-only policy,
+because each one's primary mode
+returns the region as image content and writes nothing. The optional `destination` they accept does
+need a
 write grant, and naming one under a read-only policy earns the ordinary refusal, which enumerates
-the locations that are writable. The tool's description does not change with the policy: the
+the locations that are writable. Neither tool's description changes with the policy: the
 `destination` parameter's own description is fixed at compile time, so a policy-varying tool
 description would contradict it within a single declaration.
 
@@ -319,7 +322,7 @@ memory (`MemoryPack`) families require no host capability. Two families are gate
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
 its tools, so a model is never offered a tool its host cannot use.
 
-The image family's two tools are one capability rather than two. `image_read` states the image's
+The image family's three tools are one capability rather than three. `image_read` states the image's
 pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
 top-left corner of that same coordinate space — because a model can see a picture but cannot
 measure one, and a region request it cannot aim is a region request it will aim wrongly. A region
@@ -327,13 +330,35 @@ that does not lie wholly inside the image is **refused, naming the image's real 
 quietly reduced to one that would have fitted: a reduced region answers a different question while
 reporting success, and the model has no way to detect the substitution.
 
+`image_auto_crop` answers the region question from the other side: the one a model cannot state in
+that coordinate space at all. It takes **no region** — it finds the rectangle the image's content
+occupies, expands it by a `padding` margin (8 pixels by default, 0 to 256) and returns or writes
+that. The need is ordinary: a screenshot, a slide export or a rendered chart arrives surrounded by
+margin that carries no information and costs the same resolution budget the content does, and a
+model can see that a picture is mostly empty without being able to measure where the emptiness
+stops.
+
+Three properties make that trim predictable rather than a guess. **The background is taken from the
+image's own one-pixel border, never assumed** — so a dark-themed screenshot, a colored slide and an
+export with a transparent margin all trim correctly, where a tool comparing against white would
+return the picture unchanged while reporting success. **A pixel within a small fixed tolerance of
+that background counts as background**, so anti-aliased edges and compression artifacts do not
+defeat the trim; the tolerance is deliberately *not* a parameter, because a caller that cannot see
+the image cannot choose one better than the default, and the result stays a pure function of the
+file and the padding. **Padding that would run past an edge is clamped, never refused** — content
+flush to an edge is ordinary, and a padding larger than every margin simply yields the whole image.
+An image in which nothing differs from the background is **refused, naming its dimensions**, and
+nothing is written: there is no honest content region, and returning the whole picture would answer
+a different question while reporting success.
+
 `image_crop` has two outcomes, and the request says which. **Omit `destination` and the region
 comes back inline as image content to look at**, which is what it has always done and what it still
 does unchanged. **Name a `destination` and the region is written there as a new `.png` file**, and
 the model receives a text confirmation naming the file, the region and the source's dimensions
 rather than the image itself. That second outcome exists because a region a model can only look at
 cannot become a figure: an agent preparing a document needs the region it identified to exist as a
-file it can point at.
+file it can point at. `image_auto_crop` offers the same two outcomes on the same terms, so an agent
+meets one rule whichever region tool produced the figure.
 
 For an application author, the destination is where the two grants meet. **It is resolved through
 the policy's write decision, independently of the read that admitted the image** — so a path an

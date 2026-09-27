@@ -98,11 +98,13 @@ constituent software items, specifically:
 - **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
 - **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, published as one capability-gated pack
+  documents for a vision-capable agent, and extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImageCropTool (Unit)** — Publishes the `image_crop` tool
+- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack

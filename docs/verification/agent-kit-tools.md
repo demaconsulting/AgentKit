@@ -107,7 +107,8 @@ under the one family prefix the pack claims. Constructs a real access policy, ad
 Verifies that attaching the Image pack to a host that declares the Vision capability contributes
 that family's tools, under the one family prefix the pack claims. Constructs a real access policy,
 declares Vision on a `ToolPackBuilder`, adds `ImagePack`, and asserts the composed list is exactly
-`image_read` and `image_crop`. Confirms at the system level that a capability-gated family, on a
+`image_read`, `image_crop` and `image_auto_crop`. Confirms at the system level that a
+capability-gated family, on a
 host that meets its requirement, is attached as one pack.
 
 ### Composition: The Image Family Is Withheld From a Non-Vision Host
@@ -183,9 +184,10 @@ Verifies the system-level statement of policy-derived publication: the pack decl
 exist, the policy decides which can function, and the published set is the intersection. Composes
 all seven families over one policy whose only grant is read-only, declaring both Vision and
 Delegation so that nothing is withheld by the capability gate and the policy is the only filter in
-play. Asserts the composed list is exactly sixteen tools, in pack-add order: `text_file_search`,
+play. Asserts the composed list is exactly seventeen tools, in pack-add order: `text_file_search`,
 `text_file_read`, `text_file_copy_lines`, `file_list`, `markdown_outline`, `image_read`,
-`image_crop`, `memory_file`, `memory_recall`, `memory_update`, `memory_revise`, `memory_forget`,
+`image_crop`, `image_auto_crop`, `memory_file`, `memory_recall`, `memory_update`, `memory_revise`,
+`memory_forget`,
 `todo_list`, `todo_set`, `todo_remove` and `agent_run`.
 
 The eleven write-performing tools — five in the TextFile family, six in the File family — are
@@ -198,7 +200,7 @@ survive and the order a model sees them in are observable and part of the contra
 
 Verifies that the write question is asked of the whole policy rather than of the location relative
 names anchor to. Composes the same seven families over a policy granting the workspace read-only
-and a separate session location read-write, and asserts the composed list is exactly twenty-seven
+and a separate session location read-write, and asserts the composed list is exactly twenty-eight
 tools in pack-add order — every tool of every family.
 
 This is the scenario the plausible wrong rule breaks. Had the question been "is the working

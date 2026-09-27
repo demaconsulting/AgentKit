@@ -210,7 +210,15 @@ sections:
           because a reduced region answers a different question while reporting success and the
           model cannot detect the substitution. Deciding an image's decode cost from what its
           header declares, before any pixel data exists, is what stops a model provoking a
-          quarter of a gigabyte of allocation from a file of a few hundred kilobytes.
+          quarter of a gigabyte of allocation from a file of a few hundred kilobytes. The family
+          also trims an image to the region its own content occupies, because the region a model
+          most often wants is the one it cannot name: it can see that a screenshot or a slide
+          export is mostly margin without being able to measure where the margin stops, so any
+          rectangle it stated would be a guess. That trim takes its background from the image's
+          own border rather than assuming one, so a dark, colored or transparent margin works as
+          well as a white one, and it refuses an image that is entirely background rather than
+          returning the whole picture — which would again answer a different question while
+          reporting success.
         children:
           - AgentKitTools-Image-FamilyComposition
           - AgentKitTools-Image-CapabilityGated
@@ -218,6 +226,7 @@ sections:
           - AgentKitTools-Image-PolicyGoverned
           - AgentKitTools-Image-DimensionReporting
           - AgentKitTools-Image-RegionExtraction
+          - AgentKitTools-Image-ContentTrimming
           - AgentKitTools-Image-RegionDestination
           - AgentKitTools-Image-DecodeBounded
           - AgentKitTools-Image-DenialsAreResults

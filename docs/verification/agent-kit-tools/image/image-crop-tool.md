@@ -31,6 +31,13 @@ Unit tests reside in `Image/ImageCropToolTests.cs`, reusing the shared temporary
 from `TextFile/TempDirectoryFixture.cs` and the shared fixture builder from
 `Image/ImageTestImages.cs`, within the `DemaConsulting.AgentKit.Tools.Tests` project.
 
+**The shared admission and destination helpers are exercised entirely through this unit's own
+scenarios.** Neither publishes a capability of its own, so their correctness is exactly the
+correctness of the ceilings, the triage and the destination refusals asserted below. That is why
+substituting the read decision for the write decision inside the shared destination helper fails
+this unit's grant scenarios and `ImageAutoCropTool`'s together — the sharing is observable from
+both sides rather than asserted about in either.
+
 **The scenarios that turn on the grant distinction run under an asymmetric policy**, built by the
 file's own `AsymmetricPolicy` helper: one location granted read-only and a separate location
 granted read-write. A policy granting read-write over a single root cannot distinguish a write

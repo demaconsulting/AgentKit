@@ -16,12 +16,13 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     <see cref="GuardedToolFactory"/> with the policy the composition supplies.
 ///     </para>
 ///     <para>
-///     <b>Neither tool is ever withheld by the access policy.</b> Both are published under every
-///     policy, because both can succeed under one that permits no writing anywhere: reading an
-///     image is a read, and cropping without a destination returns image content rather than
-///     writing a file. The crop tool's optional <c>destination</c> does require a write grant, and
-///     naming one under a read-only policy earns an ordinary denial that enumerates the writable
-///     locations. See <see cref="CreateTools"/> for why that is the right trade.
+///     <b>No tool in the family is ever withheld by the access policy.</b> All three are
+///     published under every policy, because each can succeed under one that permits no writing
+///     anywhere: reading an image is a read, and taking or trimming a region without a
+///     destination returns image content rather than writing a file. The region tools' optional
+///     <c>destination</c> does require a write grant, and naming one under a read-only policy
+///     earns an ordinary denial that enumerates the writable locations. See
+///     <see cref="CreateTools"/> for why that is the right trade.
 ///     </para>
 ///     <para>
 ///     <see cref="FamilyPrefix"/> is published as a constant as well as through the contract, so
@@ -116,34 +117,39 @@ public sealed class ImagePack : IToolPack
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     The family publishes two tools under every policy: the read tool, which returns a whole
-    ///     image or PDF,
-    ///     and the crop tool, which returns a rectangular region of one. They are created
-    ///     together because they are one capability rather than two — a region request a model
-    ///     cannot aim is a region request it will aim wrongly, and the read tool is what reports
-    ///     the coordinate space the crop tool consumes. The policy is passed to each tool's
+    ///     The family publishes three tools under every policy: the read tool, which returns a
+    ///     whole image or PDF; the crop tool, which returns a rectangular region of one the
+    ///     caller names; and the auto-crop tool, which returns the region the caller cannot name
+    ///     because it is the region the image's own content occupies. They are created
+    ///     together because they are one capability rather than three — a region request a model
+    ///     cannot aim is a region request it will aim wrongly, the read tool is what reports
+    ///     the coordinate space the crop tool consumes, and the auto-crop tool is the answer for
+    ///     the common case in which the model can see that a picture is mostly margin but cannot
+    ///     measure where the margin stops. The policy is passed to each tool's
     ///     factory and captured there, so no tool can later observe a different policy.
     ///     </para>
     ///     <para>
     ///     <b>This pack does not filter on the policy, deliberately.</b> The rule the file families
     ///     apply is "could this tool ever succeed under this policy", not "could every argument ever
-    ///     succeed". Both tools here clear that bar under a read-only policy: the crop tool's
-    ///     primary mode returns image content inline and writes nothing, so withholding it would
-    ///     remove a fully working capability over an optional argument. Narrowing a parameter is a
+    ///     succeed". All three tools here clear that bar under a read-only policy: each region
+    ///     tool's primary mode returns image content inline and writes nothing, so withholding
+    ///     one would remove a fully working capability over an optional argument. Narrowing a
+    ///     parameter is a
     ///     different question from publishing a tool, and conflating the two would mean every
     ///     optional argument needs a gate of its own.
     ///     </para>
     ///     <para>
-    ///     Nor does the crop tool's description vary with the policy. Its <c>destination</c>
-    ///     parameter's description is a compile-time attribute and cannot vary, so a policy-varying
+    ///     Nor does either region tool's description vary with the policy. The <c>destination</c>
+    ///     parameter's description is a compile-time attribute and cannot vary, so a
+    ///     policy-varying
     ///     tool description would ship inside the same declaration as a fixed parameter description
     ///     still offering the destination — a declaration contradicting itself in one payload. One
     ///     honest description plus an ordinary denial is the truthful arrangement; see the remarks
-    ///     on <see cref="ImageCropTool"/>.
+    ///     on <see cref="ImageCropTool"/> and <see cref="ImageAutoCropTool"/>.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The read tool and the crop tool, under every policy.</returns>
+    /// <returns>The read tool, the crop tool and the auto-crop tool, under every policy.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -156,7 +162,8 @@ public sealed class ImagePack : IToolPack
         return
         [
             ImageReadTool.Create(policy),
-            ImageCropTool.Create(policy)
+            ImageCropTool.Create(policy),
+            ImageAutoCropTool.Create(policy)
         ];
     }
 }

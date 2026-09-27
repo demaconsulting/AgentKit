@@ -1,0 +1,462 @@
+---
+# Software Unit Requirements for ImageAutoCropTool
+#
+# These requirements describe the design-level behavior of the ImageAutoCropTool unit.
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: Image Requirements
+        sections:
+          - title: ImageAutoCropTool Requirements
+            requirements:
+              - id: AgentKitTools-Image-AutoCropTool-ToolName
+                title: >-
+                  The auto-crop tool shall be published under the name image_auto_crop, exposed as
+                  a constant on the unit that defines it, and shall carry a description stating
+                  that the caller names no region.
+                justification: |
+                  The name is the only handle a model has on the tool. A description is the only
+                  basis a model has for choosing this tool over another, and for this tool the
+                  description must additionally say that the caller names no region: a model
+                  offered two region tools whose descriptions are interchangeable will reach for
+                  whichever it read first, and reaching for the wrong one costs a turn and a
+                  guessed rectangle.
+
+                tests:
+                  - ImageAutoCropTool_ToolName_Constant_IsTheFamilyQualifiedName
+                  - ImageAutoCropTool_Create_ConstructedTool_CarriesTheToolNameAndADescription
+
+              - id: AgentKitTools-Image-AutoCropTool-GuardedConstruction
+                title: >-
+                  The auto-crop tool shall be constructed only through the guarded construction
+                  path with an access policy supplied at construction, and shall deliver the
+                  region it returns to the caller in the form it returned it rather than
+                  serialized to JSON.
+                tags: [security]
+                justification: |
+                  Without the guard the caption-plus-content result is serialized before a
+                  provider sees it, so the provider never receives the region and the model —
+                  told a tool returned one — describes content it never got. The failure is
+                  silent, which is exactly why the guarded path must be the only one. Requiring
+                  the policy at construction is what makes a trimming tool governed by no policy
+                  impossible to build rather than merely a mistake somebody might notice.
+                tests:
+                  - ImageAutoCropTool_Create_NullPolicy_ThrowsArgumentNullException
+                  - ImageAutoCropTool_AutoCrop_Result_IsContentListNotJsonElement
+
+              - id: AgentKitTools-Image-AutoCropTool-TrimsToContent
+                title: >-
+                  The auto-crop tool shall return the region a permitted image's content occupies
+                  as image content preceded by a caption stating the region, the padding applied
+                  and the image's dimensions, without the caller naming any region.
+                justification: |
+                  A screenshot, a slide export or a rendered chart arrives surrounded by margin
+                  that carries no information and costs the same resolution budget the content
+                  does. A model can see that a picture is mostly empty; it cannot measure where
+                  the emptiness stops, so a region it named would be a guess and a guess is either
+                  refused or silently answered for the wrong part of the picture. Answering the
+                  question the model can actually ask — give me the part that matters — is what
+                  this tool exists for. The caption matters more here than for a caller-named
+                  region: the model named nothing, so the caption is its only way to learn where
+                  in the picture it is now looking, whether the trim achieved anything, and which
+                  input to change if it wants a different answer.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_PermittedPng_ReturnsTrimmedImageContent
+                  - ImageAutoCropTool_AutoCrop_TrimmedRegion_IsTheContentBoxPlusPadding
+                  - ImageAutoCropTool_AutoCrop_Caption_StatesTheRegionThePaddingAndTheSourceDimensions
+                  - ImageAutoCropTool_AutoCrop_BareFileName_ResolvesAgainstTheWorkspace
+
+              - id: AgentKitTools-Image-AutoCropTool-SamplesBackgroundFromTheBorder
+                title: >-
+                  The auto-crop tool shall determine what counts as background from the image's
+                  own border rather than assuming any particular color, so that a dark, colored or
+                  transparent margin is trimmed correctly, and shall reach the same answer when
+                  part of that border is content.
+                justification: |
+                  An assumed background is an assumption about the picture the caller cannot see
+                  and the tool never checked. A dark-themed screenshot, a colored slide and an
+                  export with a transparent margin are all ordinary inputs, and on every one of
+                  them a tool comparing against white classifies the margin as content, finds the
+                  content region to be the whole image, and returns the picture unchanged while
+                  reporting success. Reaching the same answer when part of the border is content
+                  is what makes the rule usable on the equally ordinary case of content running to
+                  an edge — a single sample taken at a fixed position would land on that content
+                  and defeat the trim, and an average of the border would land on a color present
+                  nowhere in the image and defeat it differently.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DarkBackground_IsTrimmedFromTheBorderNotFromWhite
+                  - ImageAutoCropTool_AutoCrop_ColoredBackground_IsTrimmedFromTheBorderNotFromWhite
+                  - ImageAutoCropTool_AutoCrop_TransparentBackground_IsTrimmedWithAlphaParticipating
+                  - ImageAutoCropTool_AutoCrop_BorderWithAMinorityOfContentPixels_StillSamplesTheBackground
+
+              - id: AgentKitTools-Image-AutoCropTool-ToleratesNearBackground
+                title: >-
+                  The auto-crop tool shall treat a pixel within a small fixed tolerance of the
+                  background as background, so that anti-aliasing and compression artifacts do not
+                  defeat the trim, and shall apply the same tolerance to every image without the
+                  caller choosing it.
+                justification: |
+                  A real margin is never one exact color. An anti-aliased edge blends a ring of
+                  pixels a few counts toward the ink, and a lossy encoder rings the flat field
+                  beside any hard edge; a tool matching exactly therefore classifies most of the
+                  margin as content and returns nearly the whole picture — the trim defeated
+                  entirely, and defeated silently. The tolerance is not offered to the caller
+                  because a caller that cannot see the image cannot choose one better than the
+                  default: it would have to already know the noise characteristics of the margin,
+                  which is the thing it called this tool in order not to have to know, and a value
+                  it guessed would make the result vary with the guess. A fixed tolerance is what
+                  makes the region a pure function of the file and the padding.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DitheredBackground_IsStillTrimmedToTheContent
+                  - ImageAutoCropTool_AutoCrop_AntiAliasedContentEdge_DoesNotRetainTheHalo
+                  - ImageAutoCropTool_AutoCrop_JpegSource_IsTrimmedDespiteCompressionArtifacts
+
+              - id: AgentKitTools-Image-AutoCropTool-PadsAndClampsAtEdges
+                title: >-
+                  The auto-crop tool shall expand the content region by the padding the caller
+                  states, applying a stated default when the caller states none, and shall clamp
+                  the result to the image's edges rather than refusing a request whose padding
+                  would run past one.
+                justification: |
+                  A figure sitting flush against its own crop reads as cut off, so some margin is
+                  wanted by default; how much is the one thing a caller genuinely does know,
+                  because it knows the layout it is placing the figure into. Clamping rather than
+                  refusing is the right answer because content flush to an edge is ordinary rather
+                  than a fault, and a padding larger than every margin yields the whole image,
+                  which is truthful and predictable. This is not the substitution the family
+                  refuses elsewhere: there the caller named a rectangle and would have received a
+                  different one, whereas here the caller named no rectangle at all, so there is
+                  nothing to substitute for.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_ContentFlushToTheLeftAndTopEdges_ClampsThePadding
+                  - ImageAutoCropTool_AutoCrop_ContentFlushToTheRightAndBottomEdges_ClampsThePadding
+                  - ImageAutoCropTool_AutoCrop_PaddingLargerThanEveryMargin_ReturnsTheWholeImage
+                  - ImageAutoCropTool_AutoCrop_ZeroPadding_ReturnsTheTightContentBox
+                  - ImageAutoCropTool_AutoCrop_OmittedPadding_AppliesTheDefault
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesAnEntirelyBackgroundImage
+                title: >-
+                  The auto-crop tool shall refuse an image in which no pixel differs from the
+                  background, stating the image's dimensions and that reason, and shall write
+                  nothing even when a destination was named.
+                justification: |
+                  There is no honest content region for such an image. Returning the whole picture
+                  would answer a different question while reporting success, and the model has no
+                  way to detect the substitution — it is the exact failure this family exists to
+                  refuse. Returning an empty region would be worse, because an empty region is not
+                  a region at all. Stating the dimensions and the reason turns the refusal from a
+                  dead end into the fact the model was missing: the picture it thought held
+                  something holds nothing. Writing nothing matters because the destination has
+                  already passed every one of its governance checks by then, so a file left behind
+                  would be a figure of nothing that the agent was told did not exist.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_UniformImage_IsRefusedNamingTheReason
+                  - ImageAutoCropTool_AutoCrop_UniformImageWithADestination_WritesNothing
+
+              - id: AgentKitTools-Image-AutoCropTool-PixelsPreservedExactly
+                title: >-
+                  Every pixel of the region the auto-crop tool returns or writes shall be the
+                  pixel the source image held at that position, unaltered.
+                justification: |
+                  The whole point of trimming is to spend the resolution budget on the content
+                  rather than on the margin, which is worth nothing if the content arrives
+                  re-compressed. A region returned in a form that altered any pixel would let a
+                  model read an artifact as content and report it confidently. Stating the promise
+                  as preserved pixels rather than as a choice of format is what makes it
+                  demonstrable: a round trip compares every channel of every pixel, including the
+                  alpha channel an encoder might quietly discard — and alpha matters especially
+                  here, because a transparent margin is one of the backgrounds this tool is
+                  expected to trim.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_ReturnedRegion_CarriesTheSourcePixelsExactly
+                  - ImageAutoCropTool_AutoCrop_WrittenFile_CarriesTheSourcePixelsExactly
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesMalformedPadding
+                title: >-
+                  The auto-crop tool shall refuse a negative padding, and a padding beyond the
+                  bound it accepts while naming that bound.
+                justification: |
+                  A negative padding would shrink the content region and lose content, which is
+                  the one outcome this family never produces silently — so it is refused rather
+                  than clamped to zero, because clamping would answer a different question while
+                  reporting success. A padding beyond the bound exceeds any margin a page, slide
+                  or diagram export leaves, so no legitimate request meets it and a value past it
+                  is a model error worth reporting rather than silently answering with the whole
+                  image. Naming the bound is what turns the refusal into the next correct request.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_NegativePadding_ReturnsDenial
+                  - ImageAutoCropTool_AutoCrop_PaddingBeyondTheBound_ReturnsDenialNamingTheBound
+
+              - id: AgentKitTools-Image-AutoCropTool-WritesRegionToDestination
+                title: >-
+                  The auto-crop tool shall, when a caller names a destination, write the trimmed
+                  region there as a new PNG file and return a text confirmation naming the
+                  destination, the region and the source image's dimensions instead of the
+                  region's content, and shall return the region as image content when no
+                  destination is named.
+                justification: |
+                  A trimmed region that can only be looked at cannot become a figure in a
+                  document. An agent preparing an artifact needs the region it identified to exist
+                  as a file it can point at, and returning the bytes inline leaves it with nothing
+                  to reference. Naming the outcome in the request rather than inferring it means
+                  the model states which of the two it wants, so neither is ever delivered by
+                  surprise. Confirming in text rather than returning the image as well is what
+                  keeps a document-preparation loop affordable: an agent trimming six figures
+                  would otherwise carry six full-resolution images it no longer needs through
+                  every subsequent turn. The confirmation names the destination in the same
+                  dialect every other tool reports a path in, so a name it hands back is a name
+                  it can hand forward, and it names the region and the source's dimensions because
+                  the model named neither and has no other way to learn what the tool decided on
+                  its behalf.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_PermittedDestination_WritesThePngAndConfirmsInText
+                  - ImageAutoCropTool_AutoCrop_WithDestination_ReturnsNoImageContent
+                  - ImageAutoCropTool_AutoCrop_Confirmation_NamesTheDestinationRegionAndSourceDimensions
+                  - ImageAutoCropTool_AutoCrop_DestinationOutsideTheWorkingDirectory_IsConfirmedAbsolutely
+                  - ImageAutoCropTool_AutoCrop_JpegSourceToDestination_WritesPngBytes
+                  - ImageAutoCropTool_AutoCrop_OmittedDestination_StillReturnsTheRegionInline
+
+              - id: AgentKitTools-Image-AutoCropTool-DestinationRequiresWriteGrant
+                title: >-
+                  The auto-crop tool shall permit a destination only where a read-write grant
+                  permits it, judged independently of the grant that admitted the source, and
+                  shall write nothing when the destination is refused.
+                tags: [security]
+                justification: |
+                  A path an agent may read is refused for creation unless a read-write grant
+                  permits it too, which is what keeps a read-wide, write-narrow configuration
+                  meaningful. Deriving the write from the read that admitted the source would
+                  silently convert every readable location into a writable one and make the
+                  asymmetry an operator configured an illusion. Judging the two independently is
+                  what lets one call exercise both grants honestly, and a destination the operator
+                  did not open is refused with the same disclosure every policy refusal carries —
+                  the request, its interpretation, and every permitted location with its access
+                  level — so a confined agent can recover to a location it may actually use.
+                  Leaving no file behind on a refusal is what makes the grant a boundary rather
+                  than advice.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DestinationUnderAReadOnlyGrant_IsRefusedDisclosingTheWritableLocation
+                  - ImageAutoCropTool_AutoCrop_DestinationOutsideEveryGrant_IsRefused
+                  - ImageAutoCropTool_AutoCrop_RefusedDestination_WritesNothing
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesToReplaceDestination
+                title: >-
+                  The auto-crop tool shall refuse a destination at which a file already exists,
+                  leaving that file unchanged, and shall say that it writes a new file rather than
+                  replacing one.
+                justification: |
+                  A trim that clobbers a figure someone already placed is exactly the silent wrong
+                  answer this library refuses: the agent reports success, the document still
+                  references the name, and the picture it points at is now a different one.
+                  Refusing is the only honest answer, and it is the same guarantee the text file
+                  family makes for a new text file, so an agent meets one rule for creating a file
+                  rather than one rule per family. Stating that this tool writes a new file is
+                  what lets the model choose another name on the next turn instead of retrying the
+                  one that was refused. The refusal also protects the source: a destination equal
+                  to the image being trimmed names a file that exists, so the image can never be
+                  consumed by its own trimming.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_ExistingDestination_IsRefusedWithoutReplacingIt
+                  - ImageAutoCropTool_AutoCrop_DestinationEqualToTheSource_IsRefusedWithoutReplacingIt
+
+              - id: AgentKitTools-Image-AutoCropTool-RequiresPngDestination
+                title: >-
+                  The auto-crop tool shall refuse a destination that does not name a PNG file,
+                  naming the extension it expects, and shall accept one whose extension differs
+                  only in case.
+                justification: |
+                  A region is always encoded as PNG, because the encoding is lossless and every
+                  vision provider accepts it. A destination named for another format would
+                  therefore hold PNG bytes under a name that says otherwise — a file every later
+                  reader, human or program, would be entitled to misread, and one this tool would
+                  have produced knowingly. Refusing and naming the expected extension costs the
+                  model one turn and leaves it able to correct the request, which is cheaper than
+                  a mislabeled artifact nobody notices. Matching the extension case-insensitively
+                  follows the rule the family already applies to every other extension it reads. A
+                  destination that is blank or only whitespace has no extension and is refused
+                  here too, rather than being silently read as a request for the inline outcome.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_NonPngDestination_IsRefusedNamingTheExpectedExtension
+                  - ImageAutoCropTool_AutoCrop_UppercaseDestinationExtension_IsAccepted
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesUnusableDestination
+                title: >-
+                  The auto-crop tool shall refuse a destination naming an existing directory or
+                  one whose parent directory does not exist, shall create no directory, and shall
+                  refuse a permitted destination it cannot write without disclosing the underlying
+                  failure's own wording.
+                justification: |
+                  A directory is not a file a region can be written into, and saying so with the
+                  instruction to name a file within it is what turns the refusal into the next
+                  correct request. A missing parent is refused rather than materialized, because
+                  silently creating a tree is a side effect the operator never asked for and, on a
+                  mistyped path, would scatter directories the agent then believes are real. A
+                  permitted destination the operating system nonetheless refuses is reported as a
+                  plain fact with no remedy, because the tool does not know the reason and a guess
+                  would be worse than silence; the underlying failure's own message is
+                  developer-facing and never reaches a transcript that leaves the process.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DestinationIsADirectory_IsRefused
+                  - ImageAutoCropTool_AutoCrop_DestinationParentMissing_IsRefused
+                  - ImageAutoCropTool_AutoCrop_UnwritableDestination_IsRefusedWithoutDisclosingTheFailure
+
+              - id: AgentKitTools-Image-AutoCropTool-ObservesBinaryCeiling
+                title: >-
+                  The auto-crop tool shall refuse a file larger than the policy's binary ceiling
+                  before reading it, and shall refuse a trimmed region whose inline returned form
+                  exceeds that same ceiling, naming the ceiling in both cases.
+                justification: |
+                  The same ceiling governs everything this family hands a provider, whatever
+                  produced the bytes. Judging the source file's size from the handle it was opened
+                  on, before any content is read, means an oversized file is never read into
+                  memory merely to discover it was oversized. Judging the result separately is not
+                  redundant: a region of a compressed source, returned in a form that alters no
+                  pixel, can genuinely exceed a ceiling the source file sat well inside — and this
+                  tool chooses the region itself, so the caller cannot have narrowed it in
+                  advance. Naming the ceiling lets the model ask for something the host would
+                  accept rather than guess. A region written to a file is handed to no provider
+                  and charged to no context window, so it is not measured against that ceiling.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_FileLargerThanTheBinaryCeiling_ReturnsDenialNamingTheCeiling
+                  - ImageAutoCropTool_AutoCrop_EncodedRegionBeyondTheBinaryCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesOversizedDecode
+                title: >-
+                  The auto-crop tool shall refuse an image whose declared dimensions exceed the
+                  host's decode budget or the largest extent it can decode on one axis, deciding
+                  from the declared dimensions alone and naming both bounds.
+                tags: [security]
+                justification: |
+                  A compressed image well inside the binary ceiling can declare far more pixels
+                  than its size suggests, and decoding costs four bytes per pixel whatever
+                  encoding the file itself used — so a model can provoke a quarter of a gigabyte
+                  of transient allocation from a file of a few hundred kilobytes. The exposure is
+                  larger for this tool than for a caller-named region, because finding the content
+                  region requires examining every pixel, so there is no small request that avoids
+                  the decode. Deciding from the declared dimensions alone is what makes the
+                  refusal cost nothing: the decision is made before any pixel data exists. Both
+                  bounds are named because one bounds each axis and the other bounds their
+                  product, neither implies the other, and a model needs both to form a request
+                  that would be accepted. The pixel bound is read from the policy the host
+                  configured rather than from the published default.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_HeaderDeclaringMorePixelsThanTheDecodeBudget_IsRefusedNamingTheBudget
+                  - ImageAutoCropTool_AutoCrop_HeaderDeclaringAnOversizedAxis_IsRefusedNamingTheBounds
+                  - ImageAutoCropTool_AutoCrop_PalettizedPngNearThePixelCeiling_IsRefusedNamingTheBudget
+                  - ImageAutoCropTool_AutoCrop_HeaderExceedingAHostLoweredPixelCeiling_IsRefusedNamingThatCeiling
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesUndecodableContent
+                title: >-
+                  The auto-crop tool shall refuse content it cannot decode, and where the
+                  content's header stated its pixel dimensions the refusal shall name them.
+                justification: |
+                  Whether the size is stated is the fact that distinguishes the three ways content
+                  can fail, and a model needs the distinction. A file whose header will not read
+                  is not content of the kind its name claimed, so nothing is claimed about it. A
+                  file that is entirely well formed but uses a feature the decoder does not
+                  implement is merely of a kind this tool does not decode, so describing it as
+                  damaged would be false. A file whose header read and whose body did not is
+                  damaged, and stating the size it did declare is what tells the model so. No
+                  message reveals the decoding library's own wording, which is developer-facing
+                  and may echo values read out of the file.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions
+                  - ImageAutoCropTool_AutoCrop_TruncatedPngBody_ReturnsDenialNamingTheDeclaredDimensions
+                  - ImageAutoCropTool_AutoCrop_Adam7InterlacedPng_ReturnsDenialNamingTheDeclaredDimensions
+                  - ImageAutoCropTool_AutoCrop_ZeroByteFile_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-Image-AutoCropTool-RefusesNonCroppableType
+                title: >-
+                  The auto-crop tool shall refuse a file of a type no region can be extracted
+                  from, composing the refusal through the media-type map so the family gives one
+                  answer to what a file is.
+                justification: |
+                  A file whose type cannot be decoded has no content region to find. Delegating
+                  the refusal keeps the judgment about what a file is — and about whether naming a
+                  sibling reader states that or merely offers a way around the refusal — in one
+                  place rather than duplicated in each tool. A type the family reads but cannot
+                  decode earns a refusal naming the types that can be, so the model is told what
+                  it may ask for and not only what it may not.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_GifFile_ReturnsDenialNamingTheCroppableTypes
+                  - ImageAutoCropTool_AutoCrop_WebpFile_ReturnsDenialNamingTheCroppableTypes
+                  - ImageAutoCropTool_AutoCrop_PdfFile_ReturnsDenialStatingRasterizationIsRequired
+                  - ImageAutoCropTool_AutoCrop_SvgFile_ReturnsDenialRedirectingToTextFileRead
+                  - ImageAutoCropTool_AutoCrop_UnknownExtension_ReturnsDenialWithoutRedirect
+
+              - id: AgentKitTools-Image-AutoCropTool-DenyOutsideRoot
+                title: >-
+                  The auto-crop tool shall refuse a request whose location lies outside the
+                  permitted read location.
+                tags: [security]
+                justification: |
+                  This is the primary threat the library exists to control, and a tool that
+                  returns part of a file rather than all of it escapes none of it. The decision is
+                  made before anything is learned about the file, so a refused path never reveals
+                  whether it exists, and it is the same read decision the family's other tools
+                  consult rather than a third judgment that could differ from them.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_PathOutsideTheReadRoot_ReturnsDenial
+
+              - id: AgentKitTools-Image-AutoCropTool-DirectoryRefused
+                title: >-
+                  The auto-crop tool shall refuse a request naming a directory with a plain fact
+                  that prescribes no course of action.
+                justification: |
+                  A directory has no image content to trim. A denial states a fact and never
+                  prescribes a remedy, because a denial that suggested one was measured driving a
+                  model into a destructive workaround the user had explicitly forbidden.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DirectoryPath_ReturnsDenial
+
+              - id: AgentKitTools-Image-AutoCropTool-MissingFileDenied
+                title: >-
+                  The auto-crop tool shall refuse a request for a file of a trimmable type that
+                  does not exist, with a plain fact that prescribes no course of action.
+                justification: |
+                  A missing file has no content region to find, and the refusal reports that as a
+                  returned result the model can act on rather than as an exception that would end
+                  the agent's turn. The type is judged before existence, matching the family's
+                  order, so a trimmable extension naming no file is refused as not found rather
+                  than as an untrimmable type.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_MissingFile_ReturnsDenial
+
+              - id: AgentKitTools-Image-AutoCropTool-MalformedRequestDenied
+                title: >-
+                  The auto-crop tool shall return a refusal, rather than raising an exception or a
+                  framework error, when the requested path is omitted, empty or consists only of
+                  whitespace.
+                justification: |
+                  A malformed request comes from the model, so the model is the one that must be
+                  told how to correct it. An exception at a tool call ends the agent's turn and
+                  strands it. An omitted argument is the same case reached by a different route: a
+                  parameter that is required rather than defaulted fails inside the function
+                  factory before the tool is reached, and the model receives an opaque framework
+                  error instead of a refusal naming what to supply. Every one of this tool's
+                  parameters therefore carries a default — including the two that are genuinely
+                  optional, whose absence means "apply the default" and "return the region inline"
+                  rather than "refuse".
+                tests:
+                  - ImageAutoCropTool_AutoCrop_MissingPathArgument_ReturnsDenialWithoutThrowing
+                  - ImageAutoCropTool_AutoCrop_BlankPath_ReturnsDenialWithoutThrowing
+
+              - id: AgentKitTools-Image-AutoCropTool-DenialDisclosure
+                title: >-
+                  A refusal from the auto-crop tool shall carry the disclosure the access policy
+                  produces, while a refusal the tool composes itself shall name only integers and
+                  the resolved media type.
+                justification: |
+                  A policy refusal discloses the permitted locations so a confined model learns
+                  where it may look instead of guessing, and this tool passes that refusal through
+                  unchanged. Everything this tool composes itself reaches a model in a transcript
+                  that leaves the process, so it carries no absolute path, no permitted location
+                  and no directory separator — only the numbers and the media type the model needs
+                  to correct its request. The rule is scoped to refusals: the confirmation for a
+                  written region is not one, and it names the destination in the policy's own
+                  dialect, because a name the model is handed is a name it can hand forward.
+                tests:
+                  - ImageAutoCropTool_AutoCrop_DeniedPath_DenialDisclosesPermittedLocation
+                  - ImageAutoCropTool_AutoCrop_FileWhoseExtensionLiesAboutItsContent_ReturnsDenialWithoutDimensions
+                  - ImageAutoCropTool_AutoCrop_DestinationDenials_NameNoHostPath

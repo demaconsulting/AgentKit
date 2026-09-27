@@ -45,43 +45,61 @@ sections:
                   time for a reason no caller could act on, so the pack honors the contract it is
                   judged against.
                 tests:
-                  - ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools
+                  - ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools
                   - ImagePack_CreateTools_Policy_ReturnsNoNullTool
 
               - id: AgentKitTools-Image-Pack-PublishedUnderEveryPolicy
                 title: >-
-                  The image pack shall offer both of its tools under every access policy,
+                  The image pack shall offer every one of its tools under every access policy,
                   including one that permits no writing anywhere.
                 justification: |
-                  Both tools can succeed where nothing may be written: examining an image needs
-                  only permission to read it, and extracting a region returns the region to the
-                  model to look at rather than producing a file. Withholding either would remove a
-                  capability that works. Region extraction also accepts an optional destination
-                  that does need permission to write, but the family is judged on whether a tool
-                  could ever succeed, not on whether every one of its arguments could — the
-                  opposite reading would require a gate for every optional argument and would
-                  remove a primary, fully working mode over a secondary one. Naming a destination
-                  where nothing may be written is answered by the ordinary refusal, which states
-                  the locations that could be written, so the agent learns its options in one turn
-                  rather than losing the capability altogether. For the same reason the description
-                  a model reads does not change with the configuration: it is a single fixed
-                  statement, so a model is never shown a capability described one way in one place
-                  and another way in another.
+                  Every tool can succeed where nothing may be written: examining an image needs
+                  only permission to read it, and extracting or trimming a region returns the
+                  region to the model to look at rather than producing a file. Withholding any of
+                  them would remove a capability that works. Both region tools also accept an
+                  optional destination that does need permission to write, but the family is
+                  judged on whether a tool could ever succeed, not on whether every one of its
+                  arguments could — the opposite reading would require a gate for every optional
+                  argument and would remove a primary, fully working mode over a secondary one.
+                  Naming a destination where nothing may be written is answered by the ordinary
+                  refusal, which states the locations that could be written, so the agent learns
+                  its options in one turn rather than losing the capability altogether. For the
+                  same reason the description a model reads does not change with the
+                  configuration: it is a single fixed statement, so a model is never shown a
+                  capability described one way in one place and another way in another.
                 tests:
-                  - ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop
+                  - ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesEveryTool
 
               - id: AgentKitTools-Image-Pack-RegistersCropTool
                 title: >-
                   The image pack shall create the crop tool alongside the read tool.
                 justification: |
-                  The two tools are one capability rather than two: the read tool reports the
+                  The read tool and the crop tool are one capability rather than two: the read
+                  tool reports the
                   coordinate space the crop tool consumes, so a pack that published only one of
                   them would offer a model either a region request it cannot aim or a size it has
                   nothing to use. Creating them together in the one place the family prefix is
                   claimed is what makes that pairing a property of the pack rather than of each
                   application's composition code.
                 tests:
-                  - ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools
+                  - ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools
+                  - ImagePack_CreateTools_Policy_ReturnsNoNullTool
+
+              - id: AgentKitTools-Image-Pack-RegistersAutoCropTool
+                title: >-
+                  The image pack shall create the auto-crop tool alongside the read and crop
+                  tools.
+                justification: |
+                  A model that can see a picture is mostly margin cannot measure where the margin
+                  stops, so the region it would name in the crop tool's coordinate space is a
+                  guess. Publishing the auto-crop tool beside its siblings is what gives the model
+                  the one region request it can make without measuring, and creating all three in
+                  the one place the family prefix is claimed is what makes the family's
+                  composition a property of the pack rather than of each application's own
+                  wiring — an application that had to remember to register a third tool would
+                  eventually ship without it.
+                tests:
+                  - ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools
                   - ImagePack_CreateTools_Policy_ReturnsNoNullTool
 
               - id: AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix

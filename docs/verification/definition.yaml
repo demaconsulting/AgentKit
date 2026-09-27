@@ -29,6 +29,7 @@ input-files:
   - docs/verification/agent-kit-core/compacting-agent-session.md
   - docs/verification/agent-kit-tools.md
   - docs/verification/agent-kit-tools/image.md
+  - docs/verification/agent-kit-tools/image/image-auto-crop-tool.md
   - docs/verification/agent-kit-tools/image/image-crop-tool.md
   - docs/verification/agent-kit-tools/image/image-media-types.md
   - docs/verification/agent-kit-tools/image/image-pack.md

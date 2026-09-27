@@ -243,7 +243,8 @@ tools of the text file family and the three management tools of the file family.
 asked of the whole policy, so a read-only workspace paired with a read-write session folder still
 publishes them all. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tools only when the host
-declares that capability; a host that does not is never offered `image_read` or `image_crop`.
+declares that capability; a host that does not is never offered `image_read`, `image_crop` or
+`image_auto_crop`.
 
 Providers differ in where they accept images. Some deliver an image a tool returned straight to
 the model; others accept images only on messages and silently discard one that arrives in a tool

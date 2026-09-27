@@ -63,15 +63,23 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | Croppable set     | `string` | Held by `ImageMediaTypes`; interpolated into its refusals      |
 | Denial messages   | `string` | Tool-composed; interpolate only integers and the media type    |
 
-Five of those denial messages concern the destination:
+Five of those denial messages concern the destination. **Four of the five now live in the shared
+`ImageDestination` helper**, unchanged in wording, because both region tools ask the same
+destination questions in the same order and a second copy would be a second place a later correction
+has to reach. The fifth stays here, because it names *what* could not be written and only the tool
+that produced it knows that:
 
-| Constant                   | Reason           | Why that reason                                       |
-| -------------------------- | ---------------- | ----------------------------------------------------- |
-| `DestinationMustBePng`     | `InvalidRequest` | No file exists yet whose type could be unsupported    |
-| `DestinationIsDirectory`   | `InvalidRequest` | Matches `TextFileCreateTool.PathIsDirectory`          |
-| `DestinationExists`        | `InvalidRequest` | Matches `TextFileCreateTool.FileExists`               |
-| `DestinationParentMissing` | `TargetNotFound` | Matches `TextFileCreateTool.ParentMissing`            |
-| `DestinationUnwritable`    | `InvalidRequest` | Matches this unit's own `FileUnreadable`              |
+| Constant                              | Reason           | Why that reason                                       |
+| ------------------------------------- | ---------------- | ----------------------------------------------------- |
+| `ImageDestination.MustBePng`          | `InvalidRequest` | No file exists yet whose type could be unsupported    |
+| `ImageDestination.IsDirectory`        | `InvalidRequest` | Matches `TextFileCreateTool.PathIsDirectory`          |
+| `ImageDestination.Exists`             | `InvalidRequest` | Matches `TextFileCreateTool.FileExists`               |
+| `ImageDestination.ParentMissing`      | `TargetNotFound` | Matches `TextFileCreateTool.ParentMissing`            |
+| `DestinationUnwritable` (this unit)   | `InvalidRequest` | Matches `ImageAdmission.FileUnreadable`               |
+
+The `Destination` record that carries a permitted destination together with the form a confirmation
+reports it in likewise belongs to `ImageDestination` rather than to this unit, for the same reason:
+it is the shape of the shared helper's answer.
 
 A sixth destination refusal — the destination not being writable at all — is composed by nothing in
 this unit. It is `PathPolicy.TryResolveWrite`'s own message, returned unchanged under
@@ -422,17 +430,24 @@ which is the entire purpose of writing one. The requirement states the rule the 
 
 `PathPolicy` and `ToolLimits` for the read decision, the write decision, the output dialect
 (`PathPolicy.EmitRelative` and `PathPolicy.WorkingDirectory`) and both ceilings, `ImageMediaTypes`
-for the croppable-type resolution, the destination's extension check and its refusals,
-`ImageProbe` for the header read that yields the
-declared size and whether the decoder expects to decode it, `ToolResult` for every result it
+for the croppable-type resolution, `ImageAdmission` for the read within the binary ceiling, the
+header triage — including the declared size and whether the decoder expects to decode it, which it
+obtains from `ImageProbe` — the decode budget and the decode itself, `ImageDestination` for the
+destination's extension check, its write decision, its remaining refusals and its
+`FileMode.CreateNew` write, `ToolResult` for every result it
 returns, and
-`GuardedToolFactory` for construction. From the Base Class Library: `File`, `Directory`,
-`FileStream` and `MemoryStream`. From the `CanvasNet` OTS item: the decoders, the pixel buffer's
+`GuardedToolFactory` for construction. From the Base Class Library: `File`, `Directory` and
+`MemoryStream`. From the `CanvasNet` OTS item: the pixel buffer's
 rectangular
-sub-region copy, the published per-axis bound and the encoder; see *CanvasNet Design*. **No type
+sub-region copy and the encoder; see *CanvasNet Design*. **No type
 from that library appears in this unit's signatures**, so the dependency stays an implementation
 detail of the family. `AIFunction` and the content types, from
 `Microsoft.Extensions.AI.Abstractions`, are the form the constructed tool and its result take.
+
+`ImageAdmission` and `ImageDestination` are shared helpers of this subsystem rather than units, on
+the precedent `ImageProbe` sets; see *Image Subsystem Design*. This unit keeps its own control flow,
+its own check order and every one of its own messages — only the bodies of the steps it shares with
+`ImageAutoCropTool` live in the helpers.
 
 #### Callers
 

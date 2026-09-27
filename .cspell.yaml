@@ -80,6 +80,13 @@ words:
   - Deflate
   - croppable
   - uncroppable
+  - trimmable
+  - untrimmable
+  - assertable
+  - extensionless
+  - gridline
+  - coprime
+  - Chebyshev
   - triaging
   - Skia
   - Magick

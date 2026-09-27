@@ -45,26 +45,29 @@ the `DemaConsulting.AgentKit.Tools.Tests` project.
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all nineteen scenarios below pass without error or exception
+A subsystem test run passes when all twenty-one scenarios below pass without error or exception
 beyond those explicitly asserted. A tool published outside the family prefix, image content
 arriving as a `JsonElement`, a family registered for a non-vision host, a pack consulted despite
 an unmet capability, a refusal raised as an exception rather than returned, a policy refusal that
 fails to disclose the permitted location, a relative name that is not resolved against the
 workspace, a permitted read that fails, a caption that omits a size the family could establish, an
-out-of-bounds region answered with content rather than a refusal, an oversized declared image
+out-of-bounds region answered with content rather than a refusal, an image trimmed against an
+assumed background rather than its own, an entirely-background image answered with the whole
+picture or answered with a file written, an oversized declared image
 decoded before being refused, and a truncated result where a refusal was required each constitute
 a failure.
 
 ### Test Scenarios
 
-#### AgentKitTools-Image-FamilyComposition: The Family Publishes Both Tools
+#### AgentKitTools-Image-FamilyComposition: The Family Publishes Every Tool
 
 **Test**: `Image_Family_ComposedThroughBuilder_PublishesBothTools`
 
-Normal operation: composes the pack through a `ToolPackBuilder` on a vision host and asserts both
-tool names, confirming the family is attached as one unit and publishes what it promises. The two
+Normal operation: composes the pack through a `ToolPackBuilder` on a vision host and asserts every
+tool name, confirming the family is attached as one unit and publishes what it promises. They
 are asserted together because they are one capability: the read tool states the coordinate space
-the crop tool consumes.
+the crop tool consumes, and the auto-crop tool answers the region question a model cannot state in
+that space at all.
 
 #### AgentKitTools-Image-FamilyComposition: A Host Declaring Vision Receives the Family
 
@@ -136,7 +139,8 @@ No file is produced, because the scenario names no destination, and no JSON copy
 
 **The increment's thesis, in one scenario.** The family states an image's size; the region named
 within exactly that size is accepted; the region one pixel beyond it is refused, naming the same
-size. The two tools are one capability, and this is the scenario that observes the join rather than
+size. The read tool and the crop tool are one capability, and this is the scenario that observes
+the join rather than
 each half separately.
 
 #### AgentKitTools-Image-RegionDestination: A Region Is Written to a Permitted Destination
@@ -189,6 +193,26 @@ make a discovered name unusable.
 
 Error path: a request for a location outside the permitted one returns text naming a denial reason
 rather than raising an exception, confirming a refused agent is told why rather than stranded.
+
+#### AgentKitTools-Image-ContentTrimming: A Trimmed Image Is Returned as Image Content
+
+**Test**: `Image_Family_TrimmedImage_IsReturnedAsImageContent`
+
+Normal operation for the capability neither reading nor a named region provides, reached through
+the pack an application attaches. The model can see that a picture is mostly margin; it cannot
+measure where the margin stops, so a region it named would be a guess. The scenario asserts the
+exact returned size — the content block, not the whole picture — and that it is smaller than the
+source on both axes. The fixture's background is dark, so a composition that assumed white would
+return the whole picture and fail here rather than passing with a weaker answer.
+
+#### AgentKitTools-Image-ContentTrimming: An Entirely Background Image Is Refused Without Writing
+
+**Test**: `Image_Family_EntirelyBackgroundImage_IsRefusedWithoutWriting`
+
+Error path: an image with no content has no honest region to return, and answering with the whole
+picture would be a different question answered while reporting success. The destination named here
+would have been permitted, so the absence of the file is what proves the write is genuinely the
+last step rather than one that happens to be skipped.
 
 #### AgentKitTools-Image-DenialsAreResults: A Refusal Discloses the Permitted Location
 

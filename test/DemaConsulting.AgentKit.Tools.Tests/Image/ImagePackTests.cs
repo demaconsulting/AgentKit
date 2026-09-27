@@ -66,15 +66,17 @@ public class ImagePackTests
     }
 
     /// <summary>
-    ///     Proves the pack creates the read tool and the crop tool.
+    ///     Proves the pack creates the read tool, the crop tool and the auto-crop tool.
     /// </summary>
     /// <remarks>
-    ///     The two are asserted together because they are one capability: the read tool reports
-    ///     the coordinate space the crop tool consumes, and a pack that published only one of
-    ///     them would offer a model a region request it could not aim or a size it could not use.
+    ///     The three are asserted together because they are one capability: the read tool reports
+    ///     the coordinate space the crop tool consumes, and the auto-crop tool answers the region
+    ///     question a model cannot state in that space at all. A pack that published only some of
+    ///     them would offer a model a region request it could not aim, a size it could not use,
+    ///     or no way to trim a picture it can see is mostly margin.
     /// </remarks>
     [Fact]
-    public void ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools()
+    public void ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools()
     {
         // Arrange: a pack and a policy to govern its tools
         var pack = new ImagePack();
@@ -83,27 +85,29 @@ public class ImagePackTests
         // Act: create the family's tools
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: exactly the two tools the family publishes
-        Assert.Equal(2, tools.Count);
+        // Assert: exactly the three tools the family publishes
+        Assert.Equal(3, tools.Count);
         Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
         Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
+        Assert.Contains(tools, tool => tool.Name == ImageAutoCropTool.ToolName);
     }
 
     /// <summary>
     ///     Proves the family is published whole under a policy that permits no writing anywhere,
-    ///     because both tools can succeed there: reading an image is a read, and cropping without a
-    ///     destination returns image content rather than writing a file.
+    ///     because every one of its tools can succeed there: reading an image is a read, and both
+    ///     region tools return image content rather than writing a file when no destination is
+    ///     named.
     /// </summary>
     /// <remarks>
-    ///     This records a deliberate decision rather than an incidental outcome. The crop tool
-    ///     accepts an optional <c>destination</c> that does require a write grant, but the rule a
+    ///     This records a deliberate decision rather than an incidental outcome. Both region tools
+    ///     accept an optional <c>destination</c> that does require a write grant, but the rule a
     ///     pack applies is "could this tool ever succeed", not "could every argument ever succeed".
-    ///     Suppressing crop would remove its primary, fully-working inline mode; naming a
+    ///     Suppressing either would remove its primary, fully-working inline mode; naming a
     ///     destination under a read-only policy earns an ordinary denial that tells the model where
     ///     it could write instead.
     /// </remarks>
     [Fact]
-    public void ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop()
+    public void ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesEveryTool()
     {
         // Arrange: every grant is read-only, so nothing anywhere may be written
         var pack = new ImagePack();
@@ -112,10 +116,11 @@ public class ImagePackTests
         // Act: create the family's tools under that policy
         var tools = pack.CreateTools(policy).ToList();
 
-        // Assert: both tools survive — the family is never narrowed by a read-only path policy
-        Assert.Equal(2, tools.Count);
+        // Assert: all three survive — the family is never narrowed by a read-only path policy
+        Assert.Equal(3, tools.Count);
         Assert.Contains(tools, tool => tool.Name == ImageReadTool.ToolName);
         Assert.Contains(tools, tool => tool.Name == ImageCropTool.ToolName);
+        Assert.Contains(tools, tool => tool.Name == ImageAutoCropTool.ToolName);
     }
 
     /// <summary>
@@ -175,9 +180,9 @@ public class ImagePackTests
     ///     Proves the policy the composer supplies is the one governing every created tool.
     /// </summary>
     /// <remarks>
-    ///     Asserted against the read tool and the crop tool in turn, because a tool that quietly
-    ///     observed a different policy from its neighbor would make the configured containment
-    ///     unverifiable — which is the same as not having it.
+    ///     Asserted against the read tool, the crop tool and the auto-crop tool in turn, because
+    ///     a tool that quietly observed a different policy from its neighbor would make the
+    ///     configured containment unverifiable — which is the same as not having it.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -191,9 +196,10 @@ public class ImagePackTests
         var tools = new ImagePack().CreateTools(policy).ToList();
         var readTool = tools.Single(tool => tool.Name == ImageReadTool.ToolName);
         var cropTool = tools.Single(tool => tool.Name == ImageCropTool.ToolName);
+        var autoCropTool = tools.Single(tool => tool.Name == ImageAutoCropTool.ToolName);
 
         // Act: read one path the policy permits and one it does not, then refuse the same path
-        // through the sibling tool
+        // through each sibling tool
         var permittedResult = await InvokeReadAsync(readTool, permitted);
         var refusedResult = await InvokeReadAsync(readTool, refused);
         var cropRefusedResult = await cropTool.InvokeAsync(
@@ -206,6 +212,7 @@ public class ImagePackTests
                 ["height"] = 1
             },
             TestContext.Current.CancellationToken);
+        var autoCropRefusedResult = await InvokeReadAsync(autoCropTool, refused);
 
         // Assert: the supplied policy governs every decision, whichever tool made it
         var content = Assert.IsType<List<AIContent>>(permittedResult);
@@ -217,6 +224,10 @@ public class ImagePackTests
         Assert.Contains(
             "Denied (PathNotPermitted)",
             Assert.IsType<string>(cropRefusedResult),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Denied (PathNotPermitted)",
+            Assert.IsType<string>(autoCropRefusedResult),
             StringComparison.Ordinal);
     }
 

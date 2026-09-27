@@ -29,10 +29,11 @@ Unit tests reside in `Image/ImagePackTests.cs`, reusing the shared temporary-dir
 
 #### Acceptance Criteria
 
-A unit test run passes when all nine scenarios below pass without error or exception beyond those
+A unit test run passes when all eleven scenarios below pass without error or exception beyond those
 explicitly asserted. A prefix that differs between the constant and the contract, a capability
-requirement other than vision, a tool count other than two, a tool named anything other than
-`image_read` or `image_crop`, a null element, a tool outside the family prefix, an accepted null
+requirement other than vision, a tool count other than three, a tool named anything other than
+`image_read`, `image_crop` or `image_auto_crop`, a null element, a tool outside the family prefix,
+an accepted null
 policy, and a created tool that does not observe the supplied policy each constitute a failure.
 
 #### Test Scenarios
@@ -58,32 +59,47 @@ the two cannot drift apart.
 Normal operation: requiring the vision capability is what lets the composition withhold the family
 from a host that cannot present its content.
 
-##### AgentKitTools-Image-Pack-RegistersReadTool: Both Tools Are Created
+##### AgentKitTools-Image-Pack-RegistersReadTool: Every Tool Is Created
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
 
-Asserts exactly two tools, named `image_read` and `image_crop`, confirming the pack produces the
+Asserts exactly three tools, named `image_read`, `image_crop` and `image_auto_crop`, confirming the
+pack produces the
 family's tools for an application to receive.
 
 ##### AgentKitTools-Image-Pack-RegistersCropTool: The Crop Tool Is Created Alongside the Read Tool
 
-**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadAndCropTools`
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
 
-The same scenario read from the other side: the two tools are one capability, so the pack creating
+The same scenario read from the other side: the read tool and the crop tool are one capability, so
+the pack creating
 both in the one place the family prefix is claimed is what makes that pairing a property of the
 pack rather than of each application's composition code.
 
-##### AgentKitTools-Image-Pack-PublishedUnderEveryPolicy: Both Tools Survive a Read-Only Policy
+##### AgentKitTools-Image-Pack-RegistersAutoCropTool: The Auto-Crop Tool Is Created Alongside Its Siblings
 
-**Test**: `ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesReadAndCrop`
+**Test**: `ImagePack_CreateTools_Policy_CreatesTheReadCropAndAutoCropTools`
 
-Asserts that a policy whose every grant is read-only still yields exactly two tools, `image_read`
-and `image_crop`. Confirms the family is never narrowed by the access policy, which is a decision
+The same scenario read from the third side. A model that can see a picture is mostly margin cannot
+measure where the margin stops, so the region it would name in the crop tool's coordinate space is
+a guess; publishing the auto-crop tool beside its siblings is what gives it the one region request
+it can make without measuring. Creating all three in the one place the family prefix is claimed is
+what stops an application shipping without the third.
+
+##### AgentKitTools-Image-Pack-PublishedUnderEveryPolicy: Every Tool Survives a Read-Only Policy
+
+**Test**: `ImagePack_CreateTools_ReadOnlyPolicy_StillPublishesEveryTool`
+
+Asserts that a policy whose every grant is read-only still yields exactly three tools, `image_read`,
+`image_crop` and `image_auto_crop`. Confirms the family is never narrowed by the access policy,
+which is a decision
 rather than an incidental outcome and so is asserted rather than merely described.
 
-Both tools can succeed where nothing may be written: reading an image is a read, and cropping
-without a destination returns image content rather than producing a file. The crop tool's optional
-`destination` does need a write grant, but the rule the packs apply is whether a tool could ever
+Every tool can succeed where nothing may be written: reading an image is a read, and taking or
+trimming a region
+without a destination returns image content rather than producing a file. The optional
+`destination` both region tools accept does need a write grant, but the rule the packs apply is
+whether a tool could ever
 succeed, not whether every argument could — so a destination named under this policy earns the
 ordinary write denial, which enumerates the writable locations, instead of the whole tool
 disappearing.
@@ -115,6 +131,7 @@ appearing correctly composed, so the mistake is reported at the line that made i
 
 Normal operation and error path together: one permitted path returns its content and one path
 outside the policy's location is refused, proving behaviorally that the supplied policy — not one
-the pack invented — is in force. The refusal is asserted through the crop tool as well as the read
+the pack invented — is in force. The refusal is asserted through the crop tool and the auto-crop
+tool as well as the read
 tool, because a tool that quietly observed a different policy from its neighbor would make the
 configured containment unverifiable.
