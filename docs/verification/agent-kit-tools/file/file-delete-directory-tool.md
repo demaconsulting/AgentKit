@@ -55,11 +55,12 @@ same project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 12 requirement scenarios below, covering 17 listed test method
+A unit test run passes when all 12 requirement scenarios below, covering 18 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an ignored policy decision, a link followed out of
 the tree, a path accepted that is reached through a link out of the permitted location, a link's
-target disturbed, a link's target named in a refusal, a tree partly removed
+target disturbed, a link named directly that is refused rather than removed on any platform, a
+link's target named in a refusal, a tree partly removed
 after a refusal, a partial removal reported as though nothing happened, a tree at exactly the
 ceiling removed short of whole, a file-system failure
 thrown rather than returned, a ceiling not observed, a removal count misreported, a leaked path, a
@@ -101,11 +102,26 @@ grant is gone, so this scenario is known to be load-bearing rather than assumed 
 
 **Test**: `FileDeleteDirectoryTool_Delete_DirectoryThatIsItselfALink_RemovesTheLinkAndNotItsTarget`
 
+**Test**: `FileDeleteDirectoryTool_Delete_LinkWhoseTargetIsGone_RemovesTheLink`
+
 Security control, and the complement of the scenario above. A link named directly is removed and
 the target directory and the file inside it are confirmed intact. Without this behavior the
 refusal above would be a dead end — a workspace containing a link would be permanently undeletable
 by the agent, since the single-file deletion refuses a directory and a link is a directory — so
 this scenario is what proves the denial teaches rather than merely stops.
+
+The second test covers the case the first cannot: a link whose **target has already been removed**.
+It is the case where the platforms disagree — measured, a Windows junction whose target has gone
+still answers `Directory.Exists`, while a POSIX symbolic link answers `File.Exists` instead,
+because `Directory.Exists` follows it — so an implementation that judged the path by what it leads
+to before classifying the entry removed the link on Windows and refused it as a file on Linux and
+macOS. The test creates the link with the same `DirectoryLink` helper, deletes its target, asserts
+the request is not denied, and asserts the entry is gone by reading its link target from its own
+metadata rather than by following the path. **It runs on every platform rather than skipping**,
+because the platform it would have to skip on is the platform it exists for: run against the
+existence-first ordering it passes on Windows and fails on Linux with
+`Denied (InvalidRequest): The requested path is a file`, which is how the scenario is known to be
+load-bearing.
 
 ##### AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused: A Planning Failure Is Returned, Not Thrown
 

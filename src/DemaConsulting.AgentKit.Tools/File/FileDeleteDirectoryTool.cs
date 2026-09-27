@@ -53,7 +53,11 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     undeletable, because <see cref="FileDeleteTool"/> refuses a directory and a link is a
 ///     directory. So a link the request names directly is removed, unfollowed, and the result says
 ///     plainly that what it pointed at was not touched. That gives a model met with the refusal a
-///     concrete way forward — name the link, then ask for the parent again.
+///     concrete way forward — name the link, then ask for the parent again. The rule holds even
+///     when the link's target has since been removed: such a link is classified from its own
+///     metadata rather than from what it leads to, because a dangling link is reported as a
+///     directory on Windows and as a file on the POSIX hosts, and a rule that asked what the
+///     path leads to first would offer the way forward on one platform of three.
 ///     </para>
 ///     <para>
 ///     <b>A recursive framework delete is never issued.</b> Measured on Windows, deleting a tree
@@ -294,6 +298,18 @@ public static class FileDeleteDirectoryTool
                     LinkGuard.DescribeAncestor(path, realPath, linkedAncestor)));
         }
 
+        // A link the request named directly is removed as the link alone, never followed, and it
+        // is classified before the questions below, which all judge the path by what it leads to.
+        // A link whose target has been removed is still an entry, and the two platform families
+        // report it differently: a Windows junction still answers Directory.Exists, while a POSIX
+        // symbolic link answers File.Exists instead, because Directory.Exists follows it. Judging
+        // the target first would therefore make this escape hatch a Windows-only one.
+        var namedLinkRemoval = TryDeleteNamedLink(realPath);
+        if (namedLinkRemoval is not null)
+        {
+            return namedLinkRemoval;
+        }
+
         // A file is never removed by the directory tool; keeping the single-file and whole-tree
         // capabilities apart is what bounds each one's blast radius.
         if (System.IO.File.Exists(realPath))
@@ -306,13 +322,6 @@ public static class FileDeleteDirectoryTool
         if (!Directory.Exists(realPath))
         {
             return ToolResult.Denied(DenialReason.TargetNotFound, DirectoryNotFound);
-        }
-
-        // A link the request named directly is removed as the link alone, never followed. This is
-        // what keeps the link refusal below from leaving a workspace permanently undeletable.
-        if (LinkGuard.IsLink(new DirectoryInfo(realPath)))
-        {
-            return DeleteLink(realPath);
         }
 
         // Phase one: plan the whole removal, touching nothing. The walk refuses on the first link
@@ -368,20 +377,112 @@ public static class FileDeleteDirectoryTool
     }
 
     /// <summary>
+    ///     Removes a link the request named directly, or reports that the path is not one this
+    ///     tool removes as a link.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Why the classification comes before the existence questions.</b> A link is
+    ///     recognized from the entry's own metadata, which costs nothing to read and says nothing
+    ///     about what the link leads to. Asking <see cref="Directory.Exists(string)"/> first
+    ///     would ask a question about the <em>target</em>, and a link whose target has been
+    ///     removed answers it differently on each platform family: measured, a Windows junction
+    ///     still reports a directory, while a POSIX symbolic link reports no directory and a file
+    ///     instead, because <see cref="Directory.Exists(string)"/> follows it. Ordering the target
+    ///     question first therefore left a dangling link removable on Windows and, on the POSIX
+    ///     hosts, refused by this tool as though it were a file — so the escape hatch the type
+    ///     remarks promise held on one platform of three.
+    ///     </para>
+    ///     <para>
+    ///     <b>Why a file link is still left alone.</b> A link that still resolves to a file is a
+    ///     file as far as a request to delete a <em>directory</em> is concerned, and
+    ///     <see cref="FileDeleteTool"/> removes it — the link alone — perfectly well. Returning
+    ///     it unhandled keeps the two capabilities apart, which is the property that stops this
+    ///     tool being a second route to removing one named file.
+    ///     </para>
+    /// </remarks>
+    /// <param name="realPath">The resolved path the request named.</param>
+    /// <returns>
+    ///     A confirmation or a refusal when the path was a link this tool removes; otherwise
+    ///     <see langword="null"/>, meaning the caller should go on judging the path normally.
+    /// </returns>
+    private static object? TryDeleteNamedLink(string realPath)
+    {
+        // A link the host reports as a directory — every live directory link, and on Windows a
+        // junction whose target has gone as well — is taken by the non-recursive directory
+        // delete, which removes the link and leaves the target's contents intact.
+        if (Directory.Exists(realPath))
+        {
+            return LinkGuard.IsLink(new DirectoryInfo(realPath))
+                ? DeleteLink(realPath, asDirectory: true)
+                : null;
+        }
+
+        // Nothing resolves through the path as a directory. A link here either still leads to a
+        // file, which is the file tool's business, or leads nowhere at all — and a link leading
+        // nowhere has no target left to disturb, so removing the entry is the whole of the act.
+        return LinkGuard.IsLink(new FileInfo(realPath)) && !LeadsToSomething(realPath)
+            ? DeleteLink(realPath, asDirectory: false)
+            : null;
+    }
+
+    /// <summary>
+    ///     Determines whether a link still leads to something that exists.
+    /// </summary>
+    /// <remarks>
+    ///     The final target is resolved rather than the first hop, because a chain of links is
+    ///     dangling only if the end of it is. A chain that cannot be resolved at all — a cycle,
+    ///     or a component the process may not traverse — is reported as leading nowhere, since
+    ///     there is no reachable entry for this tool to be deferring to.
+    /// </remarks>
+    /// <param name="realPath">The resolved path of the link.</param>
+    /// <returns>
+    ///     <see langword="true"/> when the link's final target exists; otherwise
+    ///     <see langword="false"/>.
+    /// </returns>
+    private static bool LeadsToSomething(string realPath)
+    {
+        try
+        {
+            return new FileInfo(realPath).ResolveLinkTarget(returnFinalTarget: true)?.Exists
+                ?? false;
+        }
+        catch (Exception exception) when (IsAccessFailure(exception))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     ///     Removes a link entry without following it.
     /// </summary>
     /// <remarks>
     ///     A non-recursive delete of a link removes the link and leaves the target's contents
     ///     intact — measured, not assumed — which is what makes naming a link directly a safe and
-    ///     useful thing for a model to do.
+    ///     useful thing for a model to do. Which call performs the removal has to match what the
+    ///     host reports the entry to be: also measured, a directory delete of a POSIX symbolic
+    ///     link whose target has gone fails with <see cref="DirectoryNotFoundException"/>, and a
+    ///     file delete of a Windows junction fails with
+    ///     <see cref="UnauthorizedAccessException"/>.
     /// </remarks>
     /// <param name="realPath">The resolved path of the link.</param>
+    /// <param name="asDirectory">
+    ///     Whether the host reports the entry as a directory, and therefore whether the directory
+    ///     delete or the file delete is the call that removes it.
+    /// </param>
     /// <returns>A confirmation, or a refusal naming its reason.</returns>
-    private static object DeleteLink(string realPath)
+    private static object DeleteLink(string realPath, bool asDirectory)
     {
         try
         {
-            Directory.Delete(realPath, recursive: false);
+            if (asDirectory)
+            {
+                Directory.Delete(realPath, recursive: false);
+            }
+            else
+            {
+                System.IO.File.Delete(realPath);
+            }
 
             return ToolResult.Text(LinkRemoved);
         }

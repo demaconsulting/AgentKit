@@ -66,7 +66,8 @@ sections:
               - id: AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
                 title: >-
                   The delete-directory tool shall remove a directory that is itself a link as the
-                  link alone, without following it and without touching what it points at.
+                  link alone, without following it and without touching what it points at, on
+                  every platform and whether or not the link still has a target.
                 tags: [security]
                 justification: |
                   Were a link never removable, the refusal above would be a dead end: a workspace
@@ -75,8 +76,18 @@ sections:
                   named entry to be removed, unfollowed, gives a model met with the refusal a
                   concrete and bounded way forward, which is what makes that denial teach rather
                   than merely stop.
+
+                  A link whose target has already been removed is named explicitly because it is
+                  the case where the hosts disagree: measured, a Windows junction whose target has
+                  gone still answers Directory.Exists, while a POSIX symbolic link answers
+                  File.Exists instead, because Directory.Exists follows it. A tool that judged the
+                  path by what it leads to before classifying the entry therefore offered this way
+                  forward on Windows alone, and refused the same request as a file on Linux and
+                  macOS — which is the dead end this requirement exists to prevent, on two
+                  platforms of three.
                 tests:
                   - FileDeleteDirectoryTool_Delete_DirectoryThatIsItselfALink_RemovesTheLinkAndNotItsTarget
+                  - FileDeleteDirectoryTool_Delete_LinkWhoseTargetIsGone_RemovesTheLink
 
               - id: AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
                 title: >-

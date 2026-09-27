@@ -19,6 +19,11 @@ namespace DemaConsulting.AgentKit.Tools.Tests.File;
 ///     discovers.
 ///     </para>
 ///     <para>
+///     A link whose target has already gone is covered separately, because it is the one case in
+///     which the two platform families report the same entry differently and an implementation can
+///     therefore be correct on the platform it was developed on and wrong on the other two.
+///     </para>
+///     <para>
 ///     A link is created by <see cref="DirectoryLink"/>, which fails the test rather than skipping
 ///     when the platform refuses: a skipped test leaves no entry in the results, and the security
 ///     requirement would appear covered with no evidence behind it.
@@ -109,6 +114,47 @@ public class FileDeleteDirectoryToolTests
         Assert.Equal(
             "outside-content",
             await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a directly named link whose target has already gone is still removed as the link
+    ///     alone, on every platform.
+    /// </summary>
+    /// <remarks>
+    ///     The scenario above leaves the link's target in place, and a dangling link is the case
+    ///     where the two platform families disagree: measured, a Windows junction whose target has
+    ///     been removed still answers <see cref="Directory.Exists(string)"/>, while a POSIX
+    ///     symbolic link answers <see cref="System.IO.File.Exists(string)"/> instead, because
+    ///     <see cref="Directory.Exists(string)"/> follows it. An implementation that judged the
+    ///     path by what it leads to before classifying the entry therefore removed such a link on
+    ///     Windows and refused it as a file on Linux and macOS — leaving an entry no tool in the
+    ///     family would take, since <c>file_delete_directory</c> called it a file and the walk
+    ///     above refuses any parent that contains it. This scenario runs everywhere rather than
+    ///     skipping, because the platform it would have to skip on is the platform it exists for.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_LinkWhoseTargetIsGone_RemovesTheLink()
+    {
+        // Arrange: a link inside the permitted location whose target is removed afterwards, so
+        // the entry is a genuine reparse point that leads nowhere
+        using var fixture = new TempDirectoryFixture();
+        var target = Path.Combine(fixture.Outside, "target");
+        Directory.CreateDirectory(target);
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "linked"), target);
+        Directory.Delete(target, recursive: false);
+        var tool = FileDeleteDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name the dangling link directly
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "linked" });
+
+        // Assert: accepted, and the entry itself is gone — the link target is read from the
+        // entry's own metadata, so a null one is proof the link was removed rather than followed
+        var text = Assert.IsType<string>(result);
+        Assert.DoesNotContain("Denied", text, StringComparison.Ordinal);
+        Assert.Null(new FileInfo(link.Path).LinkTarget);
+        Assert.False(Directory.Exists(link.Path));
+        Assert.False(System.IO.File.Exists(link.Path));
     }
 
     /// <summary>

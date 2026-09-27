@@ -58,10 +58,14 @@ governed by the supplied policy for the rest of its life.
    from the resolved target up to the grant root, and a link on that path refuses the request as
    `PathNotPermitted`, naming the offending component as the model spelled it. The grant root and
    everything above it are not classified.
-4. A `path` naming a file is refused as `InvalidRequest`.
-5. A missing directory is refused as `TargetNotFound`.
-6. A `path` that is **itself a link** takes the link branch: the link entry alone is removed,
-   unfollowed, and the confirmation says what it pointed at was not touched.
+4. A `path` that is **itself a link** takes the link branch, *before* anything is asked about what
+   the path leads to: the link entry alone is removed, unfollowed, and the confirmation says what
+   it pointed at was not touched. A link the host still reports as a directory is removed by the
+   non-recursive directory delete; a link that leads nowhere at all is removed by the file delete,
+   which is what the POSIX hosts require for one. A link that still resolves to a *file* is not
+   this branch's business and falls through to the next step.
+5. A `path` naming a file is refused as `InvalidRequest`.
+6. A missing directory is refused as `TargetNotFound`.
 7. **Phase one** walks the tree iteratively, over an explicit stack, and builds the removal plan,
    mutating nothing. The walk never descends into a link. The first link it meets — file or
    directory — ends the walk and the whole request is refused as `InvalidRequest`, naming the
@@ -112,6 +116,21 @@ Allowing the *named* path to be a link is what keeps that refusal from being a d
 link never removable, a workspace containing one would be permanently undeletable by the agent:
 `file_delete` refuses a directory, and a link is a directory. Naming the link directly removes it
 alone, and a non-recursive delete of a link was measured to leave the target's contents intact.
+
+**The named link is classified before the path is judged by what it leads to.** A link whose
+target has since been removed is still an entry, and the two platform families disagree about what
+kind of entry it is. Measured: a Windows junction whose target has gone still answers
+`Directory.Exists`, while a POSIX symbolic link answers `File.Exists` instead, because
+`Directory.Exists` follows it. An order that asked the existence questions first therefore made
+the escape hatch above a *Windows* escape hatch — on Linux and macOS the same request was refused
+as though the link were a file, leaving an entry the whole family would decline, since the walk
+refuses any parent that contains it. Classification reads only the entry's own metadata, which
+says nothing about the target, so placing it first costs nothing and makes the rule platform
+independent. The *removal call* still depends on what the host reports, because it must:
+`Directory.Delete` of a dangling POSIX symbolic link raises `DirectoryNotFoundException` and
+`File.Delete` of a Windows junction raises `UnauthorizedAccessException`, both measured. A link
+that still resolves to a *file* is deliberately left to `file_delete`, which keeps this tool from
+being a second route to removing one named file.
 
 **The refusal names the entry, never the target.** The offending entry is reported as the path the
 model supplied plus the relative sub-path the walk reached, in the separator dialect the request
@@ -189,7 +208,8 @@ The two phases refuse differently, because they leave the file system in differe
 results, and `GuardedToolFactory` for construction. `LinkGuard`, the subsystem's shared helper,
 answers what counts as a link and whether a named path was reached through one. From the Base Class
 Library it uses
-`Directory`, `File`, `DirectoryInfo`, `FileInfo`, `FileSystemInfo.LinkTarget`, `Path`, and
+`Directory`, `File`, `DirectoryInfo`, `FileInfo`, `FileSystemInfo.LinkTarget`,
+`FileSystemInfo.ResolveLinkTarget`, `Path`, and
 directory-deletion exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the
 constructed tool type.
 
