@@ -59,11 +59,14 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     one-slot limit above is: <em>every sequential overwrite is recoverable</em>.
 ///     </para>
 ///     <para>
-///     <b>Nothing is captured when there is nothing to lose.</b> An absent file has no previous
-///     content, and an existing but empty file has none either. Capturing an empty string in either
-///     case would leave a slot that pastes nothing while reporting success, and would additionally
-///     displace a genuine earlier capture. The confirmation distinguishes a file that was created
-///     from one that was replaced, and says whether anything was captured.
+///     <b>Nothing is captured when there is nothing to lose, and the slot is released.</b> An
+///     absent file has no previous content, and an existing but empty file has none either.
+///     Capturing an empty string in either case would leave a slot that pastes nothing while
+///     reporting success, so the tool captures nothing — and releases the slot rather than
+///     leaving an earlier capture standing, which would have the confirmation report that
+///     nothing was captured while a later paste handed back content displaced by an older
+///     write. The confirmation distinguishes a file that was created from one that was
+///     replaced, and says whether anything was captured.
 ///     </para>
 ///     <para>
 ///     <b>A non-text file is refused rather than captured and destroyed.</b> Binary content does not
@@ -304,15 +307,22 @@ public static class TextFileWriteTool
                     .ConfigureAwait(false);
             }
 
-            // Capture before writing, and only when there is content to lose. Capturing an empty
-            // string would leave a slot that pastes nothing while reporting success, and would
-            // displace a genuine earlier capture. Read, capture and write are three steps and are
-            // deliberately not serialized against another writer; see the type remarks for why the
-            // guarantee is scoped to sequential writes rather than defended with a lock.
+            // Capture before writing, and only when there is content to lose. A write that
+            // displaces nothing releases the slot rather than leaving it alone: the family promises
+            // that only the most recent overwrite is recoverable, so an earlier capture left
+            // standing would have the confirmation say nothing was captured while the paste tool
+            // handed back content displaced by some older write. Read, capture and write are three
+            // steps and are deliberately not serialized against another writer; see the type
+            // remarks for why the guarantee is scoped to sequential writes rather than defended
+            // with a lock.
             var captured = previous.Length > 0;
             if (captured)
             {
                 buffers.Capture(TextFileLineBuffers.OverwrittenSlot, previous);
+            }
+            else
+            {
+                buffers.Release(TextFileLineBuffers.OverwrittenSlot);
             }
 
             await System.IO.File.WriteAllTextAsync(realPath, content, cancellationToken)

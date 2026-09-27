@@ -156,6 +156,47 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
+    ///     Proves a write that displaces nothing clears the slot rather than leaving an older
+    ///     capture standing.
+    /// </summary>
+    /// <remarks>
+    ///     Load-bearing for the "only the most recent overwrite is recoverable" promise, and the
+    ///     failure it guards is the one hardest to notice: the confirmation would report that
+    ///     nothing was captured while the paste tool handed back content displaced by an earlier
+    ///     write. Replacing the release with nothing at all fails here.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileWriteTool_Write_AfterAnEarlierCapture_DisplacingNothing_LeavesNoStaleCapture()
+    {
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", "displaced by the first write");
+        TempDirectoryFixture.WriteFile(fixture.Root, "empty.txt", string.Empty);
+        var buffers = new TextFileLineBuffers();
+        var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root), buffers);
+
+        // The first write displaces real content, so the slot is populated.
+        await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "note.txt", ["content"] = "replacement" });
+        Assert.True(buffers.TryPaste(TextFileLineBuffers.OverwrittenSlot, out _));
+
+        // The second displaces nothing: an empty file, then a file that did not exist at all.
+        await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "empty.txt", ["content"] = "content" });
+
+        Assert.False(buffers.TryPaste(TextFileLineBuffers.OverwrittenSlot, out _));
+
+        await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "note.txt", ["content"] = "second" });
+        Assert.True(buffers.TryPaste(TextFileLineBuffers.OverwrittenSlot, out _));
+
+        await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "absent.txt", ["content"] = "fresh" });
+
+        Assert.False(buffers.TryPaste(TextFileLineBuffers.OverwrittenSlot, out _));
+    }
+
+    /// <summary>
     ///     Proves a write never lands on the model's working clipboard: a fragment already staged in
     ///     the default slot survives an overwrite untouched.
     /// </summary>

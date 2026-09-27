@@ -97,10 +97,8 @@ result as they happen, so you can watch the guarantees hold rather than take the
   `--read-only-workspace` a destination in the workspace is refused while the same call into the
   session folder succeeds — one tool call, two independent decisions.
 - **Capability-gated tools.** The image tools are offered only when the host declares the `Vision`
-  capability. Run with `--no-vision` and none of `image_read`, `image_crop` or `image_auto_crop` is
-  refused at call
-  time — they are never
-  presented to the model at all.
+  capability. Run with `--no-vision` and none of `image_read`, `image_crop` or `image_auto_crop` are
+  refused at call time — they are never presented to the model at all.
 - **Provider quirks absorbed by the adapters.** The Copilot runtime ships its own shell, fetch, and
   file-editing tools; the adapter suppresses them so the agent is offered only the tools you gave it.
   An `IChatClient` provider silently drops a tool-returned image at the wire; that adapter repairs it

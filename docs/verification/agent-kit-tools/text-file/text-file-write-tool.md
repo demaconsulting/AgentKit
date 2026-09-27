@@ -36,10 +36,11 @@ Unit tests reside in `TextFile/TextFileWriteToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 8 requirement scenarios below, covering 18 listed test method
+A unit test run passes when all 8 requirement scenarios below, covering 19 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, a description that does not name the sibling tools, accepted null construction input,
-an ignored policy decision, content destroyed without being captured, a capture landing in the
+an ignored policy decision, content destroyed without being captured, a stale capture surviving a
+write that displaced nothing, a capture landing in the
 default slot, a directory created that the model did not ask for, a binary file replaced, a refusal
 that prescribes a remedy, or a malformed request thrown as a framework error constitutes a failure.
 
@@ -89,12 +90,17 @@ every other tool in the family addresses.
 
 **Test**: `TextFileWriteTool_Write_SecondOverwrite_ReplacesTheCapturedContent`
 
+**Test**: `TextFileWriteTool_Write_AfterAnEarlierCapture_DisplacingNothing_LeavesNoStaleCapture`
+
 The listed tests prove the file's previous content reaches the recovery buffer byte for byte —
 carriage returns, blank lines and trailing newline included — before it is destroyed; that a
 fragment already staged in the default slot survives an overwrite untouched, so a capture the model
 never requested cannot displace one it did; that an absent file and an existing but empty file each
-capture nothing and say so; and that a second overwrite replaces the first capture, pinning the
-honest limit that only the most recent overwrite is recoverable.
+capture nothing and say so; that a second overwrite replaces the first capture, pinning the
+honest limit that only the most recent overwrite is recoverable; and that a write displacing nothing
+releases the slot rather than leaving an earlier capture standing, which is the failure hardest to
+notice — the confirmation would report that nothing was captured while a later paste handed back
+content displaced by an older write.
 
 The scenarios are sequential, and that is what the requirement claims: the capture is a sequential
 guarantee. Read, capture and write are not serialized against another writer of the same file, so

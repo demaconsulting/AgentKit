@@ -115,11 +115,14 @@ write the same file concurrently, the buffer holds the content that was there be
 write read it, and an interleaved write can be lost uncaptured.** A promise with an unstated
 exception is the defect; a stated limit is not.
 
-**Nothing is captured when there is nothing to lose.** An absent file has no previous content. An
-existing but empty file has none either, and capturing `string.Empty` would leave a slot that
-`TryPaste` reports as a hit but that pastes nothing while reporting success — and would additionally
-displace a genuine earlier capture. In both cases the tool captures nothing and the confirmation says
-so, so a model is never told a recovery exists when it does not.
+**Nothing is captured when there is nothing to lose, and the slot is released.** An absent file has
+no previous content. An existing but empty file has none either, and capturing `string.Empty` would
+leave a slot that `TryPaste` reports as a hit but that pastes nothing while reporting success. In
+both cases the tool captures nothing and the confirmation says so — and it releases the slot, rather
+than leaving an earlier capture standing. A stale slot would be the failure hardest to notice: the
+confirmation would report that nothing was captured while a later paste handed back content
+displaced by some older write, contradicting the promise that only the most recent overwrite is
+recoverable.
 
 **No ceiling is enforced, on the written content or on the capture.** This is a decision, not an
 omission. Every ceiling `ToolLimits` carries reasons from the model's context budget and is applied

@@ -108,6 +108,30 @@ internal sealed class TextFileLineBuffers
     }
 
     /// <summary>
+    ///     Discards whatever a slot holds, leaving it empty.
+    /// </summary>
+    /// <remarks>
+    ///     <b>A write that displaces nothing must not leave an older capture standing.</b> The
+    ///     family promises that only the most recent overwrite is recoverable, and a slot left
+    ///     populated by an earlier write would break that promise in the way hardest to notice:
+    ///     the confirmation would say nothing was captured while the paste tool handed back content
+    ///     displaced by some earlier operation. Releasing the slot keeps the two answers the same.
+    /// </remarks>
+    /// <param name="name">The slot name to release. Must be non-null and non-empty.</param>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="name"/> is <see langword="null"/> or empty.
+    /// </exception>
+    public void Release(string name)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        lock (_gate)
+        {
+            _slots.Remove(name);
+        }
+    }
+
+    /// <summary>
     ///     Retrieves the text a slot holds, without removing it.
     /// </summary>
     /// <remarks>

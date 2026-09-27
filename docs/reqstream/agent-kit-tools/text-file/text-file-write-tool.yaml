@@ -75,7 +75,10 @@ sections:
                   defaults to, because a model part-way through a move is holding a fragment there
                   and a capture it never asked for would destroy an edit in flight. Capturing
                   nothing when there is nothing to lose avoids leaving a slot that restores nothing
-                  while reporting success, and avoids displacing a genuine earlier capture. Because
+                  while reporting success, and a write that displaces nothing releases the slot
+                  rather than leaving an earlier capture standing - a stale slot would have the
+                  confirmation report that nothing was captured while a paste handed back content
+                  displaced by some older write, which is the failure hardest to notice. Because
                   one fixed slot holds displaced content, only the most recent overwrite is
                   recoverable, and the tool states that limit rather than implying an unbounded undo
                   history. The guarantee is scoped in a second way, and stated just as plainly:
@@ -93,6 +96,7 @@ sections:
                   - TextFileWriteTool_Write_AbsentFile_CapturesNothingAndSaysSo
                   - TextFileWriteTool_Write_PreviouslyEmptyFile_CapturesNothingAndSaysSo
                   - TextFileWriteTool_Write_SecondOverwrite_ReplacesTheCapturedContent
+                  - TextFileWriteTool_Write_AfterAnEarlierCapture_DisplacingNothing_LeavesNoStaleCapture
 
               - id: AgentKitTools-TextFile-WriteTool-PolicyGoverned
                 title: >-
