@@ -36,7 +36,7 @@ intersection of what the family reads and what it can decode, chosen over the al
 "whatever the decoder handles": widening to formats the read tool refuses would create an
 accidental conversion path — a model could launder an unreadable format into a viewable one by
 taking a region covering the whole image — which nobody designed and no requirement covers. Adding
-formats later is then a single coherent widening across both tools, reviewable as one decision.
+formats later is then a single coherent widening across all three tools, reviewable as one decision.
 
 The subsystem contains five units, plus three shared helpers that are not units:
 
@@ -184,8 +184,10 @@ a slide export is mostly margin, but it cannot measure where the margin stops, s
 named would be a guess.
 
 *The background is sampled from the image's own border, never assumed.* The value used is the modal
-exact color of the one-pixel perimeter ring, visited in a fixed order with ties resolved to the
-earliest position. An assumed white would return the picture unchanged — while reporting success —
+exact color of the one-pixel perimeter ring, visited in a fixed order; two colors that end level are
+separated by which of them reached that count first in the order, which is a deterministic rule
+rather than a preference for either. An assumed white would return the picture unchanged — while
+reporting success —
 on a dark-themed screenshot, a colored slide and a transparent export alike, all of which are
 ordinary inputs. The **mode** is used rather than a corner sample or a mean because both of those
 fail on the equally ordinary case of content running to an edge: a corner may itself be content,
@@ -241,9 +243,10 @@ interprets no path itself: it passes the model's text to the policy, which holds
 relative name is measured against. An absolute path remains expressible and remains subject to the
 same containment decision.
 
-**One read decision per source, one independent write decision per destination.** Both tools
-consult `TryResolveRead` for the file they are asked to look at, and `ImageCropTool` additionally
-consults `TryResolveWrite` for a destination it is asked to write. The two are taken separately
+**One read decision per source, one independent write decision per destination.** All three tools
+consult `TryResolveRead` for the file they are asked to look at, and both region tools —
+`ImageCropTool` and `ImageAutoCropTool` — additionally consult `TryResolveWrite` for a destination
+they are asked to write. The two are taken separately
 and neither is derived from the other, so a path an agent may read is refused for writing unless a
 write grant permits that as well — which is what keeps a read-wide, write-narrow configuration
 meaningful. Nothing in the subsystem combines the two decisions or re-implements either. Each is

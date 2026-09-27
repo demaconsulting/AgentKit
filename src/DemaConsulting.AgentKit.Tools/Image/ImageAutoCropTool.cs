@@ -28,7 +28,7 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     proposal would have chosen a threshold from the image, so the same file could trim
 ///     differently on two runs and a model had no way to tell which answer it got. Here the
 ///     background is the modal exact color of the image's own one-pixel border, taken in a fixed
-///     scan order with ties resolved to the earliest position; the tolerance is a fixed integer
+///     scan order with a fixed tie-break; the tolerance is a fixed integer
 ///     constant; the classification is integer arithmetic with no floating point anywhere; and
 ///     the scan visits every pixel with no early exit. <b>Given the same bytes and the same
 ///     padding, the region is identical on every host, every target framework and every run.</b>
@@ -639,9 +639,15 @@ public static class ImageAutoCropTool
     ///     <b>The scan order is fixed and is part of the contract:</b> the top row left to right,
     ///     then the bottom row left to right, then the left column and then the right column,
     ///     each excluding the corners already visited. A value replaces the incumbent only on a
-    ///     <em>strictly greater</em> count, so a tie is resolved to whichever value appeared
-    ///     first in that order — which makes the answer a pure function of the bytes rather than
-    ///     of a dictionary's enumeration order.
+    ///     <em>strictly greater</em> count, so when two values end level the winner is the one
+    ///     that <em>reached</em> that count first in the scan order — which is not necessarily
+    ///     the one that appeared first. A border visited as <c>A,B,B,A,A,B,B,A</c> ends four to
+    ///     four with <c>A</c> seen first, and <c>B</c> is chosen, because <c>B</c>'s fourth
+    ///     pixel precedes <c>A</c>'s. Determinism is the load-bearing property here and this rule
+    ///     has it: the answer is a pure function of the bytes rather than of a dictionary's
+    ///     enumeration order. Which of two equally frequent border colors wins is arbitrary
+    ///     either way — both are colors the image genuinely contains in equal measure — so the
+    ///     rule is stated rather than changed.
     ///     </para>
     ///     <para>
     ///     Colors are compared as packed exact values rather than bucketed, because bucketing
@@ -706,8 +712,12 @@ public static class ImageAutoCropTool
     ///     strictly the most frequent value seen.
     /// </summary>
     /// <remarks>
-    ///     The comparison is strictly greater rather than greater-or-equal, which is what makes
-    ///     a tie resolve to the earliest position in the caller's fixed scan order.
+    ///     The comparison is strictly greater rather than greater-or-equal, so the incumbent is
+    ///     only ever displaced by a value that has overtaken it. Two values that end level are
+    ///     therefore separated by which of them <em>reached</em> the shared count first in the
+    ///     caller's fixed scan order, not by which of them appeared first: a later-starting value
+    ///     that runs ahead and stays ahead until the last pixel wins. Both readings are
+    ///     deterministic; this one is the implemented one.
     /// </remarks>
     /// <param name="pixel">The border pixel to count.</param>
     /// <param name="counts">The running tally of every exact color seen on the border.</param>

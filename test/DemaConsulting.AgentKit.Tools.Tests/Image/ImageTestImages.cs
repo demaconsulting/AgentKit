@@ -490,6 +490,66 @@ internal static class ImageTestImages
     }
 
     /// <summary>
+    ///     Builds a five-by-five PNG whose border holds two colors in exactly equal numbers,
+    ///     arranged so that the one appearing first is not the one the tie-break picks.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture that pins the background tie-break.</b> The perimeter ring is visited
+    ///     top row, bottom row, left column, right column, and this image puts
+    ///     <paramref name="first"/> across the whole top row and down the right column, and
+    ///     <paramref name="second"/> across the whole bottom row and down the left column. Both
+    ///     end on eight pixels, and <paramref name="first"/> is seen at the very first position —
+    ///     but because a value only displaces the incumbent on a <em>strictly greater</em> count,
+    ///     the winner is whichever reached eight first, and that is
+    ///     <paramref name="second"/>: it completes its eighth pixel in the left column, three
+    ///     positions before <paramref name="first"/> completes its own in the right column.
+    ///     <para>
+    ///     The two colors are laid out so the answer is observable. The content pixels of the
+    ///     losing color occupy the top row and the right column, so with
+    ///     <paramref name="second"/> as the background the content box runs from row 0 to row 3;
+    ///     with <paramref name="first"/> as the background it would run from row 1 to row 4
+    ///     instead. One rule is reported as <c>0,0 5x4</c> and the other as <c>0,1 5x4</c>, so
+    ///     the scenario cannot pass under both.
+    ///     </para>
+    /// </remarks>
+    /// <param name="first">The color appearing first in the scan order.</param>
+    /// <param name="second">The color that reaches the shared count first.</param>
+    /// <param name="interior">The color of the nine pixels inside the border.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] TiedBorderPng(Rgba32 first, Rgba32 second, Rgba32 interior)
+    {
+        const int size = 5;
+
+        using var surface = new Surface(size, size);
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                surface[x, y] = interior;
+            }
+        }
+
+        for (var x = 0; x < size; x++)
+        {
+            // The whole top row, then the whole bottom row: the first two legs of the scan.
+            surface[x, 0] = first;
+            surface[x, size - 1] = second;
+        }
+
+        for (var y = 1; y < size - 1; y++)
+        {
+            // The left column completes the second color's count; the right column completes the
+            // first color's, too late to displace an equal incumbent.
+            surface[0, y] = second;
+            surface[size - 1, y] = first;
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
     ///     Reads a PNG file's pixels back for comparison.
     /// </summary>
     /// <remarks>

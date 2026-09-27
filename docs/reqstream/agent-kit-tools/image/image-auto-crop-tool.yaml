@@ -71,8 +71,9 @@ sections:
                 title: >-
                   The auto-crop tool shall determine what counts as background from the image's
                   own border rather than assuming any particular color, so that a dark, colored or
-                  transparent margin is trimmed correctly, and shall reach the same answer when
-                  part of that border is content.
+                  transparent margin is trimmed correctly, shall reach the same answer when part
+                  of that border is content, and shall separate two equally frequent border colors
+                  by a stated deterministic rule.
                 justification: |
                   An assumed background is an assumption about the picture the caller cannot see
                   and the tool never checked. A dark-themed screenshot, a colored slide and an
@@ -83,12 +84,21 @@ sections:
                   is what makes the rule usable on the equally ordinary case of content running to
                   an edge — a single sample taken at a fixed position would land on that content
                   and defeat the trim, and an average of the border would land on a color present
-                  nowhere in the image and defeat it differently.
+                  nowhere in the image and defeat it differently. Two border colors of equal
+                  frequency have to be separated by something, and what separates them is the
+                  scan order: the incumbent is displaced only on a strictly greater count, so the
+                  winner is the one that reached that count first rather than the one seen first.
+                  Which of the two is chosen is arbitrary — both are colors the image genuinely
+                  contains in equal measure — but that the choice is the same on every host, every
+                  target framework and every run is not, and it is the property the tool's whole
+                  design exists to provide. The rule is therefore stated and pinned by a test, not
+                  left to be rediscovered from the comparison operator.
                 tests:
                   - ImageAutoCropTool_AutoCrop_DarkBackground_IsTrimmedFromTheBorderNotFromWhite
                   - ImageAutoCropTool_AutoCrop_ColoredBackground_IsTrimmedFromTheBorderNotFromWhite
                   - ImageAutoCropTool_AutoCrop_TransparentBackground_IsTrimmedWithAlphaParticipating
                   - ImageAutoCropTool_AutoCrop_BorderWithAMinorityOfContentPixels_StillSamplesTheBackground
+                  - ImageAutoCropTool_AutoCrop_BorderColorsOfEqualFrequency_ResolveToTheOneThatReachedTheCountFirst
 
               - id: AgentKitTools-Image-AutoCropTool-ToleratesNearBackground
                 title: >-

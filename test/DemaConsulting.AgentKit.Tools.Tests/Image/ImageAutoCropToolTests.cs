@@ -362,6 +362,43 @@ public class ImageAutoCropToolTests
     }
 
     /// <summary>
+    ///     Proves two border colors of equal frequency are separated by which reached that count
+    ///     first, not by which appeared first.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The scenario that pins the tie-break.</b> The rule matters because the scan order
+    ///     is part of the contract, and a tie is the one case where the order alone decides the
+    ///     answer. The incumbent is displaced only on a <em>strictly greater</em> count, so a
+    ///     value that appears first but is overtaken never regains the lead by drawing level: the
+    ///     fixture's border reads
+    ///     <c>first × 5, second × 5, second × 3, first × 3</c> and ends eight to eight, with the
+    ///     second color chosen. The two possible answers differ in the region reported —
+    ///     <c>0,0 5x4</c> against <c>0,1 5x4</c> — so the scenario fails rather than passes
+    ///     vacuously if the comparison is ever relaxed to greater-or-equal.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImageAutoCropTool_AutoCrop_BorderColorsOfEqualFrequency_ResolveToTheOneThatReachedTheCountFirst()
+    {
+        // Arrange: a border holding two colors eight pixels each, the first-seen one losing
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(
+            fixture.Root,
+            "tied.png",
+            ImageTestImages.TiedBorderPng(ColoredBackground, DarkBackground, ContentColor));
+        var tool = ImageAutoCropTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: trim to the tight content box, so the region is exactly the background's decision
+        var result = await InvokeAsync(tool, file, padding: 0);
+
+        // Assert: the box the second color produces, which is not the box the first would
+        var content = Assert.IsType<List<AIContent>>(result);
+        var caption = Assert.IsType<TextContent>(content[0]).Text;
+        Assert.Contains("0,0 5x4", caption, StringComparison.Ordinal);
+        Assert.DoesNotContain("0,1 5x4", caption, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a dithered background is still trimmed to the content.
     /// </summary>
     /// <remarks>

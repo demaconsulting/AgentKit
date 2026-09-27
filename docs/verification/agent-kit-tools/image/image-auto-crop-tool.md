@@ -92,7 +92,8 @@ explicitly asserted.
 Each of the following constitutes a failure: a trimmed region arriving as a `JsonElement`; a
 background taken from an assumption rather than from the image's own border, which shows as the
 whole picture being returned for a dark, colored or transparent margin; a background defeated by a
-minority of content pixels on the border; an anti-aliased ring retained as a halo; a dithered
+minority of content pixels on the border; two equally frequent border colors resolved by any rule
+other than the stated one; an anti-aliased ring retained as a halo; a dithered
 background classified as content; a JPEG source whose ringing defeats the trim; a padding that is
 refused rather than clamped at an edge, or that produces a negative origin or a region extending
 past the image; an omitted padding that applies none; a padding of zero read as omitted; an
@@ -119,10 +120,10 @@ refusal carrying the decoding library's own wording; a non-trimmable type refuse
 tool named where none is honest; an exception or framework error raised at a malformed or omitted
 request; or a policy refusal that omits the permitted location.
 
-This document lists **64** scenarios, each naming exactly one test method entry, for a total of
-**64** test method entries. Two of those methods are parameterized — the non-PNG destination over
-five destinations and the blank path over two — so a single-framework run executes **69** test
-cases, and the project's three target frameworks bring one full run to **207** executions.
+This document lists **65** scenarios, each naming exactly one test method entry, for a total of
+**65** test method entries. Two of those methods are parameterized — the non-PNG destination over
+five destinations and the blank path over two — so a single-framework run executes **70** test
+cases, and the project's three target frameworks bring one full run to **210** executions.
 
 #### Test Scenarios
 
@@ -217,6 +218,19 @@ Content occupying the top-left corner, so seventeen border pixels — including 
 are content. A corner sample would take the content as its background and classify the whole margin
 as content; a mean would land between the two colors and match nothing. Asserts the content block,
 which only a modal sample produces.
+
+##### AgentKitTools-Image-AutoCropTool-SamplesBackgroundFromTheBorder: Equally Frequent Colors Resolve by the Stated Rule
+
+**Test**: `ImageAutoCropTool_AutoCrop_BorderColorsOfEqualFrequency_ResolveToTheOneThatReachedTheCountFirst`
+
+A five-by-five image whose sixteen-pixel border holds two colors eight times each, laid out so the
+first color seen is not the one the rule picks: the border reads `first × 5, second × 5,
+second × 3, first × 3`, and because the incumbent is displaced only on a strictly greater count
+the second color wins by completing its eighth pixel three positions earlier. The two candidate
+backgrounds place the content box on different rows, so the scenario asserts `0,0 5x4` and asserts
+the absence of `0,1 5x4` — the answer the other reading would produce. Relaxing the comparison to
+greater-or-equal fails this scenario, which is what makes the documented tie-break falsifiable
+rather than merely asserted.
 
 ##### AgentKitTools-Image-AutoCropTool-ToleratesNearBackground: A Dithered Background Is Still Trimmed
 

@@ -84,7 +84,12 @@ of it.
 one-pixel perimeter ring**, visited in one fixed order: the top row left to right, then the bottom
 row left to right, then the left column and then the right column, each excluding corners already
 visited. Each pixel is packed into a `uint` and counted; a value replaces the incumbent only on a
-**strictly greater** count, so a tie resolves to the earliest position in that order.
+**strictly greater** count, so when two values end level the winner is the one that **reached**
+that count first in the scan order — not necessarily the one that appeared first. A border visited
+as `A,B,B,A,A,B,B,A` ends four to four with `A` seen first, and `B` wins, because `B`'s fourth
+pixel precedes `A`'s. Determinism is what the tie-break exists for and this rule has it; which of
+two equally frequent border colors is chosen is arbitrary either way, so the rule is stated rather
+than changed.
 
 *Never assumed.* Nothing in the computation mentions white. *Not a corner*: one pixel is one sample,
 and a compression artifact or a single-pixel rule at that coordinate picks a background matching
@@ -97,7 +102,7 @@ by a minority of content pixels on the border.
 Degenerate sizes are total rather than special-cased. A one-pixel-high or one-pixel-wide image is
 entirely its own border; a one-by-one image makes its single pixel the background, so that image is
 entirely background and is refused. Perimeter size is `2W + 2H − 4` for `W,H ≥ 2`, bounded above by
-`4 × 8192 = 32,764` pixels, which bounds the counting dictionary.
+`2 × 8192 + 2 × 8192 − 4 = 32,764` pixels, which bounds the counting dictionary.
 
 **`IsBackground(Rgba32 pixel, Rgba32 background)`** — the classification. A pixel is background when
 **no channel, alpha included, differs from the background by more than `BackgroundTolerance`**.
