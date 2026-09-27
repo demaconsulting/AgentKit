@@ -307,15 +307,23 @@ public static class TextFileWriteTool
                     .ConfigureAwait(false);
             }
 
-            // Capture before writing, and only when there is content to lose. A write that
-            // displaces nothing releases the slot rather than leaving it alone: the family promises
-            // that only the most recent overwrite is recoverable, so an earlier capture left
-            // standing would have the confirmation say nothing was captured while the paste tool
-            // handed back content displaced by some older write. Read, capture and write are three
-            // steps and are deliberately not serialized against another writer; see the type
-            // remarks for why the guarantee is scoped to sequential writes rather than defended
-            // with a lock.
+            // The file is written first, and the recovery slot is only touched once that has
+            // succeeded. A write that throws leaves the file as it was, so a slot recording a
+            // displacement would describe something that never happened — and clearing it would
+            // destroy a genuine earlier capture on behalf of a write that failed. Recording after
+            // the fact keeps the slot describing the file's actual history.
             var captured = previous.Length > 0;
+
+            await System.IO.File.WriteAllTextAsync(realPath, content, cancellationToken)
+                .ConfigureAwait(false);
+
+            // Now the displacement is a fact. A write that displaced nothing releases the slot
+            // rather than leaving it alone: the family promises that only the most recent overwrite
+            // is recoverable, so an earlier capture left standing would have the confirmation say
+            // nothing was captured while the paste tool handed back content displaced by an older
+            // write. Read, write and record are three steps and are deliberately not serialized
+            // against another writer; see the type remarks for why the guarantee is scoped to
+            // sequential writes rather than defended with a lock.
             if (captured)
             {
                 buffers.Capture(TextFileLineBuffers.OverwrittenSlot, previous);
@@ -324,9 +332,6 @@ public static class TextFileWriteTool
             {
                 buffers.Release(TextFileLineBuffers.OverwrittenSlot);
             }
-
-            await System.IO.File.WriteAllTextAsync(realPath, content, cancellationToken)
-                .ConfigureAwait(false);
 
             return ToolResult.Text(Confirm(content, existed, captured, previous.Length));
         }

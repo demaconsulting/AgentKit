@@ -197,6 +197,65 @@ public class TextFileWriteToolTests
     }
 
     /// <summary>
+    ///     Proves a write that fails leaves the recovery slot exactly as it was.
+    /// </summary>
+    /// <remarks>
+    ///     The slot records a displacement, so it must not be touched until one has happened. A
+    ///     failed write leaves the file as it was: recording a capture would describe a
+    ///     displacement that never occurred, and releasing the slot would destroy a genuine earlier
+    ///     capture on behalf of a write that did nothing. Moving either buffer call back above the
+    ///     write fails here.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFileWriteTool_Write_FailingWrite_LeavesTheRecoverySlotUntouched()
+    {
+        using var fixture = new TempDirectoryFixture();
+        const string displaced = "displaced by the first write";
+        TempDirectoryFixture.WriteFile(fixture.Root, "note.txt", displaced);
+        TempDirectoryFixture.WriteFile(fixture.Root, "locked.txt", string.Empty);
+        var buffers = new TextFileLineBuffers();
+        var tool = TextFileWriteTool.Create(RootedPolicy(fixture.Root), buffers);
+
+        // Establish a genuine capture the failing write must not disturb.
+        await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "note.txt", ["content"] = "replacement" });
+
+        // Withdraw write permission so the write itself fails rather than the policy refusing.
+        var locked = Path.Combine(fixture.Root, "locked.txt");
+        if (OperatingSystem.IsWindows())
+        {
+            System.IO.File.SetAttributes(locked, FileAttributes.ReadOnly);
+        }
+        else
+        {
+            System.IO.File.SetUnixFileMode(locked, UnixFileMode.UserRead);
+        }
+
+        try
+        {
+            var result = await InvokeAsync(
+                tool, new AIFunctionArguments { ["path"] = "locked.txt", ["content"] = "attempt" });
+
+            // The write was refused, and the earlier capture is still exactly what it was.
+            Assert.Contains("Denied", result?.ToString() ?? string.Empty, StringComparison.Ordinal);
+            Assert.True(buffers.TryPaste(TextFileLineBuffers.OverwrittenSlot, out var held));
+            Assert.Equal(displaced, held);
+        }
+        finally
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                System.IO.File.SetAttributes(locked, FileAttributes.Normal);
+            }
+            else
+            {
+                System.IO.File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        }
+    }
+
+    /// <summary>
     ///     Proves a write never lands on the model's working clipboard: a fragment already staged in
     ///     the default slot survives an overwrite untouched.
     /// </summary>

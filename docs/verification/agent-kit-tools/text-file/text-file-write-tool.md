@@ -36,7 +36,7 @@ Unit tests reside in `TextFile/TextFileWriteToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 8 requirement scenarios below, covering 19 listed test method
+A unit test run passes when all 8 requirement scenarios below, covering 20 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, a description that does not name the sibling tools, accepted null construction input,
 an ignored policy decision, content destroyed without being captured, a stale capture surviving a
@@ -92,6 +92,8 @@ every other tool in the family addresses.
 
 **Test**: `TextFileWriteTool_Write_AfterAnEarlierCapture_DisplacingNothing_LeavesNoStaleCapture`
 
+**Test**: `TextFileWriteTool_Write_FailingWrite_LeavesTheRecoverySlotUntouched`
+
 The listed tests prove the file's previous content reaches the recovery buffer byte for byte —
 carriage returns, blank lines and trailing newline included — before it is destroyed; that a
 fragment already staged in the default slot survives an overwrite untouched, so a capture the model
@@ -100,7 +102,8 @@ capture nothing and say so; that a second overwrite replaces the first capture, 
 honest limit that only the most recent overwrite is recoverable; and that a write displacing nothing
 releases the slot rather than leaving an earlier capture standing, which is the failure hardest to
 notice — the confirmation would report that nothing was captured while a later paste handed back
-content displaced by an older write.
+content displaced by an older write. A write that fails leaves the slot exactly as it was, because
+the slot records a displacement and a failed write displaced nothing.
 
 The scenarios are sequential, and that is what the requirement claims: the capture is a sequential
 guarantee. Read, capture and write are not serialized against another writer of the same file, so
