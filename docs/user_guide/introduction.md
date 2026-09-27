@@ -135,6 +135,15 @@ refused. Symbolic links and other reparse points are not followed and not detect
 deliberate exception: `file_delete_directory` and `file_move_directory` refuse a path they are
 asked to reach *through* a link that leaves the permitted location, because there the content at
 stake is a whole tree rather than a single entry.
+
+**Denied patterns reach the whole tree a directory operation touches.** A grant's denied patterns
+exclude names inside a permitted location, and a recursive removal or a directory move reaches
+every entry beneath the path it was given. Both tools therefore ask the write decision about every
+entry the operation would take — and, for a move, about the place each entry would land as well —
+so a grant such as `PathRule.ReadWrite("/workspace", ["*.key"])` refuses the removal of any
+directory holding key material rather than destroying it as part of a tree. The refusal names the
+offending entry, and nothing is removed or moved: the permitted subset is deliberately left alone,
+because a partial result nobody asked for is worse than a refusal a model can act on.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted

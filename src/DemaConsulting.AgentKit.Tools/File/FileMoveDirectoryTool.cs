@@ -67,6 +67,21 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     everything above it, is not classified — that ancestry is the application author's choice.
 ///     </para>
 ///     <para>
+///     <b>Every entry the move would relocate is judged by the policy, not only the two
+///     directory paths.</b> <see cref="Directory.Move(string, string)"/> takes the whole subtree,
+///     so judging the source and the destination alone answers a different question from the one
+///     the operation asks. A grant permits a location and may exclude names within it: under
+///     <c>ReadWrite(root, ["*.key"])</c> the policy permits <c>root/drafts</c> and refuses
+///     <c>root/drafts/secret.key</c>, so a move judged by the two named paths would relocate
+///     content the policy excludes — and land it at a path the policy was never asked about.
+///     Both sides are therefore pre-flighted: every entry beneath the source is judged where it
+///     stands, and again at the location it would land, through the one walk and the one
+///     predicate in <see cref="SubtreeGuard"/> that <see cref="FileDeleteDirectoryTool"/> uses.
+///     One refused entry refuses the whole request. Unlike the removal there is no partial state
+///     to reason about — a move is one framework call that either happens or does not — so the
+///     check is purely pre-flight and its cost is one metadata-only walk of the tree.
+///     </para>
+///     <para>
 ///     <b>The endpoint classification is pre-flight, and promises only that.</b> It answers for
 ///     the paths as they stand when the request is judged, before anything is moved. It is not a
 ///     defense against a process racing the tool: one that can write inside a location the
@@ -101,7 +116,9 @@ public static class FileMoveDirectoryTool
         + "Paths are relative to the workspace root. Refuses any destination that already exists, "
         + "because replacing a directory would destroy everything beneath it, and refuses a "
         + "destination inside the directory being moved. Refuses either path when it is reached "
-        + "through a link that leads out of the permitted location. Returns a confirmation, or a "
+        + "through a link that leads out of the permitted location, and refuses the move when "
+        + "any entry beneath the directory, or the place that entry would land, is one the agent "
+        + "is not permitted to write. Returns a confirmation, or a "
         + "denial explaining why the request was refused.";
 
     /// <summary>
@@ -197,6 +214,38 @@ public static class FileMoveDirectoryTool
     ///     path the policy never showed the model.
     /// </remarks>
     private const string MoveFailed = "The directory could not be moved.";
+
+    /// <summary>
+    ///     The refusal used when an entry beneath the source is one the policy withholds.
+    /// </summary>
+    /// <remarks>
+    ///     The placeholder receives the source path the model supplied plus the relative
+    ///     sub-path the walk reached — never a resolved host path. The refusal names the entry
+    ///     rather than the rule that withheld it: the pattern is the operator's configuration,
+    ///     and a model told which pattern matched learns the shape of the policy rather than
+    ///     what it may do.
+    /// </remarks>
+    private const string SourceContainsADeniedEntry =
+        "The source directory contains an entry, at '{0}', that this agent is not permitted to "
+        + "write, so nothing was moved. Moving the directory would relocate content the access "
+        + "policy withholds, which this request never named. Name a directory that does not "
+        + "contain it.";
+
+    /// <summary>
+    ///     The refusal used when an entry would land where the policy permits no writing.
+    /// </summary>
+    /// <remarks>
+    ///     Reported separately from the source because it is a different fact: the entry may be
+    ///     perfectly writable where it stands and refused where it would go, which is the case a
+    ///     policy carrying a narrower grant at the destination produces. The placeholder carries
+    ///     the destination path the model supplied plus the relative sub-path, so the model can
+    ///     see which of its two paths to re-address.
+    /// </remarks>
+    private const string DestinationWouldHoldADeniedEntry =
+        "The move would place an entry at '{0}', which this agent is not permitted to write, so "
+        + "nothing was moved. Moving the directory would land content where the access policy "
+        + "permits none, at a location this request never named. Name a destination that "
+        + "permits everything the directory holds.";
 
     /// <summary>
     ///     Creates the <c>file_move_directory</c> tool governed by an access policy.
@@ -337,6 +386,16 @@ public static class FileMoveDirectoryTool
                 return ToolResult.Denied(DenialReason.TargetNotFound, ParentMissing);
             }
 
+            // The two write decisions covered the two paths the model named. The move relocates
+            // everything beneath the source as well, so every entry is judged where it stands
+            // and again where it would land, before anything is touched.
+            var denial = FindDeniedEntry(
+                policy, source, realSource, destination, realDestination);
+            if (denial is not null)
+            {
+                return denial;
+            }
+
             Directory.Move(realSource, realDestination);
 
             return ToolResult.Text("Moved the directory and everything beneath it.");
@@ -345,6 +404,90 @@ public static class FileMoveDirectoryTool
         {
             return ToolResult.Denied(DenialReason.InvalidRequest, MoveFailed);
         }
+    }
+
+    /// <summary>
+    ///     Finds the first entry beneath the source that the policy refuses, either where it
+    ///     stands or at the location the move would land it.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Why the walk is needed at all.</b> The write decisions above judged two paths;
+    ///     <see cref="Directory.Move(string, string)"/> relocates a whole subtree. A grant that
+    ///     permits a directory while excluding a name inside it — <c>ReadWrite(root, ["*.key"])</c>
+    ///     permits <c>root/drafts</c> and refuses <c>root/drafts/secret.key</c> — would otherwise
+    ///     have its exclusion honored for a path the model spells and ignored for the same file
+    ///     reached as part of a tree.
+    ///     </para>
+    ///     <para>
+    ///     <b>Why both sides are asked.</b> Where an entry stands and where it would land are
+    ///     different locations, and a policy may judge them differently: a destination covered by
+    ///     a narrower grant refuses content the source's grant permits. Taking the source alone
+    ///     would place content where the operator allowed none; taking the destination alone
+    ///     would let a tree be taken from where the policy withholds it. The source is asked
+    ///     first, matching the order the two write decisions were taken.
+    ///     </para>
+    ///     <para>
+    ///     The walk never follows a link, so a link beneath the source is judged as the entry it
+    ///     is — which is exactly what the move relocates, since a directory move carries a link
+    ///     without disturbing what it points at.
+    ///     </para>
+    ///     <para>
+    ///     The walk enumerates an arbitrary tree, so it can fail for a file-system reason. Those
+    ///     failures are caught by the caller's classification and reported as a move that could
+    ///     not be completed, which is the whole truth: nothing has been moved.
+    ///     </para>
+    /// </remarks>
+    /// <param name="policy">The access policy every entry is judged by.</param>
+    /// <param name="source">The source path exactly as the model supplied it.</param>
+    /// <param name="realSource">The resolved location of the source.</param>
+    /// <param name="destination">The destination path exactly as the model supplied it.</param>
+    /// <param name="realDestination">The resolved location of the destination.</param>
+    /// <returns>
+    ///     The refusal naming the offending entry, or <see langword="null"/> when the policy
+    ///     permits every entry at both ends.
+    /// </returns>
+    private static object? FindDeniedEntry(
+        PathPolicy policy,
+        string source,
+        string realSource,
+        string destination,
+        string realDestination)
+    {
+        // Only the location of each entry matters here: a move relocates a link as the link it
+        // is, so what kind of entry it is changes nothing about the question being asked.
+        foreach (var realEntry in SubtreeGuard.Descend(realSource).Select(entry => entry.FullName))
+        {
+            if (!SubtreeGuard.PermitsWrite(policy, realEntry))
+            {
+                return ToolResult.Denied(
+                    DenialReason.PathNotPermitted,
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        SourceContainsADeniedEntry,
+                        SubtreeGuard.DescribeEntry(source, realSource, realEntry)));
+            }
+
+            // Where the entry would land: the same sub-path, rooted at the destination. The
+            // named directory itself lands at the destination, which resolves to "." and is
+            // spelled as the destination path.
+            var relative = Path.GetRelativePath(realSource, realEntry);
+            var landing = relative == "."
+                ? realDestination
+                : Path.Combine(realDestination, relative);
+
+            if (!SubtreeGuard.PermitsWrite(policy, landing))
+            {
+                return ToolResult.Denied(
+                    DenialReason.PathNotPermitted,
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        DestinationWouldHoldADeniedEntry,
+                        SubtreeGuard.DescribeEntry(destination, realDestination, landing)));
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

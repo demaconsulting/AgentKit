@@ -41,11 +41,13 @@ Unit tests reside in `File/FileMoveDirectoryToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 9 requirement scenarios below, covering 13 listed test method
+A unit test run passes when all 10 requirement scenarios below, covering 15 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an endpoint judged by the wrong decision, a
 destination replaced, a directory moved into itself, a real child read as lying outside the
-source, an endpoint accepted that is reached through a link out of the permitted location, a
+source, an endpoint accepted that is reached through a link out of the permitted location, an
+entry the policy withholds relocated as part of a tree, an entry landed where the policy permits
+no writing, a
 link's target disturbed or named in a refusal, a rename the description does not declare, a
 leaked path, a malformed request thrown as a framework error, or returned content that violates a
 configured ceiling constitutes a failure.
@@ -125,6 +127,32 @@ handle-relative, no-follow directory move, so a process writing inside a locatio
 already granted can replace a checked component between the classification and the
 `Directory.Move`, and a second path check would only move that window. The unit states that limit
 rather than testing for a guarantee it does not make.
+
+##### AgentKitTools-File-MoveDirectoryTool-EveryEntryIsPolicyJudged: Every Entry Is Policy Judged
+
+**Test**: `FileMoveDirectoryTool_Move_SourceHoldingAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree`
+
+**Test**: `FileMoveDirectoryTool_Move_DestinationWouldHoldAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree`
+
+Security control, written as a pair for the same reason the link scenarios are: the source
+question and the landing question are different questions, and a check on one end alone would
+leave the other open. The first grants the workspace read-write while excluding `*.key`, so the
+write decision permits both paths the request names and refuses a file inside the directory being
+moved; it asserts a `PathNotPermitted` refusal naming `drafts/secret.key` in the model's own
+spelling, no host path disclosed, nothing at the destination, and both files still at the source.
+
+The second is the half only a landing check can catch. The policy grants the workspace without
+exclusions and a second location *with* one, and the request moves a directory holding key
+material into that second location. Every entry is writable where it stands, and the destination
+directory itself is permitted — only the place the file would land is refused, and that is a
+location no request ever named. The test asserts a `PathNotPermitted` refusal naming
+`../outside/vault/drafts/secret.key` in the model's own relative spelling, that nothing was
+created at the destination, and that the file is still at its source with its content unchanged.
+
+Run against an implementation that pre-flights neither, both scenarios fail and the tool answers
+`Moved the directory and everything beneath it.` with the withheld file genuinely relocated — in
+the second case into the location the policy excludes it from — so these scenarios are measured
+rather than assumed.
 
 ##### AgentKitTools-File-MoveDirectoryTool-PolicyGoverned: Policy Governed
 

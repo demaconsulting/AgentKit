@@ -63,7 +63,11 @@ governed by the supplied policy for the rest of its life.
    they are different mistakes.
 7. A `destination` lying inside the `source` is refused as `InvalidRequest`.
 8. A missing destination parent is refused as `TargetNotFound`, never created.
-9. The directory is moved, and the tool returns a confirmation.
+9. Everything the move would actually relocate is pre-flighted: `SubtreeGuard` walks the source
+   subtree, and every entry is judged by `policy.TryResolveWrite` where it stands and again at the
+   location it would land. The first entry refused at either end refuses the whole request as
+   `PathNotPermitted`, naming it in the model's own spelling and saying which end refused it.
+10. The directory is moved, and the tool returns a confirmation.
 
 #### Design Decisions
 
@@ -93,7 +97,26 @@ would stop the walk below a link the request actually traversed.
 through a link writes outside the grant but destroys nothing, so it stays with the rest of the
 library's lexical resolution rather than being narrowed here.
 
-**The endpoint classification is pre-flight, and that is the whole claim.** It answers for the
+**Every entry the move would relocate is judged, not only the two paths the request names.**
+`Directory.Move` takes the whole subtree, so judging the source and the destination alone answers
+a different question from the one the operation asks — the same defect as the link escapes, by a
+third route, and with the same shape: the tool validated the path it was *named* rather than what
+the operation *touches*. A grant permits a location and may exclude names within it, since
+`PathRule.Allows` refuses a path any of whose segments matches a denied pattern, so
+`ReadWrite(root, ["*.key"])` permits `root/drafts` and refuses `root/drafts/secret.key`. This unit
+therefore pre-flights the subtree through `SubtreeGuard` — the same walk and the same predicate
+`file_delete_directory` uses, rather than a second one — and asks the write decision twice per
+entry: **where it stands, and where it would land**. Both are needed. The source question alone
+would let a tree be placed where the operator permitted nothing; the destination question alone
+would let a tree be taken from where the policy withholds it. The landing question is the one a
+policy with a narrower grant at the destination answers differently, and it is precisely a
+location no request ever named, so nothing else would have asked about it. **One refused entry
+refuses the whole request**, and the two ends are reported separately so the model knows which of
+its two paths to re-address. Unlike the recursive delete there is no partial state to reason
+about: `Directory.Move` is a single framework call that either happens or does not, so the check
+is purely pre-flight and its whole cost is one metadata-only walk of the tree.
+
+**Every one of these checks is pre-flight, and that is the whole claim.** They answer for the
 paths as they stand when the request is judged, before anything is moved. It is not a defense
 against a process racing the tool: one able to write inside a location the operator already granted
 can replace a component between the check and the `Directory.Move`, a time-of-check-to-time-of-use
@@ -135,10 +158,12 @@ cross-volume case arrives here.
 
 #### Dependencies
 
-`PathPolicy` for both write decisions, `ToolResult` for results, and `GuardedToolFactory` for
-construction. `LinkGuard`, the subsystem's shared helper, answers whether either endpoint was
-reached through a link. From the Base Class Library it uses `Directory`, `File`, `Path`, and
-directory-move
+`PathPolicy` for both write decisions — for the two paths the request names, and again for every
+entry the move would relocate at both ends — `ToolResult` for results, and `GuardedToolFactory`
+for construction. `LinkGuard`, a subsystem shared helper, answers whether either endpoint was
+reached through a link; `SubtreeGuard`, the other, provides the walk over what the move would
+touch and the per-entry policy question. From the Base Class Library it uses `Directory`, `File`,
+`Path`, and directory-move
 exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the constructed tool
 type.
 

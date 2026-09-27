@@ -75,7 +75,8 @@ sections:
           - id: AgentKitTools-File-RecursiveDeletionIsBounded
             title: >-
               A recursive deletion or a directory move shall never reach content outside the
-              permitted location by following or traversing a link, and a recursive deletion
+              permitted location by following or traversing a link, shall never destroy or
+              relocate an entry the access policy withholds, and a recursive deletion
               shall refuse rather than remove more entries than the
               configured ceiling.
             tags: [security]
@@ -91,7 +92,13 @@ sections:
               whole tree outside the grant within reach of one call. The two tools whose blast
               radius is a tree — recursive deletion and the directory move — therefore refuse a
               path traversing such a link as well, while the rest of the library keeps the lexical
-              resolution it documents. The ceiling is honest
+              resolution it documents. A link is not the only way a request that names a permitted
+              path reaches content the policy withholds: a grant's denied patterns exclude names
+              *inside* a permitted location, so the same two tools consult the write decision for
+              every entry the operation would take — and, for the move, for the place each entry
+              would land — rather than for the path they were given. One withheld entry refuses
+              the whole request, because the permitted subset is not what was asked for.
+              The ceiling is honest
               about what it is: it bounds the damage of a mistake, not the reach of an agent that
               intends the destruction and could remove a tree one file at a time. What deciding
               before acting guarantees is that no removal begins until the whole plan is approved;
@@ -112,9 +119,11 @@ sections:
               - AgentKitTools-File-DeleteDirectoryTool-NeverFollowsALink
               - AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
               - AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
+              - AgentKitTools-File-DeleteDirectoryTool-EveryEntryIsPolicyJudged
               - AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
               - AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval
               - AgentKitTools-File-MoveDirectoryTool-EndpointThroughALinkIsRefused
+              - AgentKitTools-File-MoveDirectoryTool-EveryEntryIsPolicyJudged
             tests:
               - File_Family_RecursiveDelete_LinkOutOfTheGrant_IsNeverFollowed
 

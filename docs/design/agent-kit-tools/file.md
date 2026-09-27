@@ -40,6 +40,13 @@ this path reached through one* — in exactly one place. Duplicating that predic
 rules that could drift apart on a decision whose failure mode is content outside every grant
 destroyed by a request that never named it.
 
+`SubtreeGuard` is a shared helper for the same reason and on the same pair of tools. It holds the
+one walk over everything beneath a directory and the one question asked of each entry it finds —
+*does the policy permit this agent to write here* — so that a removal and a move judge what they
+actually touch by the same rule. Two walks would be two answers to a question whose failure mode
+is content the operator's policy excludes, destroyed or relocated by a request that named only the
+directory above it.
+
 ### Interfaces
 
 The subsystem exposes exactly one public type, `FilePack`, plus the name constant each tool unit
@@ -128,6 +135,20 @@ spell, and it is applied **only** where the blast radius is a whole tree. `file_
 deliberately does not carry it, because creating through a link writes outside the grant but
 destroys nothing, and the rest of the library — `text_file_read` and every other path-taking tool
 — still resolves lexically, as the README describes.
+
+**The same two tools judge every entry the operation touches, not only the path they were
+named.** A grant permits a location and may exclude names within it: `PathRule.Allows` refuses a
+path any of whose segments matches a denied pattern, so `ReadWrite(root, ["*.key"])` permits
+`root` and refuses `root/secret.key`. A recursive removal reaches every entry beneath the path it
+was given and a directory move relocates the whole subtree, so judging the named path alone
+answers a different question from the one the operation asks — and the answer it gives is that
+content the operator excluded is destroyed, or relocated, by a request that never named it. Both
+tools therefore consult the write decision for every entry, through the one walk and the one
+predicate in `SubtreeGuard`; the move asks it twice per entry, once where the entry stands and
+once where it would land, because a destination governed by a narrower grant is a location the
+policy was never asked about. **One refused entry refuses the whole request.** The permitted
+subset is deliberately not removed: a partial deletion nobody asked for is the outcome the
+recursive delete's two phases exist to avoid, and it would leave a workspace no one chose.
 
 **Both link rules are pre-flight checks over paths, and the family claims no more for them.** The
 path a caller *names* is classified before anything is touched, and the recursive delete's walk

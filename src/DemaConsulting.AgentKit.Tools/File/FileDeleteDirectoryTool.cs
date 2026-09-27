@@ -29,12 +29,15 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     cannot see.
 ///     </para>
 ///     <para>
-///     <b>The walk is iterative, over an explicit stack.</b> A recursive walk spends one stack
-///     frame per directory level, and a tree deep enough to exhaust the thread's stack raises
-///     <c>StackOverflowException</c> — which cannot be caught and takes the host process with it,
-///     before the entry ceiling below is ever consulted. An explicit stack moves the depth onto
-///     the heap, so depth costs the same bounded resource breadth already does and the ceiling is
-///     reached rather than overtaken by a failure the tool cannot report.
+///     <b>The walk is iterative, over an explicit stack, and shared.</b> A recursive walk spends
+///     one stack frame per directory level, and a tree deep enough to exhaust the thread's stack
+///     raises <c>StackOverflowException</c> — which cannot be caught and takes the host process
+///     with it, before the entry ceiling below is ever consulted. An explicit stack moves the
+///     depth onto the heap, so depth costs the same bounded resource breadth already does and the
+///     ceiling is reached rather than overtaken by a failure the tool cannot report. The walk
+///     itself lives in <see cref="SubtreeGuard"/> rather than here, because
+///     <see cref="FileMoveDirectoryTool"/> has to ask the same question of the same entries and
+///     two walks would be two answers.
 ///     </para>
 ///     <para>
 ///     <b>The walk never follows a link, and a link found inside the tree refuses the whole
@@ -60,6 +63,20 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     path leads to first would offer the way forward on one platform of three.
 ///     </para>
 ///     <para>
+///     <b>Every entry the plan would take is judged by the policy, not only the directory the
+///     request named.</b> A grant permits a location and may exclude names within it: under
+///     <c>ReadWrite(root, ["*.key"])</c> the policy permits <c>root</c> and refuses
+///     <c>root/secret.key</c>. A removal judged by the path it was <em>given</em> would then
+///     destroy exactly the content the operator's policy names as off-limits, because the path
+///     the tool validated is not what the operation touches. The planning walk therefore asks
+///     the write decision about every entry it intends to remove — through the one predicate in
+///     <see cref="SubtreeGuard"/>, so this tool and <see cref="FileMoveDirectoryTool"/> ask it
+///     the same way — and a single refused entry refuses the whole request, named in the
+///     model's own spelling. The permitted subset is deliberately <em>not</em> removed: a
+///     partial deletion the request never asked for is the outcome the two phases exist to
+///     avoid, and it would leave a workspace no one chose.
+///     </para>
+///     <para>
 ///     <b>A recursive framework delete is never issued.</b> Measured on Windows, deleting a tree
 ///     recursively throws when the tree contains a junction and leaves the tree <em>partly
 ///     deleted</em>, which is both unsafe and the one outcome this design exists to avoid. The
@@ -78,9 +95,13 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     figure in the tens of thousands tells it to take a different approach. That exactness
 ///     costs a full metadata-only enumeration even of a tree that is about to be refused — a walk
 ///     the approved case was going to make anyway — but it does not cost the memory to hold that
-///     tree: once the running count passes the ceiling the walk stops retaining paths and only
-///     keeps counting, so a refusal names the exact figure without ever having accumulated the
-///     tree it refuses.
+///     tree. Two things bound what is held, and both are needed: the walk streams each directory
+///     an entry at a time and keeps one enumerator per level of <em>depth</em> rather than one
+///     path per directory still to visit, so neither a very wide directory nor a tree of very
+///     many directories is ever materialized; and once the running count passes the ceiling this
+///     tool stops retaining paths altogether and only keeps counting, since a plan past the
+///     ceiling can never be approved. What a refused request holds is therefore bounded by how
+///     deep the tree is, whatever its breadth, while the figure the refusal names stays exact.
 ///     </para>
 ///     <para>
 ///     <b>A path the model <em>names</em> that traverses a link is refused too.</b> Path
@@ -141,6 +162,8 @@ public static class FileDeleteDirectoryTool
         + "write. Paths are relative to the workspace root. Never follows a link out of the "
         + "directory; a directory containing such a link is refused rather than partly removed, "
         + "and so is a path that is itself reached through one. "
+        + "Refuses a directory holding any entry the agent is not permitted to write, naming "
+        + "that entry, and removes nothing in that case. "
         + "Refuses a directory holding more entries than the configured limit, naming the count "
         + "and the limit. Returns a confirmation reporting how many entries were removed, or a "
         + "denial explaining why the request was refused; a removal that fails part way through "
@@ -177,6 +200,22 @@ public static class FileDeleteDirectoryTool
         + "remove content this request never named, and removing the link itself would destroy a "
         + "connection the request did not mention, so nothing was deleted. Name that link "
         + "directly to remove the link alone, then ask again.";
+
+    /// <summary>
+    ///     The refusal used when the walk finds an entry the policy does not permit writing.
+    /// </summary>
+    /// <remarks>
+    ///     The placeholder receives the path the model supplied plus the relative sub-path the
+    ///     walk reached — the same non-disclosing spelling <see cref="LinkWithinTheTree"/> uses.
+    ///     The refusal names the entry rather than the rule that withheld it: the pattern is the
+    ///     operator's configuration, and a model told which pattern matched learns the shape of
+    ///     the policy rather than what it may do.
+    /// </remarks>
+    private const string DeniedEntryWithinTheTree =
+        "The directory contains an entry, at '{0}', that this agent is not permitted to write, "
+        + "so nothing was deleted. Removing the directory would take content the access policy "
+        + "withholds, which this request never named. Name a directory that does not contain "
+        + "it.";
 
     /// <summary>
     ///     The refusal used when the named path is reached through a link inside the grant.
@@ -339,9 +378,10 @@ public static class FileDeleteDirectoryTool
             return ToolResult.Denied(DenialReason.TargetNotFound, DirectoryNotFound);
         }
 
-        // Phase one: plan the whole removal, touching nothing. The walk refuses on the first link
-        // it meets rather than descending into it, and stops retaining paths once the running
-        // count passes the ceiling, since a plan past the ceiling can never be approved.
+        // Phase one: plan the whole removal, touching nothing. The walk refuses on the first
+        // link it meets and on the first entry the policy withholds, rather than descending or
+        // recording past either, and it stops retaining paths once the running count passes the
+        // ceiling, since a plan past the ceiling can never be approved.
         //
         // The walk is guarded by exactly the classification the removal is. Enumeration is a file
         // system operation on an arbitrary tree: a sub-directory whose permissions forbid
@@ -350,13 +390,11 @@ public static class FileDeleteDirectoryTool
         // a thrown exception would break the family's rule that a refusal is a result.
         List<string> directories = [];
         List<string> files = [];
-        string? offendingEntry;
-        int entryCount;
+        PlanOutcome outcome;
 
         try
         {
-            offendingEntry = Plan(
-                realPath, directories, files, policy.Limits.MaxDeleteEntries, out entryCount);
+            outcome = Plan(policy, realPath, directories, files);
         }
         catch (Exception exception) when (IsAccessFailure(exception))
         {
@@ -364,31 +402,44 @@ public static class FileDeleteDirectoryTool
             return ToolResult.Denied(DenialReason.InvalidRequest, DeleteFailed);
         }
 
-        if (offendingEntry is not null)
+        if (outcome.LinkEntry is not null)
         {
             return ToolResult.Denied(
                 DenialReason.InvalidRequest,
                 string.Format(
                     CultureInfo.InvariantCulture,
                     LinkWithinTheTree,
-                    DescribeEntry(path, realPath, offendingEntry)));
+                    SubtreeGuard.DescribeEntry(path, realPath, outcome.LinkEntry)));
+        }
+
+        // An entry the policy withholds refuses the whole request. The permitted subset is not
+        // removed: nothing this request did not ask for should be destroyed, and a partial
+        // removal is what the two phases exist to avoid.
+        if (outcome.DeniedEntry is not null)
+        {
+            return ToolResult.Denied(
+                DenialReason.PathNotPermitted,
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    DeniedEntryWithinTheTree,
+                    SubtreeGuard.DescribeEntry(path, realPath, outcome.DeniedEntry)));
         }
 
         // The named directory counts as an entry, so an empty directory costs one and a ceiling
         // of zero forbids recursive removal entirely.
-        if (entryCount > policy.Limits.MaxDeleteEntries)
+        if (outcome.EntryCount > policy.Limits.MaxDeleteEntries)
         {
             return ToolResult.Denied(
                 DenialReason.ResourceTooLarge,
                 string.Format(
                     CultureInfo.InvariantCulture,
                     TooManyEntries,
-                    entryCount,
+                    outcome.EntryCount,
                     policy.Limits.MaxDeleteEntries));
         }
 
         // Phase two: carry out exactly the plan phase one approved.
-        return Execute(directories, files, entryCount);
+        return Execute(directories, files, outcome.EntryCount);
     }
 
     /// <summary>
@@ -557,85 +608,73 @@ public static class FileDeleteDirectoryTool
 
     /// <summary>
     ///     Walks the tree, counting every entry the removal would take, recording the entries a
-    ///     plan within the ceiling would need, and stopping at the first link it meets.
+    ///     plan within the ceiling would need, and stopping at the first entry the request cannot
+    ///     honor — a link, or content the policy withholds.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     Nothing is mutated here: the walk is what makes deciding before acting affordable,
-    ///     which is why both the link guard and the entry ceiling can act before any removal.
+    ///     which is why the link guard, the policy question and the entry ceiling can all act
+    ///     before any removal.
     ///     </para>
     ///     <para>
-    ///     The traversal is iterative over an explicit stack rather than recursive, so a deep
-    ///     tree costs heap rather than the thread's stack; see the type remarks. Children are
-    ///     pushed in reverse so they pop in the order the directory reported them, which keeps
-    ///     the visiting order — and therefore which entry a tree holding several links is refused
-    ///     for — identical to the depth-first order a recursive walk produced.
+    ///     The traversal itself belongs to <see cref="SubtreeGuard"/>, which visits the named
+    ///     directory, then its files in the order the host reported them, then each child
+    ///     directory depth first, and never descends into a link. That order decides which entry
+    ///     a tree holding several offending ones is refused for, so it is fixed there rather than
+    ///     restated here.
     ///     </para>
     ///     <para>
-    ///     Counting continues past <paramref name="ceiling"/> but recording does not. A plan past
-    ///     the ceiling can only be refused, and the refusal needs the exact figure rather than
-    ///     the paths, so retaining them would buy nothing and cost the whole tree's worth of
-    ///     strings on precisely the request that is too large.
+    ///     <b>Both questions are asked of every entry, and both stop the walk.</b> A link would
+    ///     lead the removal out of the tree; an entry the write decision refuses is content the
+    ///     operator's policy withholds, and taking it away would be exactly the containment
+    ///     violation the policy exists to state. Neither is something the request asked for, so
+    ///     the first of either ends the walk and refuses the whole plan.
+    ///     </para>
+    ///     <para>
+    ///     Counting continues past the ceiling but recording does not. A plan past the ceiling
+    ///     can only be refused, and the refusal needs the exact figure rather than the paths, so
+    ///     retaining them would buy nothing and cost the whole tree's worth of strings on
+    ///     precisely the request that is too large. The policy question is still asked past that
+    ///     point, because it costs nothing to keep and a walk that stopped asking would make the
+    ///     answer depend on how large the tree happened to be.
     ///     </para>
     /// </remarks>
+    /// <param name="policy">The access policy every entry is judged by.</param>
     /// <param name="root">The directory to walk. Never itself a link.</param>
     /// <param name="directories">The directories recorded so far, shallowest first.</param>
     /// <param name="files">The files recorded so far.</param>
-    /// <param name="ceiling">The largest number of entries a plan may record.</param>
-    /// <param name="entryCount">
-    ///     Receives the exact number of entries the walk counted, whether or not they were all
-    ///     recorded.
-    /// </param>
-    /// <returns>
-    ///     The resolved path of the first link found beneath the directory, or
-    ///     <see langword="null"/> when the tree holds none.
-    /// </returns>
-    private static string? Plan(
+    /// <returns>The exact entry count, and the entry that refuses the plan when there is one.</returns>
+    private static PlanOutcome Plan(
+        PathPolicy policy,
         string root,
         List<string> directories,
-        List<string> files,
-        int ceiling,
-        out int entryCount)
+        List<string> files)
     {
-        entryCount = 0;
+        var ceiling = policy.Limits.MaxDeleteEntries;
+        var entryCount = 0;
 
-        var pending = new Stack<string>();
-        pending.Push(root);
-
-        while (pending.Count > 0)
+        foreach (var entry in SubtreeGuard.Descend(root))
         {
-            var directory = pending.Pop();
-
-            // A directory is classified before it is entered, so a link is never descended into.
-            // The named root arrives here already known not to be a link, so this costs one
-            // redundant classification and removes a special case from the loop.
-            if (LinkGuard.IsLink(new DirectoryInfo(directory)))
+            // A link — file or directory — would take the removal somewhere the request never
+            // named, and removing the link entry itself would destroy a connection it never
+            // mentioned.
+            if (LinkGuard.IsLink(entry))
             {
-                return directory;
+                return new PlanOutcome(entryCount, entry.FullName, null);
             }
 
-            Record(directory, directories, ceiling, ref entryCount);
-
-            // A file may be a link too, and removing one would destroy a connection the request
-            // never named, so files are judged by the same rule as directories.
-            foreach (var file in Directory.GetFiles(directory))
+            // The path the model named passed the write decision; the entries beneath it are a
+            // separate question, and this is where it is asked.
+            if (!SubtreeGuard.PermitsWrite(policy, entry.FullName))
             {
-                if (LinkGuard.IsLink(new FileInfo(file)))
-                {
-                    return file;
-                }
-
-                Record(file, files, ceiling, ref entryCount);
+                return new PlanOutcome(entryCount, null, entry.FullName);
             }
 
-            var children = Directory.GetDirectories(directory);
-            for (var index = children.Length - 1; index >= 0; index--)
-            {
-                pending.Push(children[index]);
-            }
+            Record(entry, directories, files, ceiling, ref entryCount);
         }
 
-        return null;
+        return new PlanOutcome(entryCount, null, null);
     }
 
     /// <summary>
@@ -645,49 +684,58 @@ public static class FileDeleteDirectoryTool
     /// <remarks>
     ///     The count is what the refusal names and is therefore always exact; the path is what
     ///     the removal needs and is therefore only worth keeping while a removal is still
-    ///     possible.
+    ///     possible. Which collection the entry joins is what orders phase two: files are removed
+    ///     first, and directories in reverse of the shallowest-first order they are recorded in,
+    ///     so each is empty when it goes.
     /// </remarks>
-    /// <param name="entry">The resolved path of the entry the walk reached.</param>
-    /// <param name="planned">The collection the entry belongs to.</param>
+    /// <param name="entry">The entry the walk reached.</param>
+    /// <param name="directories">The planned directories, shallowest first.</param>
+    /// <param name="files">The planned files.</param>
     /// <param name="ceiling">The largest number of entries a plan may record.</param>
     /// <param name="entryCount">The running count, updated in place.</param>
     private static void Record(
-        string entry, List<string> planned, int ceiling, ref int entryCount)
+        FileSystemInfo entry,
+        List<string> directories,
+        List<string> files,
+        int ceiling,
+        ref int entryCount)
     {
         entryCount++;
 
-        if (entryCount <= ceiling)
+        if (entryCount > ceiling)
         {
-            planned.Add(entry);
+            return;
+        }
+
+        if (entry is DirectoryInfo)
+        {
+            directories.Add(entry.FullName);
+        }
+        else
+        {
+            files.Add(entry.FullName);
         }
     }
 
     /// <summary>
-    ///     Describes a discovered entry in the dialect the model used, without disclosing a host
-    ///     path.
+    ///     The result of the planning walk: how many entries the removal would take, and the one
+    ///     entry that refuses it, if any.
     /// </summary>
     /// <remarks>
-    ///     The refusal must be actionable — the model has to be able to name the offending entry
-    ///     in a following request — and must not leak a location outside what the policy already
-    ///     disclosed. Composing the requested path with the relative sub-path the walk reached
-    ///     satisfies both: every component of the result was either supplied by the model or lies
-    ///     inside the tree it named.
+    ///     The two refusals are carried separately rather than as one entry and a flag, because
+    ///     they are different facts with different messages: a link leads out of the tree, while
+    ///     a withheld entry is inside it and permitted to nobody. At most one is ever set.
     /// </remarks>
-    /// <param name="requested">The path exactly as the model supplied it.</param>
-    /// <param name="realRoot">The resolved path of the named directory.</param>
-    /// <param name="realEntry">The resolved path of the discovered entry.</param>
-    /// <returns>The entry named in the caller's dialect.</returns>
-    private static string DescribeEntry(string requested, string realRoot, string realEntry)
-    {
-        // Mirror the separator the model used, so the name can be handed straight back.
-        var separator = requested.Contains('\\') && !requested.Contains('/') ? '\\' : '/';
-
-        var relative = Path.GetRelativePath(realRoot, realEntry)
-            .Replace(Path.DirectorySeparatorChar, separator)
-            .Replace(Path.AltDirectorySeparatorChar, separator);
-
-        return requested.TrimEnd('/', '\\') + separator + relative;
-    }
+    /// <param name="EntryCount">
+    ///     The exact number of entries the walk counted, whether or not they were all recorded.
+    ///     On a refusal it is the count reached so far, which nothing reports.
+    /// </param>
+    /// <param name="LinkEntry">The resolved path of the first link found, or null.</param>
+    /// <param name="DeniedEntry">
+    ///     The resolved path of the first entry the policy withholds, or null.
+    /// </param>
+    private readonly record struct PlanOutcome(
+        int EntryCount, string? LinkEntry, string? DeniedEntry);
 
     /// <summary>
     ///     Determines whether an exception represents a file-system failure rather than a defect

@@ -245,6 +245,78 @@ public class FileDeleteDirectoryToolTests
     }
 
     /// <summary>
+    ///     Proves a tree holding an entry the policy withholds is refused, naming that entry.
+    /// </summary>
+    /// <remarks>
+    ///     The same defect as the two link escapes, reached by a third route: the tool validated
+    ///     the path it was <em>named</em> and not what the removal actually touches. A grant of
+    ///     <c>ReadWrite(root, ["*.key"])</c> permits the directory and refuses the file inside
+    ///     it, so a removal judged by the named path alone destroys exactly the content the
+    ///     operator's policy declares off-limits.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_ReturnsDenialNamingTheEntry()
+    {
+        // Arrange: a permitted tree holding a file the policy's denied pattern rejects
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        TempDirectoryFixture.WriteFile(tree, "output.txt", "content");
+        TempDirectoryFixture.WriteFile(tree, "secret.key", "key-content");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["*.key"])]);
+        var tool = FileDeleteDirectoryTool.Create(policy);
+
+        // Act: ask for the whole tree, which the write decision permits for the named path
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: refused, the withheld entry named as the model spelled it, and no host path
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("build/secret.key", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the refusal is taken before anything is removed, so the permitted part of the
+    ///     tree is left whole rather than deleted as a consolation.
+    /// </summary>
+    /// <remarks>
+    ///     Removing "the allowed subset" would be a partial deletion the request never asked for
+    ///     — the outcome the two-phase design exists to avoid — so the assertion that matters is
+    ///     that the ordinary file beside the withheld one is still there.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_RemovesNothing()
+    {
+        // Arrange: a permitted tree whose nested directory holds the withheld file, so the
+        // refusal has to come from a descendant the walk reaches rather than from the root
+        using var fixture = new TempDirectoryFixture();
+        var tree = Path.Combine(fixture.Root, "build");
+        var ordinary = TempDirectoryFixture.WriteFile(tree, "output.txt", "content");
+        var nested = Path.Combine(tree, "nested");
+        var withheld = TempDirectoryFixture.WriteFile(nested, "secret.key", "key-content");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["*.key"])]);
+        var tool = FileDeleteDirectoryTool.Create(policy);
+
+        // Act: ask for the whole tree
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "build" });
+
+        // Assert: refused naming the nested entry, and every entry — the withheld file, the
+        // ordinary file beside it, and both directories — survives
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("build/nested/secret.key", text, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(tree));
+        Assert.True(Directory.Exists(nested));
+        Assert.True(System.IO.File.Exists(ordinary));
+        Assert.True(System.IO.File.Exists(withheld));
+        Assert.Equal(
+            "key-content",
+            await System.IO.File.ReadAllTextAsync(withheld, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     Proves the published tool name is the family-qualified name the pack claims.
     /// </summary>
     [Fact]

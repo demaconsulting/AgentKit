@@ -67,9 +67,11 @@ governed by the supplied policy for the rest of its life.
    this branch's business and falls through to the next step.
 5. A `path` naming a file is refused as `InvalidRequest`.
 6. A missing directory is refused as `TargetNotFound`.
-7. **Phase one** walks the tree iteratively, over an explicit stack, and builds the removal plan,
-   mutating nothing. The walk never descends into a link. The first link it meets — file or
-   directory — ends the walk and the whole request is refused as `InvalidRequest`, naming the
+7. **Phase one** walks the tree over an explicit stack of enumerators, in `SubtreeGuard`, and
+   builds the removal plan, mutating nothing. The walk never descends into a link. Two questions
+   are asked of every entry it yields, and either one ends the walk and refuses the whole request:
+   the first link — file or directory — is refused as `InvalidRequest`, naming the entry, and the
+   first entry `policy.TryResolveWrite` refuses is refused as `PathNotPermitted`, also naming the
    entry. A file-system failure during the walk is classified and refused as `InvalidRequest`,
    never thrown.
 8. The plan's entry count, which **includes the named directory itself**, is compared against
@@ -91,14 +93,19 @@ removal, once begun, completes — the file system can refuse an entry at any po
 another process holds open is the ordinary Windows case. The tool's answer there is to report the
 figure rather than to claim the tree is intact; see *Error Handling*.
 
-**The walk is iterative, over an explicit stack.** Recursion costs one stack frame per directory
-level, and a tree deep enough to exhaust the thread's stack raises `StackOverflowException` —
+**The walk is iterative, over an explicit stack, and it lives in `SubtreeGuard`.** Recursion costs
+one stack frame per directory level, and a tree deep enough to exhaust the thread's stack raises
+`StackOverflowException` —
 which cannot be caught and terminates the host process, before the entry ceiling is ever
 consulted. That would defeat the ceiling on exactly the input the ceiling exists for. An explicit
 stack moves depth onto the heap, so depth costs the same bounded resource breadth already does.
-Children are pushed in reverse so they pop in the order the directory reported them, which keeps
-the visiting order — and therefore which entry a tree holding several links is refused for —
-identical to the order the recursive walk produced.
+The stack holds one *enumerator* per level rather than one path per directory still to visit, and
+each directory's entries are streamed rather than materialized, so what the walk retains is
+proportional to the tree's depth and never to its breadth. Children are visited in the order the
+directory reported them, which keeps the visiting order — and therefore which entry a tree holding
+several offending ones is refused for — identical to the order the recursive walk produced. The
+walk sits in the shared helper rather than here because `FileMoveDirectoryTool` must ask the same
+question of the same entries, and two walks would be two answers.
 
 **No recursive framework delete is ever issued.** Deleting a tree recursively was measured on
 Windows to throw when the tree contains a directory junction, and to leave the tree *partly
@@ -193,11 +200,38 @@ than the limit" tells a model nothing about whether subdividing would help; a re
 very large tree is therefore enumerated in full only to be refused. The enumeration is
 metadata-only, happens once per refused call, and covers a tree that was about to be enumerated
 anyway — a trade recorded here so a later reader meets it rather than rediscovering it. Holding
-that tree is a separate cost and is *not* accepted: once the running count passes
-`MaxDeleteEntries` the walk stops appending paths and only keeps counting, so the exact figure is
-still reported while the request too large to approve accumulates nothing. Under
+that tree is a separate cost and is *not* accepted, and two mechanisms bound it rather than one.
+The walk itself retains almost nothing: each directory is streamed an entry at a time rather than
+materialized, and the stack holds one enumerator per level of *depth* rather than one path per
+directory still to visit, so neither a single very wide directory nor a tree of very many
+directories is ever accumulated. On top of that, once the running count passes `MaxDeleteEntries`
+this unit stops appending paths to the plan and only keeps counting, since a plan past the ceiling
+can never be approved. The exact figure is therefore still reported while what a refused request
+holds is bounded by how deep the tree is, whatever its breadth. Under
 `PathRule.Unrestricted(AccessLevel.ReadWrite)` — a supported configuration — that is the
 difference between a refusal and a refusal that first materializes every path on the volume.
+
+*An earlier wording claimed only the second half of that*, and the claim was overstated while the
+walk still called `GetFiles`/`GetDirectories` per directory and pushed every child onto a path
+stack: a single very wide directory, or a tree with very many directories, retained a great deal
+for a request that was going to be refused. The property is now implemented rather than the claim
+narrowed, because the property is the one worth having.
+
+**Every entry the plan would take is judged by the policy, not only the directory the request
+named.** A grant permits a location and may exclude names within it: `PathRule.Allows` refuses a
+path any of whose segments matches a denied pattern, so `ReadWrite(root, ["*.key"])` permits
+`root` while refusing `root/secret.key`. A removal judged by the path it was *given* would
+therefore destroy exactly the content the operator's policy declares off-limits — the same defect
+as the two link escapes, reached by a third route, because in all three the tool validated the
+path it was named rather than what the operation touches. The planning walk asks
+`policy.TryResolveWrite` about every entry it intends to remove, using the shared predicate in
+`SubtreeGuard` so that this unit and `FileMoveDirectoryTool` ask it identically. **One refused
+entry refuses the whole request**, named in the model's own spelling. *Deleting the permitted
+subset was rejected*: a partial deletion the request never asked for is precisely the outcome the
+two phases exist to avoid, and a model that asked for a directory and received a partly emptied
+one has been given a workspace nobody chose. The refusal names the entry and not the pattern that
+withheld it, for the same reason the link refusal names no target: the policy's shape is the
+operator's business.
 
 #### Error Handling
 
@@ -228,10 +262,12 @@ The two phases refuse differently, because they leave the file system in differe
 
 #### Dependencies
 
-`PathPolicy` for the write decision and for `ToolLimits.MaxDeleteEntries`, `ToolResult` for
-results, and `GuardedToolFactory` for construction. `LinkGuard`, the subsystem's shared helper,
-answers what counts as a link and whether a named path was reached through one. From the Base Class
-Library it uses
+`PathPolicy` for the write decision — for the path the request names and again for every entry the
+plan would take — and for `ToolLimits.MaxDeleteEntries`, `ToolResult` for
+results, and `GuardedToolFactory` for construction. `LinkGuard`, a subsystem shared helper,
+answers what counts as a link and whether a named path was reached through one; `SubtreeGuard`,
+the other, provides the walk over what the removal would touch and the per-entry policy question.
+From the Base Class Library it uses
 `Directory`, `File`, `DirectoryInfo`, `FileInfo`, `FileSystemInfo.LinkTarget`,
 `FileSystemInfo.ResolveLinkTarget`, `Path`, and
 directory-deletion exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the

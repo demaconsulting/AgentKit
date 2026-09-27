@@ -80,7 +80,8 @@ byte-identical — so an application that attached the pack can rely on no tool 
 content the request never named. The link is real rather than simulated, and its creation fails
 the test rather than skipping it, because a skipped test leaves no evidence behind a security
 requirement. The complementary halves — the entry ceiling, the link that is itself the named
-path, and the path *named* through a link, for both the recursive deletion and the directory
+path, the path *named* through a link, and the entry the policy withholds anywhere beneath the
+directory a request names, for both the recursive deletion and the directory
 move — are verified against the units in *FileDeleteDirectoryTool Unit Verification Design* and
 *FileMoveDirectoryTool Unit Verification Design*.
 

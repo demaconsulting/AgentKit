@@ -66,11 +66,12 @@ same project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 12 requirement scenarios below, covering 19 listed test method
+A unit test run passes when all 13 requirement scenarios below, covering 21 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an ignored policy decision, a link followed out of
 the tree, a path accepted that is reached through a link out of the permitted location, a boundary
-chosen from a grant that does not permit the path, a link's target disturbed, a link named
+chosen from a grant that does not permit the path, an entry the policy withholds removed as part
+of a tree, a permitted subset removed after a refusal, a link's target disturbed, a link named
 directly that is refused rather than removed on any platform, a link's target named in a refusal,
 a tree partly removed
 after a refusal, a partial removal reported as though nothing happened, a tree at exactly the
@@ -156,6 +157,30 @@ because the platform it would have to skip on is the platform it exists for: run
 existence-first ordering it passes on Windows and fails on Linux with
 `Denied (InvalidRequest): The requested path is a file`, which is how the scenario is known to be
 load-bearing.
+
+##### AgentKitTools-File-DeleteDirectoryTool-EveryEntryIsPolicyJudged: Every Entry Is Policy Judged
+
+**Test**: `FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_ReturnsDenialNamingTheEntry`
+
+**Test**: `FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_RemovesNothing`
+
+Security control, and the same defect as the link scenarios reached by a third route: the unit
+validated the path it was *named* rather than what the removal touches. The policy grants the root
+read-write while excluding `*.key`, so the write decision permits the directory the request names
+and refuses a file inside it. The first test asserts a `PathNotPermitted` refusal that names the
+withheld entry as the model spelled it — `build/secret.key`, composed from the requested path and
+the relative sub-path — and discloses no host path. The second puts the withheld file one level
+deeper, so the refusal must come from an entry the walk reaches rather than from the root, and
+asserts `build/nested/secret.key` is named, that both directories and **both files** survive, and
+that the withheld file still holds its content. The second assertion set is the load-bearing one
+twice over: it pins that nothing was removed, and that the permitted subset was not removed as a
+consolation — a partial deletion the request never asked for is the outcome the two phases exist
+to prevent.
+
+Run against an implementation whose planning walk records descendants without consulting the
+policy, both scenarios fail and the tool answers `Deleted the directory and everything beneath it:
+4 entries removed` with the withheld file genuinely destroyed, so these scenarios are measured
+rather than assumed.
 
 ##### AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused: A Planning Failure Is Returned, Not Thrown
 

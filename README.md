@@ -248,7 +248,11 @@ write inside a granted location can replace a component after the check, and no 
 close that window — though no removal these tools issue follows a link, so what a race costs is
 bounded by a single entry rather than a tree. `file_create_directory` judges every directory it
 would create, not only the one named, so a request whose missing parents would reach above every
-grant is refused with nothing created. The policy also decides which tools exist at all, in one
+grant is refused with nothing created. The two destructive directory tools apply the same idea to
+the other end of the operation: they judge every entry the operation would actually **touch**, not
+only the path they were given. A grant's denied patterns exclude names *inside* a permitted
+location, so a tree holding an excluded entry is refused whole — nothing removed, nothing moved,
+and never the permitted subset instead. The policy also decides which tools exist at all, in one
 specific way: a pack withholds the tools whose **writes** the policy governs, and only when no
 grant permits writing anywhere — the five editing tools of the text file family and the six
 management tools of the file family. The question is

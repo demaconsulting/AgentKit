@@ -383,7 +383,8 @@ src/DemaConsulting.AgentKit.Tools/
 │   ├── FileMoveDirectoryTool.cs — the file_move_directory tool
 │   ├── FileMoveTool.cs          — the file_move tool
 │   ├── FilePack.cs              — publishes the file family as one pack
-│   └── LinkGuard.cs             — shared helper; what is a link, and was this path reached through one
+│   ├── LinkGuard.cs             — shared helper; what is a link, and was this path reached through one
+│   └── SubtreeGuard.cs          — shared helper; the walk over what an operation touches
 ├── Image/
 │   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
 │   ├── ImageAutoCropTool.cs     — the image_auto_crop tool

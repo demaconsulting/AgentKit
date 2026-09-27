@@ -618,6 +618,7 @@ reviews:
       - "docs/design/agent-kit-tools/file.md"                      # subsystem design
       - "docs/verification/agent-kit-tools/file.md"                # subsystem verification
       - "src/DemaConsulting.AgentKit.Tools/File/LinkGuard.cs"      # shared link-classification helper
+      - "src/DemaConsulting.AgentKit.Tools/File/SubtreeGuard.cs"   # shared subtree walk and per-entry policy question
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs"  # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/DirectoryLink.cs"  # directory-link test fixture
 

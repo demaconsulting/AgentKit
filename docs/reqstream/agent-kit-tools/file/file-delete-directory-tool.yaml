@@ -141,6 +141,35 @@ sections:
                   - FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
                   - FileDeleteDirectoryTool_Delete_DeeperGrantDenyingTheTarget_DoesNotHideALinkAboveIt
 
+              - id: AgentKitTools-File-DeleteDirectoryTool-EveryEntryIsPolicyJudged
+                title: >-
+                  The delete-directory tool shall consult the write decision for every entry the
+                  removal would take, not only for the directory the request named, refusing the
+                  whole request and removing nothing when any entry is one the policy does not
+                  permit this agent to write, and naming that entry as the request spelled it.
+                tags: [security]
+                justification: |
+                  A grant permits a location and may exclude names within it: a denied pattern
+                  refuses a path any of whose segments matches it, so ReadWrite(root, ["*.key"])
+                  permits root while refusing root/secret.key. A removal judged by the path it
+                  was given rather than by what it touches therefore destroys exactly the content
+                  the operator's policy declares off-limits, which is a containment violation
+                  reached without any link, any escape and any mistake by the model — the request
+                  was permitted, the consequence was not. It is the same defect as the two link
+                  escapes by a third route: in all three the tool validated the path it was
+                  named rather than the entries the operation reaches.
+
+                  The refusal is total by design. Removing the permitted subset would be a
+                  partial deletion the request never asked for — the outcome the two-phase plan
+                  exists to prevent — and would leave a model holding a directory it asked to
+                  have removed, partly emptied, with no way to tell what went. The entry is named
+                  so the model can re-address, in its own spelling and never as a host path; the
+                  pattern that withheld it is not named, because the policy's shape is the
+                  operator's business and not something a refusal should teach.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_ReturnsDenialNamingTheEntry
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_RemovesNothing
+
               - id: AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
                 title: >-
                   The delete-directory tool shall refuse a directory holding more entries than the
@@ -159,8 +188,13 @@ sections:
                   help, while a real figure does; it stays exact past the ceiling because the walk
                   keeps counting after it stops retaining paths, and the boundary is stated
                   explicitly so that a tree of exactly the ceiling is removed whole rather than
-                  one entry short with a confirmation claiming otherwise. Counting the named
-                  directory is what makes zero
+                  one entry short with a confirmation claiming otherwise. What the walk holds is
+                  bounded by the tree's depth rather than its size: each directory is streamed an
+                  entry at a time rather than materialized, and the walk keeps one enumerator per
+                  level of depth rather than one path per directory still to visit, so a refusal
+                  that names an exact figure never first accumulates the tree it refuses — not
+                  even when that tree is one very wide directory. Counting the named directory is
+                  what makes zero
                   the expressible way for a host to attach the family and withhold this capability.
                 tests:
                   - FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_ReturnsDenialNamingTheCountAndTheLimit

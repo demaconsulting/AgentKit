@@ -120,6 +120,94 @@ public class FileMoveDirectoryToolTests
     }
 
     /// <summary>
+    ///     Proves a source holding an entry the policy withholds is refused, naming that entry,
+    ///     and the tree stays where it is.
+    /// </summary>
+    /// <remarks>
+    ///     The same defect as the link escapes, by a third route: the tool judged the two paths
+    ///     it was <em>named</em> and not what <see cref="Directory.Move(string, string)"/>
+    ///     actually relocates. A grant of <c>ReadWrite(root, ["*.key"])</c> permits the directory
+    ///     and refuses the file inside it, so a move judged by the named paths alone relocates
+    ///     content the operator's policy excludes.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveDirectoryTool_Move_SourceHoldingAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree()
+    {
+        // Arrange: a permitted directory holding a file the policy's denied pattern rejects
+        using var fixture = new TempDirectoryFixture();
+        var drafts = Path.Combine(fixture.Root, "drafts");
+        var ordinary = TempDirectoryFixture.WriteFile(drafts, "note.txt", "content");
+        var withheld = TempDirectoryFixture.WriteFile(drafts, "secret.key", "key-content");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Root, ["*.key"])]);
+        var tool = FileMoveDirectoryTool.Create(policy);
+
+        // Act: move the directory, which the write decision permits for both named paths
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["source"] = "drafts", ["destination"] = "archive" });
+
+        // Assert: refused naming the withheld entry as the model spelled it, nothing relocated,
+        // and no host path disclosed
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("drafts/secret.key", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Root, text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "archive")));
+        Assert.True(System.IO.File.Exists(ordinary));
+        Assert.True(System.IO.File.Exists(withheld));
+    }
+
+    /// <summary>
+    ///     Proves a move that would land an entry where the policy permits no writing is
+    ///     refused, and the tree stays where it is.
+    /// </summary>
+    /// <remarks>
+    ///     The complement of the scenario above, and the half a source-only check would leave
+    ///     open. The policy grants the workspace without exclusions and a second location with
+    ///     one, so the file is perfectly writable where it stands and refused where it would go —
+    ///     a location the policy was never asked about, because no request ever named it. The
+    ///     pair is written for the same reason the link pair is.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveDirectoryTool_Move_DestinationWouldHoldAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree()
+    {
+        // Arrange: a workspace grant with no exclusions, and a second granted location that
+        // excludes key material, so only the landing place refuses the file
+        using var fixture = new TempDirectoryFixture();
+        var drafts = Path.Combine(fixture.Root, "drafts");
+        var withheld = TempDirectoryFixture.WriteFile(drafts, "secret.key", "key-content");
+        var vault = Path.Combine(fixture.Outside, "vault");
+        Directory.CreateDirectory(vault);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadWrite(fixture.Root), PathRule.ReadWrite(vault, ["*.key"])]);
+        var tool = FileMoveDirectoryTool.Create(policy);
+
+        // Act: move the directory into the second granted location, which both write decisions
+        // permit for the paths the request names
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments
+            {
+                ["source"] = "drafts",
+                ["destination"] = "../outside/vault/drafts"
+            });
+
+        // Assert: refused naming where the entry would have landed, in the model's own
+        // spelling, with nothing placed there and the tree still at its source
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("../outside/vault/drafts/secret.key", text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(vault, "drafts")));
+        Assert.True(System.IO.File.Exists(withheld));
+        Assert.Equal(
+            "key-content",
+            await System.IO.File.ReadAllTextAsync(withheld, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     ///     Proves the published tool name is the family-qualified name the pack claims.
     /// </summary>
     [Fact]

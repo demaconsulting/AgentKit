@@ -123,6 +123,39 @@ sections:
                   - FileMoveDirectoryTool_Move_SourceReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
                   - FileMoveDirectoryTool_Move_DestinationReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
 
+              - id: AgentKitTools-File-MoveDirectoryTool-EveryEntryIsPolicyJudged
+                title: >-
+                  The move-directory tool shall consult the write decision for every entry the
+                  move would relocate — where it stands and where it would land — not only for
+                  the two paths the request named, refusing the whole request and moving nothing
+                  when any entry is one the policy does not permit this agent to write, and
+                  naming that entry as the request spelled it.
+                tags: [security]
+                justification: |
+                  A directory move relocates the whole subtree, while the two write decisions
+                  judge two paths. A grant permits a location and may exclude names within it, so
+                  ReadWrite(root, ["*.key"]) permits root/drafts and refuses
+                  root/drafts/secret.key: a move judged by the named paths alone relocates
+                  content the policy excludes, and lands it at a path the policy was never asked
+                  about. That is a containment violation reached without any link and without any
+                  mistake by the model, and it is the same defect as the link escapes by a third
+                  route — the tool validated the path it was named rather than what the operation
+                  touches.
+
+                  Both ends are asked because they are different questions and a policy may
+                  answer them differently. Asking only where an entry stands would place content
+                  where the operator permitted none; asking only where it would land would let a
+                  tree be taken from where the policy withholds it. The landing location is the
+                  one no request ever names, so nothing else in the tool would have asked about
+                  it. The walk and the predicate are the ones the recursive deletion uses, so the
+                  two tools cannot drift into two notions of what an operation touches. Unlike
+                  the deletion there is no partial state to reason about, because the framework
+                  move is one call, so the check is purely pre-flight and refusing costs the
+                  request nothing but a metadata-only walk.
+                tests:
+                  - FileMoveDirectoryTool_Move_SourceHoldingAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree
+                  - FileMoveDirectoryTool_Move_DestinationWouldHoldAnEntryThePolicyWithholds_ReturnsDenialAndLeavesTheTree
+
               - id: AgentKitTools-File-MoveDirectoryTool-PolicyGoverned
                 title: >-
                   The move-directory tool shall judge both endpoints by the write decision, so a
