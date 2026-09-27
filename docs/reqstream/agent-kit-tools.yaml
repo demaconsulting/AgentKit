@@ -172,11 +172,12 @@ sections:
           The library shall provide an image family that reads images and PDF documents under the
           access policy the composing application supplies, reporting the pixel dimensions of an
           image it can establish them for, returning a rectangular region of one named in pixels
-          and refusing a region that is not wholly inside it, writing that region to a destination
-          a read-write grant permits when the caller names one, interpreting the paths a model
-          states
-          as relative to the workspace, offering both of its tools under every policy including
-          one that permits no writing, publishing every tool under one family
+          and refusing a region that is not wholly inside it, trimming an image to the region its
+          own content occupies when the caller names no region at all, writing that region to a
+          destination a read-write grant permits when the caller names one, interpreting the
+          paths a model states
+          as relative to the workspace, offering every one of its tools under every policy
+          including one that permits no writing, publishing every tool under one family
           prefix, delivering the content to the caller rather than a serialized copy of it, and
           registering the family only for a host that declares it can present visual content to a
           model.

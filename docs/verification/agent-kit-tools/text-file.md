@@ -35,7 +35,7 @@ Subsystem tests reside in `TextFile/TextFileTests.cs` within the
 
 ### Acceptance Criteria
 
-A subsystem test run passes when all 7 requirement scenarios below, covering 15 listed test method
+A subsystem test run passes when all 8 requirement scenarios below, covering 16 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing tool, a wrong
 family prefix, an ignored policy decision, a containment escape, a thrown refusal, incorrect relative-path
 behavior, unsafe mutation, or a ceiling violation returned as truncated content constitutes a

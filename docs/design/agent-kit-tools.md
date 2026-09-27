@@ -213,7 +213,7 @@ statement of what the agent can do.
 | --- | --- | ---: | ---: |
 | TextFile | Yes | 5 of 8 | 8 → **3** |
 | File | Yes | 6 of 7 | 7 → **1** |
-| Image | No | none | 2 → **2** |
+| Image | No | none | 3 → **3** |
 | Markdown | No | none | 1 → **1** |
 | Memory | No | none | 5 → **5** |
 | Todo | No | none | 3 → **3** |
@@ -228,14 +228,15 @@ every policy.
 
 Eleven tools in total need a write grant: five in the TextFile family and six in the File family.
 All seven families composed over a policy that permits no writing anywhere therefore publish
-3 + 1 + 2 + 1 + 5 + 3 + 1 = 16 tools, against 27 under a policy that permits writing somewhere.
+3 + 1 + 3 + 1 + 5 + 3 + 1 = 17 tools, against 28 under a policy that permits writing somewhere.
 
 Why each non-filtering family does not filter:
 
-- **Image** — both tools succeed under a read-only policy. Reading an image is a read, and
-  cropping without a destination returns image content rather than writing a file. The crop tool's
-  optional `destination` does need a write grant, but the rule is "could this tool ever succeed",
-  not "could every argument ever succeed"; see _Image Pack Design_ and _Image Crop Tool Design_.
+- **Image** — all three tools succeed under a read-only policy. Reading an image is a read, and
+  taking a region without a destination returns image content rather than writing a file. The
+  optional `destination` that `image_crop` and `image_auto_crop` both carry does need a write
+  grant, but the rule is "could this tool ever succeed", not "could every argument ever succeed";
+  see _Image Pack Design_, _Image Crop Tool Design_ and _Image Auto Crop Tool Design_.
 - **Markdown** — `markdown_outline` consults only the read decision.
 - **Memory** and **Todo** — both families accept the policy and ignore it. Their state is the
   pack's own store, not a location the policy governs, so a read-only _path_ policy narrows

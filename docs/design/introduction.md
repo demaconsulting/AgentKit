@@ -290,9 +290,11 @@ being told them.
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
 own subsystem: `TextFile`, which searches, reads, creates, sets, replaces and moves line ranges
 within
-text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
+text files under the policy; `File`, which lists, copies, moves and deletes files of any type, and
+creates, moves or renames, and recursively deletes the directories holding them;
 `Markdown`, which outlines a document's headings with their line ranges;
-`Image`, which reads images and PDF documents for a vision-capable agent; `Todo`, which gives an
+`Image`, which reads images and PDF documents for a vision-capable agent, returns a region of one
+and trims one to the region its own content occupies; `Todo`, which gives an
 agent one flat task list of its own; `Memory`, which gives an agent a searchable record of what it
 has learned; and `Agent`, which delegates a task to another agent the
 application registered. All compose through

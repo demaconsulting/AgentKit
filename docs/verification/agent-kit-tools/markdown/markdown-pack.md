@@ -26,7 +26,7 @@ Unit tests reside in `Markdown/MarkdownPackTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 4 requirement scenarios below, covering 4 listed test method
+A unit test run passes when all 5 requirement scenarios below, covering 5 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or

@@ -46,7 +46,8 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   a tree larger than the configured entry ceiling),
   **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
-  dimensions, and return a rectangular region of a PNG or JPEG named in those pixels, inline or
+  dimensions, return a rectangular region of a PNG or JPEG named in those pixels, and trim one to
+  the region its own content occupies when no region can be named — inline or
   written as a new PNG where a read-write grant permits it; gated on the
   `Vision` host capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
   steps from), **memory**
@@ -239,7 +240,7 @@ junctions and other reparse points are not a protection boundary: a path that re
 granted location through a link is not detected. The policy also decides which tools exist at all:
 a pack publishes only the tools the policy could permit to succeed, so a policy holding no
 read-write grant anywhere withholds every tool that can act only by writing — the five editing
-tools of the text file family and the three management tools of the file family. The question is
+tools of the text file family and the six management tools of the file family. The question is
 asked of the whole policy, so a read-only workspace paired with a read-write session folder still
 publishes them all. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tools only when the host

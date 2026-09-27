@@ -23,7 +23,7 @@ project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 6 requirement scenarios below, covering 6 listed test method
+A unit test run passes when all 7 requirement scenarios below, covering 7 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A wrong prefix, a
 required capability, tools registered out of order, an accepted null policy, a task list shared
 between two compositions of the same pack instance, or a suggested-instruction constant that no

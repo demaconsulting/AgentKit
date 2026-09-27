@@ -52,7 +52,8 @@ Creates the family's tools.
 the pack invented.
 
 **Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` followed by
-`ImageCropTool.Create(policy)` as the two elements of a collection, in that order.
+`ImageCropTool.Create(policy)` and `ImageAutoCropTool.Create(policy)` as the three elements of a
+collection, in that order.
 
 **Postconditions:** exactly the read tool, the crop tool and the auto-crop tool, non-null, each
 named `image_`-prefixed and governed by the supplied policy. The three are created together because
@@ -96,8 +97,8 @@ pack is not reachable from a model's tool call, so no runtime refusal arises her
 #### Dependencies
 
 `IToolPack` and `HostCapabilities` for the contract it implements, `PathPolicy` as the argument it
-passes on, and the read and crop tool units whose internal factories it calls. `AIFunction`, from
-`Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
+passes on, and the read, crop and auto-crop tool units whose internal factories it calls.
+`AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
 
 #### Callers
 

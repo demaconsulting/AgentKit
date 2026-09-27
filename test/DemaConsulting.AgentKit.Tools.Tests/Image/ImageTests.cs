@@ -31,7 +31,7 @@ public class ImageTests
     ///     Proves a composition attaching the family, on a vision host, publishes every tool.
     /// </summary>
     [Fact]
-    public void Image_Family_ComposedThroughBuilder_PublishesBothTools()
+    public void Image_Family_ComposedThroughBuilder_PublishesEveryTool()
     {
         // Arrange: a vision host with the family attached under one policy
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);

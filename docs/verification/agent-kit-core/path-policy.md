@@ -46,7 +46,7 @@ Unit tests reside in `PathPolicyTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifty scenarios below pass without error or exception beyond
+A unit test run passes when all fifty-five scenarios below pass without error or exception beyond
 those explicitly asserted. Any escaping path that is permitted, any excluded file that
 appears in a listing, any relative request resolved against the process working directory, any
 missing working directory accepted, any null grant accepted, any empty grant set permitting access,

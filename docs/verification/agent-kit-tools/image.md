@@ -61,7 +61,7 @@ a failure.
 
 #### AgentKitTools-Image-FamilyComposition: The Family Publishes Every Tool
 
-**Test**: `Image_Family_ComposedThroughBuilder_PublishesBothTools`
+**Test**: `Image_Family_ComposedThroughBuilder_PublishesEveryTool`
 
 Normal operation: composes the pack through a `ToolPackBuilder` on a vision host and asserts every
 tool name, confirming the family is attached as one unit and publishes what it promises. They

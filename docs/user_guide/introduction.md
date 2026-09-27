@@ -262,7 +262,7 @@ row.
 | Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None         | Yes         |
 | Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None         | Yes         |
 | Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None         | No          |
-| Text file | `text_file_paste_lines` | Pastes previously cut lines back into a file     | None         | Yes         |
+| Text file | `text_file_paste_lines` | Pastes lines held in a buffer into a file        | None         | Yes         |
 | File      | `file_list`             | Lists files of any type within the policy        | None         | No          |
 | File      | `file_copy`             | Copies a file within the policy                  | None         | Yes         |
 | File      | `file_move`             | Moves a file within the policy                   | None         | Yes         |
@@ -306,6 +306,13 @@ the buffer it fills has no drain, because `text_file_paste_lines` is the buffer'
 `file_list` needs only the read decision to report what exists, consulting the write decision
 solely to mark a listed location as writable. The todo and memory families keep their state in the
 composition's own store rather than on disk, so a read-only *path* policy governs nothing they do.
+
+**What `text_file_write` captures, and for how long.** Setting a file's whole content puts the
+content it displaced into the line buffer named `overwritten`, and `text_file_paste_lines` reading
+that buffer is the route back. The capture holds **only the most recent overwrite**: a second
+`text_file_write`, to the same file or any other, replaces it, and nothing earlier can be
+recovered. The buffers live in the composition rather than on disk, so they are also gone when the
+composition ends. An agent that means to keep a version must copy the file before writing it.
 
 `image_crop` and `image_auto_crop` are marked `No` and are offered under a read-only policy,
 because each one's primary mode
@@ -435,10 +442,10 @@ location rather than a listing of the working directory alone. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
 
-The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all fifteen
+The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all nineteen
 tools of those four families. The same builder, the same packs and the same capability declaration
-over a policy whose grants are all read-only yields a shorter list — seven tools, because the five
-write-performing text file tools and the three file management tools are withheld. Nothing else
+over a policy whose grants are all read-only yields a shorter list — eight tools, because the five
+write-performing text file tools and the six file management tools are withheld. Nothing else
 about the composition changes, and nothing announces the difference, so an application that means
 its agent to edit must grant it somewhere to write.
 

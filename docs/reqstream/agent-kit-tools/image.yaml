@@ -36,7 +36,7 @@ sections:
               - AgentKitTools-Image-Pack-RegistersAutoCropTool
               - AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix
             tests:
-              - Image_Family_ComposedThroughBuilder_PublishesBothTools
+              - Image_Family_ComposedThroughBuilder_PublishesEveryTool
               - Image_Family_HostDeclaringVision_ReceivesTheFamily
 
           - id: AgentKitTools-Image-DimensionReporting

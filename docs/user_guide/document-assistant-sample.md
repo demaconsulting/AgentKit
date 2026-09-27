@@ -56,9 +56,8 @@ guarantees this guide describes:
   while the session folder stays writable, and the refusal of a workspace write enumerates the
   writable location so the agent can recover.
 - **Capability gating.** The image tools appear only when the host declares the `Vision` capability.
-  Running the sample with `--no-vision` removes `image_read`, `image_crop` and `image_auto_crop` from
-the tools the
-  model is offered — they are never presented, not merely refused.
+  Running the sample with `--no-vision` removes `image_read`, `image_crop` and `image_auto_crop`
+  from the tools the model is offered — they are never presented, not merely refused.
 - **Both grants in one call.** With a destination, `image_crop` reads the image under the workspace
   grant and writes the region under the session folder's write grant. Under `--read-only-workspace`
   a destination in the workspace is refused while the same call into the session folder succeeds —
@@ -110,7 +109,9 @@ With vision enabled the agent lists `text_file_search`, `text_file_read`, `text_
 `text_file_write`, `text_file_replace`, `text_file_cut_lines`, `text_file_copy_lines`,
 `text_file_paste_lines`,
 `file_list`, `file_copy`,
-`file_move`, `file_delete`, `markdown_outline`, `image_read`, `image_crop`, and `image_auto_crop`;
+`file_move`, `file_delete`, `file_create_directory`, `file_move_directory`,
+`file_delete_directory`, `markdown_outline`, `image_read`, `image_crop`, and `image_auto_crop` —
+nineteen tools;
 with `--no-vision`
 all three image tools
 are absent, because the builder never asks a pack for tools whose required capability the host has not

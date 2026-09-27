@@ -32,7 +32,7 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-one scenarios below pass without error or exception
+A unit test run passes when all twenty-two scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
