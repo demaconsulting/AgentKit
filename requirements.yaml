@@ -35,6 +35,7 @@ includes:
   - docs/reqstream/agent-kit-core/platform-requirements.yaml
   - docs/reqstream/agent-kit-tools.yaml
   - docs/reqstream/agent-kit-tools/image.yaml
+  - docs/reqstream/agent-kit-tools/image/image-auto-crop-tool.yaml
   - docs/reqstream/agent-kit-tools/image/image-crop-tool.yaml
   - docs/reqstream/agent-kit-tools/image/image-media-types.yaml
   - docs/reqstream/agent-kit-tools/image/image-pack.yaml
@@ -43,6 +44,7 @@ includes:
   - docs/reqstream/agent-kit-tools/text-file/text-file-search-tool.yaml
   - docs/reqstream/agent-kit-tools/text-file/text-file-read-tool.yaml
   - docs/reqstream/agent-kit-tools/text-file/text-file-create-tool.yaml
+  - docs/reqstream/agent-kit-tools/text-file/text-file-write-tool.yaml
   - docs/reqstream/agent-kit-tools/text-file/text-file-replace-tool.yaml
   - docs/reqstream/agent-kit-tools/text-file/text-file-cut-lines-tool.yaml
   - docs/reqstream/agent-kit-tools/text-file/text-file-copy-lines-tool.yaml
@@ -54,6 +56,9 @@ includes:
   - docs/reqstream/agent-kit-tools/file/file-copy-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-move-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-delete-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-create-directory-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-move-directory-tool.yaml
+  - docs/reqstream/agent-kit-tools/file/file-delete-directory-tool.yaml
   - docs/reqstream/agent-kit-tools/file/file-pack.yaml
   - docs/reqstream/agent-kit-tools/markdown.yaml
   - docs/reqstream/agent-kit-tools/markdown/markdown-outline-tool.yaml

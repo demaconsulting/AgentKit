@@ -3,12 +3,13 @@
 ![AgentKit Tools TextFile Structure](TextFileView.svg)
 
 The `TextFileLineBuffers` class is an internal modeled unit that stores named text slots for
-`text_file_cut_lines`, `text_file_copy_lines` and `text_file_paste_lines`.
+`text_file_write`, `text_file_cut_lines`, `text_file_copy_lines` and `text_file_paste_lines`.
 
 #### Purpose
 
-To make every line-range cut recoverable, and every copy possible, by holding the exact raw text a
-cut removes from a file or a copy duplicates from it until a paste tool inserts it. The store is not a
+To make every line-range cut recoverable, every wholesale overwrite recoverable, and every copy
+possible, by holding the exact raw text a cut removes from a file, a write displaces from it, or a
+copy duplicates from it, until a paste tool inserts it. The store is not a
 user-facing tool and does not grant access to files. It is
 shared state inside one text-file tool composition.
 
@@ -19,16 +20,27 @@ durable document store.
 #### Data Model
 
 The class is sealed and internal. One instance is allocated by `TextFilePack.CreateTools` for each
-composition and shared by that composition's cut, copy and paste tools.
+composition and shared by that composition's write, cut, copy and paste tools.
 
-| Member        | Type                         | Invariant                                                |
-| ------------- | ---------------------------- | -------------------------------------------------------- |
-| `DefaultSlot` | `string`                     | `default`; used when cut, copy or paste supplies no name |
-| `_gate`       | `object`                     | Lock guarding all access to `_slots`                     |
-| `_slots`      | `Dictionary<string, string>` | Ordinal names; each value is raw captured text           |
+| Member            | Type                         | Invariant                                                |
+| ----------------- | ---------------------------- | -------------------------------------------------------- |
+| `DefaultSlot`     | `string`                     | `default`; used when cut, copy or paste supplies no name |
+| `OverwrittenSlot` | `string`                     | `overwritten`; where a write puts content it displaces   |
+| `_gate`           | `object`                     | Lock guarding all access to `_slots`                     |
+| `_slots`          | `Dictionary<string, string>` | Ordinal names; each value is raw captured text           |
 
 Slot names must be non-null and non-empty. Captured text must be non-null; empty text is permitted,
 although the cut tool normally captures at least one line.
+
+`OverwrittenSlot` is distinct from `DefaultSlot` on purpose, and the write tool takes no slot-name
+argument. The default slot is the model's working clipboard: a model that has cut a fragment and is
+about to paste it is holding that fragment there, and a capture it never requested landing on top
+would destroy an edit in flight. The two captures have different owners — one the model asked for,
+one it did not — so they do not share a name. The name is fixed rather than model-supplied because
+the write tool's description has to be able to state unconditionally where displaced content went,
+and because a name the model chose could be `default`. The consequence, which the write tool states
+rather than implies away, is that a second overwrite replaces the first capture: only the most recent
+overwrite is recoverable.
 
 #### Key Methods
 
@@ -69,8 +81,8 @@ using only the names the model itself chose. It is internal refusal guidance, no
 #### Error Handling
 
 Null or empty slot names, and null captured text, are programming errors from the tool units and are
-reported by argument exceptions. Model-facing validation happens in the cut, copy and paste tools
-before this unit is called.
+reported by argument exceptions. Model-facing validation happens in the write, cut, copy and paste
+tools before this unit is called.
 
 The lock makes concurrent calls safe. No file-system failures occur here because the unit stores only
 in-memory text.
@@ -78,10 +90,13 @@ in-memory text.
 #### Dependencies
 
 The unit depends only on Base Class Library collections and locking. It is referenced by
-`TextFilePack`, `TextFileCutLinesTool`, `TextFileCopyLinesTool`, and `TextFilePasteLinesTool`.
+`TextFilePack`, `TextFileWriteTool`, `TextFileCutLinesTool`, `TextFileCopyLinesTool`, and
+`TextFilePasteLinesTool`.
 
 #### Callers
 
-`TextFilePack.CreateTools` constructs one instance per composition. `TextFileCutLinesTool` and
-`TextFileCopyLinesTool` call `Capture`, and `TextFilePasteLinesTool` calls `TryPaste` and, when a
-requested slot is empty, `PopulatedSlots` to name the slots that do hold content.
+`TextFilePack.CreateTools` constructs one instance per composition. `TextFileCutLinesTool`,
+`TextFileCopyLinesTool` and `TextFileWriteTool` call `Capture` — the first two into a slot the model
+named or the default, the third always into `OverwrittenSlot` — and `TextFilePasteLinesTool` calls
+`TryPaste` and, when a requested slot is empty, `PopulatedSlots` to name the slots that do hold
+content.

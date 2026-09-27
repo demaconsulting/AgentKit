@@ -27,6 +27,17 @@ sections:
                 tests:
                   - MarkdownPack_RequiredCapabilities_IsNone
 
+              - id: AgentKitTools-Markdown-Pack-PublishedUnderEveryPolicy
+                title: >-
+                  The pack shall offer its tool under every access policy, including one that
+                  permits no writing anywhere.
+                justification: |
+                  Reporting a document's heading structure needs only permission to read the
+                  document, so the family holds no tool that a configuration permitting no writing
+                  could prevent from succeeding, and nothing here is ever withheld.
+                tests:
+                  - MarkdownPack_CreateTools_ReadOnlyPolicy_PublishesItsTool
+
               - id: AgentKitTools-Markdown-Pack-RegistersOutlineTool
                 title: >-
                   The pack shall create its single outline tool.

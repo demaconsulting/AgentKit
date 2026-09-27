@@ -13,6 +13,18 @@ namespace DemaConsulting.AgentKit.Core;
 ///     or rationalize around a refusal.
 ///     </para>
 ///     <para>
+///     <b>A tool whose writes the policy has disabled is likewise never offered.</b> The same
+///     reasoning
+///     applies one level finer, and the two gates divide cleanly: the host capability decides
+///     <em>whether a pack is asked for its tools</em>, and the policy the pack is handed decides
+///     <em>which of its tools it returns</em>. A pack is free to withhold a tool that could only
+///     ever answer a refusal under the policy in force — the built-in file families do exactly
+///     that for their write-performing tools, using
+///     <see cref="PathPolicy.AnyLocationIsWritable"/> — and the builder does not distinguish a
+///     withheld tool from one the pack never had. It verifies whatever is returned against the
+///     pack's declared prefix exactly as before.
+///     </para>
+///     <para>
 ///     <b>Composition-time programming errors throw.</b> Only runtime policy decisions are
 ///     returned as results. A colliding family prefix, a pack that publishes a tool outside its
 ///     declared family, or a missing access policy are all mistakes in the composing
@@ -166,6 +178,12 @@ public sealed class ToolPackBuilder
     ///     A pack is supported when every capability it requires is one the host declared;
     ///     a pack requiring <see cref="HostCapabilities.None"/> is therefore always supported.
     ///     An unsupported pack is never asked to create its tools at all.
+    ///     </para>
+    ///     <para>
+    ///     A supported pack returns whichever of its tools the policy leaves able to act,
+    ///     which need not be its whole family and need not be the same set under every policy.
+    ///     The builder takes what it is given and verifies it against the pack's declared prefix;
+    ///     it does not know, and does not report, that a tool was withheld.
     ///     </para>
     ///     <para>
     ///     Tools appear in the order the packs were added, and within a pack in the order it

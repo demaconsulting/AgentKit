@@ -32,9 +32,11 @@ Unit tests reside in `PathRuleTests.cs` within the `DemaConsulting.AgentKit.Core
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or unexpected exception.
+A unit test run passes when all seventeen scenarios below pass without error or unexpected
+exception.
 Any permitted location that should have been refused, any refused location that should have been
-permitted, any access level not carried exactly as requested, any malformed grant accepted, or any
+permitted, any access level not carried exactly as requested, an access level added or removed from
+the enumeration, any malformed grant accepted, or any
 grant description that omits its location or access level constitutes a failure.
 
 ### Test Scenarios
@@ -67,6 +69,18 @@ unconditional access.
 
 Constructs one grant with `PathRule.ReadOnly` and one with `PathRule.ReadWrite` over the same root
 and asserts that each carries the level named by the factory that made it.
+
+#### AgentKitCore-PathRule-AccessLevel: There Are Exactly Two Access Levels
+
+**Test**: `PathRule_AccessLevel_DeclaredLevels_AreExactlyReadOnlyAndReadWrite`
+
+Reads the declared values of the `AccessLevel` enumeration and asserts there are exactly two, and
+exactly `ReadOnly` and `ReadWrite`. This pins a premise other documented reasoning rests on rather
+than a matter of taste: the file family withholds only its writing tools under a policy permitting
+no writing, and the stated reason is that permission to write always carries permission to read —
+true only while no write-only level exists. Without this scenario, adding a third level would
+falsify that prose with nothing failing to say so; measured, introducing an `AppendOnly` level
+fails this test and no other in the suite.
 
 #### AgentKitCore-PathRule-Rooted: A Location Inside the Root Is Permitted
 

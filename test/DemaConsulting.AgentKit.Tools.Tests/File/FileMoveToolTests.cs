@@ -129,6 +129,37 @@ public class FileMoveToolTests
     }
 
     /// <summary>
+    ///     Proves a destination in the same directory renames the file, and that the tool's
+    ///     description says so.
+    /// </summary>
+    /// <remarks>
+    ///     There is no separate rename tool, so the only way a model learns the capability exists
+    ///     is the description. Asserting the behavior without asserting the description would
+    ///     leave a capability shipped and undiscoverable.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveTool_Move_DestinationInTheSameDirectory_RenamesTheFile()
+    {
+        // Arrange: one file to rename in place
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "draft.txt", "content");
+        var tool = FileMoveTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: move it to a name beside itself
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["source"] = "draft.txt", ["destination"] = "final.txt" });
+
+        // Assert: the old name is gone, the new one holds the content, and the description names
+        // the rename so a model can find the capability
+        Assert.IsType<string>(result);
+        Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "draft.txt")));
+        Assert.Equal("content", await ReadAsync(Path.Combine(fixture.Root, "final.txt")));
+        Assert.Contains("renames the file", tool.Description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Composes a policy over one read-write location.
     /// </summary>
     /// <param name="root">The permitted location.</param>

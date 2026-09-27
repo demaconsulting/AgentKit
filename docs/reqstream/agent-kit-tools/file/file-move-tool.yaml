@@ -60,6 +60,19 @@ sections:
                 tests:
                   - FileMoveTool_Move_ExistingDestinationWithoutOverwrite_ReturnsDenialAndLeavesBoth
 
+              - id: AgentKitTools-File-MoveTool-Renames
+                title: >-
+                  The move tool shall rename a file when the destination lies in the same
+                  directory, and shall state that in the description a model reads.
+                justification: |
+                  A rename is the same operation with a destination that happens to share the
+                  source's directory, so a second tool issuing it would cost tokens on every
+                  request forever and create a selection ambiguity. A capability a model cannot
+                  discover is one the library does not really offer, which is why the declaration
+                  has to carry it.
+                tests:
+                  - FileMoveTool_Move_DestinationInTheSameDirectory_RenamesTheFile
+
               - id: AgentKitTools-File-MoveTool-MissingSource
                 title: >-
                   The move tool shall refuse a missing source with a plain fact that names no other

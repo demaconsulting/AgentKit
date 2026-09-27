@@ -36,40 +36,51 @@ intersection of what the family reads and what it can decode, chosen over the al
 "whatever the decoder handles": widening to formats the read tool refuses would create an
 accidental conversion path — a model could launder an unreadable format into a viewable one by
 taking a region covering the whole image — which nobody designed and no requirement covers. Adding
-formats later is then a single coherent widening across both tools, reviewable as one decision.
+formats later is then a single coherent widening across all three tools, reviewable as one decision.
 
-The subsystem contains four units, plus one shared helper that is not a unit:
+The subsystem contains five units, plus three shared helpers that are not units:
 
-| Unit              | Responsibility                                                              |
-|-------------------|-----------------------------------------------------------------------------|
-| `ImageMediaTypes` | Maps an extension to the media type the family reads, and refuses the rest  |
-| `ImageReadTool`   | Publishes `image_read`: returns one permitted file's content with a caption |
-| `ImageCropTool`   | Publishes `image_crop`: returns a pixel region of one permitted image       |
-| `ImagePack`       | Publishes the tools as one family under the `image` prefix, gated on Vision |
+| Unit                | Responsibility                                                                |
+|---------------------|-------------------------------------------------------------------------------|
+| `ImageMediaTypes`   | Maps an extension to the media type the family reads, and refuses the rest    |
+| `ImageReadTool`     | Publishes `image_read`: returns one permitted file's content with a caption   |
+| `ImageCropTool`     | Publishes `image_crop`: returns a pixel region of one permitted image         |
+| `ImageAutoCropTool` | Publishes `image_auto_crop`: returns the content region of a permitted image  |
+| `ImagePack`         | Publishes the tools as one family under the `image` prefix, gated on Vision   |
 
-`ImageProbe` is a shared helper rather than a unit: it is an internal static function of bytes
-with no state, no policy, no result and nothing a requirement would promise that the tools
-consuming it do not already promise observably. It follows the same treatment `TextLines` and
+`ImageProbe`, `ImageAdmission` and `ImageDestination` are shared helpers rather than units: each is
+an internal static function of its arguments, with no state, no policy, no result and nothing a
+requirement would promise that the tools consuming them do not already promise observably.
+`ImageProbe` answers what a file's header declares; `ImageAdmission` turns a permitted file into
+pixels within the host's ceilings; `ImageDestination` decides whether a named destination may
+receive a new PNG and writes one there. They follow the same treatment `TextLines` and
 `MemoryEmbedding` receive in their subsystems — covered by this subsystem's review-set, documented
-here rather than in a file of its own.
+here rather than in a file of their own.
+
+The two extracted helpers exist because their logic is security-relevant and must have exactly one
+implementation. Both region tools answer the same five destination questions in the same order, and
+both must read within the same binary ceiling and refuse the same oversized declaration before any
+pixel buffer exists. A second copy of either sequence would be a second place a later correction has
+to reach, and the one it failed to reach would be the one an operator was relying on.
 
 ### Interfaces
 
-The subsystem exposes four public types — `ImagePack`, the unit of attachment, `ImageMediaTypes`,
-the media-type map a caller may consult, and the two tool classes, which publish the name
+The subsystem exposes five public types — `ImagePack`, the unit of attachment, `ImageMediaTypes`,
+the media-type map a caller may consult, and the three tool classes, which publish the name
 constants their tools carry. Each tool's factory is `internal`, so a tool cannot be obtained
 except through the pack that claims its family prefix — the pack is the unit of attachment, and an
 application that could construct a single tool directly could also construct one outside the
 family whose prefix protects it from collision.
 
-| Interface               | Direction | Format                       | Constraints                           |
-|-------------------------|-----------|------------------------------|---------------------------------------|
-| `ImagePack`             | Outbound  | AgentKitCore `IToolPack`     | Prefix `image`; requires Vision       |
-| `ImageReadTool.ToolName`| Outbound  | `string` constant            | The name the read tool carries        |
-| `ImageCropTool.ToolName`| Outbound  | `string` constant            | The name the crop tool carries        |
-| `ImageMediaTypes`       | Outbound  | Media-type maps and refusals | Extension-driven; states content kind |
-| `PathPolicy`            | Inbound   | AgentKitCore policy object   | Supplied at construction              |
-| File system             | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
+| Interface                   | Direction | Format                       | Constraints                           |
+|-----------------------------|-----------|------------------------------|---------------------------------------|
+| `ImagePack`                 | Outbound  | AgentKitCore `IToolPack`     | Prefix `image`; requires Vision       |
+| `ImageReadTool.ToolName`    | Outbound  | `string` constant            | The name the read tool carries        |
+| `ImageCropTool.ToolName`    | Outbound  | `string` constant            | The name the crop tool carries        |
+| `ImageAutoCropTool.ToolName`| Outbound  | `string` constant            | The name the auto-crop tool carries   |
+| `ImageMediaTypes`           | Outbound  | Media-type maps and refusals | Extension-driven; states content kind |
+| `PathPolicy`                | Inbound   | AgentKitCore policy object   | Supplied at construction              |
+| File system                 | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, `AIFunction` and the content types (`AIContent`,
@@ -82,7 +93,9 @@ imaging library directly, which is the one OTS runtime dependency this package t
 **No type from the imaging library crosses the subsystem's boundary.** `ImageProbe` takes bytes
 and reports integers and booleans; nothing in the subsystem's public surface mentions the library,
 so the generated API reference the package ships never names it and an application is never made
-to depend on its types to use the family.
+to depend on its types to use the family. `ImageAdmission` hands a decoded pixel buffer back to the
+tool that asked for it, but only across an internal boundary, and the calling tool holds it under
+its own `using` so no helper decides how long a buffer lives.
 
 ### Design
 
@@ -163,6 +176,47 @@ would under-count exactly the format a hostile caller would choose by a factor o
 in the region a model asked to examine closely, a compression artifact is indistinguishable from
 the thing being examined.
 
+**An image is also trimmable to its own content, which is the region a model cannot name.**
+`ImageAutoCropTool` publishes `image_auto_crop`, which takes no region at all: it finds the
+rectangle the image's content occupies, expands it by a padding the caller may state, and returns
+or writes that. The need is the complement of `image_crop`'s: a model can see that a screenshot or
+a slide export is mostly margin, but it cannot measure where the margin stops, so any rectangle it
+named would be a guess.
+
+*The background is sampled from the image's own border, never assumed.* The value used is the modal
+exact color of the one-pixel perimeter ring, visited in a fixed order; two colors that end level are
+separated by which of them reached that count first in the order, which is a deterministic rule
+rather than a preference for either. An assumed white would return the picture unchanged — while
+reporting success —
+on a dark-themed screenshot, a colored slide and a transparent export alike, all of which are
+ordinary inputs. The **mode** is used rather than a corner sample or a mean because both of those
+fail on the equally ordinary case of content running to an edge: a corner may itself be content,
+and a mean over a partly-content border lands on a color present nowhere in the image, so nothing
+matches it.
+
+*A small fixed tolerance is what makes the rule survive real images.* A pixel counts as background
+when no channel — alpha included — differs from the sampled background by more than eight of 255.
+Matching exactly would classify an anti-aliased ring or a lossy encoder's edge ringing as content
+and return nearly the whole picture. The tolerance is **not** a parameter: a caller that cannot see
+the image cannot choose one better than the default, and a knob a model must guess at is exactly the
+unpredictability that got automatic trimming rejected for this library the first time. Fixing it
+makes the region a pure function of the file and the padding, on every host and every run. The
+measure is a per-channel maximum rather than a Euclidean distance so that it stays integer
+arithmetic — floating point is not guaranteed bit-identical across runtimes — and because for a
+given tolerance it is the stricter of the two, so a marginal pixel is classified as content. That
+direction matters: misclassification can only ever *enlarge* the region, never lose content. See
+*ImageAutoCropTool Unit Design*, which states the algorithm and both decisions in full.
+
+*Padding clamps at an edge rather than refusing.* Content flush to an edge is ordinary rather than a
+fault, and a padding larger than every margin yields the whole image, which is truthful. This is not
+the substitution `image_crop` refuses: there the caller named a rectangle and would have received a
+different one, whereas here the caller named none, so there is nothing to substitute for.
+
+*An image that is entirely background is refused, and nothing is written.* There is no honest region
+to return; returning the whole picture would answer a different question while reporting success.
+The destination, when one was named, has already passed every governance check by then, so the
+guarantee is positional — the write is the last step and is never reached.
+
 **Construction.** `ImagePack.CreateTools` receives the composition's policy and calls each tool's
 internal `Create(PathPolicy)`. Each factory validates the policy, then builds the tool through
 `GuardedToolFactory.Create`, capturing the policy in the tool's delegate. There is no other
@@ -189,9 +243,10 @@ interprets no path itself: it passes the model's text to the policy, which holds
 relative name is measured against. An absolute path remains expressible and remains subject to the
 same containment decision.
 
-**One read decision per source, one independent write decision per destination.** Both tools
-consult `TryResolveRead` for the file they are asked to look at, and `ImageCropTool` additionally
-consults `TryResolveWrite` for a destination it is asked to write. The two are taken separately
+**One read decision per source, one independent write decision per destination.** All three tools
+consult `TryResolveRead` for the file they are asked to look at, and both region tools —
+`ImageCropTool` and `ImageAutoCropTool` — additionally consult `TryResolveWrite` for a destination
+they are asked to write. The two are taken separately
 and neither is derived from the other, so a path an agent may read is refused for writing unless a
 write grant permits that as well — which is what keeps a read-wide, write-narrow configuration
 meaningful. Nothing in the subsystem combines the two decisions or re-implements either. Each is
@@ -243,8 +298,10 @@ never asks the pack for them, not because it offers them and refuses later. A mo
 an image is therefore never offered a tool that returns one it could only fabricate a description
 of.
 
-**The two tools are published together because they are one capability.** The read tool states the
-coordinate space and the crop tool consumes it. A family publishing only one of them would offer a
-model either a region request it cannot aim, or a size it has nothing to use — which is why the
-pack creates both in the one place the family prefix is claimed, rather than leaving the pairing to
-each application's composition code.
+**The tools are published together because they are one capability.** The read tool states the
+coordinate space and the crop tool consumes it; a family publishing only one of them would offer a
+model either a region request it cannot aim, or a size it has nothing to use. The auto-crop tool
+completes the set from the other side: it answers the region question a model cannot state in that
+coordinate space at all, because it can see that a picture is mostly margin without being able to
+measure where the margin stops. That is why the pack creates all three in the one place the family
+prefix is claimed, rather than leaving the pairing to each application's composition code.

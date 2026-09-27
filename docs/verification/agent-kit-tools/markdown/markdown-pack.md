@@ -26,7 +26,7 @@ Unit tests reside in `Markdown/MarkdownPackTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 4 requirement scenarios below, covering 4 listed test method
+A unit test run passes when all 5 requirement scenarios below, covering 5 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -51,6 +51,14 @@ The listed tests prove the pack requires no host capability, so every host recei
 **Test**: `MarkdownPack_CreateTools_RegistersTheOutlineTool`
 
 The listed tests prove the pack creates its single outline tool.
+
+##### AgentKitTools-Markdown-Pack-PublishedUnderEveryPolicy: The Tool Survives a Read-Only Policy
+
+**Test**: `MarkdownPack_CreateTools_ReadOnlyPolicy_PublishesItsTool`
+
+Asserts that a policy whose every grant is read-only still yields `markdown_outline`. Confirms the
+family is never narrowed by the access policy: reporting a document's heading structure consults
+only the read decision, so the family holds no write-performing tool to withhold.
 
 ##### AgentKitTools-Markdown-Pack-RequiresPolicy: Requires Policy
 

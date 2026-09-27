@@ -5,7 +5,8 @@ namespace DemaConsulting.AgentKit.Tools.File;
 
 /// <summary>
 ///     The file tool family: the pack an application attaches to give an agent policy-governed
-///     listing, copying, moving and deletion of files of any type.
+///     listing, copying, moving and deletion of files of any type, and creation, moving and
+///     recursive deletion of the directories that hold them.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -17,10 +18,18 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <para>
 ///     <b>The family is type-agnostic.</b> It treats a file as an entity — a thing to list, copy,
 ///     move or delete — rather than as text, an image, or any other kind of content. That is why it
-///     is a family of its own rather than part of the text family: the same four operations apply to
-///     a file whatever it holds, and separating them from content reading keeps each family's job
-///     clear. The text family reads and edits the <em>contents</em> of a text file; this family
-///     manages the file itself.
+///     is a family of its own rather than part of the text family: managing a file is the same
+///     operation whatever it holds, and separating those operations from content reading keeps each
+///     family's job clear. The text family reads and edits the <em>contents</em> of a text file;
+///     this family manages the file itself, and the directory structure files live in.
+///     </para>
+///     <para>
+///     <b>One of the seven tools is published under every policy; six need a write grant.</b>
+///     <c>file_list</c> consults only the read decision, so it is always published. <c>file_copy</c>,
+///     <c>file_move</c>, <c>file_delete</c>, <c>file_create_directory</c>,
+///     <c>file_move_directory</c> and <c>file_delete_directory</c> each change the file system, so
+///     the pack withholds all six when <see cref="PathPolicy.AnyLocationIsWritable"/> is
+///     <see langword="false"/> — see <see cref="CreateTools"/>.
 ///     </para>
 ///     <para>
 ///     <see cref="FamilyPrefix"/> is published as a constant as well as through the contract, so
@@ -30,6 +39,10 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <para>
 ///     <b>The family requires no host capability.</b> Managing files needs nothing of the model or
 ///     the application beyond what every host already provides, so every host receives the family.
+///     That is a separate gate from the write-grant filtering described above: the host capability
+///     decides whether the pack is asked for tools at all, and the policy decides which of its tools
+///     it then returns. A host that grants nothing still receives this family; a policy that permits
+///     no writing still receives <c>file_list</c>.
 ///     </para>
 ///     <para>
 ///     The class is stateless and therefore safe for concurrent use from any number of threads.
@@ -38,8 +51,12 @@ namespace DemaConsulting.AgentKit.Tools.File;
 /// <example>
 ///     <para>
 ///     Attaching the family. The pack requires no host capability, so it is registered by every
-///     composition. It publishes four tools, in this order: <c>file_list</c>, <c>file_copy</c>,
-///     <c>file_move</c>, and <c>file_delete</c>. Every one of them is governed by the policy the
+///     composition. Under a policy that permits writing somewhere it publishes seven tools, in this
+///     order: <c>file_list</c>, <c>file_copy</c>,
+///     <c>file_move</c>, <c>file_delete</c>, <c>file_create_directory</c>,
+///     <c>file_move_directory</c>, and <c>file_delete_directory</c>. The policy below grants a
+///     read-write session location, so all seven appear; had every grant been read-only,
+///     <c>file_list</c> would be the whole list. Every one of them is governed by the policy the
 ///     builder was constructed with — the pack itself grants nothing.
 ///     </para>
 ///     <code>
@@ -54,7 +71,8 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///         .Add(new FilePack())
 ///         .Build();
 ///
-///     // file_list, file_copy, file_move, file_delete — every name carries the family prefix.
+///     // file_list, file_copy, file_move, file_delete, file_create_directory,
+///     // file_move_directory, file_delete_directory — every name carries the family prefix.
 ///     var names = tools.Select(tool =&gt; tool.Name).ToList();
 ///     var prefix = FilePack.FamilyPrefix;
 ///     </code>
@@ -106,12 +124,47 @@ public sealed class FilePack : IToolPack
     ///     Creates the family's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
-    ///     The order — list, copy, move, delete — is fixed rather than incidental, because the order
-    ///     a model sees the tools in is observable. The policy is passed to each tool's factory and
-    ///     captured there, so no tool in the family can observe a different policy from its neighbor.
+    ///     <para>
+    ///     The order — list, copy, move, delete, then the three directory tools in the same
+    ///     create-move-delete shape — is fixed rather than incidental, because the order a model
+    ///     sees the tools in is observable. The file tools come first and the directory tools
+    ///     follow as a block, so the family reads as "files, then directories". When tools are
+    ///     withheld the survivors keep their relative order, so a model never sees the family
+    ///     rearranged, only shortened. The policy is passed to each tool's factory and captured
+    ///     there, so no tool in the family can observe a different policy from its neighbor.
+    ///     </para>
+    ///     <para>
+    ///     <b>The pack declares what tools exist; the policy decides which writes are possible.</b>
+    ///     Copy,
+    ///     move, delete and all three directory tools each change the file system, so under a policy
+    ///     holding no read-write grant anywhere they could only ever return a refusal — and are
+    ///     therefore not published at all,
+    ///     rather than spending a declaration and a model's attention on a capability that cannot
+    ///     work. This is the reasoning <see cref="ToolPackBuilder.Build"/> already applies one level
+    ///     up, where a pack whose required capabilities the host did not grant is never asked for its
+    ///     tools, applied one level finer. The question asked is
+    ///     <see cref="PathPolicy.AnyLocationIsWritable"/> — a fact about the whole policy, not about
+    ///     any path — so a policy granting a read-only workspace and a writable session location
+    ///     publishes every tool, because writing there is genuinely possible.
+    ///     </para>
+    ///     <para>
+    ///     <c>file_list</c> is never withheld. It consults the read decision to choose what to list,
+    ///     and the write decision only to annotate a listed root as writable, so it remains fully
+    ///     useful under a policy that permits no writing. Under a policy that grants nothing at all
+    ///     it is still published and can then list nothing, which is the one case the gate does not
+    ///     cover: write access always implies read access — <see cref="PathRule"/> has no
+    ///     write-only level — so a read-consulting tool is unusable only when the policy grants
+    ///     nothing whatever, and such a composition yields an agent unable to touch a file however
+    ///     its tool list is trimmed.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The list, copy, move and delete tools, in that order.</returns>
+    /// <returns>
+    ///     The list, copy, move, delete, create-directory, move-directory and delete-directory
+    ///     tools, in that order, when the policy permits writing in
+    ///     at least one location; otherwise just the list tool. Never null and never containing a
+    ///     null element.
+    /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -121,12 +174,21 @@ public sealed class FilePack : IToolPack
         // composing application's mistake at the point it was made.
         ArgumentNullException.ThrowIfNull(policy);
 
-        return
-        [
-            FileListTool.Create(policy),
-            FileCopyTool.Create(policy),
-            FileMoveTool.Create(policy),
-            FileDeleteTool.Create(policy)
-        ];
+        // Listing consults only the read decision, so it opens the family under any policy.
+        List<AIFunction> tools = [FileListTool.Create(policy)];
+
+        // Asked once, of the policy as a whole: can this composition write anywhere at all? The
+        // six tools that change the file system are published only when it can.
+        if (policy.AnyLocationIsWritable)
+        {
+            tools.Add(FileCopyTool.Create(policy));
+            tools.Add(FileMoveTool.Create(policy));
+            tools.Add(FileDeleteTool.Create(policy));
+            tools.Add(FileCreateDirectoryTool.Create(policy));
+            tools.Add(FileMoveDirectoryTool.Create(policy));
+            tools.Add(FileDeleteDirectoryTool.Create(policy));
+        }
+
+        return tools;
     }
 }

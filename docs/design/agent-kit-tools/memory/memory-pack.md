@@ -86,6 +86,13 @@ The policy is accepted and ignored: this family touches no files, so it has noth
 a policy. It is still validated, so that a composing application that forgot one is told at the
 point it forgot rather than by a sibling family later.
 
+**The consequence is that this pack does not filter, and all five tools are published under every
+policy.** Where a file family withholds those of its tools whose writes the policy governs, a
+read-only *path* policy narrows nothing here, because the memories live in the `IMemoryStore` the
+application supplied or this pack allocated, never in a location the policy governs. Filing a
+memory under such a policy is correct and works. See *Policy-derived publication* in the system
+design.
+
 #### Error Handling
 
 A null embedding generator and a null policy are programming errors in the composing application and

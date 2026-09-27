@@ -38,11 +38,17 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
 
 - **Guarded tool families**: each family is bound at construction to the policy, store, or
   collaborators that constrain what it may touch, and is added as a pack. The families shipping in
-  `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, replace, and
+  `DemaConsulting.AgentKit.Tools` today are **text file** (search, read, create, set a file's whole
+  content, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
-  delete files of any type), **markdown** (outline a document's headings with their line ranges),
+  delete files of any type, and create, move or rename, and recursively delete the directories that
+  hold them — a recursive delete never follows a link out of the directory it was given, refuses a
+  path it is asked to reach through such a link, and refuses
+  a tree larger than the configured entry ceiling),
+  **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
-  dimensions, and return a rectangular region of a PNG or JPEG named in those pixels, inline or
+  dimensions, return a rectangular region of a PNG or JPEG named in those pixels, and trim one to
+  the region its own content occupies when no region can be named — inline or
   written as a new PNG where a read-write grant permits it; gated on the
   `Vision` host capability), **todo** (a flat task list the agent records steps in, updates, lists back and drops
   steps from), **memory**
@@ -187,7 +193,8 @@ conversation alive:
 - **Tool results**: text, structured data, binary, and image results, and refusals that carry a
   reason
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
-  gated on host capability
+  gated on host capability and narrowed by the access policy — a pack withholds the tools whose
+  writes the policy governs when no grant permits writing anywhere
 - **Session engine**: an agent session that compacts its own context, so a conversation outlives the
   provider's window. See [Sessions](#sessions) below.
 
@@ -230,10 +237,35 @@ grant the working directory whatever access it should have — it receives none 
 
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
 but AgentKit does not replace OS-level isolation for untrusted code. Symbolic links, directory
-junctions and other reparse points are not a protection boundary: a path that reaches outside a
-granted location through a link is not detected. Because the image family
+junctions and other reparse points are not a general protection boundary: path resolution is
+lexical, so a path that reaches outside a granted location through a link is not detected. The two
+exceptions are the destructive directory tools — `file_delete_directory` and `file_move_directory`
+refuse a path they are asked to reach *through* a link, because there the content at stake is a
+whole tree rather than a single entry. That refusal is a **pre-flight check over paths**: the path
+a caller names is classified, and the recursive delete additionally refuses any link its walk
+discovers, both before anything is touched. It is not a race-resistant control — a process able to
+write inside a granted location can replace a component after the check, and no path-based API can
+close that window — though no removal these tools issue follows a link, so what a race costs is
+bounded by a single entry rather than a tree. `file_create_directory` judges every directory it
+would create, not only the one named, so a request whose missing parents would reach above every
+grant is refused with nothing created. The two destructive directory tools apply the same idea to
+the other end of the operation: they judge every entry the operation would actually **touch**, not
+only the path they were given. A grant's denied patterns exclude names *inside* a permitted
+location, so a tree holding an excluded entry is refused whole — nothing removed, nothing moved,
+and never the permitted subset instead. The policy also decides which tools exist at all, in one
+specific way: a pack withholds the tools whose **writes** the policy governs, and only when no
+grant permits writing anywhere — the five editing tools of the text file family and the six
+management tools of the file family. The question is
+asked of the whole policy, so a read-only workspace paired with a read-write session folder still
+publishes them all. Read tools are not gated the same way, so a policy holding **no grants at all**
+still publishes `text_file_read`, `text_file_search`, `text_file_copy_lines` and `image_read`, and
+every one of them refuses every path it is given. That case is left alone deliberately: a grant is
+either read-only or read-write, so write access always implies read access, and read tools are
+therefore unusable only when nothing whatever is granted — a configuration that yields a
+non-functional agent however its tool list is trimmed. Because the image family
 requires the `Vision` host capability, `ImagePack` contributes its tools only when the host
-declares that capability; a host that does not is never offered `image_read` or `image_crop`.
+declares that capability; a host that does not is never offered `image_read`, `image_crop` or
+`image_auto_crop`.
 
 Providers differ in where they accept images. Some deliver an image a tool returned straight to
 the model; others accept images only on messages and silently discard one that arrives in a tool

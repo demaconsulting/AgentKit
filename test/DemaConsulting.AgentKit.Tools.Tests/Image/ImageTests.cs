@@ -3,6 +3,7 @@ using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.Tests.TextFile;
 using DemaConsulting.AgentKit.Tools.TextFile;
+using DemaConsulting.CanvasNet.Canvas;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Tools.Tests.Image;
@@ -27,10 +28,10 @@ public class ImageTests
     private static readonly byte[] SampleBytes = [0x89, 0x50, 0x4E, 0x47, 0x01, 0x02, 0x03, 0x04];
 
     /// <summary>
-    ///     Proves a composition attaching the family, on a vision host, publishes both tools.
+    ///     Proves a composition attaching the family, on a vision host, publishes every tool.
     /// </summary>
     [Fact]
-    public void Image_Family_ComposedThroughBuilder_PublishesBothTools()
+    public void Image_Family_ComposedThroughBuilder_PublishesEveryTool()
     {
         // Arrange: a vision host with the family attached under one policy
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
@@ -41,9 +42,9 @@ public class ImageTests
         // Act: compose the tool list
         var tools = builder.Build();
 
-        // Assert: both tools the family promises, under the one family prefix
+        // Assert: every tool the family promises, under the one family prefix
         Assert.Equal(
-            [ImageReadTool.ToolName, ImageCropTool.ToolName],
+            [ImageReadTool.ToolName, ImageCropTool.ToolName, ImageAutoCropTool.ToolName],
             tools.Select(tool => tool.Name));
     }
 
@@ -258,7 +259,7 @@ public class ImageTests
     /// <remarks>
     ///     <b>The increment's thesis, in one scenario.</b> The family states an image's size, and
     ///     the region named within exactly that size is accepted — while one pixel beyond it is
-    ///     refused. The two tools are one capability: a region request the model cannot aim is a
+    ///     refused. The tools are one capability: a region request the model cannot aim is a
     ///     region request it will aim wrongly.
     /// </remarks>
     /// <returns>A task that completes when the scenario has been verified.</returns>
@@ -588,6 +589,84 @@ public class ImageTests
         Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
         Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
         Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "figure.png")));
+    }
+
+    /// <summary>
+    ///     Proves the family returns the region an image's own content occupies, as image
+    ///     content, when the caller names no region at all.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The capability a composed family offers that neither reading nor a named region
+    ///     can.</b> The model can see that a picture is mostly margin; it cannot measure where
+    ///     the margin stops, so a region it named would be a guess. Asserting the exact returned
+    ///     size — and that it is smaller than the source on both axes — is what makes "trimmed to
+    ///     its content" observable rather than asserted. The background here is dark, so a
+    ///     composition that assumed white would return the whole picture and fail.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_TrimmedImage_IsReturnedAsImageContent()
+    {
+        // Arrange: the family composed over a permitted location holding a mostly-empty image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(
+            fixture.Root,
+            "diagram.png",
+            ImageTestImages.ContentOnBackgroundPng(
+                40,
+                30,
+                new Rgba32(32, 32, 40, 255),
+                new ImageTestImages.Rectangle(12, 9, 10, 8),
+                new Rgba32(250, 250, 250, 255)));
+        var tools = Compose(fixture.Root);
+
+        // Act: ask the family to trim it, naming no region and no destination
+        var result = await InvokeAsync(
+            tools,
+            ImageAutoCropTool.ToolName,
+            new AIFunctionArguments { ["path"] = file, ["padding"] = 0 });
+
+        // Assert: image content carrying exactly the content block, not the whole picture
+        var content = Assert.IsType<List<AIContent>>(result);
+        var data = Assert.IsType<DataContent>(content[1]);
+        Assert.Equal(ImageMediaTypes.Png, data.MediaType);
+
+        using var decoded = ImageTestImages.Decode(data.Data.ToArray());
+        Assert.Equal(10, decoded.Width);
+        Assert.Equal(8, decoded.Height);
+    }
+
+    /// <summary>
+    ///     Proves the family refuses an image that is entirely background, and writes nothing
+    ///     even when a destination was named.
+    /// </summary>
+    /// <remarks>
+    ///     There is no honest content region for such an image, and returning the whole picture
+    ///     would answer a different question while reporting success — the substitution this
+    ///     family exists to refuse. The destination named here would have been permitted, so a
+    ///     file left behind would prove the write was not genuinely the last step.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task Image_Family_EntirelyBackgroundImage_IsRefusedWithoutWriting()
+    {
+        // Arrange: the family composed over a permitted location holding a featureless image
+        using var fixture = new TempDirectoryFixture();
+        var file = WriteBytes(
+            fixture.Root, "blank.png", ImageTestImages.UniformPng(24, 18, new Rgba32(32, 32, 40, 255)));
+        var tools = Compose(fixture.Root);
+
+        // Act: ask the family to trim it into a destination the policy would permit
+        var result = await InvokeAsync(
+            tools,
+            ImageAutoCropTool.ToolName,
+            new AIFunctionArguments { ["path"] = file, ["destination"] = "figure.png" });
+
+        // Assert: refused with the reason stated, and nothing produced
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("no content region to trim to", text, StringComparison.Ordinal);
         Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "figure.png")));
     }
 

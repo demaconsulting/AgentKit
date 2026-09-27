@@ -41,6 +41,19 @@ sections:
                 tests:
                   - TodoPack_CreateTools_RegistersTheFamilyInOrder
 
+              - id: AgentKitTools-Todo-Pack-PublishedUnderEveryPolicy
+                title: >-
+                  The pack shall offer every one of its tools under every access policy, including
+                  one that permits no writing anywhere.
+                justification: |
+                  The task list this family works with belongs to the composition itself and lives
+                  in no location the access configuration governs, so a configuration that permits
+                  no file writing prevents none of these tools from succeeding. Recording a step
+                  under such a configuration is correct and works, and an agent that may only read
+                  still needs to plan the reading it is doing.
+                tests:
+                  - TodoPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool
+
               - id: AgentKitTools-Todo-Pack-RequiresPolicy
                 title: >-
                   The pack shall require a policy to create its tools, even though its tools

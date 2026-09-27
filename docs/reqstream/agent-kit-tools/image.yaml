@@ -12,27 +12,31 @@ sections:
         requirements:
           - id: AgentKitTools-Image-FamilyComposition
             title: >-
-              The image family shall publish a read tool and a crop tool under the image family
-              prefix, composed as one pack an application attaches.
+              The image family shall publish a read tool, a crop tool and an auto-crop tool under
+              the image family prefix, composed as one pack an application attaches.
             justification: |
               An application attaches a capability to an agent as one pack rather than as a
               handful of individually registered tools, so the family must be the unit of
               attachment. Publishing the tools under one prefix is what keeps this family's names
               from colliding with those of any other library an application combines, and it is
               what lets the family grow without an application changing how it attaches it. The
-              two tools are published together because they are one capability: the read tool
+              tools are published together because they are one capability: the read tool
               reports the coordinate space the crop tool consumes, so a family publishing only
               one of them would offer a model either a region request it cannot aim or a size it
-              has nothing to use.
+              has nothing to use — and the auto-crop tool answers the region question a model
+              cannot state in that space at all, because it can see that a picture is mostly
+              margin without being able to measure where the margin stops.
             children:
               - AgentKitTools-Image-ReadTool-ToolName
               - AgentKitTools-Image-CropTool-ToolName
+              - AgentKitTools-Image-AutoCropTool-ToolName
               - AgentKitTools-Image-Pack-FamilyPrefix
               - AgentKitTools-Image-Pack-RegistersReadTool
               - AgentKitTools-Image-Pack-RegistersCropTool
+              - AgentKitTools-Image-Pack-RegistersAutoCropTool
               - AgentKitTools-Image-Pack-ToolsCarryFamilyPrefix
             tests:
-              - Image_Family_ComposedThroughBuilder_PublishesBothTools
+              - Image_Family_ComposedThroughBuilder_PublishesEveryTool
               - Image_Family_HostDeclaringVision_ReceivesTheFamily
 
           - id: AgentKitTools-Image-DimensionReporting
@@ -85,10 +89,47 @@ sections:
               - Image_Family_CroppedRegion_IsReturnedAsImageContent
               - Image_Family_ReadCaption_StatesTheDimensionsACropCanBeAimedWith
 
+          - id: AgentKitTools-Image-ContentTrimming
+            title: >-
+              The image family shall trim a readable image to the region its content occupies,
+              expanded by a padding the caller may state and clamped to the image's edges,
+              determining what counts as background from the image's own border, and shall refuse
+              an image that is entirely background without writing anything.
+            justification: |
+              A model can see that a picture is mostly margin; it cannot measure where the margin
+              stops. A region it named would therefore be a guess, and a guess is either refused,
+              costing a turn, or silently answered for the wrong part of the picture. Trimming to
+              the content is the one region request a model can make without being able to
+              measure, and it is what lets a screenshot, a slide export or a rendered chart spend
+              the resolution a provider gives it on the content rather than on empty margin.
+              Determining the background from the image's own border rather than assuming one is
+              what makes the capability usable on a dark-themed screenshot, a colored slide and a
+              transparent export alike — on every one of which an assumed background would return
+              the picture unchanged while reporting success. Clamping the padding at an edge is
+              the truthful answer because content flush to an edge is ordinary rather than a
+              fault. Refusing an image that is entirely background is the other half of the same
+              honesty: there is no content region to return, and returning the whole picture would
+              answer a different question while reporting success — the substitution this family
+              exists to refuse.
+            children:
+              - AgentKitTools-Image-AutoCropTool-ToolName
+              - AgentKitTools-Image-AutoCropTool-TrimsToContent
+              - AgentKitTools-Image-AutoCropTool-SamplesBackgroundFromTheBorder
+              - AgentKitTools-Image-AutoCropTool-ToleratesNearBackground
+              - AgentKitTools-Image-AutoCropTool-PadsAndClampsAtEdges
+              - AgentKitTools-Image-AutoCropTool-RefusesAnEntirelyBackgroundImage
+              - AgentKitTools-Image-AutoCropTool-PixelsPreservedExactly
+              - AgentKitTools-Image-AutoCropTool-RefusesMalformedPadding
+              - AgentKitTools-Image-AutoCropTool-RefusesUndecodableContent
+              - AgentKitTools-Image-AutoCropTool-RefusesNonCroppableType
+            tests:
+              - Image_Family_TrimmedImage_IsReturnedAsImageContent
+              - Image_Family_EntirelyBackgroundImage_IsRefusedWithoutWriting
+
           - id: AgentKitTools-Image-RegionDestination
             title: >-
-              The image family shall write a named region of a readable image to a destination
-              the caller names, only where a read-write grant permits that destination
+              The image family shall write a region of a readable image that it produces to a
+              destination the caller names, only where a read-write grant permits that destination
               independently of the grant that admitted the image, refusing to replace an
               existing file and refusing a destination not named as a PNG.
             tags: [security]
@@ -112,6 +153,11 @@ sections:
               - AgentKitTools-Image-CropTool-RefusesToReplaceDestination
               - AgentKitTools-Image-CropTool-RequiresPngDestination
               - AgentKitTools-Image-CropTool-RefusesUnusableDestination
+              - AgentKitTools-Image-AutoCropTool-WritesRegionToDestination
+              - AgentKitTools-Image-AutoCropTool-DestinationRequiresWriteGrant
+              - AgentKitTools-Image-AutoCropTool-RefusesToReplaceDestination
+              - AgentKitTools-Image-AutoCropTool-RequiresPngDestination
+              - AgentKitTools-Image-AutoCropTool-RefusesUnusableDestination
             tests:
               - Image_Family_CroppedRegion_WrittenToAPermittedDestination_ConfirmsInText
               - Image_Family_CropDestinationUnderAReadOnlyGrant_IsRefusedNamingTheWritableLocation
@@ -134,6 +180,7 @@ sections:
               implementation detail, and lets it ask for something the host would accept.
             children:
               - AgentKitTools-Image-CropTool-RefusesOversizedDecode
+              - AgentKitTools-Image-AutoCropTool-RefusesOversizedDecode
             tests:
               - Image_Family_OversizedDeclaredImage_IsRefusedBeforeDecoding
 
@@ -175,6 +222,7 @@ sections:
             children:
               - AgentKitTools-Image-ReadTool-GuardedConstruction
               - AgentKitTools-Image-CropTool-GuardedConstruction
+              - AgentKitTools-Image-AutoCropTool-GuardedConstruction
               - AgentKitTools-Image-Pack-RequiresPolicy
               - AgentKitTools-Image-Pack-PolicyGovernsCreatedTools
             tests:
@@ -209,6 +257,8 @@ sections:
               - AgentKitTools-Image-ReadTool-DenyOutsideRoot
               - AgentKitTools-Image-CropTool-DenyOutsideRoot
               - AgentKitTools-Image-CropTool-DestinationRequiresWriteGrant
+              - AgentKitTools-Image-AutoCropTool-DenyOutsideRoot
+              - AgentKitTools-Image-AutoCropTool-DestinationRequiresWriteGrant
               - AgentKitTools-Image-MediaTypes-SupportedTypes
             tests:
               - Image_Family_PermittedImage_IsReturnedAsImageContent
@@ -238,6 +288,10 @@ sections:
               - AgentKitTools-Image-CropTool-MissingFileDenied
               - AgentKitTools-Image-CropTool-MalformedRequestDenied
               - AgentKitTools-Image-CropTool-DenialDisclosure
+              - AgentKitTools-Image-AutoCropTool-DirectoryRefused
+              - AgentKitTools-Image-AutoCropTool-MissingFileDenied
+              - AgentKitTools-Image-AutoCropTool-MalformedRequestDenied
+              - AgentKitTools-Image-AutoCropTool-DenialDisclosure
               - AgentKitTools-Image-MediaTypes-RefusesSvgRedirectsToText
               - AgentKitTools-Image-MediaTypes-RefusesSvgzNoTool
               - AgentKitTools-Image-MediaTypes-RefusesUnknownType
@@ -260,5 +314,6 @@ sections:
             children:
               - AgentKitTools-Image-ReadTool-BinaryCeiling
               - AgentKitTools-Image-CropTool-ObservesBinaryCeiling
+              - AgentKitTools-Image-AutoCropTool-ObservesBinaryCeiling
             tests:
               - Image_Family_FileBeyondTheBinaryCeiling_IsRefusedNotTruncated

@@ -1,7 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Security;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.CanvasNet.Canvas;
 using DemaConsulting.CanvasNet.Codecs;
@@ -128,13 +125,31 @@ public static class ImageCropTool
     ///     The description the model reads when choosing this tool.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     Names <see cref="ImageReadTool"/> as the source of the coordinate space, because that
-    ///     is what makes the two tools compose and a description is not a denial — the rule that
+    ///     is what makes a named region composable with the size the family reports, and a
+    ///     description is not a denial — the rule that
     ///     restricts a refusal from naming a sibling tool governs refusals, not the text a model
     ///     reads before it has been refused anything. It carries no exhaustive statement of which
     ///     format variants decode: a rare exception stated here would make a model avoid a
     ///     capability that works on essentially every file it will meet, and the exceptions are
     ///     stated where they are actionable, in the refusals themselves.
+    ///     </para>
+    ///     <para>
+    ///     <b>The description is fixed and does not vary with the access policy</b>, even though
+    ///     the <c>destination</c> it offers needs a write grant this tool's policy may not hold.
+    ///     Two facts decide it. First, a policy-varying description cannot be made truthful here:
+    ///     the tool's own description is settable per composition, but the <c>destination</c>
+    ///     parameter's description is a <c>[Description]</c> attribute argument and therefore a
+    ///     compile-time constant. A description that stopped mentioning the destination would ship
+    ///     inside the same declaration as a parameter description still offering it — one payload
+    ///     contradicting itself, which serves truth strictly worse than one honest description
+    ///     does. Second, the destination is optional and the tool's primary mode does not use it,
+    ///     so nothing here is broken by the omission: a model that names a destination under a
+    ///     read-only policy receives an ordinary refusal that enumerates the locations it could
+    ///     write to instead, and the cost is bounded at one turn rather than paid on every
+    ///     declaration.
+    ///     </para>
     /// </remarks>
     private const string ToolDescription =
         "Returns a rectangular region of a PNG or JPEG file the agent is permitted to read. The "
@@ -206,69 +221,15 @@ public static class ImageCropTool
         "The requested file does not exist.";
 
     /// <summary>
-    ///     The refusal used when the file exists and is permitted but cannot be read.
-    /// </summary>
-    private const string FileUnreadable = "The requested file could not be read.";
-
-    /// <summary>
-    ///     The refusal used when the destination does not name a <c>.png</c> file.
-    /// </summary>
-    /// <remarks>
-    ///     A region is always encoded as PNG, so a destination named for another format would
-    ///     hold PNG bytes under a name that says otherwise. The reason is
-    ///     <see cref="DenialReason.InvalidRequest"/> rather than
-    ///     <see cref="DenialReason.UnsupportedMediaType"/> because no file exists yet whose type
-    ///     could be unsupported: the contradiction is in the request. A blank or whitespace-only
-    ///     destination has no extension and so lands here too, which is deliberate — it is a
-    ///     truthful and actionable answer, and it means a destination the model did not really
-    ///     intend is never silently read as "no destination".
-    /// </remarks>
-    private const string DestinationMustBePng =
-        "The destination must name a .png file, because a region is always encoded as PNG. "
-        + "Supply a destination path whose file name ends in '.png'.";
-
-    /// <summary>
-    ///     The refusal used when the destination names a directory rather than a file.
-    /// </summary>
-    /// <remarks>
-    ///     Worded as <see cref="TextFile.TextFileCreateTool"/>'s is, so an agent meets one rule
-    ///     for creating a file rather than one rule per family.
-    /// </remarks>
-    private const string DestinationIsDirectory =
-        "The destination path is a directory, not a file. Name the .png file to create within it.";
-
-    /// <summary>
-    ///     The refusal used when a file already exists at the destination.
-    /// </summary>
-    /// <remarks>
-    ///     The same guarantee <see cref="TextFile.TextFileCreateTool"/> makes, for the same
-    ///     reason: a figure silently replaced is a document that now points at a different
-    ///     picture with nothing reporting an error. It also protects the source, because a
-    ///     destination equal to the image being cropped names a file already proven to exist.
-    /// </remarks>
-    private const string DestinationExists =
-        "A file already exists at the destination path. This tool writes a new file and does not "
-        + "replace an existing one. Name a destination that does not exist yet.";
-
-    /// <summary>
-    ///     The refusal used when the destination's parent directory does not exist.
-    /// </summary>
-    /// <remarks>
-    ///     A missing parent is refused rather than materialized, because silently creating a tree
-    ///     is a side effect the operator never asked for and, on a mistyped path, would scatter
-    ///     directories the agent then believes are real.
-    /// </remarks>
-    private const string DestinationParentMissing =
-        "The parent directory of the destination path does not exist. This tool creates no "
-        + "directory, so name a destination inside a directory that already exists.";
-
-    /// <summary>
     ///     The refusal used when a permitted destination cannot be written.
     /// </summary>
     /// <remarks>
-    ///     Deliberately carries no remedy, on the same line <see cref="FileUnreadable"/> draws:
-    ///     the tool does not know why the operating system refused, and a guess would be worse
-    ///     than silence. The underlying failure's own message is never surfaced.
+    ///     Deliberately carries no remedy, on the same line
+    ///     <see cref="ImageAdmission.FileUnreadable"/> draws: the tool does not know why the
+    ///     operating system refused, and a guess would be worse than silence. The underlying
+    ///     failure's own message is never surfaced. It is composed here rather than in
+    ///     <see cref="ImageDestination"/> because it names <em>what</em> could not be written,
+    ///     which only the tool that produced it knows.
     /// </remarks>
     private const string DestinationUnwritable = "The cropped region could not be written.";
 
@@ -396,11 +357,9 @@ public static class ImageCropTool
         // with the other request-shape checks and needs no file system to diagnose. The family's
         // own extension map answers it, so "what is this file" keeps one answer and a
         // capitalized extension names the same content.
-        if (destination is not null
-            && (!ImageMediaTypes.TryResolveMediaType(destination, out var destinationType)
-                || !string.Equals(destinationType, ImageMediaTypes.Png, StringComparison.Ordinal)))
+        if (destination is not null && !ImageDestination.NamesPng(destination))
         {
-            return ToolResult.Denied(DenialReason.InvalidRequest, DestinationMustBePng);
+            return ToolResult.Denied(DenialReason.InvalidRequest, ImageDestination.MustBePng);
         }
 
         // The single read decision. Resolution and containment both happen inside the policy, so
@@ -434,10 +393,11 @@ public static class ImageCropTool
         }
 
         // The destination's own governance decision, taken only when one was named, and taken
-        // independently of the read that admitted the source.
-        Destination? target = null;
+        // independently of the read that admitted the source. The shared helper owns the whole
+        // taxonomy, so this family answers "may a new file go here" in exactly one place.
+        ImageDestination.Destination? target = null;
         if (destination is not null
-            && !TryResolveDestination(policy, destination, out target, out var destinationDenial))
+            && !ImageDestination.TryResolve(policy, destination, out target, out var destinationDenial))
         {
             return destinationDenial;
         }
@@ -453,93 +413,15 @@ public static class ImageCropTool
     }
 
     /// <summary>
-    ///     Resolves a named destination through the policy's write decision and confirms the
-    ///     file system can accept a new file there.
-    /// </summary>
-    /// <remarks>
-    ///     <b>The write decision is taken alone.</b> A path a read-only grant permits is not
-    ///     thereby writable, which is what keeps a read-wide, write-narrow configuration
-    ///     meaningful; the policy's own refusal is returned unchanged, because it enumerates
-    ///     every permitted location with its access level and that is what lets a confined agent
-    ///     recover to one it may actually use. The remaining checks are the text file family's,
-    ///     in its order and its voice, so an agent meets one rule for creating a file rather than
-    ///     one rule per family.
-    /// </remarks>
-    /// <param name="policy">The access policy governing the write.</param>
-    /// <param name="destination">The destination the model named; never null here.</param>
-    /// <param name="resolved">
-    ///     On success, the permitted destination together with the form the confirmation reports
-    ///     it in; otherwise <see langword="null"/>.
-    /// </param>
-    /// <param name="denial">
-    ///     On refusal, the composed refusal naming its reason; otherwise <see langword="null"/>.
-    /// </param>
-    /// <returns>
-    ///     <see langword="true"/> when a new file may be written at the destination; otherwise
-    ///     <see langword="false"/>.
-    /// </returns>
-    private static bool TryResolveDestination(
-        PathPolicy policy,
-        string destination,
-        [NotNullWhen(true)] out Destination? resolved,
-        [NotNullWhen(false)] out object? denial)
-    {
-        resolved = null;
-
-        // The write decision alone, independent of the read that admitted the source.
-        if (!policy.TryResolveWrite(destination, out var realDestination, out var denialMessage))
-        {
-            denial = ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
-            return false;
-        }
-
-        // Writing a file over a directory is not a meaningful operation.
-        if (Directory.Exists(realDestination))
-        {
-            denial = ToolResult.Denied(DenialReason.InvalidRequest, DestinationIsDirectory);
-            return false;
-        }
-
-        // The defining guarantee: an existing file is never replaced. Because the source has
-        // already been proven to exist by the time this runs, a request naming the source as its
-        // own destination is refused here too, so an image can never be consumed by its own
-        // region.
-        if (System.IO.File.Exists(realDestination))
-        {
-            denial = ToolResult.Denied(DenialReason.InvalidRequest, DestinationExists);
-            return false;
-        }
-
-        // A missing parent is refused, never created.
-        var parent = Path.GetDirectoryName(realDestination);
-        if (string.IsNullOrEmpty(parent) || !Directory.Exists(parent))
-        {
-            denial = ToolResult.Denied(DenialReason.TargetNotFound, DestinationParentMissing);
-            return false;
-        }
-
-        // The confirmation reports the destination in the policy's own dialect: relative when
-        // the anchor is granted and the result lies within it, absolute otherwise — which for a
-        // session folder outside the workspace is the only truthful answer. Computed once, here,
-        // so the write and the confirmation cannot disagree about what was written.
-        resolved = new Destination(
-            realDestination,
-            policy.EmitRelative(realDestination, destination)
-                ? Path.GetRelativePath(policy.WorkingDirectory, realDestination)
-                : realDestination);
-        denial = null;
-        return true;
-    }
-
-    /// <summary>
     ///     Extracts a region from a file already known to exist, to be permitted, and to carry a
     ///     type a region can be taken from.
     /// </summary>
     /// <remarks>
-    ///     The file is opened once and its size is read from that open handle, so the ceiling is
-    ///     bound to the very bytes the read then takes: an oversized file is still never read
-    ///     into memory merely to discover it was oversized, and a file that grows or is replaced
-    ///     after the size was taken cannot enlarge what is loaded. An
+    ///     The read is delegated to <see cref="ImageAdmission.ReadWithinCeilingAsync"/>, which
+    ///     opens the file once and judges its size from that open handle, so the ceiling is bound
+    ///     to the very bytes the read then takes: an oversized file is still never read into
+    ///     memory merely to discover it was oversized, and a file that grows or is replaced after
+    ///     the size was taken cannot enlarge what is loaded. An
     ///     encoded result is judged against the same ceiling before it is returned <em>inline</em>,
     ///     because a large region of a compressed source re-encoded losslessly can genuinely
     ///     exceed a ceiling the source file sat well inside. A result written to a file is not
@@ -561,49 +443,18 @@ public static class ImageCropTool
         string realPath,
         string mediaType,
         Region region,
-        Destination? destination,
+        ImageDestination.Destination? destination,
         CancellationToken cancellationToken)
     {
-        byte[] data;
-
-        try
+        // The shared admission step reads the file within the binary ceiling, returning either
+        // the bytes or the refusal that stopped it. The result is a union discriminated by type,
+        // because an asynchronous method cannot report through an out parameter.
+        var read = await ImageAdmission
+            .ReadWithinCeilingAsync(policy, realPath, cancellationToken)
+            .ConfigureAwait(false);
+        if (read is not byte[] data)
         {
-            // The file is opened once, and the size the ceiling is judged against is read from
-            // that same open handle rather than from a separate directory lookup. Judging a size
-            // and then reopening the path to read it would leave a window in which the file could
-            // grow or be replaced, and the larger content would be loaded despite the ceiling.
-            await using var stream = new FileStream(
-                realPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 4096,
-                useAsync: true);
-
-            // Nothing is allocated before the ceiling has passed, so an oversized file is still
-            // never read into memory merely to discover it was oversized.
-            var length = stream.Length;
-            if (length > policy.Limits.MaxBinaryBytes)
-            {
-                return ToolResult.Denied(
-                    DenialReason.ResourceTooLarge,
-                    "The file exceeds the "
-                    + Number(policy.Limits.MaxBinaryBytes)
-                    + "-byte binary limit.");
-            }
-
-            // Exactly the count that was validated is read, so a file growing under the read
-            // cannot enlarge what is loaded. A file that SHRINKS instead ends the read early,
-            // which surfaces as an EndOfStreamException — an IOException, and therefore already
-            // an access failure by the classification below.
-            data = new byte[length];
-            await stream.ReadExactlyAsync(data, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsAccessFailure(exception))
-        {
-            // The same explicit classification the read tool uses: a file system failure becomes
-            // a refusal the model can act on, while a genuine defect still surfaces.
-            return ToolResult.Denied(DenialReason.InvalidRequest, FileUnreadable);
+            return read;
         }
 
         return await CropBytesAsync(policy, data, mediaType, region, destination, cancellationToken)
@@ -641,52 +492,16 @@ public static class ImageCropTool
         byte[] data,
         string mediaType,
         Region region,
-        Destination? destination,
+        ImageDestination.Destination? destination,
         CancellationToken cancellationToken)
     {
-        // Nothing can be said about a file whose header will not read: it is not content of the
-        // type its extension claimed, or it is truncated before its header ends, or it is empty.
-        // The refusal states no size, because none was read.
-        if (!ImageProbe.TryReadSize(
-                data,
-                mediaType,
-                out var imageWidth,
-                out var imageHeight,
-                out var canDecode))
+        // The shared admission triage: an unreadable header, a well-formed file the decoder will
+        // not decode, and a declaration beyond the host's decode budget are all refused here,
+        // before a pixel buffer exists.
+        if (!ImageAdmission.TryTriage(
+                policy, data, mediaType, out var imageWidth, out var imageHeight, out var denial))
         {
-            return ToolResult.Denied(
-                DenialReason.UnsupportedMediaType,
-                "The file is not readable as " + mediaType + " content.");
-        }
-
-        // A well-formed file the decoder will not decode is refused in those terms, from the
-        // header report rather than from any format knowledge of this library's own. The refusal
-        // hands over the declared size directly rather than sending the model to another tool
-        // for it, and names no feature, because the report names none.
-        if (!canDecode)
-        {
-            return ToolResult.Denied(
-                DenialReason.UnsupportedMediaType,
-                "This image is well formed but uses a feature this tool does not decode. The "
-                + "image declares " + Size(imageWidth, imageHeight) + " pixels.");
-        }
-
-        // The decode budget, decided from the declared dimensions alone. Both bounds are named
-        // because a model needs both to form a request that would be accepted: one bounds each
-        // axis and the other bounds their product, and neither implies the other. The comparison
-        // is done in long arithmetic because the product of two in-range dimensions overflows an
-        // int, and the per-axis bound is read from the decoder rather than restated here so the
-        // two cannot drift apart.
-        if (imageWidth > Surface.MaxDimension
-            || imageHeight > Surface.MaxDimension
-            || ((long)imageWidth * imageHeight) > policy.Limits.MaxImagePixels)
-        {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
-                "The image declares " + Size(imageWidth, imageHeight)
-                + " pixels. This tool decodes images up to " + Number(Surface.MaxDimension)
-                + " pixels on a side and " + Number(policy.Limits.MaxImagePixels)
-                + " pixels in total.");
+            return denial;
         }
 
         // The region must lie wholly inside the image. It is REFUSED, never clamped: clamping
@@ -726,9 +541,10 @@ public static class ImageCropTool
     ///     <para>
     ///     A failure inside the encoder, on a pixel buffer this tool constructed, is a defect
     ///     rather than anything a model can provoke, and is allowed to propagate — the same
-    ///     dividing line <see cref="IsAccessFailure"/> draws. The encoder therefore sits outside
-    ///     the decode's <c>catch</c>: widening that clause to span it would silently report a
-    ///     defect as content that could not be decoded.
+    ///     dividing line <see cref="ImageAdmission.IsAccessFailure"/> draws. The encoder
+    ///     therefore sits outside the decode's own <c>catch</c>, inside
+    ///     <see cref="ImageAdmission.TryDecode"/>: widening that clause to span it would silently
+    ///     report a defect as content that could not be decoded.
     ///     </para>
     ///     <para>
     ///     <b>Every pixel buffer this method creates is released.</b> The decoded image is
@@ -758,40 +574,29 @@ public static class ImageCropTool
         Region region,
         int imageWidth,
         int imageHeight,
-        Destination? destination,
+        ImageDestination.Destination? destination,
         CancellationToken cancellationToken)
     {
+        // The shared decode step, which is the first that allocates pixel data. A body that will
+        // not decode is refused here, with the size stated because it was read.
+        if (!ImageAdmission.TryDecode(
+                data, mediaType, imageWidth, imageHeight, out var surface, out var denial))
+        {
+            return denial;
+        }
+
         Surface cropped;
 
-        try
+        // The decoded image is released as soon as the region has been copied out of it: the
+        // copy is independent of its source, so nothing the region needs outlives the surface it
+        // came from.
+        using (surface)
         {
-            using var source = new MemoryStream(data, writable: false);
-
-            // The decoded image is released as soon as the region has been copied out of it:
-            // the copy is independent of its source, so nothing the region needs outlives the
-            // surface it came from.
-            using var surface = string.Equals(mediaType, ImageMediaTypes.Png, StringComparison.Ordinal)
-                ? PngCodec.Load(source)
-                : JpegCodec.Load(source);
-
             cropped = surface.Crop(region.X, region.Y, region.Width, region.Height);
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException)
-        {
-            // The header read but the body did not. The size is stated because it was read, which
-            // is what makes this refusal distinguishable from the unreadable-header one. The
-            // decoder's own message is never surfaced: it is developer-facing and may echo values
-            // read out of the file. This clause additionally covers the library's
-            // well-formed-but-unsupported exception type, which is the backstop should the
-            // header's feasibility report ever lag what the decoder actually accepts.
-            return ToolResult.Denied(
-                DenialReason.UnsupportedMediaType,
-                "The image declares " + Size(imageWidth, imageHeight)
-                + " pixels, but its pixel data could not be decoded.");
-        }
 
-        // The region is released once it has been encoded. The encoder runs outside the catch
-        // above deliberately: a failure on a pixel buffer this tool constructed is a defect, not
+        // The region is released once it has been encoded. The encoder runs outside the decode's
+        // catch deliberately: a failure on a pixel buffer this tool constructed is a defect, not
         // a refusal.
         using (cropped)
         {
@@ -841,9 +646,12 @@ public static class ImageCropTool
     /// </summary>
     /// <remarks>
     ///     <b><see cref="FileMode.CreateNew"/> is what makes "does not replace an existing one" a
-    ///     guarantee rather than a check with a window after it.</b> The existence refusal taken
+    ///     guarantee rather than a check with a window after it</b>, which is why the write goes
+    ///     through <see cref="ImageDestination.TryWriteAsync"/> rather than being opened here.
+    ///     The existence refusal taken
     ///     earlier is what <em>teaches</em> — without it the model would receive only "could not
-    ///     be written" and have nothing to correct — and this is what <em>enforces</em>: a file
+    ///     be written" and have nothing to correct — and the creation mode is what
+    ///     <em>enforces</em>: a file
     ///     appearing between the two is refused rather than silently destroyed. Neither is
     ///     redundant.
     ///     <para>
@@ -852,8 +660,8 @@ public static class ImageCropTool
     ///     dimensions so a second, adjacent figure can be aimed without reading the image again.
     ///     It carries no byte count, because a byte count is not something a model can act on and
     ///     stating one would imply a ceiling that deliberately does not exist. <b>No exception's
-    ///     own message is ever surfaced</b>, on the same line <see cref="IsAccessFailure"/> draws
-    ///     everywhere else in this unit.
+    ///     own message is ever surfaced</b>, on the same line
+    ///     <see cref="ImageAdmission.IsAccessFailure"/> draws everywhere else in this family.
     ///     </para>
     /// </remarks>
     /// <param name="bytes">The encoded region to write.</param>
@@ -866,29 +674,19 @@ public static class ImageCropTool
     /// <returns>A confirmation naming what was written, or a refusal naming its reason.</returns>
     private static async Task<object> WriteRegionAsync(
         byte[] bytes,
-        Destination destination,
+        ImageDestination.Destination destination,
         Region region,
         int imageWidth,
         int imageHeight,
         string mediaType,
         CancellationToken cancellationToken)
     {
-        try
+        // A permitted destination the operating system nonetheless refused. The reason is not
+        // known here, and a guess would be worse than silence, so the refusal states only that
+        // the region could not be written.
+        if (!await ImageDestination.TryWriteAsync(bytes, destination, cancellationToken)
+                .ConfigureAwait(false))
         {
-            await using var stream = new FileStream(
-                destination.RealPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                useAsync: true);
-
-            await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsAccessFailure(exception))
-        {
-            // A permitted destination the operating system nonetheless refused. The reason is
-            // not known here, and a guess would be worse than silence.
             return ToolResult.Denied(DenialReason.InvalidRequest, DestinationUnwritable);
         }
 
@@ -902,47 +700,29 @@ public static class ImageCropTool
     ///     Formats an integer for a message a model reads.
     /// </summary>
     /// <remarks>
-    ///     The invariant culture is used so a refusal reads identically on every host, rather
-    ///     than acquiring thousands separators a model would then have to interpret.
+    ///     Delegated to <see cref="ImageAdmission.Number"/> so the family states a number in one
+    ///     dialect; named here so this unit's own messages read as they always did.
     /// </remarks>
     /// <param name="value">The value to format.</param>
     /// <returns>The formatted value.</returns>
     private static string Number(int value)
     {
-        return value.ToString(CultureInfo.InvariantCulture);
+        return ImageAdmission.Number(value);
     }
 
     /// <summary>
     ///     Formats a pair of dimensions the way every message in this family states them.
     /// </summary>
+    /// <remarks>
+    ///     Delegated to <see cref="ImageAdmission.Size"/> for the same reason
+    ///     <see cref="Number"/> is.
+    /// </remarks>
     /// <param name="width">The width, in pixels.</param>
     /// <param name="height">The height, in pixels.</param>
     /// <returns>The formatted dimensions.</returns>
     private static string Size(int width, int height)
     {
-        return Number(width) + "x" + Number(height);
-    }
-
-    /// <summary>
-    ///     Determines whether an exception represents a failure to reach or read a path rather
-    ///     than a defect that should be allowed to propagate.
-    /// </summary>
-    /// <remarks>
-    ///     Enumerated explicitly rather than catching everything, so that a null reference or an
-    ///     out-of-memory condition still fails loudly during development instead of being
-    ///     reported to a model as an unreadable file.
-    /// </remarks>
-    /// <param name="exception">The exception to classify.</param>
-    /// <returns>
-    ///     <see langword="true"/> when the exception means the file could not be reached or
-    ///     read; otherwise <see langword="false"/>.
-    /// </returns>
-    private static bool IsAccessFailure(Exception exception)
-    {
-        return exception is IOException
-            or UnauthorizedAccessException
-            or NotSupportedException
-            or SecurityException;
+        return ImageAdmission.Size(width, height);
     }
 
     /// <summary>
@@ -973,23 +753,4 @@ public static class ImageCropTool
             return Number(X) + "," + Number(Y) + " " + Size(Width, Height);
         }
     }
-
-    /// <summary>
-    ///     A destination the policy has permitted for writing, carried together with the form the
-    ///     confirmation reports it in.
-    /// </summary>
-    /// <remarks>
-    ///     Carried as one value for the same reason <see cref="Region"/> is: so that no method
-    ///     has to take two same-typed string parameters a caller could transpose, and so the
-    ///     write and the confirmation cannot disagree about which path was meant. The reported
-    ///     form is computed once, at resolution, through
-    ///     <see cref="PathPolicy.EmitRelative"/> — the dialect every other tool in the library
-    ///     reports a path in.
-    /// </remarks>
-    /// <param name="RealPath">The real location the policy permitted the write to.</param>
-    /// <param name="Reported">
-    ///     The destination as the confirmation names it: relative to the working directory when
-    ///     the policy's dialect calls for that, and absolute otherwise.
-    /// </param>
-    private sealed record Destination(string RealPath, string Reported);
 }

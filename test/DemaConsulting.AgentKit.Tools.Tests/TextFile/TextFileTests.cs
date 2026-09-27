@@ -18,20 +18,21 @@ namespace DemaConsulting.AgentKit.Tools.Tests.TextFile;
 public class TextFileTests
 {
     /// <summary>
-    ///     Proves a composition attaching the family publishes the seven content tools in order.
+    ///     Proves a composition attaching the family publishes the eight content tools in order.
     /// </summary>
     [Fact]
-    public void TextFile_Family_ComposedThroughBuilder_PublishesTheSevenContentTools()
+    public void TextFile_Family_ComposedThroughBuilder_PublishesTheEightContentTools()
     {
         var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
         var tools = new ToolPackBuilder(policy).Add(new TextFilePack()).Build();
 
-        Assert.Equal(7, tools.Count);
+        Assert.Equal(8, tools.Count);
         Assert.Equal(
             [
                 TextFileSearchTool.ToolName,
                 TextFileReadTool.ToolName,
                 TextFileCreateTool.ToolName,
+                TextFileWriteTool.ToolName,
                 TextFileReplaceTool.ToolName,
                 TextFileCutLinesTool.ToolName,
                 TextFileCopyLinesTool.ToolName,
@@ -52,7 +53,7 @@ public class TextFileTests
             .Add(new TextFilePack())
             .Build();
 
-        Assert.Equal(7, tools.Count);
+        Assert.Equal(8, tools.Count);
     }
 
     /// <summary>
@@ -177,7 +178,7 @@ public class TextFileTests
 
     /// <summary>
     ///     Proves the search-read-edit loop works end to end by the bare relative names a model
-    ///     sends, sharing one workspace across all seven tools.
+    ///     sends, sharing one workspace across all eight tools.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
@@ -271,6 +272,53 @@ public class TextFileTests
         Assert.Equal(
             original,
             await System.IO.File.ReadAllTextAsync(largePath, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves the family's invariant survives a wholesale overwrite: content a write displaced is
+    ///     restored byte for byte — carriage returns, blank lines and trailing newline included — by
+    ///     pasting the slot it was captured into, through the composed tools a model actually calls.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task TextFile_Family_WriteThenPaste_RestoresTheOverwrittenContent()
+    {
+        using var fixture = new TempDirectoryFixture();
+        const string original = "alpha\r\nbeta\n\ngamma\n";
+        TempDirectoryFixture.WriteFile(fixture.Root, "notes.txt", original);
+        var tools = Compose(fixture.Root);
+
+        // Overwrite the file, then recover what it held by pasting the capture into a fresh file.
+        var writeResult = await InvokeAsync(
+            tools,
+            TextFileWriteTool.ToolName,
+            new AIFunctionArguments { ["path"] = "notes.txt", ["content"] = "clobbered\n" });
+        await InvokeAsync(
+            tools,
+            TextFileCreateTool.ToolName,
+            new AIFunctionArguments { ["path"] = "restored.txt", ["content"] = string.Empty });
+        var pasteResult = await InvokeAsync(
+            tools,
+            TextFilePasteLinesTool.ToolName,
+            new AIFunctionArguments
+            {
+                ["path"] = "restored.txt",
+                ["name"] = TextFileLineBuffers.OverwrittenSlot
+            });
+
+        Assert.Contains(
+            "was captured into buffer 'overwritten'",
+            Assert.IsType<string>(writeResult),
+            StringComparison.Ordinal);
+        Assert.Contains("Pasted", Assert.IsType<string>(pasteResult), StringComparison.Ordinal);
+        Assert.Equal(
+            "clobbered\n",
+            await System.IO.File.ReadAllTextAsync(
+                Path.Combine(fixture.Root, "notes.txt"), TestContext.Current.CancellationToken));
+        Assert.Equal(
+            original,
+            await System.IO.File.ReadAllTextAsync(
+                Path.Combine(fixture.Root, "restored.txt"), TestContext.Current.CancellationToken));
     }
 
     /// <summary>

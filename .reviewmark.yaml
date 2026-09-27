@@ -502,6 +502,21 @@ reviews:
       - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileCreateTool.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileCreateToolTests.cs"  # unit tests
 
+  # AgentKitTools-TextFile-TextFileWriteTool Review (one per unit)
+  - id: AgentKitTools-TextFile-TextFileWriteTool
+    title: Review that AgentKitTools TextFile TextFileWriteTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/text-file.md"
+      - "docs/reqstream/agent-kit-tools/text-file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/text-file/text-file-write-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/text-file/text-file-write-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/text-file/text-file-write-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/TextFile/TextFileWriteTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/TextFile/TextFileWriteToolTests.cs"  # unit tests
+
   # AgentKitTools-TextFile-TextFileReplaceTool Review (one per unit)
   - id: AgentKitTools-TextFile-TextFileReplaceTool
     title: Review that AgentKitTools TextFile TextFileReplaceTool Implementation is Correct
@@ -602,7 +617,10 @@ reviews:
       - "docs/reqstream/agent-kit-tools/file.yaml"                 # subsystem requirements
       - "docs/design/agent-kit-tools/file.md"                      # subsystem design
       - "docs/verification/agent-kit-tools/file.md"                # subsystem verification
+      - "src/DemaConsulting.AgentKit.Tools/File/LinkGuard.cs"      # shared link-classification helper
+      - "src/DemaConsulting.AgentKit.Tools/File/SubtreeGuard.cs"   # shared subtree walk and per-entry policy question
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs"  # subsystem tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/DirectoryLink.cs"  # directory-link test fixture
 
   # AgentKitTools-File-FileListTool Review (one per unit)
   - id: AgentKitTools-File-FileListTool
@@ -663,6 +681,52 @@ reviews:
       - "docs/verification/agent-kit-tools/file/file-delete-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteTool.cs"        # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileCreateDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileCreateDirectoryTool
+    title: Review that AgentKitTools File FileCreateDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-create-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-create-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-create-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileCreateDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileCreateDirectoryToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileMoveDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileMoveDirectoryTool
+    title: Review that AgentKitTools File FileMoveDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-move-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-move-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-move-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileMoveDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileMoveDirectoryToolTests.cs"  # unit tests
+
+  # AgentKitTools-File-FileDeleteDirectoryTool Review (one per unit)
+  - id: AgentKitTools-File-FileDeleteDirectoryTool
+    title: Review that AgentKitTools File FileDeleteDirectoryTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/file.md"
+      - "docs/reqstream/agent-kit-tools/file.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/file/file-delete-directory-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/file/file-delete-directory-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/file/file-delete-directory-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/File/FileDeleteDirectoryTool.cs"        # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileDeleteDirectoryToolTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Tools.Tests/File/RestrictedDirectory.cs"  # permission-withdrawal test fixture
 
   # AgentKitTools-File-FilePack Review (one per unit)
   - id: AgentKitTools-File-FilePack
@@ -734,6 +798,8 @@ reviews:
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTests.cs"         # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/RecordingToolPack.cs"  # capability-gate decorator
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageProbe.cs"                # shared header-probe helper
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAdmission.cs"            # shared admission helper
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageDestination.cs"          # shared destination helper
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageTestImages.cs"    # shared fixture builder
 
   # AgentKitTools-Image-ImageMediaTypes Review (one per unit)
@@ -780,6 +846,21 @@ reviews:
       - "docs/verification/agent-kit-tools/image/image-crop-tool.md"   # unit verification
       - "src/DemaConsulting.AgentKit.Tools/Image/ImageCropTool.cs"      # unit source
       - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageCropToolTests.cs"  # unit tests
+
+  # AgentKitTools-Image-ImageAutoCropTool Review (one per unit)
+  - id: AgentKitTools-Image-ImageAutoCropTool
+    title: Review that AgentKitTools Image ImageAutoCropTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-tools.md"
+      - "docs/reqstream/agent-kit-tools.yaml"
+      - "docs/design/agent-kit-tools/image.md"
+      - "docs/reqstream/agent-kit-tools/image.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-tools/image/image-auto-crop-tool.yaml"    # unit requirements
+      - "docs/design/agent-kit-tools/image/image-auto-crop-tool.md"         # unit design
+      - "docs/verification/agent-kit-tools/image/image-auto-crop-tool.md"   # unit verification
+      - "src/DemaConsulting.AgentKit.Tools/Image/ImageAutoCropTool.cs"      # unit source
+      - "test/DemaConsulting.AgentKit.Tools.Tests/Image/ImageAutoCropToolTests.cs"  # unit tests
 
   # AgentKitTools-Image-ImagePack Review (one per unit)
   - id: AgentKitTools-Image-ImagePack

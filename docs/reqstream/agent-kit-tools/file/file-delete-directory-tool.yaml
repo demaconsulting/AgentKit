@@ -1,0 +1,270 @@
+---
+# Software Unit Requirements for FileDeleteDirectoryTool
+
+sections:
+  - title: AgentKitTools Requirements
+    sections:
+      - title: File Requirements
+        sections:
+          - title: FileDeleteDirectoryTool Requirements
+            requirements:
+              - id: AgentKitTools-File-DeleteDirectoryTool-ToolName
+                title: >-
+                  The delete-directory tool shall be published under the name
+                  file_delete_directory, exposed as a constant, and shall carry a description.
+                justification: |
+                  The name is the only handle a model has on the tool, and a description is the
+                  only basis it has for choosing it. Spelling out the directory rather than adding
+                  a flag to the single-file deletion is what stops a request to delete something
+                  ever meaning a request to delete a tree.
+                tests:
+                  - FileDeleteDirectoryTool_ToolName_Constant_IsTheFamilyQualifiedName
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-GuardedConstruction
+                title: >-
+                  The delete-directory tool shall be constructed only through the guarded
+                  construction path with an access policy supplied at construction.
+                tags: [security]
+                justification: |
+                  Requiring the policy at construction makes an unguarded delete-directory tool
+                  impossible to build, which matters most for the tool with the largest reach.
+                tests:
+                  - FileDeleteDirectoryTool_Create_NullPolicy_ThrowsArgumentNullException
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-DeletesTree
+                title: >-
+                  The delete-directory tool shall remove a permitted directory with everything
+                  beneath it, reporting how many entries were removed.
+                justification: |
+                  Removing a directory with its contents is the tool's reason to exist. Reporting
+                  the count is what lets a model — and anyone reading the transcript afterwards —
+                  see the scale of what was done, rather than a bland success that conceals
+                  whether one file went or ten thousand.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_PermittedTree_RemovesItAndReportsTheEntryCount
+                  - FileDeleteDirectoryTool_Delete_EmptyDirectory_RemovesIt
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-NeverFollowsALink
+                title: >-
+                  The delete-directory tool shall refuse a directory containing a link that leads
+                  outside it, naming the offending entry as the request spelled it, removing
+                  nothing, and leaving what the link points at intact.
+                tags: [security]
+                justification: |
+                  A link can point anywhere, including outside everything an operator granted.
+                  Following one would remove content the request never named; removing the link
+                  entry itself would destroy a connection the request never mentioned. Deciding
+                  before acting is what makes the refusal total rather than partial: discovering
+                  the link midway and stopping would leave a half-destroyed tree, the worst
+                  outcome available and the hardest to reason about afterwards. The refusal names
+                  the entry so the model can act on it, and never the link's target, because the
+                  target is the location the guard exists to protect.
+
+                  What the guard guarantees is bounded and stated as such: the walk classifies
+                  what it finds before anything is removed. It is not a defense against a process
+                  racing the tool — one able to write inside a location the operator already
+                  granted can replace an entry between the plan and the removal, and a second
+                  check would only move that window rather than close it, because portable .NET
+                  offers no handle-relative, no-follow directory removal. What bounds that race is
+                  that no removal this tool issues follows a link: measured, File.Delete unlinks a
+                  symbolic link rather than its target and refuses a Windows junction outright,
+                  and a non-recursive Directory.Delete removes a junction while leaving what it
+                  points at whole.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeContainingALinkOutsideTheGrant_ReturnsDenialAndLeavesTheLinkTargetIntact
+                  - FileDeleteDirectoryTool_Delete_TreeContainingALinkOutsideTheGrant_RemovesNothingFromTheTree
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
+                title: >-
+                  The delete-directory tool shall remove a directory that is itself a link as the
+                  link alone, without following it and without touching what it points at, on
+                  every platform and whether or not the link still has a target.
+                tags: [security]
+                justification: |
+                  Were a link never removable, the refusal above would be a dead end: a workspace
+                  containing one would be permanently undeletable by the agent, because the
+                  single-file deletion refuses a directory and a link is a directory. Allowing the
+                  named entry to be removed, unfollowed, gives a model met with the refusal a
+                  concrete and bounded way forward, which is what makes that denial teach rather
+                  than merely stop.
+
+                  A link whose target has already been removed is named explicitly because it is
+                  the case where the hosts disagree: measured, a Windows junction whose target has
+                  gone still answers Directory.Exists, while a POSIX symbolic link answers
+                  File.Exists instead, because Directory.Exists follows it. A tool that judged the
+                  path by what it leads to before classifying the entry therefore offered this way
+                  forward on Windows alone, and refused the same request as a file on Linux and
+                  macOS — which is the dead end this requirement exists to prevent, on two
+                  platforms of three.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_DirectoryThatIsItselfALink_RemovesTheLinkAndNotItsTarget
+                  - FileDeleteDirectoryTool_Delete_LinkWhoseTargetIsGone_RemovesTheLink
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
+                title: >-
+                  The delete-directory tool shall refuse a path whose resolved location is reached
+                  through a link lying between that location and the root of the deepest grant
+                  that both contains and permits it, naming the offending component as the request
+                  spelled it, removing nothing, and leaving what the link points at intact.
+                tags: [security]
+                justification: |
+                  Path resolution in this library is lexical and documented as such, so a path
+                  naming a link inside a permitted location satisfies the write decision however
+                  far outside that location the link actually leads. The guard on what the walk
+                  discovers cannot close this: the walk starts past the link, so every entry it
+                  meets is an ordinary file and the guard never fires. The consequence measured on
+                  a real junction was an entire tree outside every grant removed, with the tool
+                  reporting success — the exact outcome the link guard exists to prevent, reached
+                  by a path the guard never inspected. The same predicate the walk already uses is
+                  therefore applied to the components a path is reached through, so there is one
+                  rule rather than two. The grant root itself, and everything above it, is
+                  deliberately not classified: an application author who roots a grant at a link,
+                  or beneath one, has made that choice, while a link inside the grant has been
+                  vetted by nobody, and refusing the former would make the whole grant unusable.
+                  This narrows what a caller may spell only where the blast radius is a whole tree;
+                  the rest of the library still resolves lexically, which remains the documented
+                  behavior.
+
+                  The grant that bounds the walk must be one that actually permits the target, not
+                  merely one that encloses it. A deeper grant whose denied patterns reject the
+                  path authorized nothing, so it is no statement about that location; treating it
+                  as the boundary anyway stopped the walk below a link and reopened this very
+                  escape by a second route, with the request in truth standing on a shallower
+                  grant above that link whose interior the walk was then never asked about.
+
+                  The classification is a pre-flight check over paths and claims nothing more: the
+                  location the caller names is judged before anything is touched. A process able
+                  to write inside a location the operator already granted can replace a component
+                  afterwards, and no path-based API can close that window, so the guarantee is
+                  stated as what it is rather than implied to be a race-resistant control.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
+                  - FileDeleteDirectoryTool_Delete_DeeperGrantDenyingTheTarget_DoesNotHideALinkAboveIt
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-EveryEntryIsPolicyJudged
+                title: >-
+                  The delete-directory tool shall consult the write decision for every entry the
+                  removal would take, not only for the directory the request named, refusing the
+                  whole request and removing nothing when any entry is one the policy does not
+                  permit this agent to write, and naming that entry as the request spelled it.
+                tags: [security]
+                justification: |
+                  A grant permits a location and may exclude names within it: a denied pattern
+                  refuses a path any of whose segments matches it, so ReadWrite(root, ["*.key"])
+                  permits root while refusing root/secret.key. A removal judged by the path it
+                  was given rather than by what it touches therefore destroys exactly the content
+                  the operator's policy declares off-limits, which is a containment violation
+                  reached without any link, any escape and any mistake by the model — the request
+                  was permitted, the consequence was not. It is the same defect as the two link
+                  escapes by a third route: in all three the tool validated the path it was
+                  named rather than the entries the operation reaches.
+
+                  The refusal is total by design. Removing the permitted subset would be a
+                  partial deletion the request never asked for — the outcome the two-phase plan
+                  exists to prevent — and would leave a model holding a directory it asked to
+                  have removed, partly emptied, with no way to tell what went. The entry is named
+                  so the model can re-address, in its own spelling and never as a host path; the
+                  pattern that withheld it is not named, because the policy's shape is the
+                  operator's business and not something a refusal should teach.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_ReturnsDenialNamingTheEntry
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnEntryThePolicyWithholds_RemovesNothing
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
+                title: >-
+                  The delete-directory tool shall refuse a directory holding more entries than the
+                  configured ceiling, naming the exact count and the ceiling and removing nothing,
+                  shall count the named directory itself so that a ceiling of zero forbids
+                  recursive removal entirely, and shall remove every entry of a tree holding
+                  exactly as many entries as the ceiling permits.
+                tags: [security]
+                justification: |
+                  The ceiling bounds what a mistake can destroy in one call — a wrong path, a
+                  model confusion, an off-by-one in a constructed path — so that the outcome is
+                  survivable and observable rather than total. It is deliberately not claimed to
+                  be more: an agent that intends the destruction can remove a tree a file at a
+                  time and the ceiling will not stop it. The count is exact because a vague
+                  "more than the limit" tells a model nothing about whether subdividing would
+                  help, while a real figure does; it stays exact past the ceiling because the walk
+                  keeps counting after it stops retaining paths, and the boundary is stated
+                  explicitly so that a tree of exactly the ceiling is removed whole rather than
+                  one entry short with a confirmation claiming otherwise. What the walk holds is
+                  bounded by the tree's depth rather than its size: each directory is streamed an
+                  entry at a time rather than materialized, and the walk keeps one enumerator per
+                  level of depth rather than one path per directory still to visit, so a refusal
+                  that names an exact figure never first accumulates the tree it refuses — not
+                  even when that tree is one very wide directory. Counting the named directory is
+                  what makes zero
+                  the expressible way for a host to attach the family and withhold this capability.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_ReturnsDenialNamingTheCountAndTheLimit
+                  - FileDeleteDirectoryTool_Delete_TreeExceedingTheEntryCeiling_RemovesNothing
+                  - FileDeleteDirectoryTool_Delete_TreeExactlyAtTheEntryCeiling_RemovesEveryEntry
+                  - FileDeleteDirectoryTool_Delete_ZeroEntryCeiling_RefusesEvenAnEmptyDirectory
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused
+                title: >-
+                  The delete-directory tool shall return a refusal, rather than throwing, when the
+                  file system refuses the planning walk, leaving the tree untouched.
+                tags: [security]
+                justification: |
+                  The planning walk is the one part of this unit that touches an arbitrary tree,
+                  so it is the part that meets a sub-directory the process may not enumerate, or a
+                  child that has gone since its parent was listed. Neither is a defect and neither
+                  is something the model can correct by being told less. The family's load-bearing
+                  rule is that a refusal is a result and never an exception; an exception escaping
+                  here would leave the agent runtime, rather than the tool, deciding what the
+                  model is told, on the one tool whose reach is not stated by the request. The
+                  walk mutates nothing, so the refusal is also the whole truth: the tree is
+                  exactly as it was.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_TreeHoldingAnUnreadableDirectory_ReturnsDenialRatherThanThrowing
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval
+                title: >-
+                  The delete-directory tool shall report how many entries were removed when a
+                  removal fails part way through the approved plan.
+                justification: |
+                  Deciding before acting guarantees that no removal begins until the whole plan is
+                  approved; it cannot guarantee that a removal, once begun, completes, because the
+                  file system is the thing that fails — a file another process holds open is the
+                  ordinary case. Every other refusal this tool composes states that nothing was
+                  deleted, so a bare "the directory could not be deleted" reads as "the tree is
+                  intact" and a model would go on to act on a tree that is no longer there.
+                  Naming the figure is what turns an unpreventable partial removal into one the
+                  model can see and reason about.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_RemovalFailingPartWayThrough_ReportsHowManyEntriesWereRemoved
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-PolicyGoverned
+                title: >-
+                  The delete-directory tool shall consult the write decision alone, refusing a
+                  removal in a location that may be read but not written.
+                tags: [security]
+                justification: |
+                  Taking a directory away is a write in the strongest sense, so a read-only grant
+                  must stay genuinely read-only. Write access is never inferred from read access.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_ReadOnlyLocation_ReturnsDenialAndLeavesTheTree
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-MissingDirectory
+                title: >-
+                  The delete-directory tool shall report a missing directory rather than treating
+                  it as a silent success, with a plain fact that names no other tool.
+                justification: |
+                  A model that received a bland success could not tell an accomplished removal
+                  from a mistyped path; a denial states that fact and prescribes no remedy.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_MissingDirectory_ReturnsDenialNamingNoTool
+
+              - id: AgentKitTools-File-DeleteDirectoryTool-RefusesFile
+                title: >-
+                  The delete-directory tool shall refuse a path that names a file, leaving the
+                  file in place.
+                justification: |
+                  Keeping the single-file and whole-tree capabilities apart is the safety
+                  property, and it holds in both directions: the tree tool is not a second route
+                  to deleting one named file any more than the file tool is a route to deleting a
+                  tree.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_PathIsAFile_ReturnsDenialAndLeavesTheFile

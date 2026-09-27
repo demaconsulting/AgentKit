@@ -45,6 +45,23 @@ public class TodoPackTests
     }
 
     /// <summary>
+    ///     Proves a read-only path policy withholds none of the family's three tools, because the
+    ///     task list is the pack's own and no tool in it touches the file system at all.
+    /// </summary>
+    [Fact]
+    public void TodoPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool()
+    {
+        // Arrange: every grant is read-only, so nothing anywhere may be written
+        var policy = new PathPolicy(Path.GetTempPath(), [PathRule.Unrestricted(AccessLevel.ReadOnly)]);
+
+        // Act: create the family's tools under that policy
+        var tools = new TodoPack().CreateTools(policy).ToList();
+
+        // Assert: all three survive — a path policy governs nothing these tools do
+        Assert.Equal(["todo_list", "todo_set", "todo_remove"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
     ///     Proves the pack requires a policy to create its tools, even though its tools never
     ///     consult one.
     /// </summary>

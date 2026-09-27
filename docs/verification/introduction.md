@@ -73,30 +73,38 @@ constituent software items, specifically:
 - **TextFileSearchTool (Unit)** — Publishes the `text_file_search` tool
 - **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
 - **TextFileCreateTool (Unit)** — Publishes the `text_file_create` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
 - **TextFileReplaceTool (Unit)** — Publishes the `text_file_replace` tool
 - **TextFileCutLinesTool (Unit)** — Publishes the `text_file_cut_lines` tool
 - **TextFileCopyLinesTool (Unit)** — Publishes the `text_file_copy_lines` tool
 - **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
-- **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
-  and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
+- **TextFileLineBuffers (Unit)** — Holds the recoverable named text buffers that `text_file_cut_lines`
+  and `text_file_copy_lines` capture into, that `text_file_write` captures displaced content into,
+  and that `text_file_paste_lines` restores from
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
-  of files of any type, published as one capability-gated pack
+  of files of any type, and creating, moving and recursively deleting the directories that hold
+  them, published as one capability-gated pack
 - **FileListTool (Unit)** — Publishes the `file_list` tool
 - **FileCopyTool (Unit)** — Publishes the `file_copy` tool
 - **FileMoveTool (Unit)** — Publishes the `file_move` tool
 - **FileDeleteTool (Unit)** — Publishes the `file_delete` tool
+- **FileCreateDirectoryTool (Unit)** — Publishes the `file_create_directory` tool
+- **FileMoveDirectoryTool (Unit)** — Publishes the `file_move_directory` tool
+- **FileDeleteDirectoryTool (Unit)** — Publishes the `file_delete_directory` tool
 - **FilePack (Unit)** — Publishes the file family as one pack
 - **Markdown (Subsystem)** — The Markdown tool family: policy-governed outlining of a Markdown file's
   heading structure, published as one capability-gated pack
 - **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
 - **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, published as one capability-gated pack
+  documents for a vision-capable agent, and extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImageCropTool (Unit)** — Publishes the `image_crop` tool
+- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack

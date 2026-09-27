@@ -10,6 +10,14 @@ To delete one file at a path the access policy permits the agent to write. The t
 file only: it never deletes a directory, never recurses, and does not keep a quarantine copy.
 Recovery from a mistaken deletion is source control.
 
+**Removing a directory with everything beneath it is a separate capability**, published as
+`file_delete_directory`; see *FileDeleteDirectoryTool Design*. The two stay apart because the
+separation is itself the safety property: it is what stops a request to delete something ever
+meaning a request to delete a tree. That is also why no recursive option was added here. The
+directory tool carries controls this unit has no need of — a pre-flight walk that refuses to follow
+a link out of the tree, and a ceiling on how many entries one call may remove — and folding the two
+together would put an unbounded operation behind a verb a model reads as bounded.
+
 Deletion is a write operation in the strongest sense, so a file that is readable but not writable
 cannot be deleted.
 

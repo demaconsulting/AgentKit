@@ -62,6 +62,7 @@ A policy is immutable after construction and is safe for concurrent use.
 | `Grants` | `IReadOnlyList<PathRule>` | Permitted locations, each carrying its own access level. |
 | `Limits` | `ToolLimits` | Ceilings every tool governed by this policy observes. |
 | `WorkingDirectoryIsGranted` | `bool` | Whether the anchor is itself permitted for reading. |
+| `AnyLocationIsWritable` | `bool` | Whether any grant permits writing, anywhere at all. |
 | `PlaceholderPaths` | `string[]` | Literal words a model sends in place of an absent path. |
 | `RecursiveEnumeration` | `EnumerationOptions` | Recursive listing that ignores inaccessible entries. |
 | `_grants` | `PathRule[]` | Private copy of the grant collection; never changes. |
@@ -76,6 +77,10 @@ Invariants:
 - Limits are non-null for the lifetime of the policy.
 - `WorkingDirectoryIsGranted` is true only when some grant allows the working directory to be
   read.
+- `AnyLocationIsWritable` is true only when at least one grant carries `AccessLevel.ReadWrite`.
+  It is independent of `WorkingDirectoryIsGranted`: either may be true while the other is false.
+- Both booleans are computed once during construction and never change, because `_grants` is
+  copied at construction and never mutated.
 
 ### Key Methods
 
@@ -132,6 +137,24 @@ could read a file under one name and not write it back under the same name would
 
 Denials for write requests enumerate all grants with their access levels, including read-only
 locations, so the model can distinguish "wrong place" from "right place, wrong permission."
+
+#### AnyLocationIsWritable
+
+Reports whether any grant permits writing, anywhere.
+
+**Algorithm:** at construction, tests each grant's access level for `ReadWrite` and stores the
+result. The scan happens once; reading the property later performs no work.
+
+**Preconditions:** none. The property is available for the whole lifetime of the policy.
+
+**Postconditions:** `true` when at least one grant carries `AccessLevel.ReadWrite`, whatever its
+root, whether or not that root is the working directory, and whether or not that root exists.
+`false` for an empty grant set and for a policy whose every grant is `ReadOnly`.
+
+This is the second of the two whole-policy questions — `WorkingDirectoryIsGranted` is the first —
+that a tool pack can ask before it holds any path to test. It exists so a pack can decide which of
+its tools are worth publishing: see the *ToolPack* and *ToolPackBuilder* designs, and the
+*AgentKitTools* system design for the per-family consequence.
 
 #### EnumerateFiles(string? directory, string searchPattern)
 
@@ -202,7 +225,7 @@ Private helper through which both public entry points funnel, so that resolution
 handling and denial-message construction exist in exactly one place. Sharing this implementation
 is what guarantees reads and writes differ only in which grants they consult.
 
-**Algorithm**, in this order and no other — see _Design Constraints_:
+**Algorithm**, in this order and no other — see *Design Constraints*:
 
 1. Build the absolute candidate: absence denotes `WorkingDirectory`; an absolute request is taken
    as given; every relative request is interpreted against `WorkingDirectory` first, and a unique
@@ -230,14 +253,14 @@ successful aliases are not reported as "interpreted as" values. The absolute loc
 working-directory interpretation is lexically normalized before it is handed to a denial (`.` and
 `..` collapsed), while the candidate handed to the resolver is the un-normalized combined path, so
 containment is unchanged. The normalization is lexical only, because this value reports how the
-request was _read_.
+request was *read*.
 
 #### NormalizeInterpretedPath(string interpreted)
 
 Private helper that lexically normalizes the absolute location a relative request was interpreted
 as, so a denial reports a navigable path rather than one still carrying `.` or `..` segments. It
 collapses those segments against the already-absolute input via `Path.GetFullPath` and touches
-the file system not at all: this value reports how the request was _read_. Only the reported value
+the file system not at all: this value reports how the request was *read*. Only the reported value
 is normalized; the candidate
 handed to the resolver is
 unchanged. Because the path is caller-controlled, normalization can throw on malformed input; a
@@ -348,6 +371,29 @@ interpret as a path, a result longer than the platform permits — arrives here 
 resolution-class exception and becomes a denial, because denying what cannot be understood is the
 fail-safe reading for input a model controls.
 
+**The write-grant question is asked of the whole policy, never of a path.** `AnyLocationIsWritable`
+reports whether the policy holds any read-write grant at all. The per-path form of the same
+question already exists as `TryResolveWrite`, and asking that about the working directory would be
+the wrong rule for what the property is for: a policy granting a read-only workspace and a
+read-write session location would answer `false`, and the tools an application composed would
+silently lose their editing capability even though editing is genuinely possible. The whole-policy
+scope is stated in the member's own name so it cannot be misread as a per-path test at the call
+site.
+
+**Deny patterns are deliberately not consulted by that question.** A grant's deny patterns can in
+principle exclude everything its root covers, but whether they do is not statically decidable and
+depends on which files exist at the moment of asking. Answering only "the policy holds a grant that
+*could* permit a write" is the correct conservative direction, because the error it can make is to
+report `true` for a policy whose every write would be denied in practice — which costs a tool being
+published that a specific request still refuses, an outcome the model can read and act on. The
+opposite error, reporting `false` where writing was possible, would silently withhold a capability,
+and nothing would report that it had happened.
+
+**Write access is never inferred from read access.** The predicate tests `Access` against
+`AccessLevel.ReadWrite` and reads nothing else, so no number of read-only grants makes the answer
+`true`. This is the same rule `TryResolveWrite` applies per path, stated once more at whole-policy
+scope so the two cannot drift apart.
+
 **Enumeration and access must remain one decision.** Recursive enumeration provided by the
 operating system surfaces every file beneath a directory, including files outside
 the permitted location. `EnumerateFiles` therefore filters
@@ -405,14 +451,14 @@ a `Limits` property rather than being passed per call. A tool therefore receives
 cannot end up observing a different budget from its neighbor, which is what "every pack observes
 the same budget" means in practice. The three-argument constructor states the ceilings
 explicitly; the two-argument constructor delegates to it with `ToolLimits.Default`. See
-_ToolLimits Unit Design_ for the reasoning behind the values.
+*ToolLimits Unit Design* for the reasoning behind the values.
 
 ### Dependencies
 
 - **RealPathResolver** — used to resolve the working directory at construction and every requested
-  path before a grant is consulted; see _RealPathResolver Unit Design_.
-- **PathRule** — holds each permission grant; see _PathRule Unit Design_.
-- **ToolLimits** — the resource ceilings carried with the policy; see _ToolLimits Unit Design_.
+  path before a grant is consulted; see *RealPathResolver Unit Design*.
+- **PathRule** — holds each permission grant; see *PathRule Unit Design*.
+- **ToolLimits** — the resource ceilings carried with the policy; see *ToolLimits Unit Design*.
 
 ### Callers
 

@@ -26,6 +26,7 @@ public class ToolLimitsTests
         var binaryBytes = limits.MaxBinaryBytes;
         var agentDepth = limits.MaxAgentDepth;
         var imagePixels = limits.MaxImagePixels;
+        var deleteEntries = limits.MaxDeleteEntries;
 
         // Assert: the literal published values, so a silent change to a constant fails here
         Assert.Equal(65536, readBytes);
@@ -33,6 +34,7 @@ public class ToolLimitsTests
         Assert.Equal(8388608, binaryBytes);
         Assert.Equal(2, agentDepth);
         Assert.Equal(16777216, imagePixels);
+        Assert.Equal(1000, deleteEntries);
     }
 
     /// <summary>
@@ -53,10 +55,11 @@ public class ToolLimitsTests
         Assert.Equal(expected.MaxBinaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(expected.MaxAgentDepth, limits.MaxAgentDepth);
         Assert.Equal(expected.MaxImagePixels, limits.MaxImagePixels);
+        Assert.Equal(expected.MaxDeleteEntries, limits.MaxDeleteEntries);
     }
 
     /// <summary>
-    ///     Proves that replacing one ceiling leaves the other four at their defaults.
+    ///     Proves that replacing one ceiling leaves the others at their defaults.
     /// </summary>
     /// <remarks>
     ///     This is what the optional-parameter constructor is for: a host states the one
@@ -77,6 +80,7 @@ public class ToolLimitsTests
         Assert.Equal(ToolLimits.DefaultMaxResultCharacters, limits.MaxResultCharacters);
         Assert.Equal(ToolLimits.DefaultMaxAgentDepth, limits.MaxAgentDepth);
         Assert.Equal(ToolLimits.DefaultMaxImagePixels, limits.MaxImagePixels);
+        Assert.Equal(ToolLimits.DefaultMaxDeleteEntries, limits.MaxDeleteEntries);
     }
 
     /// <summary>
@@ -85,15 +89,17 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_AllCeilingsSupplied_ExposesSuppliedValues()
     {
-        // Arrange: five values that are distinguishable from each other and from the defaults
+        // Arrange: six values that are distinguishable from each other and from the defaults
         const int readBytes = 11;
         const int resultCharacters = 22;
         const int binaryBytes = 33;
         const int agentDepth = 55;
         const int imagePixels = 66;
+        const int deleteEntries = 77;
 
         // Act: supply every ceiling positionally, in the documented order
-        var limits = new ToolLimits(readBytes, resultCharacters, binaryBytes, agentDepth, imagePixels);
+        var limits = new ToolLimits(
+            readBytes, resultCharacters, binaryBytes, agentDepth, imagePixels, deleteEntries);
 
         // Assert: each ceiling lands on its own property, so the order cannot have transposed
         Assert.Equal(readBytes, limits.MaxReadBytes);
@@ -101,6 +107,7 @@ public class ToolLimitsTests
         Assert.Equal(binaryBytes, limits.MaxBinaryBytes);
         Assert.Equal(agentDepth, limits.MaxAgentDepth);
         Assert.Equal(imagePixels, limits.MaxImagePixels);
+        Assert.Equal(deleteEntries, limits.MaxDeleteEntries);
     }
 
     /// <summary>
@@ -149,8 +156,18 @@ public class ToolLimitsTests
     [Fact]
     public void ToolLimits_Constructor_NegativeMaxImagePixels_ThrowsArgumentOutOfRangeException()
     {
-        // Act & Assert: every ceiling is validated, including the most recently added one
+        // Act & Assert: every ceiling is validated, including the image budget
         Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxImagePixels: -1));
+    }
+
+    /// <summary>
+    ///     Proves that a negative removal-entry ceiling is rejected.
+    /// </summary>
+    [Fact]
+    public void ToolLimits_Constructor_NegativeMaxDeleteEntries_ThrowsArgumentOutOfRangeException()
+    {
+        // Act & Assert: every ceiling is validated, including the most recently added one
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ToolLimits(maxDeleteEntries: -1));
     }
 
     /// <summary>
@@ -165,7 +182,7 @@ public class ToolLimitsTests
     public void ToolLimits_Constructor_ZeroCeiling_IsAccepted()
     {
         // Act: disable every operation by configuring a ceiling of zero
-        var limits = new ToolLimits(0, 0, 0, 0, 0);
+        var limits = new ToolLimits(0, 0, 0, 0, 0, 0);
 
         // Assert: the zero ceilings are accepted and reported back unchanged
         Assert.Equal(0, limits.MaxReadBytes);
@@ -173,5 +190,6 @@ public class ToolLimitsTests
         Assert.Equal(0, limits.MaxBinaryBytes);
         Assert.Equal(0, limits.MaxAgentDepth);
         Assert.Equal(0, limits.MaxImagePixels);
+        Assert.Equal(0, limits.MaxDeleteEntries);
     }
 }

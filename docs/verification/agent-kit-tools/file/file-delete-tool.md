@@ -59,7 +59,9 @@ The listed tests prove a permitted single file is deleted.
 **Test**: `FileDeleteTool_Delete_DirectoryPath_ReturnsDenialAndLeavesItInPlace`
 
 The listed tests prove a directory is refused and left in place: the tool never deletes a directory
-or recurses.
+or recurses. Removing a directory with everything beneath it is a separate, explicitly named
+capability with controls of its own; this scenario is what keeps the two apart, which is the
+safety property rather than an accident of increments.
 
 ##### AgentKitTools-File-DeleteTool-PolicyGoverned: Policy Governed
 

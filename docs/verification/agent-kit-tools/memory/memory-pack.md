@@ -28,7 +28,7 @@ project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 10 requirement scenarios below, covering 10 listed test method entries,
+A unit test run passes when all 11 requirement scenarios below, covering 11 listed test method entries,
 pass without error or exception beyond those explicitly asserted. Tools published in the wrong order,
 a host capability required, a pack constructible without an embedding generator, a policy accepted as
 null, two compositions sharing a default store, a supplied store not used, a published instruction
@@ -57,6 +57,15 @@ it receives the family.
 
 The listed tests prove exactly five tools are created, in the order `memory_file`, `memory_recall`,
 `memory_update`, `memory_revise`, `memory_forget`.
+
+##### AgentKitTools-Memory-Pack-PublishedUnderEveryPolicy: Every Tool Survives a Read-Only Policy
+
+**Test**: `MemoryPack_CreateTools_ReadOnlyPolicy_PublishesEveryTool`
+
+Asserts that a policy whose every grant is read-only still yields all five tools, in their
+documented order. Confirms a read-only *path* policy narrows nothing in this family: the memories
+live in the store the application supplied or the pack allocated, not in a location the policy
+governs, so filing a memory under such a policy is correct and works.
 
 ##### AgentKitTools-Memory-Pack-RequiresPolicy: Requires A Policy
 

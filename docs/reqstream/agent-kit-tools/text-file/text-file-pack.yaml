@@ -28,16 +28,54 @@ sections:
                 tests:
                   - TextFilePack_RequiredCapabilities_Pack_RequiresNoHostCapability
 
-              - id: AgentKitTools-TextFile-Pack-RegistersSevenTools
+              - id: AgentKitTools-TextFile-Pack-RegistersEightTools
                 title: >-
-                  The pack shall create its seven tools — search, read, create, replace, cut, copy
-                  and paste — in a fixed, documented order, with no null entry.
+                  The pack shall create its eight tools — search, read, create, write, replace, cut,
+                  copy and paste — in a fixed, documented order, with no null entry, whenever the
+                  access policy permits writing in any location.
                 justification: |
                   The order a model sees the tools in is observable, so it is fixed rather than
-                  incidental.
+                  incidental. It descends in scope through the three editing tools — bring a file
+                  into existence, set its whole content, change part of its content — so the two
+                  tools a write is most easily confused with sit either side of it. Any location
+                  being writable is enough: an agent that may write only a session location outside
+                  the workspace still receives every editing tool, because every one of them could
+                  succeed there.
                 tests:
-                  - TextFilePack_CreateTools_Policy_CreatesTheSevenToolsInOrder
+                  - TextFilePack_CreateTools_WriteGrantingPolicy_CreatesTheEightToolsInOrder
+                  - TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
                   - TextFilePack_CreateTools_Policy_ReturnsNoNullTool
+
+              - id: AgentKitTools-TextFile-Pack-SuppressesWriteToolsWithoutAWriteGrant
+                title: >-
+                  The pack shall withhold every tool that can act only by writing when the access
+                  policy permits no writing anywhere, offering only searching, reading and
+                  copying a range of lines, in their usual relative order.
+                tags: [security]
+                justification: |
+                  Creating a file, setting its whole content, replacing text within it, cutting a
+                  range out of it and pasting a range into it each require permission to write, so
+                  under a configuration that permits no writing anywhere every one of them could
+                  only answer a refusal. Withholding them is what stops an agent spending turns on
+                  a capability that cannot work and keeps the tools it is offered a truthful
+                  statement of what it can do. Searching and reading need only permission to read.
+                  Copying a range needs only permission to read the file it copies from, by the
+                  same decision that keeps it usable from a read-only location, so it is offered
+                  too — even though the holding area it fills has no consumer while pasting is
+                  withheld, because whether the configuration permits writing at all is a
+                  question the pack can answer and whether a tool is useful is not. A configuration
+                  granting nothing at all withholds the same five, so it is
+                  not a case the rule overlooks — though the three it does offer then refuse every
+                  path, since nothing resolves under a configuration that grants nothing. That is
+                  not gated in turn, because a grant permits reading or reading and writing and
+                  there is no write-only level: permission to write always carries permission to
+                  read, so a reading tool is unusable only where nothing whatever is granted. The
+                  surviving tools keep their usual relative
+                  order, so a model meets a shortened family rather than a rearranged one.
+                tests:
+                  - TextFilePack_CreateTools_ReadOnlyPolicy_PublishesOnlyTheNonWritingTools
+                  - TextFilePack_CreateTools_NoGrants_PublishesOnlyTheNonWritingTools
+                  - TextFilePack_CreateTools_ReadOnlyWorkspaceWithWritableSession_PublishesEveryTool
 
               - id: AgentKitTools-TextFile-Pack-ToolsCarryFamilyPrefix
                 title: >-
@@ -69,11 +107,15 @@ sections:
 
               - id: AgentKitTools-TextFile-Pack-SharedBuffer
                 title: >-
-                  The cut and paste tools one composition produces shall share one buffer, and two
-                  separate compositions shall not share buffer slots.
+                  The write, cut and paste tools one composition produces shall share one buffer, so
+                  a range a cut removed and content a write displaced are both recoverable through
+                  the paste tool, and two separate compositions shall not share buffer slots.
                 justification: |
-                  A buffer allocated per composition gives cut and paste a shared clipboard while
-                  keeping two independently composed tool sets isolated.
+                  A buffer allocated per composition gives the destructive tools and the paste tool
+                  a shared clipboard while keeping two independently composed tool sets isolated.
+                  Sharing it with the write tool is what extends the family's recoverability promise
+                  from a removed range to a wholesale overwrite.
                 tests:
                   - TextFilePack_CreateTools_CutAndPaste_ShareOneBufferPerComposition
+                  - TextFilePack_CreateTools_WriteAndPaste_ShareOneBufferPerComposition
                   - TextFilePack_CreateTools_TwoCompositions_DoNotShareBufferSlots

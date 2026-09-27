@@ -92,6 +92,43 @@ detail.
 
 An instance is immutable after construction and is safe for concurrent use.
 
+**`MaxDeleteEntries` = 1,000.** This bounds how many entries one recursive removal may take,
+counting the named directory itself, and it is the one ceiling here that bounds *damage* rather
+than spend. It sits beside the others for the same reason they do: a host configures all of its
+budgets in one place, and a refusal names a number the host chose rather than an implementation
+detail.
+
+**What it buys must be stated honestly, because it is easy to oversell.** This is **not**
+protection against a determined agent. An agent that means to destroy a tree can remove it a file
+at a time with `file_delete`, and this ceiling will not stop it. What the ceiling buys is that a
+*mistake* — a wrong path, a model confusion, an off-by-one in a constructed path — is survivable
+and observable rather than total in one call. Any reading of this document that takes the ceiling
+for a security boundary against a hostile agent is a misreading, and the tool's own documentation
+says the same.
+
+The value was chosen against trees measured in a real repository rather than picked for
+roundness. One thousand is three orders of magnitude above a hand-made scratch directory; well
+above one project's whole build output, measured at a few hundred entries; and between one half
+and one fortieth of the trees an agent must never remove by mistake — a source tree at several
+thousand entries, a test tree at tens of thousands, an installed package directory at tens of
+thousands more. A mistaken "remove the workspace" is refused; ordinary housekeeping succeeds.
+
+Counting the named directory itself is what makes an empty directory cost one entry, and therefore
+what makes a ceiling of zero forbid recursive removal entirely — the expressible way for a host to
+attach the family and withhold the capability, exactly as a zero delegation depth does for the
+agent family.
+
+**What enforcing this ceiling costs.** The refusal names the exact entry count rather than "more
+than the limit", because a real figure is what tells a model whether subdividing the request would
+help. An exact figure requires the whole tree to be walked, even the tree that is about to be
+refused. That walk is metadata-only and covers a tree the approved case was going to enumerate
+anyway, so the cost is a traversal rather than a read. It is *not* the cost of holding the tree:
+the walk stops retaining paths once the running count passes the ceiling and only keeps counting,
+so the request too large to approve is also the request that accumulates nothing. The traversal is
+iterative over an explicit stack rather than recursive, so a deep tree reaches this ceiling rather
+than exhausting the thread's stack first — a stack overflow cannot be caught and would take the
+host process with it, which is the one outcome a damage ceiling must not have.
+
 ### Data Model
 
 | Member                          | Type         | Description                                                       |
@@ -101,14 +138,16 @@ An instance is immutable after construction and is safe for concurrent use.
 | `MaxBinaryBytes`                | `int`        | Ceiling on the bytes of binary content a tool may return.         |
 | `MaxAgentDepth`                 | `int`        | Ceiling on how deep a chain of delegated agents may run.          |
 | `MaxImagePixels`                | `int`        | Ceiling on the pixels a tool may decode out of one image.         |
+| `MaxDeleteEntries`              | `int`        | Ceiling on the entries one recursive removal may take.            |
 | `Default`                       | `ToolLimits` | Shared instance a host receives when it configures nothing.       |
 | `DefaultMaxReadBytes`           | `const int`  | The published default for `MaxReadBytes`, 65,536.                 |
 | `DefaultMaxResultCharacters`    | `const int`  | The published default for `MaxResultCharacters`, 32,000.          |
 | `DefaultMaxBinaryBytes`         | `const int`  | The published default for `MaxBinaryBytes`, 8,388,608.            |
 | `DefaultMaxAgentDepth`          | `const int`  | The published default for `MaxAgentDepth`, 2.                     |
 | `DefaultMaxImagePixels`         | `const int`  | The published default for `MaxImagePixels`, 16,777,216.           |
+| `DefaultMaxDeleteEntries`       | `const int`  | The published default for `MaxDeleteEntries`, 1,000.              |
 
-The five constants exist so that this document, the requirement text and the tests can all name
+The six constants exist so that this document, the requirement text and the tests can all name
 one source of truth rather than repeating literals.
 
 Invariants:
@@ -119,13 +158,14 @@ Invariants:
 
 ### Key Methods
 
-#### ToolLimits(int maxReadBytes, int maxResultCharacters, int maxBinaryBytes, int maxAgentDepth, int maxImagePixels)
+#### ToolLimits(maxReadBytes, maxResultCharacters, maxBinaryBytes, maxAgentDepth, maxImagePixels, maxDeleteEntries)
 
-The only constructor. Every parameter is optional and defaults to the corresponding published
+The only constructor, taking six `int` ceilings. Every parameter is optional and defaults to the
+corresponding published
 constant, which is what delivers per-ceiling customization without a builder: a host writes
-`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other four defaults. `maxImagePixels` is last
-because it is the most recently added ceiling, and appending it leaves every existing named and
-positional caller unaffected.
+`new ToolLimits(maxBinaryBytes: 1024)` and keeps the other five defaults. `maxDeleteEntries` is
+last because it is the most recently added ceiling, and appending it leaves every existing named
+and positional caller unaffected — the same discipline `maxImagePixels` followed before it.
 
 **Preconditions:** every supplied ceiling is zero or greater.
 

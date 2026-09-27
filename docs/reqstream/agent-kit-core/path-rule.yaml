@@ -18,9 +18,17 @@ sections:
               agent file tool needs — "read" and "read and write" — so a third level such as
               append-only would add a state to reason about at every decision point without enabling
               a capability the two do not already cover.
+
+              That there are exactly two is a premise other documented reasoning rests on rather
+              than a matter of taste: the file family withholds only its writing tools under a
+              policy that permits no writing, and the stated reason is that permission to write
+              always carries permission to read — true only while no write-only level exists. The
+              count is therefore asserted, so a third level breaks a test rather than quietly
+              falsifying prose.
             tests:
               - PathRule_Unrestricted_CarriesRequestedAccessLevel
               - PathRule_RootedFactories_CarryTheirAccessLevel
+              - PathRule_AccessLevel_DeclaredLevels_AreExactlyReadOnlyAndReadWrite
 
           - id: AgentKitCore-PathRule-Unrestricted
             title: >-

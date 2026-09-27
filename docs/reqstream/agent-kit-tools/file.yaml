@@ -12,29 +12,152 @@ sections:
         requirements:
           - id: AgentKitTools-File-FamilyComposition
             title: >-
-              The file family shall publish four tools — list, copy, move and delete — under the
-              file family prefix, treat a file as an entity regardless of type, and require no host
-              capability.
+              The file family shall publish, under the file family prefix when the access policy
+              permits writing somewhere, the whole set of capabilities it offers — listing,
+              copying, moving and deleting a file, and creating, moving and deleting a directory —
+              treat a file as an entity regardless of type, and require no host capability.
             justification: |
               Managing a file is the same operation whatever it holds, so the family treats a file
               as an entity rather than as a kind of content, and the listing it provides replaces the
-              text family's former listing so that discovery is type-agnostic. Publishing every tool
-              under one prefix keeps the names from colliding with another library's.
+              text family's former listing so that discovery is type-agnostic. The directory
+              structure files live in belongs to the same family for the same reason: it is the
+              container, not the content. Publishing every tool
+              under one prefix keeps the names from colliding with another library's. The full set
+              is what the family offers when the policy could permit every one of them to
+              succeed; which of them it offers otherwise is stated separately, so that the
+              host-capability question and the access-policy question stay distinct.
             children:
               - AgentKitTools-File-ListTool-ToolName
               - AgentKitTools-File-CopyTool-ToolName
               - AgentKitTools-File-MoveTool-ToolName
               - AgentKitTools-File-DeleteTool-ToolName
+              - AgentKitTools-File-CreateDirectoryTool-ToolName
+              - AgentKitTools-File-MoveDirectoryTool-ToolName
+              - AgentKitTools-File-DeleteDirectoryTool-ToolName
               - AgentKitTools-File-ListTool-TypeAgnostic
               - AgentKitTools-File-ListTool-Discovery
               - AgentKitTools-File-ListTool-Glob
               - AgentKitTools-File-Pack-FamilyPrefix
               - AgentKitTools-File-Pack-NoCapabilityRequired
-              - AgentKitTools-File-Pack-RegistersFourTools
+              - AgentKitTools-File-Pack-RegistersEveryTool
               - AgentKitTools-File-Pack-ToolsCarryFamilyPrefix
             tests:
-              - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
+              - File_Family_ComposedThroughBuilder_PublishesTheWholeFamily
               - File_Family_HostDeclaringNoCapability_StillReceivesTheFamily
+
+          - id: AgentKitTools-File-DirectoryManagement
+            title: >-
+              The file family shall let an agent create a directory together with any missing
+              directories above it, move — and thereby rename — a directory with everything
+              beneath it, and delete a directory with everything beneath it, as capabilities
+              distinct from its single-file operations.
+            justification: |
+              An agent that can write files but cannot make a place to put them, tidy one away, or
+              clear one out is left doing half a job, and the workarounds it reaches for — writing
+              into whatever directory happens to exist, or removing a tree one file at a time —
+              are worse than the capability being asked for. Keeping the directory operations
+              distinct from the single-file ones is what lets each carry the controls it needs:
+              the whole-tree removal is the only operation in the family whose reach is not stated
+              by the request itself, so it is the only one that needs a link guard and a ceiling,
+              and the single-file deletion stays simple because it never recurses.
+            children:
+              - AgentKitTools-File-CreateDirectoryTool-CreatesDirectory
+              - AgentKitTools-File-CreateDirectoryTool-ExistingDirectory
+              - AgentKitTools-File-CreateDirectoryTool-RefusesExistingFile
+              - AgentKitTools-File-MoveDirectoryTool-MovesDirectory
+              - AgentKitTools-File-MoveDirectoryTool-Renames
+              - AgentKitTools-File-MoveTool-Renames
+              - AgentKitTools-File-DeleteDirectoryTool-DeletesTree
+              - AgentKitTools-File-DeleteDirectoryTool-RefusesFile
+            tests:
+              - File_Family_DirectoryLifecycle_CreateMoveDelete_WorksEndToEnd
+
+          - id: AgentKitTools-File-RecursiveDeletionIsBounded
+            title: >-
+              A recursive deletion or a directory move shall never reach content outside the
+              permitted location by following or traversing a link, shall never destroy or
+              relocate an entry the access policy withholds, and a recursive deletion
+              shall refuse rather than remove more entries than the
+              configured ceiling.
+            tags: [security]
+            justification: |
+              Removing a directory with everything beneath it is the only operation in the family
+              whose reach is not stated by the request itself, so it is the only one that needs
+              its reach bounded by something other than the caller's words. A link can lead
+              anywhere an operator never granted, and a mistyped path can name a far larger tree
+              than the model believed; both are refused before anything is removed, so the failure
+              mode is a refusal rather than a half-destroyed workspace. A link is equally
+              dangerous in the path the caller *names* as in the tree the walk discovers, because
+              path resolution is lexical: a named component that leads out of the grant puts a
+              whole tree outside the grant within reach of one call. The two tools whose blast
+              radius is a tree — recursive deletion and the directory move — therefore refuse a
+              path traversing such a link as well, while the rest of the library keeps the lexical
+              resolution it documents. A link is not the only way a request that names a permitted
+              path reaches content the policy withholds: a grant's denied patterns exclude names
+              *inside* a permitted location, so the same two tools consult the write decision for
+              every entry the operation would take — and, for the move, for the place each entry
+              would land — rather than for the path they were given. One withheld entry refuses
+              the whole request, because the permitted subset is not what was asked for.
+              The ceiling is honest
+              about what it is: it bounds the damage of a mistake, not the reach of an agent that
+              intends the destruction and could remove a tree one file at a time. What deciding
+              before acting guarantees is that no removal begins until the whole plan is approved;
+              it cannot guarantee that a removal, once begun, completes, so a removal the file
+              system stops part way through reports how far it got rather than reading, against
+              every other refusal in the family, as though nothing had happened.
+
+              Both link rules are pre-flight checks over paths, and the family claims no more for
+              them: the path a caller names is classified before anything is touched, and the walk
+              refuses the links it discovers before a single entry goes. Neither defends against a
+              process racing the tool from inside a location the operator already granted, because
+              portable .NET exposes no handle-relative, no-follow directory removal or move and a
+              second path check would only move the window. What bounds that race is that no
+              removal these tools issue follows a link — measured, a file delete unlinks a
+              symbolic link rather than its target and a non-recursive directory delete removes a
+              junction while leaving what it points at whole.
+            children:
+              - AgentKitTools-File-DeleteDirectoryTool-NeverFollowsALink
+              - AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly
+              - AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
+              - AgentKitTools-File-DeleteDirectoryTool-EveryEntryIsPolicyJudged
+              - AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
+              - AgentKitTools-File-DeleteDirectoryTool-ReportsPartialRemoval
+              - AgentKitTools-File-MoveDirectoryTool-EndpointThroughALinkIsRefused
+              - AgentKitTools-File-MoveDirectoryTool-EveryEntryIsPolicyJudged
+            tests:
+              - File_Family_RecursiveDelete_LinkOutOfTheGrant_IsNeverFollowed
+
+          - id: AgentKitTools-File-WriteToolsRequireAWriteGrant
+            title: >-
+              The file family shall withhold copying, moving and deleting a file and creating,
+              moving and deleting a directory when the access policy permits no writing
+              anywhere, and shall offer all of its tools whenever the policy permits writing in any
+              location.
+            tags: [security]
+            justification: |
+              A tool whose only possible outcome is a refusal costs an operator nothing to
+              configure and costs the agent on every turn: it occupies the model's attention, it
+              invites a request that can only fail, and a model that meets a refusal it cannot
+              avoid tends to retry it in another form rather than take the path that works. Every
+              operation in the family other than listing changes the file system and can therefore
+              never succeed where nothing may be written, so an agent given a read-only
+              configuration is offered a coherent discovery capability instead of a management
+              capability that cannot
+              function. Listing is never withheld: it needs only the read decision to choose what
+              to report, and consults the write decision only to mark a reported location as
+              writable, so it stays fully useful. Offering every tool whenever writing is permitted
+              anywhere is what keeps the read-wide, write-narrow configuration working.
+
+              Only writing is gated, so listing is still offered under a configuration that grants
+              nothing at all, and can then report nothing. That case is deliberately not gated: a
+              grant is read-only or read-write and there is no write-only level, so permission to
+              write always carries permission to read, and a reading tool is unusable only under a
+              configuration granting nothing whatever — one that yields an agent unable to touch a
+              file however its list of tools is trimmed.
+            children:
+              - AgentKitTools-File-Pack-SuppressesWriteToolsWithoutAWriteGrant
+            tests:
+              - File_Family_ComposedThroughBuilder_PublishesTheWholeFamily
 
           - id: AgentKitTools-File-GuardedConstruction
             title: >-
@@ -50,21 +173,28 @@ sections:
               - AgentKitTools-File-CopyTool-GuardedConstruction
               - AgentKitTools-File-MoveTool-GuardedConstruction
               - AgentKitTools-File-DeleteTool-GuardedConstruction
+              - AgentKitTools-File-CreateDirectoryTool-GuardedConstruction
+              - AgentKitTools-File-MoveDirectoryTool-GuardedConstruction
+              - AgentKitTools-File-DeleteDirectoryTool-GuardedConstruction
               - AgentKitTools-File-Pack-RequiresPolicy
             tests:
-              - File_Family_ComposedThroughBuilder_PublishesListCopyMoveDelete
+              - File_Family_ComposedThroughBuilder_PublishesTheWholeFamily
 
           - id: AgentKitTools-File-PolicyGoverned
             title: >-
               The file family shall judge each endpoint by the policy decision that matches it — a
               read for the list source and a copy source, a write for a copy destination and for
-              every move and delete endpoint — refusing a request whose location lies outside a
-              permitted location.
+              every move, delete, directory-creation and directory-removal endpoint — refusing a
+              request whose location lies outside a permitted location.
             tags: [security]
             justification: |
               A copy reads from one place and writes to another, and a move and a delete write in the
               strongest sense; consulting the decision that matches each endpoint keeps a read-only
-              grant genuinely read-only. Judging every endpoint against the permitted locations keeps
+              grant genuinely read-only. Creating and removing a directory change the file system
+              just as plainly, so they are judged by the write decision alone and never infer it
+              from a read. A directory creation is judged for every directory it would
+              materialize, not only the one the request names, because a single call creates the
+              missing ancestors too. Judging every endpoint against the permitted locations keeps
               an agent inside what its operator granted.
             children:
               - AgentKitTools-File-ListTool-PolicyGoverned
@@ -74,6 +204,10 @@ sections:
               - AgentKitTools-File-MoveTool-PolicyGoverned
               - AgentKitTools-File-DeleteTool-DeletesFile
               - AgentKitTools-File-DeleteTool-PolicyGoverned
+              - AgentKitTools-File-CreateDirectoryTool-PolicyGoverned
+              - AgentKitTools-File-CreateDirectoryTool-NeverCreatesAnUngrantedParent
+              - AgentKitTools-File-MoveDirectoryTool-PolicyGoverned
+              - AgentKitTools-File-DeleteDirectoryTool-PolicyGoverned
             tests:
               - File_Family_PathOutsideRoot_IsNeverReachableByAnyTool
 
@@ -85,26 +219,39 @@ sections:
               An exception raised while a model is calling a tool ends the agent's turn and strands
               it, whereas a returned refusal lets it read the reason and choose a permitted
               alternative. A denial states a fact and never prescribes a remedy; naming another tool
-              to run is a prescription the refusal must not make.
+              to run is a prescription the refusal must not make. The rule covers what the file
+              system refuses as well as what the model gets wrong: a tool that walks an arbitrary
+              tree meets entries it may not read, and those failures are classified and returned
+              in exactly the same shape.
             children:
               - AgentKitTools-File-CopyTool-MissingSource
               - AgentKitTools-File-MoveTool-MissingSource
               - AgentKitTools-File-DeleteTool-MissingFile
+              - AgentKitTools-File-MoveDirectoryTool-MissingSource
+              - AgentKitTools-File-DeleteDirectoryTool-MissingDirectory
+              - AgentKitTools-File-DeleteDirectoryTool-PlanningFailureIsRefused
             tests:
               - File_Family_DeniedRequest_ReturnsAResultWithoutThrowing
 
           - id: AgentKitTools-File-SafeMutation
             title: >-
               The file family shall refuse to overwrite an existing destination unless overwrite is
-              explicitly true, and shall refuse to delete a directory and never recurse, so the least
+              explicitly true, shall refuse to replace a directory under any request, and shall
+              refuse to delete a directory through its single-file deletion, so the least
               reversible operations cannot happen by accident.
             justification: |
-              Silently replacing a file, or deleting a whole tree behind a single call, are the kinds
+              Silently replacing a file, or deleting a whole tree behind a call that did not say
+              so, are the kinds
               of irreversible side effect this library exists to make impossible to express by
-              accident; recovery from a mistaken change is source control.
+              accident; recovery from a mistaken change is source control. Replacing a directory
+              admits no overwrite option at all, because a directory overwrite is a recursive
+              destruction wearing a moving verb; and the single-file deletion keeps refusing a
+              directory, so removing a tree is always a request that named a tree.
             children:
               - AgentKitTools-File-CopyTool-NoClobber
               - AgentKitTools-File-MoveTool-NoClobber
               - AgentKitTools-File-DeleteTool-RefusesDirectory
+              - AgentKitTools-File-MoveDirectoryTool-NoClobber
+              - AgentKitTools-File-MoveDirectoryTool-RefusesMoveIntoItself
             tests:
               - File_Family_CopyThenDelete_ByRelativeNames_WorksEndToEnd

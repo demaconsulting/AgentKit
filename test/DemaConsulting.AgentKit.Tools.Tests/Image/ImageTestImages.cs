@@ -35,6 +35,25 @@ namespace DemaConsulting.AgentKit.Tools.Tests.Image;
 internal static class ImageTestImages
 {
     /// <summary>
+    ///     How far an anti-aliased ring is nudged from the background, per channel.
+    /// </summary>
+    /// <remarks>
+    ///     Chosen to sit strictly inside the trim tolerance of eight and strictly outside a
+    ///     tolerance of zero, which is what lets one fixture distinguish the two.
+    /// </remarks>
+    internal const int AntiAliasBlend = 4;
+
+    /// <summary>
+    ///     How far a dithered background pixel may sit from the stated background, per channel.
+    /// </summary>
+    /// <remarks>
+    ///     Three, so the largest difference between any two dithered pixels is six — inside the
+    ///     trim tolerance of eight, so a tolerant classifier still sees one background, while a
+    ///     classifier tolerating nothing sees almost none.
+    /// </remarks>
+    internal const int DitherAmplitude = 3;
+
+    /// <summary>
     ///     The eight-byte signature every PNG file begins with.
     /// </summary>
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -213,6 +232,324 @@ internal static class ImageTestImages
     }
 
     /// <summary>
+    ///     Builds a well-formed PNG carrying a solid block of content on a solid background.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture whose correct trimming is arithmetic rather than judgment.</b> Both
+    ///     colors are stated by the caller, so a tool that assumed the background was white fails
+    ///     on every instance built with a dark, colored or transparent one — and the content
+    ///     block's rectangle is exactly the content region a trim must find, so the expected
+    ///     answer is known before the library is asked. Placing the block against an edge makes
+    ///     the same builder produce the flush-to-edge cases, where a minority of the border is
+    ///     content and the padding has nowhere to expand into.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="background">The color every pixel outside the content block carries.</param>
+    /// <param name="content">The rectangle the content block occupies.</param>
+    /// <param name="contentColor">The color every pixel inside the content block carries.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] ContentOnBackgroundPng(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content,
+        Rgba32 contentColor)
+    {
+        using var surface = BuildContentSurface(width, height, background, content, contentColor);
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a well-formed JPEG carrying a solid block of content on a solid background.
+    /// </summary>
+    /// <remarks>
+    ///     JPEG is lossy, and the loss is concentrated exactly where this fixture is interesting:
+    ///     the hard edge between the block and the flat field rings by a few counts on each side
+    ///     of it. That ringing is what a trim tolerance has to absorb, and this is the fixture
+    ///     that produces it from a real encoder rather than from a hand-written approximation of
+    ///     one.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="background">The color every pixel outside the content block carries.</param>
+    /// <param name="content">The rectangle the content block occupies.</param>
+    /// <param name="contentColor">The color every pixel inside the content block carries.</param>
+    /// <returns>The encoded JPEG file.</returns>
+    internal static byte[] ContentOnBackgroundJpeg(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content,
+        Rgba32 contentColor)
+    {
+        using var surface = BuildContentSurface(width, height, background, content, contentColor);
+
+        using var stream = new MemoryStream();
+        JpegCodec.Save(surface, stream, quality: 90);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a well-formed PNG whose every pixel is the same color.
+    /// </summary>
+    /// <remarks>
+    ///     The image with no content at all. A trim has no honest region to return for it, so
+    ///     this fixture is what makes the refusal observable rather than asserted about in the
+    ///     abstract. The color is the caller's and is deliberately never white in the scenarios
+    ///     that use it, so a tool that special-cased white would not escape through this one.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="color">The color every pixel carries.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] UniformPng(int width, int height, Rgba32 color)
+    {
+        using var surface = new Surface(width, height);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                surface[x, y] = color;
+            }
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a well-formed PNG whose content block is surrounded by a one-pixel ring blended
+    ///     slightly toward the content, as an anti-aliased edge is.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture that makes the trim tolerance falsifiable.</b> The ring differs from
+    ///     the background by <see cref="AntiAliasBlend"/> counts per channel, which is inside a
+    ///     tolerance of eight and outside a tolerance of zero. A tool that tolerates nothing
+    ///     therefore classifies the ring as content and returns a region one pixel larger on
+    ///     every side than the content block; a tool that tolerates eight returns the block
+    ///     itself. The two answers differ by a measurable amount, so the tolerance is proven to
+    ///     be load-bearing rather than merely present.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="background">The color every pixel outside the ring carries.</param>
+    /// <param name="content">The rectangle the solid content block occupies.</param>
+    /// <param name="contentColor">The color every pixel inside the content block carries.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] AntiAliasedContentPng(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content,
+        Rgba32 contentColor)
+    {
+        using var surface = BuildContentSurface(width, height, background, content, contentColor);
+
+        // The ring is the one-pixel border immediately outside the content block, nudged toward
+        // the content by a fixed count per channel. Nudging rather than interpolating keeps the
+        // difference from the background exact and therefore assertable.
+        var ring = new Rgba32(
+            Nudge(background.R, contentColor.R),
+            Nudge(background.G, contentColor.G),
+            Nudge(background.B, contentColor.B),
+            Nudge(background.A, contentColor.A));
+
+        for (var y = content.Y - 1; y <= content.Y + content.Height; y++)
+        {
+            for (var x = content.X - 1; x <= content.X + content.Width; x++)
+            {
+                // Inside the block, and outside the image, are both left alone.
+                if (x < 0 || y < 0 || x >= width || y >= height)
+                {
+                    continue;
+                }
+
+                if (x >= content.X && x < content.X + content.Width
+                    && y >= content.Y && y < content.Y + content.Height)
+                {
+                    continue;
+                }
+
+                surface[x, y] = ring;
+            }
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a well-formed PNG whose background is dithered by a fixed function of the
+    ///     coordinate, across the whole image including its border.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture that reproduces the trim tolerance's own stated failure.</b> No two
+    ///     background pixels are reliably the same exact color, so a tool that tolerates nothing
+    ///     classifies almost every background pixel as content, the region becomes the whole
+    ///     image and the trim is defeated entirely. Every dithered value stays within
+    ///     <see cref="DitherAmplitude"/> of the stated background, so the largest difference
+    ///     between any two of them is twice that — still inside a tolerance of eight, which is
+    ///     what makes the correct answer the content block. The dither covers the border too, so
+    ///     the background sampling meets the noise as well as the classifier does.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="background">The color the dithered background varies around.</param>
+    /// <param name="content">The rectangle the content block occupies.</param>
+    /// <param name="contentColor">The color every pixel inside the content block carries.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] DitheredBackgroundPng(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content,
+        Rgba32 contentColor)
+    {
+        using var surface = new Surface(width, height);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (x >= content.X && x < content.X + content.Width
+                    && y >= content.Y && y < content.Y + content.Height)
+                {
+                    surface[x, y] = contentColor;
+                    continue;
+                }
+
+                // A fixed function of the coordinate, so the fixture is byte-identical on every
+                // run. The two multipliers are coprime with the modulus, which spreads the
+                // offsets evenly rather than banding them into stripes.
+                var offset = (((x * 3) + (y * 5)) % ((DitherAmplitude * 2) + 1)) - DitherAmplitude;
+                surface[x, y] = new Rgba32(
+                    (byte)(background.R + offset),
+                    (byte)(background.G + offset),
+                    (byte)(background.B + offset),
+                    background.A);
+            }
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a well-formed PNG whose content block carries a distinct value in every channel
+    ///     of every pixel, on a solid background.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture that makes "the trimmed region carries the source's pixels" a
+    ///     comparison rather than a claim.</b> A solid content block would survive an off-by-one
+    ///     origin and an encoder that discarded alpha; a block whose every pixel is a distinct
+    ///     function of its absolute coordinate survives neither. The background is fully
+    ///     transparent, and every content pixel's alpha is far above it, so every pixel of the
+    ///     block is content under any tolerance and the expected region is exactly the block.
+    /// </remarks>
+    /// <param name="width">The width of the image, in pixels.</param>
+    /// <param name="height">The height of the image, in pixels.</param>
+    /// <param name="background">The color every pixel outside the content block carries.</param>
+    /// <param name="content">The rectangle the content block occupies.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] DistinguishableContentOnBackgroundPng(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content)
+    {
+        using var surface = new Surface(width, height);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var inside = x >= content.X && x < content.X + content.Width
+                    && y >= content.Y && y < content.Y + content.Height;
+
+                // The distinguishable value is a function of the ABSOLUTE coordinate, so a
+                // region taken out of this image can be compared against the source it came
+                // from without the comparison having to know where the block was placed.
+                surface[x, y] = inside
+                    ? new Rgba32(
+                        (byte)((x * 7) + 1),
+                        (byte)((y * 11) + 3),
+                        (byte)((x * y) + 5),
+                        (byte)(255 - ((x + y) % 64)))
+                    : background;
+            }
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    ///     Builds a five-by-five PNG whose border holds two colors in exactly equal numbers,
+    ///     arranged so that the one appearing first is not the one the tie-break picks.
+    /// </summary>
+    /// <remarks>
+    ///     <b>The fixture that pins the background tie-break.</b> The perimeter ring is visited
+    ///     top row, bottom row, left column, right column, and this image puts
+    ///     <paramref name="first"/> across the whole top row and down the right column, and
+    ///     <paramref name="second"/> across the whole bottom row and down the left column. Both
+    ///     end on eight pixels, and <paramref name="first"/> is seen at the very first position —
+    ///     but because a value only displaces the incumbent on a <em>strictly greater</em> count,
+    ///     the winner is whichever reached eight first, and that is
+    ///     <paramref name="second"/>: it completes its eighth pixel in the left column, three
+    ///     positions before <paramref name="first"/> completes its own in the right column.
+    ///     <para>
+    ///     The two colors are laid out so the answer is observable. The content pixels of the
+    ///     losing color occupy the top row and the right column, so with
+    ///     <paramref name="second"/> as the background the content box runs from row 0 to row 3;
+    ///     with <paramref name="first"/> as the background it would run from row 1 to row 4
+    ///     instead. One rule is reported as <c>0,0 5x4</c> and the other as <c>0,1 5x4</c>, so
+    ///     the scenario cannot pass under both.
+    ///     </para>
+    /// </remarks>
+    /// <param name="first">The color appearing first in the scan order.</param>
+    /// <param name="second">The color that reaches the shared count first.</param>
+    /// <param name="interior">The color of the nine pixels inside the border.</param>
+    /// <returns>The encoded PNG file.</returns>
+    internal static byte[] TiedBorderPng(Rgba32 first, Rgba32 second, Rgba32 interior)
+    {
+        const int size = 5;
+
+        using var surface = new Surface(size, size);
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                surface[x, y] = interior;
+            }
+        }
+
+        for (var x = 0; x < size; x++)
+        {
+            // The whole top row, then the whole bottom row: the first two legs of the scan.
+            surface[x, 0] = first;
+            surface[x, size - 1] = second;
+        }
+
+        for (var y = 1; y < size - 1; y++)
+        {
+            // The left column completes the second color's count; the right column completes the
+            // first color's, too late to displace an equal incumbent.
+            surface[0, y] = second;
+            surface[size - 1, y] = first;
+        }
+
+        using var stream = new MemoryStream();
+        PngCodec.Save(surface, stream, PngColorType.Rgba);
+        return stream.ToArray();
+    }
+
+    /// <summary>
     ///     Reads a PNG file's pixels back for comparison.
     /// </summary>
     /// <remarks>
@@ -257,6 +594,62 @@ internal static class ImageTestImages
         }
 
         return surface;
+    }
+
+    /// <summary>
+    ///     Builds a pixel buffer carrying a solid block of content on a solid background.
+    /// </summary>
+    /// <remarks>
+    ///     Shared by the PNG and JPEG content fixtures so the two differ only in their encoder,
+    ///     which is what makes a scenario comparing them a scenario about compression rather than
+    ///     about two differently-drawn pictures.
+    /// </remarks>
+    /// <param name="width">The width of the surface, in pixels.</param>
+    /// <param name="height">The height of the surface, in pixels.</param>
+    /// <param name="background">The color every pixel outside the content block carries.</param>
+    /// <param name="content">The rectangle the content block occupies.</param>
+    /// <param name="contentColor">The color every pixel inside the content block carries.</param>
+    /// <returns>The populated surface.</returns>
+    private static Surface BuildContentSurface(
+        int width,
+        int height,
+        Rgba32 background,
+        Rectangle content,
+        Rgba32 contentColor)
+    {
+        var surface = new Surface(width, height);
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var inside = x >= content.X && x < content.X + content.Width
+                    && y >= content.Y && y < content.Y + content.Height;
+                surface[x, y] = inside ? contentColor : background;
+            }
+        }
+
+        return surface;
+    }
+
+    /// <summary>
+    ///     Moves one channel a fixed count from the background toward the content.
+    /// </summary>
+    /// <remarks>
+    ///     The direction follows the content so the ring always lies between the two, as a real
+    ///     anti-aliased edge does; when the two channels are equal the ring is too, which
+    ///     correctly makes that channel carry no edge at all.
+    /// </remarks>
+    /// <param name="background">The background's value for this channel.</param>
+    /// <param name="content">The content's value for this channel.</param>
+    /// <returns>The ring's value for this channel.</returns>
+    private static byte Nudge(byte background, byte content)
+    {
+        if (content > background)
+        {
+            return (byte)(background + AntiAliasBlend);
+        }
+
+        return content < background ? (byte)(background - AntiAliasBlend) : background;
     }
 
     /// <summary>
@@ -433,4 +826,19 @@ internal static class ImageTestImages
 
         return result;
     }
+
+    /// <summary>
+    ///     The rectangle a content block occupies within a fixture.
+    /// </summary>
+    /// <remarks>
+    ///     Carried as one value rather than four loose integers so that a scenario stating where
+    ///     it put the content and a scenario asserting where the content was found cannot
+    ///     disagree about which number is which, and so no builder takes four same-typed
+    ///     parameters a caller could transpose.
+    /// </remarks>
+    /// <param name="X">The block's left edge, in pixels from the image's left edge.</param>
+    /// <param name="Y">The block's top edge, in pixels from the image's top edge.</param>
+    /// <param name="Width">The block's width, in pixels.</param>
+    /// <param name="Height">The block's height, in pixels.</param>
+    internal sealed record Rectangle(int X, int Y, int Width, int Height);
 }

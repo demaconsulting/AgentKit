@@ -166,12 +166,19 @@ public sealed class TodoPack : IToolPack
     ///     touches no files, so it has nothing to judge against a policy. It is still validated, so
     ///     that a composing application that forgot one is told at the point it forgot.
     ///     </para>
+    ///     <para>
+    ///     <b>The consequence is that no tool here is ever withheld.</b> Where a file family
+    ///     withholds the tools whose writes the path policy governs, a read-only path policy
+    ///     narrows nothing in this family, because the task list is this pack's own and lives
+    ///     nowhere under the policy's grants. Recording a task under a policy that permits no file
+    ///     writing anywhere is correct and works.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">
     ///     The access policy of the composition. Required for the contract but unused: no tool in
     ///     this family reads, writes or names a path.
     /// </param>
-    /// <returns>The list, set and remove tools, in that order.</returns>
+    /// <returns>The list, set and remove tools, in that order, under every policy.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>

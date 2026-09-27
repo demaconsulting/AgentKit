@@ -102,13 +102,16 @@ public sealed class MarkdownPack : IToolPack
     ///     Creates the family's tools, governed by the supplied access policy.
     /// </summary>
     /// <remarks>
-    ///     The family publishes a single tool today; it is still returned as a collection because the
+    ///     The family publishes a single tool today, under every policy; it is still returned as a
+    ///     collection because the
     ///     pack contract is a collection and because a family grows without its callers changing. The
     ///     policy is passed to the tool's factory and captured there, so the tool cannot later observe
-    ///     a different policy.
+    ///     a different policy. Nothing here is withheld by a policy that permits no writing: reading
+    ///     a document's section structure consults only the read decision, so the family has no
+    ///     write-performing tool to suppress.
     /// </remarks>
     /// <param name="policy">The access policy every returned tool observes.</param>
-    /// <returns>The outline tool.</returns>
+    /// <returns>The outline tool, under every policy.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>

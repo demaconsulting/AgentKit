@@ -1190,6 +1190,111 @@ public class PathPolicyTests
         Assert.Equal(["deep.txt"], files);
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Whole-policy write visibility: the question a pack asks before it has any path to test.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Proves that a policy holding no grants at all reports that nothing is writable, so a
+    ///     fully-confined policy withholds every write-performing tool.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_AnyLocationIsWritable_NoGrants_IsFalse()
+    {
+        // Arrange: a valid, fully-confined policy that permits nothing anywhere
+        using var fixture = new TempDirectoryFixture();
+        var policy = new PathPolicy(fixture.Root, []);
+
+        // Act: ask the whole-policy write question
+        var writable = policy.AnyLocationIsWritable;
+
+        // Assert: an empty grant set permits no writing
+        Assert.False(writable);
+    }
+
+    /// <summary>
+    ///     Proves that write access is never inferred from read access, however many read-only
+    ///     grants the policy holds.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_AnyLocationIsWritable_OnlyReadOnlyGrants_IsFalse()
+    {
+        // Arrange: two read-only grants, one of them the anchor itself
+        using var fixture = new TempDirectoryFixture();
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadOnly(fixture.Outside)]);
+
+        // Act: ask the whole-policy write question
+        var writable = policy.AnyLocationIsWritable;
+
+        // Assert: reading everywhere still permits writing nowhere
+        Assert.False(writable);
+    }
+
+    /// <summary>
+    ///     Proves that a read-only workspace paired with a writable session location reports that
+    ///     writing is possible, because the question is asked of the policy as a whole and not of
+    ///     the working directory.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_AnyLocationIsWritable_ReadOnlyWorkspaceAndReadWriteSession_IsTrue()
+    {
+        // Arrange: the common mixed shape — read the user's documents, write artifacts elsewhere
+        using var fixture = new TempDirectoryFixture();
+        var session = Path.Combine(fixture.Outside, "session");
+        Directory.CreateDirectory(session);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(session)]);
+
+        // Act: ask the whole-policy write question, and confirm the anchor itself is not writable
+        var writable = policy.AnyLocationIsWritable;
+        var anchorIsWritable = policy.TryResolveWrite(policy.WorkingDirectory, out _, out _);
+
+        // Assert: the policy can write, even though the location relative names land in cannot
+        Assert.True(writable);
+        Assert.False(anchorIsWritable);
+    }
+
+    /// <summary>
+    ///     Proves that a rootless read-write grant counts, so a policy permitting writing with no
+    ///     root restriction is not mistaken for one permitting nothing.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_AnyLocationIsWritable_UnrestrictedReadWriteGrant_IsTrue()
+    {
+        // Arrange: a grant with no root that permits reading and writing anywhere
+        using var fixture = new TempDirectoryFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.Unrestricted(AccessLevel.ReadWrite)]);
+
+        // Act: ask the whole-policy write question
+        var writable = policy.AnyLocationIsWritable;
+
+        // Assert: a rootless read-write grant is still a read-write grant
+        Assert.True(writable);
+    }
+
+    /// <summary>
+    ///     Proves that a read-write grant on a root unrelated to the anchor answers true even when
+    ///     the anchor is granted nothing, because the question is not about the working directory.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_AnyLocationIsWritable_ReadWriteGrantOutsideTheAnchor_IsTrue()
+    {
+        // Arrange: anchor at Root granting it nothing; the single grant is elsewhere
+        using var fixture = new TempDirectoryFixture();
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadWrite(fixture.Outside)]);
+
+        // Act: ask the whole-policy write question alongside the anchor's own grant status
+        var writable = policy.AnyLocationIsWritable;
+        var anchorIsGranted = policy.WorkingDirectoryIsGranted;
+
+        // Assert: the two whole-policy facts are independent of one another
+        Assert.True(writable);
+        Assert.False(anchorIsGranted);
+    }
+
     /// <summary>
     ///     Creates a policy whose working directory is also its single read-write grant — the common
     ///     shape, where one folder is both the relative anchor and the permitted location.

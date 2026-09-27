@@ -32,7 +32,7 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-one scenarios below pass without error or exception
+A unit test run passes when all twenty-two scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
@@ -63,6 +63,18 @@ the family from a host that cannot start a second agent.
 
 Asserts a single tool named `agent_run`, confirming the pack produces the family's tool for
 an application to receive.
+
+##### AgentKitTools-Agent-Pack-PublishedUnderEveryPolicy: The Run Tool Survives a Read-Only Policy
+
+**Test**: `AgentPack_CreateTools_ReadOnlyPolicy_StillPublishesTheRunTool`
+
+Asserts that a policy whose every grant is read-only still yields `agent_run`. Confirms the family
+is never narrowed by the access policy: starting a child agent writes no file, and the policy's
+role here is to bound what a child may be granted rather than to permit an action this tool
+performs.
+
+What a *child* receives is a separate question, verified at the system level by
+`AgentKitTools_SystemComposition_DelegatedAgentWithReadOnlyProfile_ReceivesOnlyReadTools`.
 
 ##### AgentKitTools-Agent-Pack-RequiresPolicy: A Null Policy Throws
 

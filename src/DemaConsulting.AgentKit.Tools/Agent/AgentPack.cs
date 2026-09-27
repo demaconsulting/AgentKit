@@ -265,9 +265,16 @@ public sealed class AgentPack : IToolPack
     ///     registered packs against that child's own policy, so nothing this composition owns can
     ///     reach a child, and nothing a child owns can reach this composition.
     ///     </para>
+    ///     <para>
+    ///     <b><c>agent_run</c> is published under every policy.</b> Starting a child agent writes no
+    ///     file, so this family has no write-performing tool for a read-only policy to suppress.
+    ///     The policy's role here is to bound what a child may be granted, not to permit an action
+    ///     this tool performs. What a <em>child</em> receives is filtered by the child's own policy
+    ///     — see <see cref="ComposeChild"/>.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The access policy of the composing agent.</param>
-    /// <returns>The <c>agent_run</c> tool.</returns>
+    /// <returns>The <c>agent_run</c> tool, under every policy.</returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>
@@ -313,8 +320,19 @@ public sealed class AgentPack : IToolPack
     ///     child that can delegate in turn, up to the depth ceiling.
     ///     </para>
     ///     <para>
+    ///     <b>A child is also subject to policy-derived publication, automatically.</b> The builder
+    ///     above is constructed over the <em>child's</em> policy, so a profile whose grants are all
+    ///     read-only yields a child whose file families publish only their non-writing tools — with
+    ///     no change here and none in those packs. This is the property that makes a read-only
+    ///     reader child genuinely read-only in what it is offered, not merely in what it is
+    ///     permitted.
+    ///     </para>
+    ///     <para>
     ///     The profile's declared names are then applied as a filter. A name nothing published
-    ///     contributes nothing: a profile cannot conjure a tool the application never attached.
+    ///     contributes nothing: a profile cannot conjure a tool the application never attached, and
+    ///     equally cannot restore one the child's own policy suppressed. A profile naming a write
+    ///     tool for a read-only child is therefore not an error — the tool is simply absent, exactly
+    ///     as a name no attached pack publishes is absent.
     ///     </para>
     ///     <para>
     ///     The pack added one level deeper carries only the profiles the child's own policy still

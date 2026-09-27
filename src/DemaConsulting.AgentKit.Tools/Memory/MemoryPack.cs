@@ -332,12 +332,22 @@ public sealed class MemoryPack : IToolPack
     ///     judge against a policy. It is still validated, so that a composing application that
     ///     forgot one is told at the point it forgot.
     ///     </para>
+    ///     <para>
+    ///     <b>The consequence is that no tool here is ever withheld.</b> Where a file family
+    ///     withholds the tools whose writes the path policy governs, a read-only path policy
+    ///     narrows nothing in this family, because the memories live in an
+    ///     <see cref="IMemoryStore"/> the application supplied or this pack allocated — never on
+    ///     disk under the policy's grants. Filing a memory under a policy that permits no file
+    ///     writing anywhere is correct and works.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">
     ///     The access policy of the composition. Required for the contract but unused: no tool in
     ///     this family reads, writes or names a path.
     /// </param>
-    /// <returns>The file, recall, update, revise and forget tools, in that order.</returns>
+    /// <returns>
+    ///     The file, recall, update, revise and forget tools, in that order, under every policy.
+    /// </returns>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="policy"/> is <see langword="null"/>.
     /// </exception>

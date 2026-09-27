@@ -18,9 +18,13 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <para>
 ///     <b>The tool deletes one file and never a directory, and never recurses.</b> A path that names
 ///     a directory is refused rather than removed, so no tree of files an operator did not name can
-///     disappear behind a single call. Deleting a directory — with everything beneath it — is a far
-///     larger and less reversible act than deleting one named file, and this increment deliberately
-///     does not offer it.
+///     disappear behind a single call. Removing a directory with everything beneath it is a far
+///     larger and less reversible act, and it is a separate, explicitly named capability —
+///     <see cref="FileDeleteDirectoryTool"/> — carrying controls this tool has no need of: a
+///     pre-flight walk that refuses to follow a link out of the tree, and a ceiling on how many
+///     entries one call may remove. <b>Keeping the two apart is the safety property</b>, not an
+///     accident of increments: it is what stops "delete this" ever meaning "delete this tree". No
+///     recursive flag is added here for the same reason.
 ///     </para>
 ///     <para>
 ///     <b>There is no quarantine, by decision.</b> AgentKit does not keep a recycle bin or a shadow

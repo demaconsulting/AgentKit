@@ -48,6 +48,21 @@ sections:
                 tests:
                   - AgentPack_CreateTools_RegistersTheRunTool
 
+              - id: AgentKitTools-Agent-Pack-PublishedUnderEveryPolicy
+                title: >-
+                  The agent pack shall offer its delegation tool under every access policy,
+                  including one that permits no writing anywhere.
+                justification: |
+                  Starting a child agent writes no file, so the family holds no tool a
+                  configuration permitting no writing could prevent from succeeding. The access
+                  configuration's role here is to bound what a child may be granted, which is a
+                  different question from whether this tool can act. What a child is offered is
+                  decided by the child's own configuration, so a child narrowed to reading receives
+                  only the tools reading permits — and a tool its profile names but its
+                  configuration cannot support is simply absent rather than an error.
+                tests:
+                  - AgentPack_CreateTools_ReadOnlyPolicy_StillPublishesTheRunTool
+
               - id: AgentKitTools-Agent-Pack-RequiresPolicy
                 title: >-
                   The agent pack shall reject an absent access policy as a programming error

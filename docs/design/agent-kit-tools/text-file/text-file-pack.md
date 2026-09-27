@@ -7,8 +7,9 @@ The `TextFilePack` class publishes the text-file tool family under the `text_fil
 #### Purpose
 
 To be the single public attachment point for policy-governed text content tools. The pack claims the
-`text_file` prefix, publishes the seven tools in fixed order, and creates the one cut/paste buffer
-shared by the line-range tools in that composition.
+`text_file` prefix, publishes the tools of the family whose writes the policy leaves possible, in
+fixed order, and creates the one recovery buffer
+shared by the write and line-range tools in that composition.
 
 The pack itself grants nothing. It receives the `PathPolicy` from the `ToolPackBuilder` composition
 and passes that same policy to every tool factory.
@@ -25,8 +26,11 @@ field on the pack.
 | `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host      |
 
 The returned tool collection contains, in order, `TextFileSearchTool`, `TextFileReadTool`,
-`TextFileCreateTool`, `TextFileReplaceTool`, `TextFileCutLinesTool`, `TextFileCopyLinesTool`, and
-`TextFilePasteLinesTool`.
+`TextFileCreateTool`, `TextFileWriteTool`, `TextFileReplaceTool`, `TextFileCutLinesTool`,
+`TextFileCopyLinesTool`, and `TextFilePasteLinesTool` — the whole family of eight — when
+`policy.AnyLocationIsWritable` is true. When it is false the collection contains only
+`TextFileSearchTool`, `TextFileReadTool` and `TextFileCopyLinesTool`, in that order: three tools
+rather than eight.
 
 #### Key Methods
 
@@ -46,12 +50,37 @@ Creates the family's tools.
 
 **Preconditions:** `policy` is non-null.
 
-**Algorithm:** validates `policy`, allocates a new `TextFileLineBuffers`, and returns the seven tools
-in fixed order. Search, read, create and replace receive only the policy. Cut, copy and paste receive
-the same policy and the same buffer instance.
+**Algorithm:** validates `policy`, allocates a new `TextFileLineBuffers`, then asks the policy one
+question — `AnyLocationIsWritable` — and builds the list in fixed order, adding the five
+write-performing tools only when the answer is true. Search, read, create and replace receive only
+the policy. Write, cut, copy and paste
+receive the same policy and the same buffer instance.
+
+The write-gated tools are added in two separate blocks rather than one, because `copy_lines` sits
+seventh in the fixed order, between the four write-performing tools that precede it and the paste
+tool that follows. Collapsing them into a single block would move copy and change the order a model
+sees, which is a contract.
 
 **Postconditions:** all returned tools carry the `text_file` prefix, observe the same policy, and the
-cut, copy and paste tools share one buffer with the same lifetime as the returned tools.
+write, cut, copy and paste tools share one buffer with the same lifetime as the returned tools.
+When the policy permits writing somewhere, all eight are returned; otherwise only search, read and
+copy-lines are, in that relative order.
+
+**Which tools are withheld, and why.** Create, write, replace, cut-lines and paste-lines can act
+only by writing, so under a policy holding no read-write grant anywhere every one of them could
+only answer a refusal, and none of them is published. Search and read consult only the read
+decision. Copy-lines consults only the read decision too, by the deliberate design decision
+recorded on `TextFileCopyLinesTool` — requiring the write decision there would wrongly refuse a
+legitimate copy out of a read-only grant while adding no protection, because paste independently
+enforces the write decision on the destination — so it is published under every policy. The honest
+consequence is that under a read-only policy the buffer copy fills has no drain: paste is its only
+reader, and the buffer deliberately offers no peek or clear tool. This is accepted rather than
+hidden, because the rule the pack can evaluate is "could the policy permit this tool to succeed",
+while "is this tool useful" is not a property a pack can decide.
+
+**The buffer is still allocated under a read-only policy.** Copy is published there and needs
+somewhere to put what it copies, so the allocation is unconditional. It remains local to the call,
+never a field, so two compositions never share slots.
 
 #### Error Handling
 
@@ -64,8 +93,8 @@ not issue capability-related refusals.
 #### Dependencies
 
 `IToolPack`, `HostCapabilities`, `PathPolicy`, and `ToolPackBuilder` conventions from AgentKitCore;
-`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and all seven text-file tool units. It also
-allocates `TextFileLineBuffers` as internal shared state for cut, copy and paste.
+`AIFunction` from `Microsoft.Extensions.AI.Abstractions`; and all eight text-file tool units. It also
+allocates `TextFileLineBuffers` as internal shared state for write, cut, copy and paste.
 
 #### Callers
 

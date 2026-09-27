@@ -89,6 +89,17 @@ public class TextFileLineBuffersTests
     }
 
     /// <summary>
+    ///     Proves the overwritten slot name is published and is distinct from the default slot, so a
+    ///     capture the model never requested cannot displace one it did.
+    /// </summary>
+    [Fact]
+    public void TextFileLineBuffers_OverwrittenSlot_IsPublished()
+    {
+        Assert.Equal("overwritten", TextFileLineBuffers.OverwrittenSlot);
+        Assert.NotEqual(TextFileLineBuffers.DefaultSlot, TextFileLineBuffers.OverwrittenSlot);
+    }
+
+    /// <summary>
     ///     Proves an empty store reports no populated slots.
     /// </summary>
     [Fact]

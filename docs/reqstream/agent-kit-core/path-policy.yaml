@@ -107,6 +107,34 @@ sections:
               - PathPolicy_TwoGrants_CrossLocationTask_ReadOnlyReadsAndReadWriteWrites
               - PathPolicy_WorkingDirectoryGrantedReadOnly_RelativeWriteDenied
 
+          - id: AgentKitCore-PathPolicy-WriteGrantVisible
+            title: >-
+              A path policy shall report whether any of its grants permits writing, independently
+              of any particular path and independently of whether its working directory is
+              granted.
+            justification: |
+              Whether writing is possible at all is a question about the whole configuration, not
+              about one path, and it is asked before any path exists to test. An application
+              assembling an agent's capabilities needs the answer up front so it can decline to
+              offer a writing capability the configuration could never permit, rather than
+              offering one
+              whose only possible outcome is a refusal. Asking the per-path question instead would
+              give the wrong answer for the common read-wide, write-narrow shape: a configuration
+              that permits reading a workspace and writing a separate session location can
+              genuinely write, even though the location relative names are anchored to cannot be
+              written. Reporting the configuration's own capability, rather than one path's, is
+              what keeps that shape working. The report is conservative by design: it states that
+              a grant exists which could permit a write, never that any particular write will
+              succeed, so it can only ever cause a capability to be offered that a specific request
+              may still refuse — never a capability to be silently withheld. Reading is never
+              mistaken for writing, however widely reading is permitted.
+            tests:
+              - PathPolicy_AnyLocationIsWritable_NoGrants_IsFalse
+              - PathPolicy_AnyLocationIsWritable_OnlyReadOnlyGrants_IsFalse
+              - PathPolicy_AnyLocationIsWritable_ReadOnlyWorkspaceAndReadWriteSession_IsTrue
+              - PathPolicy_AnyLocationIsWritable_UnrestrictedReadWriteGrant_IsTrue
+              - PathPolicy_AnyLocationIsWritable_ReadWriteGrantOutsideTheAnchor_IsTrue
+
           - id: AgentKitCore-PathPolicy-DenyEscapedPath
             title: >-
               A path policy shall deny a request whose normalized location lies outside every

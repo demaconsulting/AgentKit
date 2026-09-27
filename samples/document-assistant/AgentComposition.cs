@@ -124,7 +124,8 @@ public static class AgentComposition
             "' (" + workspaceAccess + "); it is what relative names are interpreted against. The " +
             "session folder is '" + sessionRoot + "' (read-write); it lies outside the workspace, " +
             "so only its full absolute path reaches it. You can search and read text files, create " +
-            "and edit them, list, copy, move and delete files of any type, outline a Markdown " +
+            "and edit them, list, copy, move and delete files of any type, create, rename and " +
+            "delete whole directories, outline a Markdown " +
             "file's sections, and (when a vision tool is offered) look at images and cut a region " +
             "out of one — but only within " +
             "those two locations, and only where you have write access. A path outside them will " +
@@ -137,7 +138,9 @@ public static class AgentComposition
             "workspace using the plain relative names the " +
             "listing shows for it (for example 'welcome.txt'). text_file_read prefixes each line " +
             "with its 1-based number and a '| ' delimiter, which are not part of the file; to edit, " +
-            "give text_file_replace the file's raw text, not the numbered prefixes. Create new " +
+            "give text_file_replace the file's raw text, not the numbered prefixes. Use " +
+            "text_file_write when a file's whole content should become the text you supply, and " +
+            "text_file_replace when only part of it should change. Create new " +
             "files in the session " +
             "folder using its full absolute path exactly as given above — a relative name is " +
             "always interpreted against the workspace, so it will not reach any other location. " +

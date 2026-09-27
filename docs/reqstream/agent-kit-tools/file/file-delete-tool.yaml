@@ -44,8 +44,14 @@ sections:
                   The delete tool shall refuse a directory and never recurse, leaving the directory
                   and its contents in place.
                 justification: |
-                  Deleting a directory with everything beneath it is a far larger and less reversible
-                  act than deleting one named file, and this increment deliberately does not offer it.
+                  Deleting a directory with everything beneath it is a far larger and less
+                  reversible act than deleting one named file. It is now a separate, explicitly
+                  named capability carrying controls this tool has no need of — a pre-flight walk
+                  that refuses to follow a link out of the tree, and a ceiling on how many entries
+                  one call may remove. Keeping the two apart is the safety property, not an
+                  accident of increments: it is what stops a request to delete something ever
+                  meaning a request to delete a tree, and it is why no recursive option is offered
+                  here.
                 tests:
                   - FileDeleteTool_Delete_DirectoryPath_ReturnsDenialAndLeavesItInPlace
 

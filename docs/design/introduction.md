@@ -73,30 +73,38 @@ software items, specifically:
 - **TextFileSearchTool (Unit)** — Publishes the `text_file_search` tool
 - **TextFileReadTool (Unit)** — Publishes the `text_file_read` tool
 - **TextFileCreateTool (Unit)** — Publishes the `text_file_create` tool
+- **TextFileWriteTool (Unit)** — Publishes the `text_file_write` tool
 - **TextFileReplaceTool (Unit)** — Publishes the `text_file_replace` tool
 - **TextFileCutLinesTool (Unit)** — Publishes the `text_file_cut_lines` tool
 - **TextFileCopyLinesTool (Unit)** — Publishes the `text_file_copy_lines` tool
 - **TextFilePasteLinesTool (Unit)** — Publishes the `text_file_paste_lines` tool
-- **TextFileLineBuffers (Unit)** — Holds the recoverable named line buffers that `text_file_cut_lines`
-  and `text_file_copy_lines` capture into and `text_file_paste_lines` restores from
+- **TextFileLineBuffers (Unit)** — Holds the recoverable named text buffers that `text_file_cut_lines`
+  and `text_file_copy_lines` capture into, that `text_file_write` captures displaced content into,
+  and that `text_file_paste_lines` restores from
 - **TextFilePack (Unit)** — Publishes the text file family as one pack
 - **File (Subsystem)** — The file tool family: policy-governed listing, copying, moving and deleting
-  of files of any type, published as one capability-gated pack
+  of files of any type, and creating, moving and recursively deleting the directories that hold
+  them, published as one capability-gated pack
 - **FileListTool (Unit)** — Publishes the `file_list` tool
 - **FileCopyTool (Unit)** — Publishes the `file_copy` tool
 - **FileMoveTool (Unit)** — Publishes the `file_move` tool
 - **FileDeleteTool (Unit)** — Publishes the `file_delete` tool
+- **FileCreateDirectoryTool (Unit)** — Publishes the `file_create_directory` tool
+- **FileMoveDirectoryTool (Unit)** — Publishes the `file_move_directory` tool
+- **FileDeleteDirectoryTool (Unit)** — Publishes the `file_delete_directory` tool
 - **FilePack (Unit)** — Publishes the file family as one pack
 - **Markdown (Subsystem)** — The Markdown tool family: policy-governed outlining of a Markdown file's
   heading structure, published as one capability-gated pack
 - **MarkdownOutlineTool (Unit)** — Publishes the `markdown_outline` tool
 - **MarkdownPack (Unit)** — Publishes the Markdown family as one pack
 - **Image (Subsystem)** — The image tool family: policy-governed reading of images and PDF
-  documents for a vision-capable agent, published as one capability-gated pack
+  documents for a vision-capable agent, and extraction of a region of an image — either named in
+  pixels or found by trimming the image to its own content — published as one capability-gated pack
 - **ImageMediaTypes (Unit)** — Maps a file's extension to the media type the image family reads,
   and composes the refusal for a file whose type it cannot read
 - **ImageReadTool (Unit)** — Publishes the `image_read` tool
 - **ImageCropTool (Unit)** — Publishes the `image_crop` tool
+- **ImageAutoCropTool (Unit)** — Publishes the `image_auto_crop` tool
 - **ImagePack (Unit)** — Publishes the image family as one pack
 - **Todo (Subsystem)** — The todo tool family: one flat, in-memory task list per agent that the
   agent writes down, advances and closes out, published as one pack
@@ -280,10 +288,13 @@ being told them.
 
 `AgentKitTools` is a general-purpose capability package of
 guarded tool families built on the AgentKitCore contract. It ships seven families today, each its
-own subsystem: `TextFile`, which searches, reads, creates, replaces and moves line ranges within
-text files under the policy; `File`, which lists, copies, moves and deletes files of any type;
+own subsystem: `TextFile`, which searches, reads, creates, sets, replaces and moves line ranges
+within
+text files under the policy; `File`, which lists, copies, moves and deletes files of any type, and
+creates, moves or renames, and recursively deletes the directories holding them;
 `Markdown`, which outlines a document's headings with their line ranges;
-`Image`, which reads images and PDF documents for a vision-capable agent; `Todo`, which gives an
+`Image`, which reads images and PDF documents for a vision-capable agent, returns a region of one
+and trims one to the region its own content occupies; `Todo`, which gives an
 agent one flat task list of its own; `Memory`, which gives an agent a searchable record of what it
 has learned; and `Agent`, which delegates a task to another agent the
 application registered. All compose through
@@ -365,12 +376,20 @@ src/DemaConsulting.AgentKit.Tools/
 │                                  host's runner is handed for one delegated agent
 ├── File/
 │   ├── FileCopyTool.cs          — the file_copy tool
+│   ├── FileCreateDirectoryTool.cs — the file_create_directory tool
+│   ├── FileDeleteDirectoryTool.cs — the file_delete_directory tool
 │   ├── FileDeleteTool.cs        — the file_delete tool
 │   ├── FileListTool.cs          — the file_list tool
+│   ├── FileMoveDirectoryTool.cs — the file_move_directory tool
 │   ├── FileMoveTool.cs          — the file_move tool
-│   └── FilePack.cs              — publishes the file family as one pack
+│   ├── FilePack.cs              — publishes the file family as one pack
+│   ├── LinkGuard.cs             — shared helper; what is a link, and was this path reached through one
+│   └── SubtreeGuard.cs          — shared helper; the walk over what an operation touches
 ├── Image/
+│   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
+│   ├── ImageAutoCropTool.cs     — the image_auto_crop tool
 │   ├── ImageCropTool.cs         — the image_crop tool
+│   ├── ImageDestination.cs      — shared helper; the destination taxonomy and the write
 │   ├── ImageMediaTypes.cs       — extension-to-media-type mapping and the unreadable-type refusal
 │   ├── ImagePack.cs             — publishes the image family as one pack
 │   ├── ImageProbe.cs            — shared header reader; declared size, decode feasibility
@@ -401,12 +420,13 @@ src/DemaConsulting.AgentKit.Tools/
     ├── TextFileCreateTool.cs    — the text_file_create tool
     ├── TextFileCutLinesTool.cs  — the text_file_cut_lines tool
     ├── TextFileCopyLinesTool.cs — the text_file_copy_lines tool
-    ├── TextFileLineBuffers.cs   — the recoverable named line buffers cut, copy and paste share
+    ├── TextFileLineBuffers.cs   — the recoverable named text buffers write, cut, copy and paste share
     ├── TextFilePack.cs          — publishes the text file family as one pack
     ├── TextFilePasteLinesTool.cs — the text_file_paste_lines tool
     ├── TextFileReadTool.cs      — the text_file_read tool
     ├── TextFileReplaceTool.cs   — the text_file_replace tool
     ├── TextFileSearchTool.cs    — the text_file_search tool
+    ├── TextFileWriteTool.cs     — the text_file_write tool
     └── TextLines.cs             — shared line-oriented reading and rewriting helper
 ```
 

@@ -79,7 +79,8 @@ sections:
         title: >-
           The library shall permit read access and write access to be expressed independently as
           grants, each either unrestricted or confined to a location, each carrying an access
-          level that is permission only, and each with its own denied patterns.
+          level that is permission only, and each with its own denied patterns, and shall report
+          whether the resulting configuration permits writing anywhere at all.
         tags: [system]
         justification: |
           A development assistant is commonly expected to read widely across a machine while
@@ -88,7 +89,11 @@ sections:
           permission only, orthogonal to addressing, so a read is permitted by any grant and a
           write only by a read-write one. Collapsing read and write into a single setting would
           force operators to choose between an assistant that cannot see enough context and one
-          that can modify more than intended.
+          that can modify more than intended. Whether writing is possible anywhere at all is a
+          question about the configuration rather than about any one path, and an application
+          assembling an agent's capabilities needs the answer before it holds any path to test,
+          so that it can decline to offer a writing capability the configuration could never
+          permit.
         children:
           - AgentKitCore-PathRule-AccessLevel
           - AgentKitCore-PathRule-Unrestricted
@@ -96,6 +101,7 @@ sections:
           - AgentKitCore-PathRule-DenyPatterns
           - AgentKitCore-PathRule-RejectInvalidRule
           - AgentKitCore-PathPolicy-GrantPermissionModel
+          - AgentKitCore-PathPolicy-WriteGrantVisible
         tests:
           - AgentKitCore_SystemPathPolicy_ReadWideWriteNarrow_AllowsReadDeniesWrite
 
@@ -178,6 +184,7 @@ sections:
           - AgentKitCore-ToolLimits-RejectNegative
           - AgentKitCore-ToolLimits-DelegationDepth
           - AgentKitCore-ToolLimits-DecodeCeiling
+          - AgentKitCore-ToolLimits-DeleteCeiling
           - AgentKitCore-PathPolicy-CarriesLimits
         tests:
           - AgentKitCore_SystemToolLimits_PolicyCarriesDefaultLimits_ExposesPublishedValues

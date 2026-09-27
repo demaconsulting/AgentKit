@@ -131,7 +131,19 @@ decision, and `file_list` does, as described under *Composing a Tool List* below
 
 Every containment decision is made on the normalized absolute location a path denotes, with `.`
 and `..` segments collapsed, so a path that merely spells its way out of the granted location is
-refused. Symbolic links and other reparse points are not followed and not detected.
+refused. Symbolic links and other reparse points are not followed and not detected, with one
+deliberate exception: `file_delete_directory` and `file_move_directory` refuse a path they are
+asked to reach *through* a link that leaves the permitted location, because there the content at
+stake is a whole tree rather than a single entry.
+
+**Denied patterns reach the whole tree a directory operation touches.** A grant's denied patterns
+exclude names inside a permitted location, and a recursive removal or a directory move reaches
+every entry beneath the path it was given. Both tools therefore ask the write decision about every
+entry the operation would take — and, for a move, about the place each entry would land as well —
+so a grant such as `PathRule.ReadWrite("/workspace", ["*.key"])` refuses the removal of any
+directory holding key material rather than destroying it as part of a tree. The refusal names the
+offending entry, and nothing is removed or moved: the permitted subset is deliberately left alone,
+because a partial result nobody asked for is worse than a refusal a model can act on.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted
@@ -146,8 +158,9 @@ bare "no".
 ## Tool Limits
 
 `ToolLimits` carries the ceilings a tool observes: the bytes it may read, the characters its
-result may return to the model, the bytes of binary content it may return, and how deep a chain
-of delegated agents may run. Limits are carried with
+result may return to the model, the bytes of binary content it may return, how deep a chain
+of delegated agents may run, how many pixels one image may be decoded into, and how many entries
+one recursive directory removal may take. Limits are carried with
 the policy, through `PathPolicy.Limits`, so every
 tool an application attaches observes one budget rather than each inventing its own. A host that
 configures nothing still operates within the published defaults.
@@ -160,6 +173,19 @@ returned before any child is composed or started, so a refused delegation costs 
 Setting the ceiling to zero forbids delegation entirely, which is the expressible way for a host
 to attach the agent family and then withhold its use. Every ceiling accepts zero for the same
 reason; a negative ceiling has no meaning and is rejected.
+
+**Recursive removal is bounded — and the bound is modest about itself.** `MaxDeleteEntries`
+counts every entry `file_delete_directory` would remove, including the named directory itself, so
+an empty directory costs one entry and a ceiling of zero forbids the operation entirely. Its
+default is a thousand, chosen so that ordinary housekeeping succeeds while a mistaken request
+naming a source tree, a test tree or an installed package directory is refused. The refusal names
+the real entry count alongside the ceiling, because a model told "more than the limit" learns
+nothing about whether subdividing the request would help.
+
+**This ceiling bounds a mistake, not an intention.** An agent that means to destroy a tree can
+remove it a file at a time with `file_delete`, and the ceiling will not stop it. What it buys is
+that a wrong path or a model confusion is survivable and observable rather than total in one call.
+Treat it as a blast-radius limit, not as a security boundary against a hostile agent.
 
 ## Tool Names and Guarded Construction
 
@@ -216,6 +242,21 @@ through `ToolPackBuilder`, declaring what its host supports and adding one pack 
 wishes to attach. A pack whose required capabilities the host does not provide is never asked to
 create its tools at all, so the model is never offered a tool it cannot use.
 
+The same reasoning applies one level finer, to individual tools. A pack is handed the access policy
+before it has any path to test, and may withhold those of its tools whose writes the policy
+governs — so a tool that can act only by writing, under a policy holding no read-write grant
+anywhere, is simply not offered rather than offered and refused on every use. The two gates divide
+cleanly: **the host capability decides whether a pack is asked for its tools; the policy decides
+which of its tools it returns.** Only writing is gated, so the published set is not a promise that
+every tool in it can succeed: a policy with **no grants at all** still publishes the reading tools,
+and each of them then refuses every path. That one case is deliberately not gated — a grant is
+read-only or read-write, so permission to write always carries permission to read, and a reading
+tool is therefore unusable only when nothing whatever is granted, which yields an agent that can
+touch no file however its tool list is trimmed. Nothing reports which tools
+were withheld, for the same reason nothing reports which packs were skipped — the application holds
+both the capability declaration and the policy, so it can already answer the question, and a list
+of excluded tools is an invitation to add them back by another route.
+
 # Tool Families
 
 `DemaConsulting.AgentKit.Tools` ships seven ready-made guarded tool families. Each family is a pack
@@ -229,31 +270,90 @@ row.
 
 ## Available Tools
 
-| Family    | Tool                    | Purpose                                          | Required capability |
-|-----------|-------------------------|--------------------------------------------------|---------------------|
-| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None                |
-| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None                |
-| Text file | `text_file_create`      | Creates a new text file within the policy        | None                |
-| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None                |
-| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None                |
-| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None                |
-| Text file | `text_file_paste_lines` | Pastes previously cut lines back into a file     | None                |
-| File      | `file_list`             | Lists files of any type within the policy        | None                |
-| File      | `file_copy`             | Copies a file within the policy                  | None                |
-| File      | `file_move`             | Moves a file within the policy                   | None                |
-| File      | `file_delete`           | Deletes a single file within the policy          | None                |
-| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None                |
-| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`            |
-| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`            |
-| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None                |
-| Todo      | `todo_set`              | Records a step, or updates the step with that id | None                |
-| Todo      | `todo_remove`           | Drops a step by id from the task list            | None                |
-| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None                |
-| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None                |
-| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None                |
-| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None                |
-| Memory    | `memory_forget`         | Removes one memory permanently                   | None                |
-| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation`        |
+| Family    | Tool                    | Purpose                                          | Capability   | Write grant |
+|-----------|-------------------------|--------------------------------------------------|--------------|-------------|
+| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None         | No          |
+| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None         | No          |
+| Text file | `text_file_create`      | Creates a new text file within the policy        | None         | Yes         |
+| Text file | `text_file_write`       | Sets a file's whole content, capturing the old   | None         | Yes         |
+| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None         | Yes         |
+| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None         | Yes         |
+| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None         | No          |
+| Text file | `text_file_paste_lines` | Pastes lines held in a buffer into a file        | None         | Yes         |
+| File      | `file_list`             | Lists files of any type within the policy        | None         | No          |
+| File      | `file_copy`             | Copies a file within the policy                  | None         | Yes         |
+| File      | `file_move`             | Moves a file within the policy                   | None         | Yes         |
+| File      | `file_delete`           | Deletes a single file within the policy          | None         | Yes         |
+| File      | `file_create_directory` | Creates a directory, with missing parents        | None         | Yes         |
+| File      | `file_move_directory`   | Moves or renames a directory within the policy   | None         | Yes         |
+| File      | `file_delete_directory` | Deletes a directory and all it contains          | None         | Yes         |
+| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None         | No          |
+| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`     | No          |
+| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`     | No          |
+| Image     | `image_auto_crop`       | Trims an image to its content, with padding      | `Vision`     | No          |
+| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None         | No          |
+| Todo      | `todo_set`              | Records a step, or updates the step with that id | None         | No          |
+| Todo      | `todo_remove`           | Drops a step by id from the task list            | None         | No          |
+| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None         | No          |
+| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None         | No          |
+| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None         | No          |
+| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None         | No          |
+| Memory    | `memory_forget`         | Removes one memory permanently                   | None         | No          |
+| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation` | No          |
+
+The **Capability** column is the host capability the family requires; the **Write grant** column
+says whether the tool is published only when the access policy permits writing somewhere.
+
+**A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
+of the twenty-eight tools are marked `Yes`: five in the text file family and six in the file
+family. If every grant an application configures is read-only — or it configures no grants at all —
+those eleven are absent from the composed list, and the seven families together publish seventeen
+tools rather than twenty-eight. The text file family offers `text_file_search`, `text_file_read` and
+`text_file_copy_lines`; the file family offers `file_list`; the markdown, image, todo, memory and
+agent families are unaffected.
+
+The question is asked once, of the **whole policy**, not of any particular path. A policy granting
+a read-only workspace and a read-write session folder can genuinely write, so it publishes every
+tool — even though a relative name still lands in the read-only workspace and a write there is
+still refused. Only a policy with no read-write grant anywhere withholds them.
+
+**A policy with no grants at all is the one case where a published tool cannot work.** The eleven
+write-performing tools are withheld as above, and the seventeen survivors are published as usual —
+but `text_file_read`, `text_file_search`, `text_file_copy_lines`, `file_list` and `image_read` then
+refuse every path they are given, because no path resolves under a policy that grants nothing. That
+is not gated, and the reason is that it cannot arise any other way: a grant is either read-only or
+read-write, so permission to write always carries permission to read. The configuration is a
+non-functional agent whatever list it is handed, so trimming the list would not rescue it.
+
+Three families' tools are marked `No` for reasons worth stating. `text_file_copy_lines` consults
+only the read decision, so it works from a read-only location; note that under a read-only policy
+the buffer it fills has no drain, because `text_file_paste_lines` is the buffer's only reader.
+`file_list` needs only the read decision to report what exists, consulting the write decision
+solely to mark a listed location as writable. The todo and memory families keep their state in the
+composition's own store rather than on disk, so a read-only *path* policy governs nothing they do.
+
+**What `text_file_write` captures, and for how long.** Setting a file's whole content puts the
+content it displaced into the line buffer named `overwritten`, and `text_file_paste_lines` reading
+that buffer is the route back. The capture holds **only the most recent overwrite**: a second
+`text_file_write`, to the same file or any other, replaces it, and nothing earlier can be
+recovered. The capture is also a **sequential** guarantee: the tool reads the file, captures what
+it read and then writes, and those steps are not serialized against another writer. If two callers
+write the same file concurrently, the buffer holds the content that was there before whichever
+write read it, and the content an interleaved write produced can be lost without ever having been
+captured. AgentKit takes no cross-tool lock to prevent that — an agent's tool calls are sequential
+and a delegated sub-agent composes its own buffers — so an application that drives one composition
+from several threads at once should not rely on the capture. The buffers live in the composition
+rather than on disk, so they are also gone when the
+composition ends. An agent that means to keep a version must copy the file before writing it.
+
+`image_crop` and `image_auto_crop` are marked `No` and are offered under a read-only policy,
+because each one's primary mode
+returns the region as image content and writes nothing. The optional `destination` they accept does
+need a
+write grant, and naming one under a read-only policy earns the ordinary refusal, which enumerates
+the locations that are writable. Neither tool's description changes with the policy: the
+`destination` parameter's own description is fixed at compile time, so a policy-varying tool
+description would contradict it within a single declaration.
 
 The text file (`TextFilePack`), file (`FilePack`), Markdown (`MarkdownPack`), todo (`TodoPack`) and
 memory (`MemoryPack`) families require no host capability. Two families are gated. The image family
@@ -261,7 +361,7 @@ memory (`MemoryPack`) families require no host capability. Two families are gate
 `Delegation`: unless the host declares the capability, the builder never asks the pack to create
 its tools, so a model is never offered a tool its host cannot use.
 
-The image family's two tools are one capability rather than two. `image_read` states the image's
+The image family's three tools are one capability rather than three. `image_read` states the image's
 pixel dimensions alongside its content, and `image_crop` takes a region stated in pixels from the
 top-left corner of that same coordinate space — because a model can see a picture but cannot
 measure one, and a region request it cannot aim is a region request it will aim wrongly. A region
@@ -269,13 +369,36 @@ that does not lie wholly inside the image is **refused, naming the image's real 
 quietly reduced to one that would have fitted: a reduced region answers a different question while
 reporting success, and the model has no way to detect the substitution.
 
+`image_auto_crop` answers the region question from the other side: the one a model cannot state in
+that coordinate space at all. It takes **no region** — it finds the rectangle the image's content
+occupies, expands it by a `padding` margin (8 pixels by default, 0 to 256) and returns or writes
+that. The need is ordinary: a screenshot, a slide export or a rendered chart arrives surrounded by
+margin that carries no information and costs the same resolution budget the content does, and a
+model can see that a picture is mostly empty without being able to measure where the emptiness
+stops.
+
+Three properties make that trim predictable rather than a guess. **The background is taken from the
+image's own one-pixel border, never assumed** — so a dark-themed screenshot, a colored slide and an
+export with a transparent margin all trim correctly, where a tool comparing against white would
+return the picture unchanged while reporting success. **A pixel within a small fixed tolerance of
+that background counts as background**, so anti-aliased edges and compression artifacts do not
+defeat the trim; that tolerance is 8 per channel out of 255, compared on red, green, blue and
+alpha independently, and it is deliberately *not* a parameter, because a caller that cannot see
+the image cannot choose one better than the default, and the result stays a pure function of the
+file and the padding. **Padding that would run past an edge is clamped, never refused** — content
+flush to an edge is ordinary, and a padding larger than every margin simply yields the whole image.
+An image in which nothing differs from the background is **refused, naming its dimensions**, and
+nothing is written: there is no honest content region, and returning the whole picture would answer
+a different question while reporting success.
+
 `image_crop` has two outcomes, and the request says which. **Omit `destination` and the region
 comes back inline as image content to look at**, which is what it has always done and what it still
 does unchanged. **Name a `destination` and the region is written there as a new `.png` file**, and
 the model receives a text confirmation naming the file, the region and the source's dimensions
 rather than the image itself. That second outcome exists because a region a model can only look at
 cannot become a figure: an agent preparing a document needs the region it identified to exist as a
-file it can point at.
+file it can point at. `image_auto_crop` offers the same two outcomes on the same terms, so an agent
+meets one rule whichever region tool produced the figure.
 
 For an application author, the destination is where the two grants meet. **It is resolved through
 the policy's write decision, independently of the read that admitted the image** — so a path an
@@ -350,6 +473,13 @@ and reports them all, so a listing with no argument is a discovery listing over 
 location rather than a listing of the working directory alone. The tool
 `Create` factories are internal, so composing through the packs is the only supported way to obtain
 these tools.
+
+The grant above is `PathRule.ReadWrite`, which is what makes this composition publish all nineteen
+tools of those four families. The same builder, the same packs and the same capability declaration
+over a policy whose grants are all read-only yields a shorter list — eight tools, because the five
+write-performing text file tools and the six file management tools are withheld. Nothing else
+about the composition changes, and nothing announces the difference, so an application that means
+its agent to edit must grant it somewhere to write.
 
 The todo, memory and agent packs are added the same way, but take constructor arguments of their
 own — a supplied store, an embedding generator, or the profiles, runner and child packs a delegated

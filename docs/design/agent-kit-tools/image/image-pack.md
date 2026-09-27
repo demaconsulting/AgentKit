@@ -26,7 +26,7 @@ The class is sealed and holds no state; it is safe for concurrent use.
 | `FamilyPrefix` (constant) | `string`                  | `image`; leads every tool name it creates     |
 | `IToolPack.FamilyPrefix`  | `string`                  | Reports the constant above                    |
 | `RequiredCapabilities`    | `HostCapabilities`        | `Vision`; the family is gated on it           |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; both tools         |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; every tool         |
 
 The prefix is published both as a constant and through the contract. The constant lets a test or a
 composing application name the family without repeating a string literal that could drift from the
@@ -52,14 +52,43 @@ Creates the family's tools.
 the pack invented.
 
 **Algorithm:** validates `policy`, then returns `ImageReadTool.Create(policy)` followed by
-`ImageCropTool.Create(policy)` as the two elements of a collection, in that order.
+`ImageCropTool.Create(policy)` and `ImageAutoCropTool.Create(policy)` as the three elements of a
+collection, in that order.
 
-**Postconditions:** exactly the read tool and the crop tool, non-null, each named
-`image_`-prefixed and governed by the supplied policy. The two are created together because they
-are one capability: the read tool states the coordinate space the crop tool consumes, so a pack
+**Postconditions:** exactly the read tool, the crop tool and the auto-crop tool, non-null, each
+named `image_`-prefixed and governed by the supplied policy. The three are created together because
+they are one capability: the read tool states the coordinate space the crop tool consumes, so a pack
 that published only one of them would offer a model either a region request it cannot aim or a
-size it has nothing to use. Called once per `ToolPackBuilder.Build`, and only when the host
-provides the Vision capability.
+size it has nothing to use — and the auto-crop tool answers the region question a model cannot state
+in that coordinate space at all, because it can see that a picture is mostly margin without being
+able to measure where the margin stops. Called once per `ToolPackBuilder.Build`, and only when the
+host provides the Vision capability.
+
+**This pack does not filter on the policy, and the reason is a decision rather than an oversight.**
+The rule the text-file and file families apply — described under *Policy-derived publication* in the
+system design — gates a tool on the writes it can only perform, not on whether every argument it
+accepts could be used. All three tools here clear that bar under a policy that permits no writing
+anywhere:
+reading an image is a read, and each region tool's primary mode returns the region inline as image
+content and writes nothing. The optional `destination` both region tools accept genuinely does need
+a write grant, but
+withholding a whole tool over an optional argument would remove a fully working capability, and
+treating a narrowable parameter as grounds for suppressing a tool would mean every optional
+argument needs a gate of its own. A destination named under a read-only policy is answered by the
+ordinary write denial, which enumerates the writable locations, so the model learns its options in
+one turn instead of losing the tool permanently.
+
+**Not filtering includes the degenerate policy, and that is accepted rather than corrected.** Under
+a policy holding no grants at all, all three tools are published and `image_read` refuses every
+path it is given, because `PathPolicy.TryResolveRead` can admit none. A symmetric read-visibility
+check would remove that one case at the cost of a second publication question in every pack:
+`PathRule` offers only `ReadOnly` and `ReadWrite`, and `AccessLevel` has no write-only member, so
+write access always implies read access and a read tool is unusable only where nothing whatever is
+granted — a composition whose agent can touch no file however its tool list is trimmed.
+
+**Nor does either region tool's description vary with the policy.** That decision, and the
+compile-time constraint that forces it, are recorded in *Image Crop Tool Design* and apply
+identically to *Image Auto Crop Tool Design*.
 
 #### Error Handling
 
@@ -77,8 +106,8 @@ pack is not reachable from a model's tool call, so no runtime refusal arises her
 #### Dependencies
 
 `IToolPack` and `HostCapabilities` for the contract it implements, `PathPolicy` as the argument it
-passes on, and the read and crop tool units whose internal factories it calls. `AIFunction`, from
-`Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
+passes on, and the read, crop and auto-crop tool units whose internal factories it calls.
+`AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the form the created tools take.
 
 #### Callers
 

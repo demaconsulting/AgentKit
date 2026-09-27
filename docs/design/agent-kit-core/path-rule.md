@@ -53,6 +53,12 @@ There is no append-only or create-only level. The two levels express the access 
 needs, and adding another level would add a state to reason about at every decision point without
 enabling a capability the two do not already cover.
 
+**The count of two is asserted, not merely stated.** Other documented reasoning depends on it —
+the file family withholds only its writing tools under a policy permitting no writing, and the
+reason given is that permission to write always carries permission to read, which holds only while
+no write-only level exists. A unit test pins the enumeration to exactly `ReadOnly` and `ReadWrite`,
+so a third level breaks a test rather than silently falsifying that prose.
+
 **Case sensitivity.** Containment comparison is ordinal and ignores case on Windows and macOS,
 and is ordinal on Linux, matching the default file system semantics of each platform. Pattern
 matching follows the same choice.
