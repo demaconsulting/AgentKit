@@ -132,7 +132,11 @@ replacing it, so a wholesale overwrite is no less recoverable than a cut — but
 well-known slot `overwritten` rather than the default slot, because the default slot is the model's
 working clipboard and a capture the model never requested must not displace a fragment it is holding
 mid-move. Because that slot is fixed, only the most recent overwrite is recoverable, and both the
-tool description and its confirmation say so rather than implying an unbounded undo history. The
+tool description and its confirmation say so rather than implying an unbounded undo history.
+The capture is also a *sequential* guarantee: read, capture and write are not serialized against
+another writer, so if two callers write the same file concurrently the buffer holds the content
+that was there before whichever write read it, and an interleaved write can be lost uncaptured. The
+family states that limit rather than taking a cross-tool lock for one tool. The
 buffer is one instance per `CreateTools` call, shared only by that composition's write, cut, copy and
 paste tools, so separate tool compositions do not leak slots to each other.
 

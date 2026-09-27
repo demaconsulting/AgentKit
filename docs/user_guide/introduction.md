@@ -131,7 +131,10 @@ decision, and `file_list` does, as described under *Composing a Tool List* below
 
 Every containment decision is made on the normalized absolute location a path denotes, with `.`
 and `..` segments collapsed, so a path that merely spells its way out of the granted location is
-refused. Symbolic links and other reparse points are not followed and not detected.
+refused. Symbolic links and other reparse points are not followed and not detected, with one
+deliberate exception: `file_delete_directory` and `file_move_directory` refuse a path they are
+asked to reach *through* a link that leaves the permitted location, because there the content at
+stake is a whole tree rather than a single entry.
 A refusal is a returned value, never an exception, so a refused tool call does not end an agent's
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted
@@ -311,7 +314,14 @@ composition's own store rather than on disk, so a read-only *path* policy govern
 content it displaced into the line buffer named `overwritten`, and `text_file_paste_lines` reading
 that buffer is the route back. The capture holds **only the most recent overwrite**: a second
 `text_file_write`, to the same file or any other, replaces it, and nothing earlier can be
-recovered. The buffers live in the composition rather than on disk, so they are also gone when the
+recovered. The capture is also a **sequential** guarantee: the tool reads the file, captures what
+it read and then writes, and those steps are not serialized against another writer. If two callers
+write the same file concurrently, the buffer holds the content that was there before whichever
+write read it, and the content an interleaved write produced can be lost without ever having been
+captured. AgentKit takes no cross-tool lock to prevent that — an agent's tool calls are sequential
+and a delegated sub-agent composes its own buffers — so an application that drives one composition
+from several threads at once should not rely on the capture. The buffers live in the composition
+rather than on disk, so they are also gone when the
 composition ends. An agent that means to keep a version must copy the file before writing it.
 
 `image_crop` and `image_auto_crop` are marked `No` and are offered under a read-only policy,

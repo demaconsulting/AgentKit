@@ -11,10 +11,114 @@ namespace DemaConsulting.AgentKit.Tools.Tests.File;
 /// <remarks>
 ///     Both endpoints are judged by the write decision, so the policy-governed scenarios are
 ///     written as a pair — one refusing a read-only source, one refusing a read-only destination.
-///     A single scenario would pass even if only one endpoint were being checked.
+///     A single scenario would pass even if only one endpoint were being checked. The two
+///     link-traversal scenarios are written as the same kind of pair, and for the same reason:
+///     a guard applied to one endpoint only would leave the other open.
 /// </remarks>
 public class FileMoveDirectoryToolTests
 {
+    /// <summary>
+    ///     Proves a source reached through a link out of the grant is refused, and the tree the
+    ///     link points at survives whole.
+    /// </summary>
+    /// <remarks>
+    ///     Path resolution is lexical, so <c>escape/victim</c> satisfies the write decision while
+    ///     naming a tree outside every grant. The assertion that matters is the last one: the
+    ///     content beyond the link is still there.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveDirectoryTool_Move_SourceReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact()
+    {
+        // Arrange: a link inside the grant pointing at an ungranted sibling holding a tree
+        using var fixture = new TempDirectoryFixture();
+        var bait = TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Outside, "victim"), "bait.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "escape"), fixture.Outside);
+        var tool = FileMoveDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name a source that reaches outside the grant through the link
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["source"] = "escape/victim", ["destination"] = "taken" });
+
+        // Assert: refused, the offending component is named as the model spelled it, the link's
+        // target is disclosed nowhere, and the tree outside the grant is untouched
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("escape", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.True(System.IO.File.Exists(bait));
+        Assert.True(Directory.Exists(Path.Combine(fixture.Outside, "victim")));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "taken")));
+    }
+
+    /// <summary>
+    ///     Proves a destination reached through a link out of the grant is refused, and nothing
+    ///     is placed outside the grant.
+    /// </summary>
+    /// <remarks>
+    ///     Written as the pair of the source scenario above: a guard applied to one endpoint only
+    ///     would leave the other open, and a single scenario could not tell the two apart.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveDirectoryTool_Move_DestinationReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact()
+    {
+        // Arrange: a permitted tree, and a link inside the grant pointing at an ungranted sibling
+        using var fixture = new TempDirectoryFixture();
+        var inside = TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Root, "drafts"), "note.txt", "content");
+        var bait = TempDirectoryFixture.WriteFile(fixture.Outside, "bait.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "escape"), fixture.Outside);
+        var tool = FileMoveDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name a destination that reaches outside the grant through the link
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["source"] = "drafts", ["destination"] = "escape/placed" });
+
+        // Assert: refused, the source is still where it was, and nothing was created outside
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("escape", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.True(System.IO.File.Exists(inside));
+        Assert.True(System.IO.File.Exists(bait));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Outside, "placed")));
+    }
+
+    /// <summary>
+    ///     Proves a destination that is a genuine child whose name begins with two dots is
+    ///     recognized as lying inside the source.
+    /// </summary>
+    /// <remarks>
+    ///     <c>Path.GetRelativePath</c> answers <c>..foo</c> for a real child of that name, which a
+    ///     test for a leading <c>..</c> alone reads as climbing out of the source. The containment
+    ///     test is therefore made of path segments, and this scenario is what holds it there.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileMoveDirectoryTool_Move_DestinationIsAChildNamedWithLeadingDots_IsTreatedAsInsideTheSource()
+    {
+        // Arrange: a tree, and a destination inside it whose name begins with two dots
+        using var fixture = new TempDirectoryFixture();
+        var inside = TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Root, "drafts"), "note.txt", "content");
+        var tool = FileMoveDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: attempt to move the tree into that child
+        var result = await InvokeAsync(
+            tool,
+            new AIFunctionArguments { ["source"] = "drafts", ["destination"] = "drafts/..foo" });
+
+        // Assert: refused as a destination inside the source, rather than attempted and failing
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (InvalidRequest)", text, StringComparison.Ordinal);
+        Assert.Contains("inside the directory being moved", text, StringComparison.Ordinal);
+        Assert.True(System.IO.File.Exists(inside));
+    }
+
     /// <summary>
     ///     Proves the published tool name is the family-qualified name the pack claims.
     /// </summary>

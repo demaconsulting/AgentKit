@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Security;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
@@ -54,6 +55,18 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     hidden behind a fallback.
 ///     </para>
 ///     <para>
+///     <b>Neither endpoint may be reached through a link inside the grant.</b> Path resolution is
+///     lexical — see <see cref="RealPathResolver"/> — so <c>grant/link/sub</c> satisfies the write
+///     decision whenever <c>grant/link</c> is spelled inside the grant, however far outside the
+///     grant the link actually leads. Moving a tree out of, or into, a location reached that way
+///     would take or place an entire tree where nothing was granted, so both endpoints are
+///     classified by the shared rule in <see cref="LinkGuard"/> and either one refuses the whole
+///     request. This matches <see cref="FileDeleteDirectoryTool"/>, and for the same reason: the
+///     narrowing is applied exactly where the blast radius is a whole tree rather than a single
+///     entry, and the rest of the library still resolves lexically. The grant root itself, and
+///     everything above it, is not classified — that ancestry is the application author's choice.
+///     </para>
+///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks
 ///     on <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
 ///     </para>
@@ -77,8 +90,9 @@ public static class FileMoveDirectoryTool
         + "destination it may write. A destination in the same parent renames the directory. "
         + "Paths are relative to the workspace root. Refuses any destination that already exists, "
         + "because replacing a directory would destroy everything beneath it, and refuses a "
-        + "destination inside the directory being moved. Returns a confirmation, or a denial "
-        + "explaining why the request was refused.";
+        + "destination inside the directory being moved. Refuses either path when it is reached "
+        + "through a link that leads out of the permitted location. Returns a confirmation, or a "
+        + "denial explaining why the request was refused.";
 
     /// <summary>
     ///     The refusal used when the request carries no source path.
@@ -134,6 +148,35 @@ public static class FileMoveDirectoryTool
     /// </summary>
     private const string ParentMissing =
         "The parent directory of the destination does not exist.";
+
+    /// <summary>
+    ///     The refusal used when the source is reached through a link inside the grant.
+    /// </summary>
+    /// <remarks>
+    ///     The placeholder receives the offending component as the model spelled it — never the
+    ///     resolved host path, and never the link's target, which is the location outside the
+    ///     grant that this guard exists to protect.
+    /// </remarks>
+    private const string SourceLeadsThroughALink =
+        "The source path is reached through a link, at '{0}', that leads out of the permitted "
+        + "location, so nothing was moved. Moving a tree out of a location reached that way "
+        + "would take content from outside everything the operator granted, which this request "
+        + "never named. Name a source that does not pass through that link.";
+
+    /// <summary>
+    ///     The refusal used when the destination is reached through a link inside the grant.
+    /// </summary>
+    /// <remarks>
+    ///     Reported separately from the source because the two are different mistakes and the
+    ///     model has to know which of its two paths to re-address. The placeholder carries the
+    ///     same model-supplied spelling and discloses the link's target no more than the source
+    ///     refusal does.
+    /// </remarks>
+    private const string DestinationLeadsThroughALink =
+        "The destination path is reached through a link, at '{0}', that leads out of the "
+        + "permitted location, so nothing was moved. Moving a tree into a location reached that "
+        + "way would place it outside everything the operator granted, which this request never "
+        + "named. Name a destination that does not pass through that link.";
 
     /// <summary>
     ///     The refusal used when a permitted move cannot be completed for a file-system reason.
@@ -220,6 +263,31 @@ public static class FileMoveDirectoryTool
             return ToolResult.Denied(DenialReason.PathNotPermitted, destinationDenial);
         }
 
+        // The write decisions are lexical, so neither can see that a named component leads out
+        // of the grant. Both endpoints are classified here, still before anything is learned
+        // about the file system, and in the same order the write decisions were taken.
+        var sourceLink = LinkGuard.FindLinkedAncestor(policy, realSource);
+        if (sourceLink is not null)
+        {
+            return ToolResult.Denied(
+                DenialReason.PathNotPermitted,
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    SourceLeadsThroughALink,
+                    LinkGuard.DescribeAncestor(source, realSource, sourceLink)));
+        }
+
+        var destinationLink = LinkGuard.FindLinkedAncestor(policy, realDestination);
+        if (destinationLink is not null)
+        {
+            return ToolResult.Denied(
+                DenialReason.PathNotPermitted,
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    DestinationLeadsThroughALink,
+                    LinkGuard.DescribeAncestor(destination, realDestination, destinationLink)));
+        }
+
         // A file source has no tree to move; this tool is not a second route to file_move.
         if (System.IO.File.Exists(realSource))
         {
@@ -278,6 +346,14 @@ public static class FileMoveDirectoryTool
     ///     mistaken for a child. The comparison follows the host's own case rules, because two
     ///     spellings that differ only in case name the same directory on Windows and different
     ///     directories elsewhere.
+    ///     <para>
+    ///     The "climbs out" test is separator-aware for the same reason the prefix test is: a
+    ///     genuine child named <c>..foo</c> produces the relative path <c>..foo</c>, and a bare
+    ///     <c>StartsWith("..")</c> would read that real child as lying outside the source — so a
+    ///     move into it would escape this refusal and fail later with an opaque file-system error
+    ///     the model cannot act on. Only the exact segment <c>..</c>, alone or followed by a
+    ///     separator, means the destination sits above or beside the source.
+    ///     </para>
     /// </remarks>
     /// <param name="candidateParent">The resolved path that may contain the other.</param>
     /// <param name="candidateChild">The resolved path that may lie inside the other.</param>
@@ -290,10 +366,36 @@ public static class FileMoveDirectoryTool
         var relative = Path.GetRelativePath(candidateParent, candidateChild);
 
         // GetRelativePath returns the destination unchanged when the two share no root, and a
-        // path beginning with '..' when the destination sits above or beside the source.
+        // path whose first segment is exactly ".." when the destination sits above or beside the
+        // source. Comparing the segment, rather than the first two characters, is what keeps a
+        // real child named "..foo" from being read as an escape.
         return !Path.IsPathRooted(relative)
             && relative != "."
-            && !relative.StartsWith("..", StringComparison.Ordinal);
+            && !ClimbsOut(relative);
+    }
+
+    /// <summary>
+    ///     Determines whether a relative path leaves the location it was computed against.
+    /// </summary>
+    /// <remarks>
+    ///     A relative path leaves its anchor exactly when its first segment is the parent
+    ///     segment <c>..</c> — either the whole path, or followed by a separator. A name that
+    ///     merely begins with two dots is an ordinary segment and stays inside.
+    /// </remarks>
+    /// <param name="relative">The relative path to classify.</param>
+    /// <returns>
+    ///     <see langword="true"/> when the path climbs out of its anchor; otherwise
+    ///     <see langword="false"/>.
+    /// </returns>
+    private static bool ClimbsOut(string relative)
+    {
+        if (relative == "..")
+        {
+            return true;
+        }
+
+        return relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     /// <summary>

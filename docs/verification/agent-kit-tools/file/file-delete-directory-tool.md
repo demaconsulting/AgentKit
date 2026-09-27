@@ -18,7 +18,10 @@ removed, because a half-destroyed tree is the outcome the two-phase design exist
 **The three link scenarios were authored first, and they are listed first for that reason.** They
 were run against an implementation whose walk recursed unconditionally and observed to fail, with
 the file beyond the link genuinely destroyed, before the guard that stops it was written. The
-guard is therefore known to be load-bearing rather than assumed to be.
+guard is therefore known to be load-bearing rather than assumed to be. The fourth link scenario —
+a path *named* through a link — was authored the same way and against the same standard: it was
+observed to fail, with a tree outside every grant genuinely destroyed and the tool reporting
+success, before the ancestor walk that stops it was written.
 
 **Link creation fails the test; it never skips it.** The `DirectoryLink` helper creates an NTFS
 junction through `cmd.exe /c mklink /J` on Windows and a symbolic link through the managed API
@@ -52,10 +55,11 @@ same project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 11 requirement scenarios below, covering 16 listed test method
+A unit test run passes when all 12 requirement scenarios below, covering 17 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an ignored policy decision, a link followed out of
-the tree, a link's target disturbed, a link's target named in a refusal, a tree partly removed
+the tree, a path accepted that is reached through a link out of the permitted location, a link's
+target disturbed, a link's target named in a refusal, a tree partly removed
 after a refusal, a partial removal reported as though nothing happened, a tree at exactly the
 ceiling removed short of whole, a file-system failure
 thrown rather than returned, a ceiling not observed, a removal count misreported, a leaked path, a
@@ -77,6 +81,21 @@ the requested path and the relative sub-path — that the refusal does **not** c
 target path, and that the file beyond the link is confirmed byte-identical afterwards. The second
 asserts the tree's own directory, its ordinary file and the link entry are all still present, so
 the refusal is proven to be taken before anything is removed rather than part way through.
+
+##### AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused: A Named Path Through a Link Is Refused
+
+**Test**: `FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact`
+
+Security control, and the one the discovered-entry guard above cannot reach. A real link is
+created inside the permitted location pointing at an ungranted sibling that holds a tree, and the
+request names a path *through* that link — `escape/victim` — which lexical resolution permits and
+whose walk would start past the link, so every entry it met would be an ordinary file. The test
+asserts the request is refused as `PathNotPermitted`, that the refusal names the offending
+component as the model spelled it, that it does **not** contain the link's target path, and —
+the assertion that matters — that the directory and the file beyond the link still exist with
+their content unchanged. Run against an implementation without the ancestor walk the tool answers
+`Deleted the directory and everything beneath it: 2 entries removed` and the tree outside every
+grant is gone, so this scenario is known to be load-bearing rather than assumed to be.
 
 ##### AgentKitTools-File-DeleteDirectoryTool-RemovesALinkNamedDirectly: Removes a Link Named Directly
 

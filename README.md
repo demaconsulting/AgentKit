@@ -42,7 +42,8 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   content, replace, and
   line-range cut, copy and paste through a recoverable buffer), **file** (list, copy, move and
   delete files of any type, and create, move or rename, and recursively delete the directories that
-  hold them — a recursive delete never follows a link out of the directory it was given and refuses
+  hold them — a recursive delete never follows a link out of the directory it was given, refuses a
+  path it is asked to reach through such a link, and refuses
   a tree larger than the configured entry ceiling),
   **markdown** (outline a document's headings with their line ranges),
   **image** (read images and PDF documents for a vision-capable agent, reporting an image's pixel
@@ -236,8 +237,11 @@ grant the working directory whatever access it should have — it receives none 
 
 The policy is a guardrail, not a sandbox: a tool cannot express an operation the policy forbids,
 but AgentKit does not replace OS-level isolation for untrusted code. Symbolic links, directory
-junctions and other reparse points are not a protection boundary: a path that reaches outside a
-granted location through a link is not detected. The policy also decides which tools exist at all:
+junctions and other reparse points are not a general protection boundary: path resolution is
+lexical, so a path that reaches outside a granted location through a link is not detected. The two
+exceptions are the destructive directory tools — `file_delete_directory` and `file_move_directory`
+refuse a path they are asked to reach *through* a link, because there the content at stake is a
+whole tree rather than a single entry. The policy also decides which tools exist at all:
 a pack publishes only the tools the policy could permit to succeed, so a policy holding no
 read-write grant anywhere withholds every tool that can act only by writing — the five editing
 tools of the text file family and the six management tools of the file family. The question is

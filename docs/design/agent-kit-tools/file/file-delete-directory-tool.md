@@ -54,20 +54,24 @@ governed by the supplied policy for the rest of its life.
 
 1. An absent, empty or whitespace `path` is refused as `InvalidRequest`.
 2. `policy.TryResolveWrite(path, …)` is called. A refusal is returned as `PathNotPermitted`.
-3. A `path` naming a file is refused as `InvalidRequest`.
-4. A missing directory is refused as `TargetNotFound`.
-5. A `path` that is **itself a link** takes the link branch: the link entry alone is removed,
+3. The path the target is reached *through* is classified: `LinkGuard.FindLinkedAncestor` walks
+   from the resolved target up to the grant root, and a link on that path refuses the request as
+   `PathNotPermitted`, naming the offending component as the model spelled it. The grant root and
+   everything above it are not classified.
+4. A `path` naming a file is refused as `InvalidRequest`.
+5. A missing directory is refused as `TargetNotFound`.
+6. A `path` that is **itself a link** takes the link branch: the link entry alone is removed,
    unfollowed, and the confirmation says what it pointed at was not touched.
-6. **Phase one** walks the tree iteratively, over an explicit stack, and builds the removal plan,
+7. **Phase one** walks the tree iteratively, over an explicit stack, and builds the removal plan,
    mutating nothing. The walk never descends into a link. The first link it meets — file or
    directory — ends the walk and the whole request is refused as `InvalidRequest`, naming the
    entry. A file-system failure during the walk is classified and refused as `InvalidRequest`,
    never thrown.
-7. The plan's entry count, which **includes the named directory itself**, is compared against
+8. The plan's entry count, which **includes the named directory itself**, is compared against
    `policy.Limits.MaxDeleteEntries`. A plan exceeding it is refused as `ResourceTooLarge`, naming
    the exact count and the ceiling. The count is exact even for a tree far past the ceiling: the
    walk keeps counting past it and stops only retaining the paths.
-8. **Phase two** removes exactly the approved plan: every file, then every directory in reverse
+9. **Phase two** removes exactly the approved plan: every file, then every directory in reverse
    collection order so each is empty when it goes. The confirmation reports the entry count; a
    failure part way through reports how many entries had already been removed.
 
@@ -114,10 +118,26 @@ model supplied plus the relative sub-path the walk reached, in the separator dia
 used. The link's target is a host location outside the grant, and naming it would disclose exactly
 what the guard exists to protect.
 
-**Stated boundary.** A path the model *names* that traverses a link — `workspace/junction/sub` —
-is resolved lexically and permitted, exactly as `file_delete` and every other tool in the library
-already behave. That is the position `RealPathResolver` documents and the README states. This unit
-guards what the walk *discovers*; it does not reopen the question of what the caller may spell.
+**A path the model *names* that traverses a link is refused too.** `RealPathResolver` resolves
+lexically, so `workspace/junction/sub` satisfies the write decision whenever `workspace/junction` is
+spelled inside the grant — however far outside the grant the junction actually leads — and the
+discovered-entry guard above never fires, because the walk starts *past* the link and every entry it
+then meets is an ordinary file. This unit therefore applies its own rule to the components a path is
+reached *through* as well as to the entries the walk finds: before planning, it walks from the
+resolved target up to the grant root and refuses if any component is a link, using the one
+`LinkTarget is not null` predicate in `LinkGuard` rather than a second notion of what a link is.
+**This is a deliberate narrowing of what the caller may spell**, and it is made here and in
+`FileMoveDirectoryTool` alone, because the blast radius of getting it wrong in those two is a whole
+tree rather than a single entry. The rest of the library still resolves lexically, which is what
+`RealPathResolver` and the README document; that wider question is untouched here.
+
+**The grant root itself is not classified, and neither is anything above it.** An application author
+who roots a grant at a link, or beneath one, has made that choice deliberately, and refusing it would
+make the whole grant unusable. A link *inside* the grant has been vetted by nobody, which is exactly
+the difference the walk draws. Where a policy carries nested read-write grants the boundary is the
+*deepest* one containing the target, so a grant an author deliberately rooted beyond a link stays
+usable. An unrestricted read-write grant has no boundary at all — there is no outside to escape to —
+so nothing is classified under one.
 
 **The ceiling bounds a mistake, not an intention.** An agent that means to destroy a tree can
 remove it a file at a time with `file_delete` and this ceiling will not stop it. What the ceiling
@@ -166,7 +186,9 @@ The two phases refuse differently, because they leave the file system in differe
 #### Dependencies
 
 `PathPolicy` for the write decision and for `ToolLimits.MaxDeleteEntries`, `ToolResult` for
-results, and `GuardedToolFactory` for construction. From the Base Class Library it uses
+results, and `GuardedToolFactory` for construction. `LinkGuard`, the subsystem's shared helper,
+answers what counts as a link and whether a named path was reached through one. From the Base Class
+Library it uses
 `Directory`, `File`, `DirectoryInfo`, `FileInfo`, `FileSystemInfo.LinkTarget`, `Path`, and
 directory-deletion exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the
 constructed tool type.

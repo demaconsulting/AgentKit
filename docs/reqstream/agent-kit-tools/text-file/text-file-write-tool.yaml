@@ -13,14 +13,16 @@ sections:
                   The write tool shall be published under the name text_file_write, exposed as a
                   constant, and shall carry a description that names the sibling tools for creating
                   a new file and for editing within existing content, and states where displaced
-                  content is recoverable from and that only the most recent overwrite is kept there.
+                  content is recoverable from, that only the most recent overwrite is kept there,
+                  and that only a write not interleaved with another write of the same file is
+                  captured at all.
                 justification: |
                   The name is the only handle a model has on the tool. The description carries more
                   weight here than for any sibling, because an agent that reaches for this tool to
                   make a small edit destroys the rest of the file: naming the create and replace
                   tools is how a model is steered to the narrower operation it actually wants. A
                   denial never prescribes a remedy, so the description is also the only place the
-                  recovery path and its one honest limit can be stated.
+                  recovery path and its two honest limits can be stated.
                 tests:
                   - TextFileWriteTool_ToolName_Constant_IsTheFamilyQualifiedName
                   - TextFileWriteTool_Create_ConstructedTool_CarriesTheToolNameAndADescriptionNamingItsSiblings
@@ -59,12 +61,14 @@ sections:
                 title: >-
                   The write tool shall capture a file's previous content verbatim into the family's
                   recovery buffer before replacing it, into a slot distinct from the one a cut or
-                  copy defaults to, so the displaced content can be restored; it shall capture
+                  copy defaults to, so the displaced content can be restored by a sequential
+                  caller; it shall capture
                   nothing when the file was absent or held no content, and shall say in each case
                   whether anything was captured.
                 justification: |
                   A wholesale overwrite destroys more in one call than any other operation in the
-                  family, and the family's invariant is that nothing it destroys is unrecoverable
+                  family, and the family's invariant is that nothing it destroys sequentially is
+                  unrecoverable
                   through the recovery buffer. Capturing the content verbatim rather than
                   reconstructing it is what makes the restoration byte-exact, so a trailing newline
                   and carriage returns survive. The capture must not land where a cut or copy
@@ -74,7 +78,15 @@ sections:
                   while reporting success, and avoids displacing a genuine earlier capture. Because
                   one fixed slot holds displaced content, only the most recent overwrite is
                   recoverable, and the tool states that limit rather than implying an unbounded undo
-                  history.
+                  history. The guarantee is scoped in a second way, and stated just as plainly:
+                  reading the file, capturing what was read and writing the new content are three
+                  steps that nothing serializes against another writer, so two concurrent writes to
+                  the same file can both read the same content and the write that lands first can be
+                  destroyed without ever having been captured. Cross-tool locking is deliberately
+                  not introduced for one tool — the library coordinates concurrent access nowhere
+                  else, an agent's tool calls are sequential, and a delegated sub-agent composes its
+                  own buffers — so the promise is scoped to sequential writes instead of being made
+                  with an unstated exception.
                 tests:
                   - TextFileWriteTool_Write_ExistingFile_CapturesThePreviousContentVerbatim
                   - TextFileWriteTool_Write_ExistingFile_LeavesTheDefaultBufferUntouched

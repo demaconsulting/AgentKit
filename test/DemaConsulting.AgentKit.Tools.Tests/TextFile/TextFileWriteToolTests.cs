@@ -48,8 +48,10 @@ public class TextFileWriteToolTests
         Assert.Contains(TextFileReplaceTool.ToolName, tool.Description, StringComparison.Ordinal);
         Assert.Contains(
             TextFileLineBuffers.OverwrittenSlot, tool.Description, StringComparison.Ordinal);
-        // The honest limit is stated rather than implied away.
+        // Both honest limits are stated rather than implied away: one slot, and a capture that
+        // only holds for a write nothing else interleaved with.
         Assert.Contains("most recent overwrite", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("interleaved", tool.Description, StringComparison.Ordinal);
     }
 
     /// <summary>

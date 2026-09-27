@@ -79,8 +79,10 @@ request is refused, the tree is confirmed still present, and the file beyond the
 byte-identical — so an application that attached the pack can rely on no tool it received removing
 content the request never named. The link is real rather than simulated, and its creation fails
 the test rather than skipping it, because a skipped test leaves no evidence behind a security
-requirement. The complementary half — the entry ceiling, and the link that is itself the named
-path — is verified against the unit in *FileDeleteDirectoryTool Unit Verification Design*.
+requirement. The complementary halves — the entry ceiling, the link that is itself the named
+path, and the path *named* through a link, for both the recursive deletion and the directory
+move — are verified against the units in *FileDeleteDirectoryTool Unit Verification Design* and
+*FileMoveDirectoryTool Unit Verification Design*.
 
 #### AgentKitTools-File-WriteToolsRequireAWriteGrant: Only What the Policy Can Permit Is Offered
 

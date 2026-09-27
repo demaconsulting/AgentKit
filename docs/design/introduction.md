@@ -382,7 +382,8 @@ src/DemaConsulting.AgentKit.Tools/
 │   ├── FileListTool.cs          — the file_list tool
 │   ├── FileMoveDirectoryTool.cs — the file_move_directory tool
 │   ├── FileMoveTool.cs          — the file_move tool
-│   └── FilePack.cs              — publishes the file family as one pack
+│   ├── FilePack.cs              — publishes the file family as one pack
+│   └── LinkGuard.cs             — shared helper; what is a link, and was this path reached through one
 ├── Image/
 │   ├── ImageAdmission.cs        — shared helper; read within the ceilings, triage, decode
 │   ├── ImageAutoCropTool.cs     — the image_auto_crop tool

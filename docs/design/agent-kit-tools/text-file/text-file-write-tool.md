@@ -102,6 +102,19 @@ documents. The guarantee is therefore *the most recent overwrite is recoverable*
 description and the replacement confirmation state that rather than implying an unbounded undo
 history.
 
+**The capture is a sequential guarantee, and the tool says that too.** Reading the previous
+content, capturing it and writing the new content are three steps, and nothing serializes them
+against another writer of the same file. Two concurrent writes can both read content `X`; the first
+writes `A`, the second writes `B`, and `overwritten` still holds `X` — so `A` is destroyed without
+ever having been captured. *Cross-tool locking was rejected* as the answer. The library coordinates
+concurrent access nowhere else, an agent's tool calls are sequential, and a delegated sub-agent
+composes its own buffers, so introducing a locking regime for this one tool would be a far larger
+change than the exposure justifies. The honest answer is to scope the promise instead, exactly as
+the one-slot limit above scopes it: **every sequential overwrite is recoverable; if two callers
+write the same file concurrently, the buffer holds the content that was there before whichever
+write read it, and an interleaved write can be lost uncaptured.** A promise with an unstated
+exception is the defect; a stated limit is not.
+
 **Nothing is captured when there is nothing to lose.** An absent file has no previous content. An
 existing but empty file has none either, and capturing `string.Empty` would leave a slot that
 `TryPaste` reports as a hit but that pastes nothing while reporting success — and would additionally

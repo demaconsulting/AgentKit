@@ -13,7 +13,10 @@ namespace DemaConsulting.AgentKit.Tools.Tests.File;
 ///     The three link scenarios are listed first because they were written first. They are the
 ///     scenarios with the worst consequence if the unit is wrong — content outside the permitted
 ///     location destroyed by a request that never named it — so they were made to fail against an
-///     implementation whose walk followed links before the guard that stops it was written.
+///     implementation whose walk followed links before the guard that stops it was written. The
+///     fourth, a named path reached <em>through</em> a link, belongs to the same family and was
+///     written the same way: it fails against an implementation that guards only what the walk
+///     discovers.
 ///     </para>
 ///     <para>
 ///     A link is created by <see cref="DirectoryLink"/>, which fails the test rather than skipping
@@ -106,6 +109,44 @@ public class FileDeleteDirectoryToolTests
         Assert.Equal(
             "outside-content",
             await System.IO.File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves a named path reached through a link out of the grant is refused, and the tree
+    ///     beyond the link survives whole.
+    /// </summary>
+    /// <remarks>
+    ///     This is the scenario the discovered-entry guard above cannot reach: the walk would
+    ///     start past the link, so every entry it met would be an ordinary file and the guard
+    ///     would never fire. The assertion that matters is the last one — the tree outside every
+    ///     grant is still there.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact()
+    {
+        // Arrange: a link inside the grant pointing at an ungranted sibling holding a tree
+        using var fixture = new TempDirectoryFixture();
+        var bait = TempDirectoryFixture.WriteFile(
+            Path.Combine(fixture.Outside, "victim"), "bait.txt", "outside-content");
+        using var link = DirectoryLink.Create(Path.Combine(fixture.Root, "escape"), fixture.Outside);
+        var tool = FileDeleteDirectoryTool.Create(RootedPolicy(fixture.Root));
+
+        // Act: name a path that reaches outside the grant through the link
+        var result = await InvokeAsync(
+            tool, new AIFunctionArguments { ["path"] = "escape/victim" });
+
+        // Assert: refused, the offending component is named as the model spelled it, the link's
+        // target is disclosed nowhere, and the tree outside every grant is untouched
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
+        Assert.Contains("escape", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(fixture.Outside, text, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(Path.Combine(fixture.Outside, "victim")));
+        Assert.True(System.IO.File.Exists(bait));
+        Assert.Equal(
+            "outside-content",
+            await System.IO.File.ReadAllTextAsync(bait, TestContext.Current.CancellationToken));
     }
 
     /// <summary>

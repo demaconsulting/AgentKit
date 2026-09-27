@@ -70,6 +70,16 @@ same permitted location the policy already approved, so there is no containment 
 answer. Refusing because a middle component is absent would only force a model into a
 create-one-level-at-a-time loop, spending turns to reach the same state.
 
+**Why this unit carries no linked-ancestor guard, deliberately.** `file_delete_directory` and
+`file_move_directory` refuse a path they are asked to reach *through* a link, because path
+resolution is lexical and a tree reached that way lies outside every grant. This unit is not given
+that rule, and the omission is a decision rather than an oversight: creating a directory through a
+link writes outside the grant but **destroys nothing**. The narrowing those two tools apply is
+justified by a blast radius of a whole tree; here the worst outcome is an empty directory in an
+unexpected place, which the lexical resolution the rest of the library uses already accepts. If
+the library later decides the question for every tool, this unit follows that decision rather than
+carrying a private one.
+
 #### Error Handling
 
 Everything a model controls produces a returned refusal. The only exception the unit raises is

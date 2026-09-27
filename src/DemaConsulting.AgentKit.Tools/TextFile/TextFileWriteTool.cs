@@ -24,7 +24,8 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     </para>
 ///     <para>
 ///     <b>The previous content is captured before it is replaced.</b> The family's invariant is that
-///     nothing it destroys is unrecoverable through <see cref="TextFileLineBuffers"/>, and a wholesale
+///     nothing it destroys <em>sequentially</em> is unrecoverable through
+///     <see cref="TextFileLineBuffers"/>, and a wholesale
 ///     overwrite destroys more than any other operation in the family. So the file's entire previous
 ///     text is captured first, exactly as <see cref="TextFileCutLinesTool"/> captures the slice it
 ///     removes, and it can be restored with <see cref="TextFilePasteLinesTool"/>.
@@ -44,6 +45,18 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     means a second overwrite replaces the first capture — ordinary clipboard semantics this family
 ///     already documents. That limit is stated in the description rather than implied away, so a
 ///     model does not read the capture as an unbounded undo history.
+///     </para>
+///     <para>
+///     <b>The capture is a sequential guarantee, and that limit is stated too.</b> Reading the
+///     previous content, capturing it and writing the new content are three steps and are not
+///     serialized against another writer. If two callers write the same file concurrently, the
+///     buffer holds the content that was there before whichever write read it, and the content
+///     an interleaved write produced can be destroyed without ever having been captured. No
+///     cross-tool lock is taken to close that: the library coordinates concurrent access
+///     nowhere else, an agent's tool calls are sequential, and a delegated sub-agent composes
+///     its own buffers — so a locking regime for one tool would cost far more than the exposure
+///     it removes. The promise is therefore scoped rather than quietly excepted, exactly as the
+///     one-slot limit above is: <em>every sequential overwrite is recoverable</em>.
 ///     </para>
 ///     <para>
 ///     <b>Nothing is captured when there is nothing to lose.</b> An absent file has no previous
@@ -82,7 +95,9 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     </para>
 ///     <para>
 ///     The class is stateless and holds no buffer of its own; the buffer is supplied by the pack and
-///     guards its own access, so the tool is safe for concurrent use from any number of threads.
+///     guards its own access, so the tool is safe for concurrent use from any number of threads. That
+///     safety is about the tool's own state, not about the file: the capture guarantee is the
+///     sequential one described above.
 ///     </para>
 /// </remarks>
 public static class TextFileWriteTool
@@ -98,7 +113,7 @@ public static class TextFileWriteTool
     /// <remarks>
     ///     The description carries the work of steering a model to the right tool, because a model
     ///     that reaches for this one to make a small edit destroys the rest of the file. It therefore
-    ///     names both siblings, and states the recovery path and its one limit plainly.
+    ///     names both siblings, and states the recovery path and its two limits plainly.
     /// </remarks>
     private const string ToolDescription =
         "Sets the whole content of a text file the agent is permitted to write to the given text, "
@@ -108,7 +123,9 @@ public static class TextFileWriteTool
         + " to change part of a file while leaving the rest alone. Before replacing, the file's "
         + "previous content is captured into the buffer named '"
         + TextFileLineBuffers.OverwrittenSlot + "', so it can be restored with "
-        + TextFilePasteLinesTool.ToolName + "; only the most recent overwrite is kept there. "
+        + TextFilePasteLinesTool.ToolName + "; only the most recent overwrite is kept there, and "
+        + "only a write that was not interleaved with another write of the same file is captured "
+        + "at all. "
         + "Returns a confirmation, or a denial explaining why the request was refused.";
 
     /// <summary>
@@ -289,7 +306,9 @@ public static class TextFileWriteTool
 
             // Capture before writing, and only when there is content to lose. Capturing an empty
             // string would leave a slot that pastes nothing while reporting success, and would
-            // displace a genuine earlier capture.
+            // displace a genuine earlier capture. Read, capture and write are three steps and are
+            // deliberately not serialized against another writer; see the type remarks for why the
+            // guarantee is scoped to sequential writes rather than defended with a lock.
             var captured = previous.Length > 0;
             if (captured)
             {

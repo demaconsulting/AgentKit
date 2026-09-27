@@ -17,7 +17,12 @@ the protected state unchanged.
 
 The policy-governed scenarios are written as a **pair**, one refusing a read-only source and one
 refusing a read-only destination. A single scenario would pass even if only one endpoint were
-being judged, which is precisely the defect the pair exists to catch.
+being judged, which is precisely the defect the pair exists to catch. The two link-traversal
+scenarios are written as the same kind of pair, for the same reason, and — because path
+containment is a security control — they exercise a **real reparse point** through the shared
+`DirectoryLink` helper, which fails the test rather than skipping when the platform refuses to
+create one. A skipped test leaves no entry in the results, so the requirement would appear covered
+with no evidence behind it.
 
 There is no overwrite scenario, because there is no overwrite: any existing destination is refused.
 The absence is deliberate and is recorded here so that a later reader does not take it for a gap.
@@ -36,10 +41,12 @@ Unit tests reside in `File/FileMoveDirectoryToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 8 requirement scenarios below, covering 10 listed test method
+A unit test run passes when all 9 requirement scenarios below, covering 13 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, an endpoint judged by the wrong decision, a
-destination replaced, a directory moved into itself, a rename the description does not declare, a
+destination replaced, a directory moved into itself, a real child read as lying outside the
+source, an endpoint accepted that is reached through a link out of the permitted location, a
+link's target disturbed or named in a refusal, a rename the description does not declare, a
 leaked path, a malformed request thrown as a framework error, or returned content that violates a
 configured ceiling constitutes a failure.
 
@@ -87,8 +94,29 @@ afterwards, so nothing beneath either was destroyed.
 
 **Test**: `FileMoveDirectoryTool_Move_DestinationInsideTheSource_ReturnsDenialAndLeavesTheTree`
 
-The listed test proves a destination nested inside the source is refused, the tree is intact, and
-no partial destination was materialized.
+**Test**: `FileMoveDirectoryTool_Move_DestinationIsAChildNamedWithLeadingDots_IsTreatedAsInsideTheSource`
+
+The first listed test proves a destination nested inside the source is refused, the tree is
+intact, and no partial destination was materialized. The second pins the boundary the first cannot
+see: a genuine child named `..foo`, for which the framework's relative-path answer begins with two
+dots. It asserts the refusal is the destination-inside-source one rather than the opaque
+"could not be moved" a first-two-characters test produces, so a real child is never read as an
+escape.
+
+##### AgentKitTools-File-MoveDirectoryTool-EndpointThroughALinkIsRefused: An Endpoint Through a Link Is Refused
+
+**Test**: `FileMoveDirectoryTool_Move_SourceReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact`
+
+**Test**: `FileMoveDirectoryTool_Move_DestinationReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact`
+
+Security control at both endpoints, and the pair the lexical path resolution makes necessary. A
+real link inside the permitted location points at an ungranted sibling; the first test names a
+source *through* that link, the second a destination through it. Each asserts the refusal is
+`PathNotPermitted`, that it names the offending component as the model spelled it, that it does
+**not** contain the link's target path, and — the assertion that matters — that the tree beyond
+the link is untouched and nothing was placed there. Run against an implementation without the
+ancestor walk both answer `Moved the directory and everything beneath it`, with a tree taken out
+of, or placed into, a location outside every grant.
 
 ##### AgentKitTools-File-MoveDirectoryTool-PolicyGoverned: Policy Governed
 

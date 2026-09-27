@@ -49,15 +49,20 @@ governed by the supplied policy for the rest of its life.
 1. An absent, empty or whitespace `source` or `destination` is refused as `InvalidRequest`.
 2. `policy.TryResolveWrite(source, …)` is called, then `policy.TryResolveWrite(destination, …)`.
    Either refusal is returned as `PathNotPermitted`.
-3. A `source` naming a file is refused as `InvalidRequest`; this tool is not a second route to
+3. Each endpoint is then classified by the path it is reached *through*:
+   `LinkGuard.FindLinkedAncestor` walks from the resolved endpoint up to the grant root, and a link
+   on that path refuses the request as `PathNotPermitted`, naming the offending component as the
+   model spelled it. The source is classified first, in the same order the write decisions were
+   taken, and the two refusals are reported separately so the model knows which path to re-address.
+4. A `source` naming a file is refused as `InvalidRequest`; this tool is not a second route to
    moving one file.
-4. A missing `source` is refused as `TargetNotFound`.
-5. A `destination` that is an existing file is refused as `InvalidRequest`; a `destination` that is
+5. A missing `source` is refused as `TargetNotFound`.
+6. A `destination` that is an existing file is refused as `InvalidRequest`; a `destination` that is
    an existing directory is refused as `InvalidRequest`. The two are reported separately because
    they are different mistakes.
-6. A `destination` lying inside the `source` is refused as `InvalidRequest`.
-7. A missing destination parent is refused as `TargetNotFound`, never created.
-8. The directory is moved, and the tool returns a confirmation.
+7. A `destination` lying inside the `source` is refused as `InvalidRequest`.
+8. A missing destination parent is refused as `TargetNotFound`, never created.
+9. The directory is moved, and the tool returns a confirmation.
 
 #### Design Decisions
 
@@ -70,11 +75,32 @@ capability is not lost, only made explicit: `file_delete_directory` removes the 
 bounded and reported, and the model then moves into the space. Two calls, each of which says what
 it does.
 
-**The containment check compares paths, not strings.** A sibling whose name merely begins with the
+**Neither endpoint may be reached through a link inside the grant.** `RealPathResolver` resolves
+lexically, so `workspace/junction/sub` satisfies the write decision whenever `workspace/junction` is
+spelled inside the grant, however far outside the grant the junction actually leads. Moving a tree
+*out of* a location reached that way takes content from where nothing was granted; moving a tree
+*into* one places a whole tree there. Both are the same destruction the `file_delete_directory` link
+guard exists to prevent, so the same rule is applied here, through the same `LinkGuard` helper and
+the same `LinkTarget is not null` predicate. **Both endpoints are classified, not just one**: a
+guard applied to the source alone would leave the destination open, and the tests are written as a
+pair for that reason. The grant root, and everything above it, is not classified — an author who
+roots a grant at a link has made that choice, while a link inside the grant has been vetted by
+nobody. `file_create_directory` deliberately does **not** carry this rule: creating a directory
+through a link writes outside the grant but destroys nothing, so it stays with the rest of the
+library's lexical resolution rather than being narrowed here.
+
+**The containment check compares path segments, not string prefixes.** A sibling whose name merely
+begins with the
 source's name — `drafts-archive` beside `drafts` — is not a child, and a prefix comparison on raw
 strings would wrongly refuse it. The relative path between the two is computed instead, and the
 comparison follows the host's own case rules, because two spellings differing only in case name
-the same directory on Windows and different directories elsewhere.
+the same directory on Windows and different directories elsewhere. The "climbs out" half of that
+test is segment-based for the same reason the prefix half is: `Path.GetRelativePath` answers
+`..foo` for a genuine child of that name, and an unconditional test for a leading `..` would read
+that real child as lying outside the source — so a move into it would escape the
+destination-inside-source refusal and fail later with an opaque file-system error instead. Only the
+exact segment `..`, alone or followed by a separator, means the destination sits above or beside
+the source.
 
 **A move between volumes is refused, not emulated.** `Directory.Move` cannot cross a volume
 boundary, and a policy may well grant a workspace on one volume and a session location on another.
@@ -97,7 +123,9 @@ cross-volume case arrives here.
 #### Dependencies
 
 `PathPolicy` for both write decisions, `ToolResult` for results, and `GuardedToolFactory` for
-construction. From the Base Class Library it uses `Directory`, `File`, `Path`, and directory-move
+construction. `LinkGuard`, the subsystem's shared helper, answers whether either endpoint was
+reached through a link. From the Base Class Library it uses `Directory`, `File`, `Path`, and
+directory-move
 exceptions. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the constructed tool
 type.
 

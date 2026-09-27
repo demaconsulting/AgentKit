@@ -34,6 +34,12 @@ The subsystem contains eight units:
 | `FileDeleteDirectoryTool` | Publishes `file_delete_directory`: removes a directory tree, bounded    |
 | `FilePack`                | Publishes the file tools as one family under the `file` prefix          |
 
+`LinkGuard` is a shared helper rather than a unit: it publishes no tool, holds no state, and exists
+only so that the two destructive directory tools ask one question — *is this entry a link, and was
+this path reached through one* — in exactly one place. Duplicating that predicate would be two
+rules that could drift apart on a decision whose failure mode is content outside every grant
+destroyed by a request that never named it.
+
 ### Interfaces
 
 The subsystem exposes exactly one public type, `FilePack`, plus the name constant each tool unit
@@ -104,6 +110,20 @@ to follow a link out of the tree, and a ceiling — `ToolLimits.MaxDeleteEntries
 entries one call may take. The ceiling bounds the damage of a *mistake*; it is not protection
 against an agent that intends the destruction, which could remove a tree one file at a time. See
 *FileDeleteDirectoryTool Design* for the two-phase algorithm and the rejected alternatives.
+
+**The two destructive directory tools also refuse a path they are asked to reach *through* a
+link.** Path resolution is lexical — `RealPathResolver` says so — so a path naming a link inside a
+grant satisfies the write decision however far outside the grant the link actually leads, and
+`file_delete_directory`'s walk would never see the link because it starts past it. Both
+`file_delete_directory` and `file_move_directory` therefore classify the components a path is
+reached through, from the resolved target up to the grant root, using `LinkGuard`;
+`file_move_directory` does so for its source and its destination alike. The grant root itself, and
+everything above it, is not classified: an author who roots a grant at a link has chosen that,
+while a link inside the grant has been vetted by nobody. This is a narrowing of what a caller may
+spell, and it is applied **only** where the blast radius is a whole tree. `file_create_directory`
+deliberately does not carry it, because creating through a link writes outside the grant but
+destroys nothing, and the rest of the library — `text_file_read` and every other path-taking tool
+— still resolves lexically, as the README describes.
 
 **Single-file deletion stays single-file.** `file_delete` removes one file, never a directory, and
 never recurses. It does not quarantine the deleted content; recovery is source control, the same

@@ -78,6 +78,33 @@ sections:
                 tests:
                   - FileDeleteDirectoryTool_Delete_DirectoryThatIsItselfALink_RemovesTheLinkAndNotItsTarget
 
+              - id: AgentKitTools-File-DeleteDirectoryTool-NamedPathThroughALinkIsRefused
+                title: >-
+                  The delete-directory tool shall refuse a path whose resolved location is reached
+                  through a link lying between the grant root and that location, naming the
+                  offending component as the request spelled it, removing nothing, and leaving
+                  what the link points at intact.
+                tags: [security]
+                justification: |
+                  Path resolution in this library is lexical and documented as such, so a path
+                  naming a link inside a permitted location satisfies the write decision however
+                  far outside that location the link actually leads. The guard on what the walk
+                  discovers cannot close this: the walk starts past the link, so every entry it
+                  meets is an ordinary file and the guard never fires. The consequence measured on
+                  a real junction was an entire tree outside every grant removed, with the tool
+                  reporting success — the exact outcome the link guard exists to prevent, reached
+                  by a path the guard never inspected. The same predicate the walk already uses is
+                  therefore applied to the components a path is reached through, so there is one
+                  rule rather than two. The grant root itself, and everything above it, is
+                  deliberately not classified: an application author who roots a grant at a link,
+                  or beneath one, has made that choice, while a link inside the grant has been
+                  vetted by nobody, and refusing the former would make the whole grant unusable.
+                  This narrows what a caller may spell only where the blast radius is a whole tree;
+                  the rest of the library still resolves lexically, which remains the documented
+                  behavior.
+                tests:
+                  - FileDeleteDirectoryTool_Delete_NamedPathReachedThroughALink_ReturnsDenialAndLeavesTheTargetIntact
+
               - id: AgentKitTools-File-DeleteDirectoryTool-EntryCeiling
                 title: >-
                   The delete-directory tool shall refuse a directory holding more entries than the

@@ -79,10 +79,19 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     tree it refuses.
 ///     </para>
 ///     <para>
-///     <b>A path the model <em>names</em> that traverses a link is resolved lexically and
-///     permitted</b>, exactly as every other tool in this library already behaves. This tool
-///     guards what the walk <em>discovers</em>; it does not reopen the question of what the caller
-///     may spell. See <see cref="RealPathResolver"/>, whose resolution is documented as lexical.
+///     <b>A path the model <em>names</em> that traverses a link is refused too.</b> Path
+///     resolution is lexical — see <see cref="RealPathResolver"/> — so <c>grant/link/sub</c>
+///     satisfies the write decision whenever <c>grant/link</c> is spelled inside the grant,
+///     however far outside the grant the link actually leads, and the discovered-entry guard
+///     above never fires because the walk starts past the link. This tool therefore applies its
+///     own rule to the components a path is reached <em>through</em> as well as to the entries
+///     the walk finds, using the one predicate in <see cref="LinkGuard"/>. It is a deliberate
+///     narrowing of what the caller may spell, made here and for
+///     <see cref="FileMoveDirectoryTool"/> because the blast radius of getting it wrong is a
+///     whole tree rather than a single entry; the rest of the library still resolves lexically.
+///     The grant root itself, and everything above it, is not classified: an author who roots a
+///     grant at a link has made that choice, while a link inside the grant has been vetted by
+///     nobody.
 ///     </para>
 ///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks
@@ -111,7 +120,8 @@ public static class FileDeleteDirectoryTool
     private const string ToolDescription =
         "Deletes a directory and everything beneath it, in a location the agent is permitted to "
         + "write. Paths are relative to the workspace root. Never follows a link out of the "
-        + "directory; a directory containing such a link is refused rather than partly removed. "
+        + "directory; a directory containing such a link is refused rather than partly removed, "
+        + "and so is a path that is itself reached through one. "
         + "Refuses a directory holding more entries than the configured limit, naming the count "
         + "and the limit. Returns a confirmation reporting how many entries were removed, or a "
         + "denial explaining why the request was refused; a removal that fails part way through "
@@ -148,6 +158,20 @@ public static class FileDeleteDirectoryTool
         + "remove content this request never named, and removing the link itself would destroy a "
         + "connection the request did not mention, so nothing was deleted. Name that link "
         + "directly to remove the link alone, then ask again.";
+
+    /// <summary>
+    ///     The refusal used when the named path is reached through a link inside the grant.
+    /// </summary>
+    /// <remarks>
+    ///     The placeholder receives the offending component as the model spelled it — never the
+    ///     resolved host path, and never the link's target, which is the location outside the
+    ///     grant that this guard exists to protect.
+    /// </remarks>
+    private const string PathLeadsThroughALink =
+        "The path is reached through a link, at '{0}', that leads out of the permitted location, "
+        + "so nothing was deleted. Removing a tree through a link would destroy content outside "
+        + "everything the operator granted, which this request never named. Name a path that "
+        + "does not pass through that link.";
 
     /// <summary>
     ///     The refusal used when the tree holds more entries than the configured ceiling.
@@ -256,6 +280,20 @@ public static class FileDeleteDirectoryTool
             return ToolResult.Denied(DenialReason.PathNotPermitted, denialMessage);
         }
 
+        // The write decision is lexical, so it cannot see that a named component leads out of
+        // the grant. Classifying the path the target was reached through is what closes that,
+        // and it is done before anything else is learned about the tree.
+        var linkedAncestor = LinkGuard.FindLinkedAncestor(policy, realPath);
+        if (linkedAncestor is not null)
+        {
+            return ToolResult.Denied(
+                DenialReason.PathNotPermitted,
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    PathLeadsThroughALink,
+                    LinkGuard.DescribeAncestor(path, realPath, linkedAncestor)));
+        }
+
         // A file is never removed by the directory tool; keeping the single-file and whole-tree
         // capabilities apart is what bounds each one's blast radius.
         if (System.IO.File.Exists(realPath))
@@ -272,7 +310,7 @@ public static class FileDeleteDirectoryTool
 
         // A link the request named directly is removed as the link alone, never followed. This is
         // what keeps the link refusal below from leaving a workspace permanently undeletable.
-        if (IsLink(new DirectoryInfo(realPath)))
+        if (LinkGuard.IsLink(new DirectoryInfo(realPath)))
         {
             return DeleteLink(realPath);
         }
@@ -455,7 +493,7 @@ public static class FileDeleteDirectoryTool
             // A directory is classified before it is entered, so a link is never descended into.
             // The named root arrives here already known not to be a link, so this costs one
             // redundant classification and removes a special case from the loop.
-            if (IsLink(new DirectoryInfo(directory)))
+            if (LinkGuard.IsLink(new DirectoryInfo(directory)))
             {
                 return directory;
             }
@@ -466,7 +504,7 @@ public static class FileDeleteDirectoryTool
             // never named, so files are judged by the same rule as directories.
             foreach (var file in Directory.GetFiles(directory))
             {
-                if (IsLink(new FileInfo(file)))
+                if (LinkGuard.IsLink(new FileInfo(file)))
                 {
                     return file;
                 }
@@ -506,24 +544,6 @@ public static class FileDeleteDirectoryTool
         {
             planned.Add(entry);
         }
-    }
-
-    /// <summary>
-    ///     Determines whether a file-system entry is a link rather than ordinary content.
-    /// </summary>
-    /// <remarks>
-    ///     A non-null link target is what identifies an entry as a reparse point. It is non-null
-    ///     for a POSIX symbolic link and for a Windows directory junction alike — verified, not
-    ///     assumed — which matters because a junction needs no privilege to create and is
-    ///     therefore the form an escape most easily takes on Windows.
-    /// </remarks>
-    /// <param name="info">The entry to classify.</param>
-    /// <returns>
-    ///     <see langword="true"/> when the entry is a link; otherwise <see langword="false"/>.
-    /// </returns>
-    private static bool IsLink(FileSystemInfo info)
-    {
-        return info.LinkTarget is not null;
     }
 
     /// <summary>

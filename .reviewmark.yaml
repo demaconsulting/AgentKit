@@ -617,6 +617,7 @@ reviews:
       - "docs/reqstream/agent-kit-tools/file.yaml"                 # subsystem requirements
       - "docs/design/agent-kit-tools/file.md"                      # subsystem design
       - "docs/verification/agent-kit-tools/file.md"                # subsystem verification
+      - "src/DemaConsulting.AgentKit.Tools/File/LinkGuard.cs"      # shared link-classification helper
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs"  # subsystem tests
       - "test/DemaConsulting.AgentKit.Tools.Tests/File/DirectoryLink.cs"  # directory-link test fixture
 

@@ -96,6 +96,13 @@ never requested cannot displace one it did; that an absent file and an existing 
 capture nothing and say so; and that a second overwrite replaces the first capture, pinning the
 honest limit that only the most recent overwrite is recoverable.
 
+The scenarios are sequential, and that is what the requirement claims: the capture is a sequential
+guarantee. Read, capture and write are not serialized against another writer of the same file, so
+two concurrent writes can both read the same content and the one that lands second can destroy
+content the buffer never held. No scenario asserts otherwise, because the unit promises no more
+than the sequential case — the limit is stated in the tool description, the class remarks, the
+design chapter and the requirement's justification rather than left for a reader to discover.
+
 ##### AgentKitTools-TextFile-WriteTool-PolicyGoverned: Policy Governed
 
 **Test**: `TextFileWriteTool_Write_ReadOnlyLocation_ReturnsDenialAndLeavesTheFileUnchanged`
