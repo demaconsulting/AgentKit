@@ -33,7 +33,7 @@
   <ItemGroup>
     <!-- coverlet.MTP is coverlet's native Microsoft.Testing.Platform extension, matching the other
          test projects in this repository. -->
-    <PackageReference Include="coverlet.MTP" Version="10.0.1">
+    <PackageReference Include="coverlet.MTP" Version="10.1.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

@@ -33,7 +33,7 @@
          - PrivateAssets="all" keeps this test-coverage tool out of any consuming project's dependencies.
          - IncludeAssets lists all asset types (including 'build' and 'buildtransitive') to ensure the
            extension's MSBuild targets are activated so coverage is collected during test runs. -->
-    <PackageReference Include="coverlet.MTP" Version="10.0.1">
+    <PackageReference Include="coverlet.MTP" Version="10.1.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -53,7 +53,7 @@
          hand-faked IOllamaApiClient would assert this project's beliefs about OllamaSharp back at
          it rather than test them, which has already cost one shipped defect here. Test-only; no
          runtime dependency is added to any shipped package. -->
-    <PackageReference Include="WireMock.Net" Version="2.16.0" />
+    <PackageReference Include="WireMock.Net" Version="2.18.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies -->
