@@ -48,7 +48,7 @@
        IEmbeddingGenerator the memory family needs when the run asks for Ollama embeddings. The
        adapter above supplies only the context-window discovery. -->
   <ItemGroup>
-    <PackageReference Include="OllamaSharp" Version="5.4.30" />
+    <PackageReference Include="OllamaSharp" Version="5.5.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies: matched to the library projects so the sample is held to the
@@ -58,7 +58,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385">
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

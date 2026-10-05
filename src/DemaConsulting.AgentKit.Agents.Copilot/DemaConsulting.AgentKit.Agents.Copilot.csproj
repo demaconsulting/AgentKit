@@ -78,12 +78,12 @@
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.22.0" />
+    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.23.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
-    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.1" PrivateAssets="All" />
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.3" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.13" PrivateAssets="All" />
-    <PackageReference Include="Polyfill" Version="11.4.1" PrivateAssets="All" />
+    <PackageReference Include="Polyfill" Version="11.4.2" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
 
@@ -98,7 +98,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385">
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
