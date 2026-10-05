@@ -44,7 +44,7 @@
   <!-- Package References: OllamaSharp supplies the IChatClient implementation the sample points at
        an Ollama host. It is the only provider dependency the adapters do not already pull in. -->
   <ItemGroup>
-    <PackageReference Include="OllamaSharp" Version="5.4.30" />
+    <PackageReference Include="OllamaSharp" Version="5.5.0" />
   </ItemGroup>
 
   <!-- Code Analysis Dependencies: matched to the library projects so the sample is held to the
@@ -54,7 +54,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385">
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
