@@ -70,13 +70,13 @@
     <!-- OllamaSharp is why this is a package of its own: the window a server enforces is only
          reachable through Ollama's own APIs, and the IChatClient adapter that serves every
          provider in that family must not acquire a dependency on any one of them. -->
-    <PackageReference Include="OllamaSharp" Version="5.5.0" />
+    <PackageReference Include="OllamaSharp" Version="5.5.2" />
     <!-- Referenced explicitly rather than taken transitively through OllamaSharp: DelegatingChatClient
          and ChatOptions appear on this package's own public surface, so the dependency is direct. -->
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
-    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.11" PrivateAssets="All" />
+    <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.12" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Sbom.Targets" Version="4.1.13" PrivateAssets="All" />
     <PackageReference Include="Polyfill" Version="11.4.5" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.403" PrivateAssets="All" />
