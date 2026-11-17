@@ -75,8 +75,8 @@ future release backs that buffer with a pooled array. Every entry point the fami
 and every one is called on bytes already read and already inside the policy's binary ceiling, so
 the library is never given a path, never opens a file and never touches the file system.
 
-**Release precondition.** The dependency is currently published only as a prerelease. A non-
-prerelease release of `AgentKitTools` therefore requires a non-prerelease release of this
+**Release precondition.** The dependency is currently published only as a prerelease. A non-prerelease
+release of `AgentKitTools` therefore requires a non-prerelease release of this
 dependency first, because a stable package must not carry a prerelease transitive dependency. This
 is recorded here rather than discovered at release time. The risk it carries is small: the library
 is produced by the same organization under the same template and quality gates, is MIT licensed,
