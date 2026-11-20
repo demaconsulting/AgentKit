@@ -18,10 +18,16 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 ///     that went idle without answering.
 /// </param>
 /// <param name="Failure">The exception the turn throws instead of returning, or <see langword="null"/>.</param>
+/// <param name="During">
+///     Awaited after the events are dispatched and before the turn ends, or <see langword="null"/>
+///     for a turn that ends at once. Given the turn's token, so a test can model a turn that is still
+///     running when it is canceled, or one held open until the test releases it.
+/// </param>
 internal sealed record ScriptedTurn(
     IReadOnlyList<SessionEvent> Events,
     AssistantMessageEvent? Answer = null,
-    Exception? Failure = null);
+    Exception? Failure = null,
+    Func<CancellationToken, Task>? During = null);
 
 /// <summary>
 ///     A turn channel that contacts nothing: it records the prompts it was sent, replays scripted
@@ -55,18 +61,28 @@ internal sealed class FakeCopilotTurnChannel : ICopilotTurnChannel
     /// <summary>
     ///     Initializes a new instance of the <see cref="FakeCopilotTurnChannel"/> class.
     /// </summary>
+    /// <param name="sessionId">The identifier the runtime gave the session this channel carries.</param>
     /// <param name="onEvent">The session's event handler, or <see langword="null"/> when none was registered.</param>
     /// <param name="turns">The turns to perform, in order. A turn beyond the script is silent.</param>
-    internal FakeCopilotTurnChannel(Action<SessionEvent>? onEvent, params ScriptedTurn[] turns)
+    internal FakeCopilotTurnChannel(string sessionId, Action<SessionEvent>? onEvent, params ScriptedTurn[] turns)
     {
+        SessionId = sessionId;
         _onEvent = onEvent;
         _turns = new Queue<ScriptedTurn>(turns);
     }
+
+    /// <inheritdoc/>
+    public string SessionId { get; }
 
     /// <summary>
     ///     Gets the prompts this channel was sent, in order.
     /// </summary>
     internal List<string> Prompts { get; } = [];
+
+    /// <summary>
+    ///     Gets the whole messages this channel was sent, in order — prompts and attachments.
+    /// </summary>
+    internal List<MessageOptions> Messages { get; } = [];
 
     /// <summary>
     ///     Gets the number of times this channel has been released.
@@ -75,15 +91,16 @@ internal sealed class FakeCopilotTurnChannel : ICopilotTurnChannel
 
     /// <inheritdoc/>
     /// <remarks>
-    ///     The token is deliberately not observed here. The production channel hands it to the
-    ///     runtime, which is where it belongs — but a fake that refused a canceled turn of its own
-    ///     accord would make the session's own pre-flight check unreachable in a test, and a check no
-    ///     test can reach is a check no test can falsify.
+    ///     The token is deliberately not observed by the channel itself. The production channel hands
+    ///     it to the runtime, which is where it belongs — but a fake that refused a canceled turn of
+    ///     its own accord would make the callers' own pre-flight checks unreachable in a test, and a
+    ///     check no test can reach is a check no test can falsify. A scripted turn that models a
+    ///     runtime still working is given the token through <see cref="ScriptedTurn.During"/>.
     /// </remarks>
-    public Task<AssistantMessageEvent?> SendAndWaitAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<AssistantMessageEvent?> SendAndWaitAsync(MessageOptions message, CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
-        Prompts.Add(prompt);
+        Messages.Add(message);
+        Prompts.Add(message.Prompt);
 
         // A turn beyond the script dispatches nothing and answers nothing, which is the shape a test
         // wants when it is asserting that no further turn was taken.
@@ -94,9 +111,12 @@ internal sealed class FakeCopilotTurnChannel : ICopilotTurnChannel
             _onEvent?.Invoke(dispatched);
         }
 
-        return turn.Failure is null
-            ? Task.FromResult(turn.Answer)
-            : Task.FromException<AssistantMessageEvent?>(turn.Failure);
+        if (turn.During is not null)
+        {
+            await turn.During(cancellationToken);
+        }
+
+        return turn.Failure is null ? turn.Answer : throw turn.Failure;
     }
 
     /// <inheritdoc/>
@@ -148,6 +168,12 @@ internal sealed class FakeCopilotRuntime
     internal List<CreateSessionOptions> Configs { get; } = [];
 
     /// <summary>
+    ///     Gets the sessions asked to be resumed, in order, each with the configuration it was
+    ///     resumed with.
+    /// </summary>
+    internal List<(string SessionId, ResumeSessionOptions Config)> Resumes { get; } = [];
+
+    /// <summary>
     ///     Gets the channels opened, in order.
     /// </summary>
     internal List<FakeCopilotTurnChannel> Channels { get; } = [];
@@ -167,7 +193,23 @@ internal sealed class FakeCopilotRuntime
         _beforeOpen?.Invoke(Configs.Count);
 
         Configs.Add(config);
-        var channel = new FakeCopilotTurnChannel(config.Events.OnEvent, _script(Channels.Count));
+        var channel = new FakeCopilotTurnChannel($"session-{Configs.Count}", config.Events.OnEvent, _script(Channels.Count));
+        Channels.Add(channel);
+        return Task.FromResult<ICopilotTurnChannel>(channel);
+    };
+
+    /// <summary>
+    ///     Gets the resumer to hand to an agent under test.
+    /// </summary>
+    /// <remarks>
+    ///     A resumed channel takes its script from the same sequence as an opened one, by the order
+    ///     channels are produced, so a test scripts a conversation's runs in the order they happen
+    ///     whether each run created or resumed its session.
+    /// </remarks>
+    internal CopilotChannelResumer Resumer => (sessionId, config, _) =>
+    {
+        Resumes.Add((sessionId, config));
+        var channel = new FakeCopilotTurnChannel(sessionId, config.Events.OnEvent, _script(Channels.Count));
         Channels.Add(channel);
         return Task.FromResult<ICopilotTurnChannel>(channel);
     };
@@ -209,18 +251,55 @@ internal static class CopilotEvents
     /// </summary>
     /// <param name="content">The message text.</param>
     /// <param name="agentId">
-    ///     The call that started a nested agent, when the message belongs to one.
+    ///     The sub-agent instance that produced the message, when it belongs to one.
+    /// </param>
+    /// <param name="messageId">
+    ///     The message's identifier, or <see langword="null"/> for a fresh one. Named when a test
+    ///     pairs the message with the deltas that streamed it.
     /// </param>
     /// <returns>The assistant message event.</returns>
-    internal static AssistantMessageEvent Assistant(string content, string? agentId = null) =>
+    internal static AssistantMessageEvent Assistant(string content, string? agentId = null, string? messageId = null) =>
         new()
         {
             Data = new AssistantMessageData
             {
                 Content = content,
-                MessageId = $"message-{Interlocked.Increment(ref _sequence)}",
+                MessageId = messageId ?? $"message-{Interlocked.Increment(ref _sequence)}",
             },
             AgentId = agentId,
+        };
+
+    /// <summary>
+    ///     Builds one streamed fragment of an assistant message.
+    /// </summary>
+    /// <param name="content">The fragment's text.</param>
+    /// <param name="messageId">The message the fragment belongs to.</param>
+    /// <param name="agentId">The sub-agent instance that produced it, when it belongs to one.</param>
+    /// <returns>The delta event.</returns>
+    internal static AssistantMessageDeltaEvent Delta(string content, string messageId, string? agentId = null) =>
+        new()
+        {
+            Data = new AssistantMessageDeltaData { DeltaContent = content, MessageId = messageId },
+            AgentId = agentId,
+        };
+
+    /// <summary>
+    ///     Builds the usage the runtime reports for one model request.
+    /// </summary>
+    /// <param name="inputTokens">The request's input tokens.</param>
+    /// <param name="outputTokens">The request's output tokens.</param>
+    /// <returns>The assistant usage event.</returns>
+    internal static AssistantUsageEvent AssistantUsage(long inputTokens, long outputTokens) =>
+        new()
+        {
+            Data = new AssistantUsageData
+            {
+                Model = "test-model",
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens,
+                CacheReadTokens = 7,
+                CacheWriteTokens = 3,
+            },
         };
 
     /// <summary>
@@ -276,16 +355,16 @@ internal static class CopilotEvents
     ///     Builds a failed tool completion.
     /// </summary>
     /// <param name="toolCallId">The identifier of the call this answers.</param>
-    /// <param name="message">The error the runtime reported.</param>
+    /// <param name="message">The error the runtime reported, or <see langword="null"/> for none.</param>
     /// <returns>The tool-execution completion event.</returns>
-    internal static ToolExecutionCompleteEvent ToolFailure(string toolCallId, string message) =>
+    internal static ToolExecutionCompleteEvent ToolFailure(string toolCallId, string? message) =>
         new()
         {
             Data = new ToolExecutionCompleteData
             {
                 ToolCallId = toolCallId,
                 Success = false,
-                Error = new ToolExecutionCompleteError { Message = message },
+                Error = message is null ? null : new ToolExecutionCompleteError { Message = message },
             },
         };
 

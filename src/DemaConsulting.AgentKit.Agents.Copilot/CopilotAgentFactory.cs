@@ -25,9 +25,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     </para>
 ///     <para>
 ///     <b>Every Copilot session this package builds is configured here, on one path.</b> The agent
-///     path goes through <see cref="BuildSessionConfig"/>; the session-engine paths —
+///     path goes through <see cref="BuildSessionConfig"/> to create a session and
+///     <see cref="BuildResumeSessionConfig"/> to resume one; the session-engine paths —
 ///     <see cref="CopilotProviderSessionFactory"/> and <see cref="CopilotSummarizer"/> — go through
-///     <see cref="BuildEngineSessionConfig"/>. Both end in <see cref="ApplyConfinement"/>, which is
+///     <see cref="BuildEngineSessionConfig"/>. All of them end in <see cref="ApplyConfinement"/>, which is
 ///     the single site where the allow-list is derived, every channel of runtime-injected
 ///     capability is closed, and the default-safe permission handler is installed. A second builder
 ///     with its own derivation is precisely the drift this arrangement exists to prevent, so there
@@ -219,14 +220,82 @@ public static class CopilotAgentFactory
         string? workingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(client);
+
+        // A conversation's sessions are kept when released, because the conversation continues on
+        // the next run; a run made without a conversation deletes its session, because nothing could
+        // ever resume it. The host still owns the client; nothing here disposes it.
+        return CreateAgent(
+            tools,
+            instructions,
+            onPermissionRequest,
+            name,
+            model,
+            workingDirectory,
+            CopilotSessionChannel.OpenRetained(client),
+            CopilotSessionChannel.Resume(client),
+            CopilotSessionChannel.Open(client));
+    }
+
+    /// <summary>
+    ///     Builds an agent over supplied channel factories, with every session it opens confined to
+    ///     the supplied tools.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The test seam behind <see cref="Create"/>: production passes channels over the host's
+    ///     client, a test passes a scripted runtime, and everything else — validation, the snapshot of
+    ///     the tool list, and the per-run configuration builders — is shared.
+    ///     </para>
+    ///     <para>
+    ///     AgentKit carries its own <see cref="AIAgent"/> over Copilot sessions because the SDK ships
+    ///     no Agent Framework agent. Each run builds a fresh configuration through the same
+    ///     confinement — <see cref="BuildSessionConfig"/> to create, <see cref="BuildResumeSessionConfig"/>
+    ///     to resume — so a conversation is confined identically on every run.
+    ///     </para>
+    /// </remarks>
+    /// <param name="tools">The tools the agent may call.</param>
+    /// <param name="instructions">The system instructions, if any.</param>
+    /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
+    /// <param name="name">The agent's name, if any.</param>
+    /// <param name="model">The model to back the sessions, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="workingDirectory">The sessions' working directory, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="opener">Creates the runtime session for a conversation's first run.</param>
+    /// <param name="resumer">Resumes the recorded runtime session on every later run.</param>
+    /// <param name="ephemeralOpener">
+    ///     Creates the runtime session for a run made without a conversation, which is deleted when
+    ///     the run ends; <see langword="null"/> to use <paramref name="opener"/>.
+    /// </param>
+    /// <returns>The agent.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="tools"/> is empty, or two tools carry the same name.
+    /// </exception>
+    internal static CopilotAgent CreateAgent(
+        IList<AIFunction> tools,
+        string? instructions,
+        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
+        string? name,
+        string? model,
+        string? workingDirectory,
+        CopilotChannelOpener opener,
+        CopilotChannelResumer resumer,
+        CopilotChannelOpener? ephemeralOpener = null)
+    {
         ValidateTools(tools);
 
-        var config = BuildSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory);
+        // A snapshot of the host's list, so a later change to it cannot widen or narrow sessions the
+        // agent opens after construction: every run is confined to the tools validated here.
+        IList<AIFunction> published = [.. tools];
 
-        // AgentKit carries its own AIAgent over a Copilot session: the SDK ships no Agent Framework
-        // agent of its own. The host still owns the client; the agent releases only the sessions it
-        // opens.
-        return new CopilotAgent(client, config, name);
+        return new CopilotAgent(
+            () => BuildSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory),
+            () => BuildResumeSessionConfig(published, instructions, onPermissionRequest, model, workingDirectory),
+            opener,
+            ephemeralOpener ?? opener,
+            resumer,
+            name);
     }
 
     /// <summary>
@@ -245,6 +314,11 @@ public static class CopilotAgentFactory
     ///     so the Copilot runtime keeps compacting a plain agent's session as it always has, at its own
     ///     threshold: nothing else is watching that session's window. The session-engine path,
     ///     <see cref="BuildEngineSessionConfig"/>, raises that threshold for the opposite reason.
+    ///     </para>
+    ///     <para>
+    ///     It also turns on the runtime's token streaming, which only the agent path presents: an
+    ///     agent's caller reads a run as it happens, while the engine and the summarizer take only a
+    ///     turn's final answer and would gain nothing but extra events.
     ///     </para>
     /// </remarks>
     /// <param name="tools">The tools to publish and allow.</param>
@@ -275,7 +349,58 @@ public static class CopilotAgentFactory
     {
         ValidateTools(tools);
 
-        return CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory);
+        var config = CreateSessionConfig(tools, instructions, onPermissionRequest, model, workingDirectory);
+        config.Events.Streaming = true;
+
+        return config;
+    }
+
+    /// <summary>
+    ///     Builds the configuration an agent resumes a recorded session with: the same confinement,
+    ///     model, working directory and instructions the session was created with.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>A resumed session is confined afresh, not trusted to remember.</b> The runtime applies
+    ///     a resume's configuration to the session it reopens, so a resume built without the
+    ///     allow-list, the withheld channels and the permission handler would hand an existing
+    ///     conversation the runtime's defaults — every built-in tool, and permission requests no
+    ///     handler answers. Every confinement setting lives on the options a created and a resumed
+    ///     session share, so this builder reaches the same <see cref="ApplyConfinement"/> the create
+    ///     path does and differs from <see cref="BuildSessionConfig"/> only in its type.
+    ///     </para>
+    ///     <para>
+    ///     Like the create path, it leaves the runtime's own compaction alone and turns on streaming.
+    ///     </para>
+    /// </remarks>
+    /// <param name="tools">The tools to publish and allow.</param>
+    /// <param name="instructions">The system instructions, if any.</param>
+    /// <param name="onPermissionRequest">The permission handler, or <see langword="null"/> for the safe default.</param>
+    /// <param name="model">The model to back the session, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <param name="workingDirectory">The session's working directory, or <see langword="null"/>/blank for the runtime's default.</param>
+    /// <returns>The configuration to resume the session with.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="tools"/> is empty, or two tools carry the same name.
+    /// </exception>
+    internal static ResumeSessionOptions BuildResumeSessionConfig(
+        IList<AIFunction> tools,
+        string? instructions,
+        Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest,
+        string? model = null,
+        string? workingDirectory = null)
+    {
+        ValidateTools(tools);
+
+        var config = new ResumeSessionOptions();
+
+        ApplyConfinement(config, tools, onPermissionRequest);
+        ApplySessionSettings(config, instructions, model, workingDirectory);
+        config.Events.Streaming = true;
+
+        return config;
     }
 
     /// <summary>
@@ -375,7 +500,7 @@ public static class CopilotAgentFactory
     /// </summary>
     /// <remarks>
     ///     The single place a <see cref="CreateSessionOptions"/> is constructed in this package. Both
-    ///     builders reach it, which is what keeps the confinement, the model choice, the working
+    ///     creating builders reach it, which is what keeps the confinement, the model choice, the working
     ///     directory and the system message on one path; they differ only in which tool lists they
     ///     accept and in whether they adjust the runtime's own compaction afterwards.
     ///     <para>

@@ -136,7 +136,7 @@ public sealed class CopilotSummarizer : ISummarizer
         try
         {
             var answer = await channel
-                .SendAndWaitAsync(ConsolidationPrompt.Compose(request), cancellationToken)
+                .SendAndWaitAsync(new MessageOptions { Prompt = ConsolidationPrompt.Compose(request) }, cancellationToken)
                 .ConfigureAwait(false);
 
             return answer?.Data?.Content ?? string.Empty;

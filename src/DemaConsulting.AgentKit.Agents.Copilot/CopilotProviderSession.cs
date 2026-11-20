@@ -249,7 +249,7 @@ public sealed class CopilotProviderSession : IProviderSession
         try
         {
             var answer = await _channel
-                .SendAndWaitAsync(TakeMessageToSend(message), cancellationToken)
+                .SendAndWaitAsync(new MessageOptions { Prompt = TakeMessageToSend(message) }, cancellationToken)
                 .ConfigureAwait(false);
 
             return CompleteTurn(answer);

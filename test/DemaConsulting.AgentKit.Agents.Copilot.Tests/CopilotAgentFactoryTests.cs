@@ -289,6 +289,146 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves every allow-list entry is source-qualified as a custom tool, so the runtime can
+    ///     match only a tool this package registered and never a built-in of the same name.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_AllowListIsSourceQualified()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("view") };
+
+        // Act
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
+
+        // Assert: every entry carries the custom qualifier, including one named like a built-in
+        Assert.Equal(["custom:doc_read", "custom:view"], config.Tools.AvailableTools);
+    }
+
+    /// <summary>
+    ///     Proves the runtime's diversion of a large tool result to a temporary file is switched off,
+    ///     so a result reaches the model inline rather than as a path no allowed tool can read.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_LargeOutputDiversion_IsDisabled()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var agent = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
+
+        // Assert
+        Assert.False(agent.Tools.LargeOutput!.Enabled);
+        Assert.False(engine.Tools.LargeOutput!.Enabled);
+    }
+
+    /// <summary>
+    ///     Proves the runtime's built-in GitHub MCP server is disabled outright on every path, rather
+    ///     than merely filtered by the allow-list.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_GitHubMcpServer_IsDisabled()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var agent = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var resume = CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig([], instructions: null, model: null);
+
+        // Assert
+        Assert.Equal(["github-mcp-server"], agent.Mcp.DisabledServers);
+        Assert.Equal(["github-mcp-server"], resume.Mcp.DisabledServers);
+        Assert.Equal(["github-mcp-server"], engine.Mcp.DisabledServers);
+    }
+
+    /// <summary>
+    ///     Proves a supplied working directory is carried onto the session, and that a session built
+    ///     without one leaves it to the runtime.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_WorkingDirectory_IsCarriedOrLeftToTheRuntime()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+        var workspace = Path.Combine(Path.GetTempPath(), "workspace");
+
+        // Act
+        var carried = CopilotAgentFactory.BuildSessionConfig(
+            tools, instructions: null, onPermissionRequest: null, workingDirectory: workspace);
+        var blank = CopilotAgentFactory.BuildSessionConfig(
+            tools, instructions: null, onPermissionRequest: null, workingDirectory: "  ");
+        var omitted = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+
+        // Assert
+        Assert.Equal(workspace, carried.WorkingDirectory);
+        Assert.Null(blank.WorkingDirectory);
+        Assert.Null(omitted.WorkingDirectory);
+    }
+
+    /// <summary>
+    ///     Proves a resumed agent session is confined exactly as a created one is: the same
+    ///     allow-list and definitions, the same withheld channels, the default-deny handler, and the
+    ///     same model, working directory and instructions.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgentFactory_BuildResumeSessionConfig_DerivesTheSameConfinement()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("doc_write") };
+        var workspace = Path.Combine(Path.GetTempPath(), "workspace");
+
+        // Act
+        var created = CopilotAgentFactory.BuildSessionConfig(
+            tools, "be concise", onPermissionRequest: null, model: "gpt-5.4-mini", workingDirectory: workspace);
+        var resumed = CopilotAgentFactory.BuildResumeSessionConfig(
+            tools, "be concise", onPermissionRequest: null, model: "gpt-5.4-mini", workingDirectory: workspace);
+
+        // Assert: what the session may call, and what is withheld from it
+        Assert.Equal(created.Tools.AvailableTools, resumed.Tools.AvailableTools);
+        Assert.Equal(
+            created.Tools.Definitions!.Select(tool => tool.Name),
+            resumed.Tools.Definitions!.Select(tool => tool.Name));
+        Assert.False(resumed.Skills.Enabled);
+        Assert.True(resumed.Instructions.SkipCustomInstructions);
+        Assert.False(resumed.Tools.LargeOutput!.Enabled);
+        Assert.False(resumed.State.Memory!.Enabled);
+
+        // Assert: the host's own settings
+        Assert.Equal("gpt-5.4-mini", resumed.Model);
+        Assert.Equal(workspace, resumed.WorkingDirectory);
+        Assert.Equal("be concise", resumed.SystemMessage!.Content);
+
+        // Assert: the default-deny handler is installed and rejects a built-in request
+        var decision = await resumed.Permissions.OnRequest!(new PermissionRequest { Kind = "shell" }, null!);
+        Assert.Equal(PermissionDecision.Reject("x").Kind, decision.Kind);
+    }
+
+    /// <summary>
+    ///     Proves token streaming is turned on for the agent's sessions, created and resumed, and left
+    ///     off for the engine's, which take only a turn's final answer.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_AgentPath_EnablesStreaming()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var created = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var resumed = CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
+
+        // Assert
+        Assert.True(created.Events.Streaming);
+        Assert.True(resumed.Events.Streaming);
+        Assert.NotEqual(true, engine.Events.Streaming);
+    }
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name.
     /// </summary>
     /// <param name="name">The tool name.</param>

@@ -234,6 +234,30 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a working directory given to the factory is carried onto every session it builds,
+    ///     and that one built without it leaves the choice to the runtime.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSessionFactory_BuildSessionConfig_WorkingDirectory_IsCarried()
+    {
+        // Arrange: a factory over a scripted runtime, given a working directory
+        var workspace = Path.Combine(Path.GetTempPath(), "corpus");
+        var runtime = new FakeCopilotRuntime();
+        var factory = new CopilotProviderSessionFactory(runtime.Opener, model: null, workingDirectory: workspace);
+
+        // Act
+        await using var session = await factory.CreateAsync(
+            new ProviderSessionSeed(null, [MakeTool("doc_read")], []),
+            TestContext.Current.CancellationToken);
+        var unset = CopilotProviderSessionFactory.BuildProviderSessionConfig(
+            new ProviderSessionSeed(null, [MakeTool("doc_read")], []), _ => { }, model: null);
+
+        // Assert
+        Assert.Equal(workspace, Assert.Single(runtime.Configs).WorkingDirectory);
+        Assert.Null(unset.WorkingDirectory);
+    }
+
+    /// <summary>
     ///     Proves a named model is carried onto the session, and that naming none leaves the choice
     ///     to the runtime — so an application that says nothing about the model gets exactly the
     ///     behavior it had before the parameter existed.

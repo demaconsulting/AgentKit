@@ -243,6 +243,85 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves an agent built by the factory runs a conversation on the Copilot runtime end to end:
+    ///     the session it creates is confined to the supplied tools, the tool traffic and the answer
+    ///     stream back as they happen, and the session is released when the run ends.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime()
+    {
+        // Arrange: an agent over a scripted runtime whose turn calls a tool and streams its answer
+        var runtime = new FakeCopilotRuntime(_ =>
+        [
+            new ScriptedTurn(
+            [
+                CopilotEvents.ToolStart("call-1", "doc_read"),
+                CopilotEvents.ToolComplete("call-1", "CODEWORD: PERIWINKLE-42"),
+                CopilotEvents.Delta("The codeword is ", "m1"),
+                CopilotEvents.Delta("PERIWINKLE-42.", "m1"),
+                CopilotEvents.Assistant("The codeword is PERIWINKLE-42.", messageId: "m1"),
+            ]),
+        ]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")],
+            instructions: "be concise",
+            onPermissionRequest: null,
+            name: "document-assistant",
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer);
+
+        // Act
+        var updates = new List<Microsoft.Agents.AI.AgentResponseUpdate>();
+        await foreach (var update in agent.RunStreamingAsync("what is the codeword?", cancellationToken: TestContext.Current.CancellationToken))
+        {
+            updates.Add(update);
+        }
+
+        // Assert: confined, streamed in order, released
+        Assert.Equal(["custom:doc_read"], Assert.Single(runtime.Configs).Tools.AvailableTools);
+        var contents = updates.SelectMany(update => update.Contents).ToList();
+        Assert.IsType<FunctionCallContent>(contents[0]);
+        Assert.IsType<FunctionResultContent>(contents[1]);
+        Assert.Equal(
+            "The codeword is PERIWINKLE-42.",
+            string.Concat(contents.OfType<TextContent>().Select(text => text.Text)));
+        Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
+    }
+
+    /// <summary>
+    ///     Proves a conversation serialized from one agent resumes on another under the same
+    ///     confinement: the second agent reopens the same runtime session, with the allow-list and
+    ///     the default-deny handler re-applied rather than trusted to the runtime's memory.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Agent_SerializedSession_ResumesUnderTheSameConfinement()
+    {
+        // Arrange: a conversation that ran once on a first agent, then was serialized
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Assistant("noted")])]);
+        IList<AIFunction> tools = [MakeTool("doc_read")];
+        var first = CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var session = await first.CreateSessionAsync(TestContext.Current.CancellationToken);
+        await first.RunAsync("remember the codeword", session, cancellationToken: TestContext.Current.CancellationToken);
+        var serialized = await first.SerializeSessionAsync(session, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: a second agent restores the conversation and runs on it
+        var second = CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var restored = await second.DeserializeSessionAsync(serialized, cancellationToken: TestContext.Current.CancellationToken);
+        await second.RunAsync("what was it?", restored, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the same runtime session, resumed with the confinement re-applied
+        var (sessionId, config) = Assert.Single(runtime.Resumes);
+        Assert.Equal(runtime.Channels[0].SessionId, sessionId);
+        Assert.Equal(["custom:doc_read"], config.Tools.AvailableTools);
+        var decision = await config.Permissions.OnRequest!(new PermissionRequest { Kind = "shell" }, null!);
+        Assert.Equal(PermissionDecision.Reject("x").Kind, decision.Kind);
+    }
+
+    /// <summary>
     ///     Builds a scripted turn that answers and reports the runtime's occupancy.
     /// </summary>
     /// <param name="answer">The answer the turn produces.</param>
