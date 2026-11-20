@@ -1,0 +1,84 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Opt-in live integration suite for the AgentKit Copilot package.
+
+       It runs AgentKit's confinement, agent and session engine against the REAL Copilot runtime
+       with a real model, which the hermetic unit tests deliberately cannot. It is therefore:
+       - NOT part of AgentKit.slnx, so build.ps1, 'dotnet test' at the repository root and the
+         build.yaml merge gate never build or run it;
+       - gated a second time inside every test on the AGENTKIT_COPILOT_LIVE_MODEL environment
+         variable, which also names the (cheap) model to use, so an accidental run costs nothing;
+       - run by the live-copilot-suite job in live_samples.yaml, and by hand as described in the
+         verification documentation.
+
+       It authenticates as the logged-in GitHub user, or from GH_TOKEN / GITHUB_TOKEN. -->
+
+  <PropertyGroup>
+    <!-- Build Configuration -->
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Code Quality Configuration -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- The Copilot SDK marks its permission-decision RPC surface with the MCPSDK001
+         "evaluation purposes only" diagnostic. These tests exercise that surface directly, so the
+         diagnostic is suppressed for this test project. -->
+    <NoWarn>$(NoWarn);MCPSDK001</NoWarn>
+  </PropertyGroup>
+
+  <!-- Implicit Usings -->
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Test Framework Dependencies -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Code Analysis Dependencies -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.403">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Copilot Runtime Provisioning: this suite hosts the Copilot runtime, so it references
+       Microsoft.Copilot.SDK directly, exactly as a consuming application must. The SDK's build
+       targets download the native runtime for the build machine's platform and copy it into this
+       project's output; they run only in a project that references the SDK directly. The version
+       matches the library's own reference. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
+  </ItemGroup>
+
+  <!-- Project References -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
+    <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
+  </ItemGroup>
+
+</Project>

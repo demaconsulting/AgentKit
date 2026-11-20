@@ -117,6 +117,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DemaConsulting.AgentKit.Agents.Copilot.Tests" />
+    <!-- The opt-in live suite builds sessions through the same internal configuration builders the
+         unit tests assert on, so what it measures against the real runtime is exactly what ships. -->
+    <InternalsVisibleTo Include="DemaConsulting.AgentKit.Agents.Copilot.LiveTests" />
   </ItemGroup>
 
   <ItemGroup>
