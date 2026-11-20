@@ -21,17 +21,17 @@ composition can withhold the family from a host that cannot delegate.
 
 The class is sealed and immutable after construction; it is safe for concurrent use.
 
-| Member                    | Type                      | Invariant                                            |
-|---------------------------|---------------------------|------------------------------------------------------|
-| `FamilyPrefix` (constant) | `string`                  | `agent`; leads every tool name it creates            |
-| `IToolPack.FamilyPrefix`  | `string`                  | Reports the constant above                           |
-| `RequiredCapabilities`    | `HostCapabilities`        | `Delegation`; the family is gated on it              |
-| `_profiles`               | `List<AgentProfile>`      | Immutable snapshot; no duplicate name                |
-| `_childPacks`             | `List<IToolPack>`         | Packs, not tools; no `AgentPack`; unique prefixes    |
-| `_runner`                 | Host runner delegate      | The host's means of starting an agent                |
-| `_hostCapabilities`       | `HostCapabilities`        | Applied when composing a child                       |
-| `_depth`                  | `int`                     | Depth of the agent this pack is composed for         |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; exactly the run tool      |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` (constant) | `string` | `agent`; leads every tool name it creates |
+| `IToolPack.FamilyPrefix` | `string` | Reports the constant above |
+| `RequiredCapabilities` | `HostCapabilities` | `Delegation`; the family is gated on it |
+| `_profiles` | `List<AgentProfile>` | Immutable snapshot; no duplicate name |
+| `_childPacks` | `List<IToolPack>` | Packs, not tools; no `AgentPack`; unique prefixes |
+| `_runner` | Host runner delegate | The host's means of starting an agent |
+| `_hostCapabilities` | `HostCapabilities` | Applied when composing a child |
+| `_depth` | `int` | Depth of the agent this pack is composed for |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; exactly the run tool |
 
 The prefix is published both as a constant and through the contract. The constant lets a test or
 a composing application name the family without repeating a string literal, and the contract

@@ -31,25 +31,25 @@ inside the package.
 
 ## OTS Items
 
-| OTS Item                             | Purpose                                                              |
-|--------------------------------------|----------------------------------------------------------------------|
-| ApiMark                              | Generates Markdown API reference documentation from XML doc comments |
-| BuildMark                            | Generates build-notes documentation from GitHub Actions metadata     |
-| CanvasNet                            | Raster imaging: header inspection, decoding, cropping, encoding      |
-| FileAssert                           | Validates generated documents (HTML/PDF) against acceptance criteria |
-| Microsoft.Agents.AI                  | Runtime library defining `AIAgent` and `ChatClientAgent`             |
-| Microsoft.Agents.AI.GitHub.Copilot   | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |
-| Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency  |
-| OllamaSharp                          | Ollama client library: loaded-model report, context-length option    |
-| Pandoc                               | Converts Markdown documentation to HTML                              |
-| ReqStream                            | Enforces requirements-to-test traceability                           |
-| ReviewMark                           | Enforces file review coverage and currency                           |
-| SarifMark                            | Converts CodeQL SARIF results into a markdown report                 |
-| SonarMark                            | Generates a SonarCloud quality report                                |
-| SysML2Tools                          | Validates the SysML2 architecture model and renders its views to SVG |
-| VersionMark                          | Captures and publishes tool-version information                      |
-| WeasyPrint                           | Converts HTML documentation to PDF                                   |
-| xUnit                                | Discovers and executes unit and integration tests                    |
+| OTS Item | Purpose |
+| --- | --- |
+| ApiMark | Generates Markdown API reference documentation from XML doc comments |
+| BuildMark | Generates build-notes documentation from GitHub Actions metadata |
+| CanvasNet | Raster imaging: header inspection, decoding, cropping, encoding |
+| FileAssert | Validates generated documents (HTML/PDF) against acceptance criteria |
+| Microsoft.Agents.AI | Runtime library defining `AIAgent` and `ChatClientAgent` |
+| Microsoft.Agents.AI.GitHub.Copilot | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |
+| Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency |
+| OllamaSharp | Ollama client library: loaded-model report, context-length option |
+| Pandoc | Converts Markdown documentation to HTML |
+| ReqStream | Enforces requirements-to-test traceability |
+| ReviewMark | Enforces file review coverage and currency |
+| SarifMark | Converts CodeQL SARIF results into a markdown report |
+| SonarMark | Generates a SonarCloud quality report |
+| SysML2Tools | Validates the SysML2 architecture model and renders its views to SVG |
+| VersionMark | Captures and publishes tool-version information |
+| WeasyPrint | Converts HTML documentation to PDF |
+| xUnit | Discovers and executes unit and integration tests |
 
 Each item's individual design document (`docs/design/ots/{ots-name}.md`) records its Purpose,
 Features Used, and Integration Pattern. Each item's requirements and verification evidence are

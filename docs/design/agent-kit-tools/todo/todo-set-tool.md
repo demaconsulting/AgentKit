@@ -25,10 +25,10 @@ instruction will observe that the model mostly does not call it.
 
 The class is static and holds no state. A constructed tool captures only the store it was given.
 
-| Member        | Type       | Invariant                                              |
-| ------------- | ---------- | ------------------------------------------------------ |
-| `ToolName`    | `string`   | `todo_set`; public constant; carries the prefix        |
-| Text result   | `string`   | `Task '<id>' is <status>. The list now has N item(s).` |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `todo_set`; public constant; carries the prefix |
+| Text result | `string` | `Task '<id>' is <status>. The list now has N item(s).` |
 
 The result's noun agrees with the count, because a result that reads `1 items` is the kind of
 small wrongness that makes a model doubt the rest of the sentence.

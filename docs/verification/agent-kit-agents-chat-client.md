@@ -36,7 +36,7 @@ credentials, and a model's non-deterministic description of an image without obs
 this system performs. The same holds for the session adapter, where a live model would contribute
 only its own tokenizer's arithmetic to figures this system deliberately does not compute. The
 evidence that the promotion solves the real problem is the exploratory work recorded in the Core
-_ImagePromotingChatClient Unit Design_, not a live-model test.
+*ImagePromotingChatClient Unit Design*, not a live-model test.
 
 System tests reside in `AgentKitAgentsChatClientTests.cs` within the
 `DemaConsulting.AgentKit.Agents.ChatClient.Tests` project.

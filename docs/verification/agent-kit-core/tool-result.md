@@ -7,14 +7,14 @@ This document describes the unit-level verification strategy for the `ToolResult
 
 `ToolResult` is verified through unit tests that call the result constructors directly and
 inspect the concrete runtime shape of what they return. `ToolName` is used as a real dependency
-rather than a substitute — it is a documented dependency in _ToolResult Unit Design_, and
+rather than a substitute — it is a documented dependency in *ToolResult Unit Design*, and
 substituting it would remove exactly the redirect validation one scenario exists to confirm.
 
 The captioned scenarios assert the **exact** shape — a two-element list with the caption first
 and the content second — rather than merely that two parts exist. That precise shape is the one
 proven to be flattened into JSON when a tool is built without the result-delivery guard, so
-pinning it here is what makes the guard's own scenarios meaningful; see _GuardedToolFactory Unit
-Verification Design_.
+pinning it here is what makes the guard's own scenarios meaningful; see *GuardedToolFactory Unit
+Verification Design*.
 
 The refusal scenarios are written as a theory over every defined `DenialReason` member, so a
 member added later without thought is caught here rather than at a model's tool call.
@@ -146,4 +146,4 @@ Asserts the composed text is exactly the fixed prefix, the reason name and the c
 and contains no directory separator at all. This is the `ToolResult`-level guarantee that the
 library adds no host detail of its own; whether any host detail appears is entirely the caller's
 choice of `message`. `PathPolicy` exercises that choice by deliberately disclosing host paths —
-see _PathPolicy Unit Verification Design_.
+see *PathPolicy Unit Verification Design*.

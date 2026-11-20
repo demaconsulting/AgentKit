@@ -298,7 +298,7 @@ sections:
           answer, so there is none. Embedding only a short descriptor and returning a richer
           payload beside it separates findability from sufficiency, which a single text cannot do.
           Near-duplicate detection is arithmetic because every attempt to have the model notice a
-          contradiction by judgement failed while the arithmetic caught a 12-psi against an 18-psi
+          contradiction by judgment failed while the arithmetic caught a 12-psi against an 18-psi
           statement at 0.965 cosine, and its outcome is structured because the same outcome in
           prose was followed by the model asserting it had stored the fact. That check reads the
           store and then writes to it within one filing call, so it is scoped to that call rather

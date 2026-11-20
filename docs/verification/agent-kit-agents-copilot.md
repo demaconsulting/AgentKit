@@ -23,7 +23,7 @@ the ownership discipline are all exercised end to end, offline.
 sealed with non-public constructors and no virtual members, so neither can be faked, subclassed or
 constructed in a test. AgentKit therefore reaches them through one internal seam,
 `ICopilotTurnChannel`, whose production implementation forwards two calls and owns one disposal; see
-_CopilotTurnChannel Unit Verification Design_, which states plainly what that leaves unexercised. The
+*CopilotTurnChannel Unit Verification Design*, which states plainly what that leaves unexercised. The
 SDK's event types, by contrast, are all constructable, so nothing about the event shapes is
 simulated.
 
@@ -189,8 +189,8 @@ Asserting only the first would leave a rotation free to hand the conversation ba
 compactor at the runtime's own threshold, which is precisely the divergence this configuration exists
 to prevent and precisely the kind of defect a single-session assertion would miss. The value that
 configuration carries — a background-compaction threshold well above the engine's rotation point — is
-asserted at the unit level, in _CopilotAgentFactory Unit Verification Design_ and
-_CopilotProviderSessionFactory Unit Verification Design_, because it is set in one place for all
+asserted at the unit level, in *CopilotAgentFactory Unit Verification Design* and
+*CopilotProviderSessionFactory Unit Verification Design*, because it is set in one place for all
 three engine paths.
 
 ## Acceptance Criteria

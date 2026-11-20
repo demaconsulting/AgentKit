@@ -14,7 +14,7 @@ than relying on manual sign-off.
   evidence store
 - Review-plan coverage reporting: the plan's coverage section states whether every file requiring
   review belongs to a review-set and lists by path any file that belongs to none
-- Evidence-index scanning (`--index`) of PDF review evidence into an `index.json` catalogue
+- Evidence-index scanning (`--index`) of PDF review evidence into an `index.json` catalog
 - Enforcement mode (`--enforce`), which exits non-zero when files in a review-set are not current
 - Elaboration mode (`--elaborate`), which prints a review-set's ID, fingerprint, and file list for
   agent consumption

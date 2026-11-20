@@ -20,13 +20,13 @@ a job that quietly loses its fourth phase.
 
 The subsystem contains five units:
 
-| Unit             | Responsibility                                                            |
-| ---------------- | ------------------------------------------------------------------------- |
-| `TodoStore`      | Holds one agent's flat task list; internal, allocated per composition     |
-| `TodoListTool`   | Publishes `todo_list`: reports the list in the order it was written down  |
-| `TodoSetTool`    | Publishes `todo_set`: adds a step, or updates one already carrying its id |
-| `TodoRemoveTool` | Publishes `todo_remove`: drops a step that is no longer part of the work  |
-| `TodoPack`       | Publishes the three tools as one family under the `todo` prefix           |
+| Unit | Responsibility |
+| --- | --- |
+| `TodoStore` | Holds one agent's flat task list; internal, allocated per composition |
+| `TodoListTool` | Publishes `todo_list`: reports the list in the order it was written down |
+| `TodoSetTool` | Publishes `todo_set`: adds a step, or updates one already carrying its id |
+| `TodoRemoveTool` | Publishes `todo_remove`: drops a step that is no longer part of the work |
+| `TodoPack` | Publishes the three tools as one family under the `todo` prefix |
 
 ### Interfaces
 
@@ -36,13 +36,13 @@ publishes and the `TodoPack.SuggestedInstruction` string. Each tool's factory is
 family prefix — and the store one composition holds is not reachable from another composition's
 tools.
 
-| Interface                       | Direction | Format                       | Constraints                            |
-| ------------------------------- | --------- | ---------------------------- | -------------------------------------- |
-| `TodoPack`                      | Outbound  | AgentKitCore `IToolPack`     | Prefix `todo`; no capability           |
-| `Todo*Tool.ToolName`            | Outbound  | `string` constant            | The name each tool is published under  |
-| `TodoPack.SuggestedInstruction` | Outbound  | `string` constant            | Instruction text for the agent         |
-| `TodoStore`                     | Internal  | Flat task list store         | One instance per tool composition      |
-| `PathPolicy`                    | Inbound   | AgentKitCore policy object   | Accepted at construction and ignored   |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `TodoPack` | Outbound | AgentKitCore `IToolPack` | Prefix `todo`; no capability |
+| `Todo*Tool.ToolName` | Outbound | `string` constant | The name each tool is published under |
+| `TodoPack.SuggestedInstruction` | Outbound | `string` constant | Instruction text for the agent |
+| `TodoStore` | Internal | Flat task list store | One instance per tool composition |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Accepted at construction and ignored |
 
 The subsystem consumes `PathPolicy`, `ToolResult`, `GuardedToolFactory`, `IToolPack` and
 `HostCapabilities` from AgentKitCore, and `AIFunction` from

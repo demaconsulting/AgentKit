@@ -6,7 +6,7 @@ This document describes the unit-level verification strategy for the `PathPolicy
 
 `PathPolicy` is verified through unit tests that exercise the policy against a **real file
 system**. `RealPathResolver` and `PathRule` are used as real dependencies
-rather than substitutes — both are documented dependencies in _PathPolicy Unit Design_, and
+rather than substitutes — both are documented dependencies in *PathPolicy Unit Design*, and
 substituting either would remove exactly the behavior the tests exist to confirm.
 
 The suite verifies the current path model from an agent's viewpoint. A policy has one required
@@ -25,7 +25,7 @@ relative output only when the working directory is granted and the result lies w
 the emitted name is absolute.
 
 One scenario is written as a contrast rather than as a plain assertion, so that it cannot quietly
-become vacuous: the naive-prefix scenario asserts that a text-based check _would_ accept the
+become vacuous: the naive-prefix scenario asserts that a text-based check *would* accept the
 request before asserting the policy refuses it. Denial
 scenarios verify the disclosure behavior: the request is echoed, a relative interpretation is
 reported only when one occurred and in canonical (lexically normalized) form with `.` and `..`
@@ -138,7 +138,7 @@ write back into the read-only work location.
 **Test**: `PathPolicy_TryResolveWrite_InsideReadOnlyGrant_DenialHeadlineNamesThePermission`
 
 Attempts a write to a file squarely inside a granted read-only location and asserts the denial
-_headline_ — not merely the grant list beneath it — reads
+*headline* — not merely the grant list beneath it — reads
 `Denied: inside a permitted location, but no grant there permits this access.` A headline of
 "outside every permitted location" would state something untrue and contradict the `(read-only)`
 grant printed below, losing the distinction between "wrong place" and "right place, wrong

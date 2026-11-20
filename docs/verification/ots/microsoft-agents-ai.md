@@ -20,7 +20,7 @@ it: one test observes the built agent carries the supplied name, and another sen
 image through the client the agent talks to and observes it reach a user message. Together they prove
 `AIAgent` and `ChatClientAgent` behave as required. These tests run on every platform with no
 platform filter, so a single-OS run satisfies them. A live end-to-end run against a real provider is
-out of automated scope, as recorded in the _AgentKitAgentsChatClient System Verification Design_.
+out of automated scope, as recorded in the *AgentKitAgentsChatClient System Verification Design*.
 
 ### Test Scenarios
 

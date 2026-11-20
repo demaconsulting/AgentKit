@@ -48,8 +48,8 @@ the plain agent path configures them.
 reasons about the window as overhead — the system message and the tool declarations — against the
 conversation. A record placed in the system message is charged as overhead, so overhead grows at
 every rotation while the conversation appears small, and the engine's model of its own window drifts
-from the runtime's; the figures a live run produced are in _AgentKitAgentsCopilot System Verification
-Design_. Compacted content belongs in the region that gets compacted. Secondarily, tool output in the
+from the runtime's; the figures a live run produced are in *AgentKitAgentsCopilot System Verification
+Design*. Compacted content belongs in the region that gets compacted. Secondarily, tool output in the
 instructions channel reads with more authority than it has earned. Nothing rests on how the record is
 delimited: the material was already in the model's context before it was consolidated, so seeding it
 back grants nothing new, and this library's guarantee is the tool policy rather than prompt hygiene.
@@ -70,7 +70,7 @@ provider's role mapping can drop part of a message without dropping the message.
 
 Conversational attachments, session resumption, the session RPC's message queue, the runtime's own
 prompt-section overrides, and a priming message sent on its own were each considered and rejected,
-with the evidence against each recorded in _CopilotProviderSessionFactory Unit Design_.
+with the evidence against each recorded in *CopilotProviderSessionFactory Unit Design*.
 
 Two consequences are stated rather than hidden. The record now lives in Copilot's **conversation**,
 where the runtime's own truncation could in principle drop it — which was the decisive objection to
@@ -124,7 +124,7 @@ and costs nothing, but the runtime ignores it. Measured against the live runtime
 with the flag false compacted as soon as its threshold was crossed, exactly as a session created with
 the flag true did; a session whose threshold was not crossed did not compact whatever the flag said.
 The threshold is the honored setting, so the threshold is the one relied on. The measurement itself
-is recorded in _AgentKitAgentsCopilot System Verification Design_.
+is recorded in *AgentKitAgentsCopilot System Verification Design*.
 
 **The threshold is deliberately not raised to 1.0.** The runtime's last-resort behavior is worth
 keeping for the case where something extraordinary happens, so a rewrite remains possible rather than
@@ -132,8 +132,8 @@ impossible. The session observer watches for the runtime's own compaction and tr
 the provider session refuses the next turn if one arrives — before a turn is sent as well as after
 one returns — naming the cause. That converts a silent divergence into a diagnosable failure, which
 is the convention this library already follows wherever it cannot know something it needs. It is also
-what makes it safe to carry a rotation's record on the conversation channel; see _A Session the Engine
-Cannot Account For Is Finished_ below.
+what makes it safe to carry a rotation's record on the conversation channel; see *A Session the Engine
+Cannot Account For Is Finished* below.
 
 **The agent path is deliberately asymmetric.** A plain Copilot agent has no AgentKit compactor behind
 it, so changing the runtime's compaction there would remove protection rather than prevent a
@@ -143,7 +143,7 @@ neither can be tidied into the other by accident.
 ## Occupancy Comes From the Runtime
 
 Core's session engine asks one question — how full, out of how much — and believes the answer. The
-stateless adapter has to be _told_ its window, because an `IChatClient` publishes none. Copilot is
+stateless adapter has to be *told* its window, because an `IChatClient` publishes none. Copilot is
 the opposite: it reports the tokens it currently holds, the limit it will hold them to, and how much
 of the total the conversation accounts for, all in one event and all counted with the same
 tokenizer.
@@ -169,10 +169,10 @@ Without a seam, the whole session adapter — the seeding, the usage arithmetic,
 ownership discipline — would ship with no automated evidence at all, on the one provider the project
 can otherwise reach. `ICopilotTurnChannel` is therefore one interface with one method, and the
 production implementation behind it forwards two calls and owns one disposal. Every decision worth
-testing lives above that line; what lies below it is stated plainly as untested in _CopilotTurnChannel
-Unit Verification Design_ rather than implied to be covered.
+testing lives above that line; what lies below it is stated plainly as untested in *CopilotTurnChannel
+Unit Verification Design* rather than implied to be covered.
 
-Every session _event_ type, by contrast, is trivially constructable, so the tests drive the SDK's own
+Every session *event* type, by contrast, is trivially constructable, so the tests drive the SDK's own
 event objects through the adapter's own matching code. The seam is narrow, and what crosses it is
 real.
 
@@ -196,13 +196,13 @@ consequence — a self-contained or RID-targeted publish resolves and ships the 
 the target runtime identifier, and a portable publish defers that resolution to the target machine.
 This is a property of the off-the-shelf SDK, not of AgentKit's code, and it is the reason this
 dependency is isolated in its own package rather than admitted anywhere broader. It is recorded here
-and in the _Microsoft.Agents.AI.GitHub.Copilot Design_.
+and in the *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ## Dependency Isolation
 
 This system carries `Microsoft.Agents.AI.GitHub.Copilot` (and, transitively, the Microsoft Agent
 Framework runtime and the native Copilot SDK). Core admits none of that weight: it takes exactly
-one runtime dependency, as recorded in _AgentKitCore System Design_.
+one runtime dependency, as recorded in *AgentKitCore System Design*.
 Isolating it in its own package is exactly what the dependency justifies: an application that never
 builds a Copilot agent never takes the dependency or its native runtime. The system references Core
 and `Microsoft.Agents.AI.GitHub.Copilot` and nothing else.
@@ -247,7 +247,7 @@ and will dispose. Everything else in the package is internal.
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
 
 The application supplies no context window: occupancy and limit come from the runtime's own event
-stream, as recorded in _Occupancy Comes From the Runtime_.
+stream, as recorded in *Occupancy Comes From the Runtime*.
 
 ## Data Flow
 
@@ -285,11 +285,11 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 - **AgentKitCore** — supplies the family-prefix tool convention and the `AIFunction` currency the
   supplied tools are built from, and the session contracts the adapter implements —
   `IProviderSession`, `IProviderSessionFactory`, `ISummarizer`, `ProviderSessionSeed`,
-  `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`; see _AgentKitCore
-  System Design_.
+  `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`; see *AgentKitCore
+  System Design*.
 - **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `CopilotSession`,
   `SessionConfig`, the session-config agent-construction path, the permission RPC, and the session
-  event stream; see _Microsoft.Agents.AI.GitHub.Copilot Design_. Carries a RID-specific native
+  event stream; see *Microsoft.Agents.AI.GitHub.Copilot Design*. Carries a RID-specific native
   runtime, as noted above.
 
 ## Risk Control Measures
@@ -301,7 +301,7 @@ path withholds.
 
 - **The derived allow-list.** The session's available-tools allow-list is assigned from the same
   collection published as the session's tools, so the two cannot drift apart and no built-in tool is
-  ever admitted. This is the segregation the package exists for; see _Purpose_.
+  ever admitted. This is the segregation the package exists for; see *Purpose*.
 - **The default-safe permission handler.** With no host handler supplied, a request is approved only
   when it names one of the supplied tools; everything else — including every built-in request — is
   rejected without asking a user who could not adjudicate it.

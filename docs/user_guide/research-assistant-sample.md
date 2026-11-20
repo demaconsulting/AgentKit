@@ -5,7 +5,7 @@ document-assistant sample shows what an agent may *touch*, this one shows how an
 it composes the three families that let work span turns — `todo` to plan, `memory` to remember, and
 `agent` to delegate — onto a single policy, carries the conversation on a session that compacts its
 own context, and runs against the GitHub Copilot runtime or
-any Ollama model. Refer to the sample's own README for the full option reference and a catalogue of
+any Ollama model. Refer to the sample's own README for the full option reference and a catalog of
 things to try.
 
 ## Three Families, One Composition

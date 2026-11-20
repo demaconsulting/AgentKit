@@ -18,13 +18,13 @@ empty slot is a refusal naming the slot rather than a silent no-op.
 The class is static and holds no state. A constructed tool captures two immutable references: the
 `PathPolicy` supplied by the pack and the `TextFileLineBuffers` instance shared with cut.
 
-| Member            | Type                  | Invariant                                                    |
-| ----------------- | --------------------- | ------------------------------------------------------------ |
-| `ToolName`        | `string`              | `text_file_paste_lines`; public constant; carries the prefix |
-| `ToolDescription` | `string`              | Non-empty; explains append behavior and default slot         |
-| `PathPolicy`      | `PathPolicy`          | Captured by the guarded delegate                             |
-| Buffer store      | `TextFileLineBuffers` | Captured by the delegate; shared with cut                    |
-| Denial messages   | `string`              | Tool-composed constants; policy denials come from policy     |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_paste_lines`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; explains append behavior and default slot |
+| `PathPolicy` | `PathPolicy` | Captured by the guarded delegate |
+| Buffer store | `TextFileLineBuffers` | Captured by the delegate; shared with cut |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `path`, optional `atLine`, and optional `name`. A missing or whitespace name uses
 `TextFileLineBuffers.DefaultSlot`.

@@ -17,7 +17,7 @@ and the failing case, and the difference appears only in what the provider's int
 test against a real provider would therefore require network access, credentials and a model's
 non-deterministic description of an image, and would still not observe the rewrite this unit
 performs. The evidence that the promotion solves the real problem is the exploratory work recorded
-in _ImagePromotingChatClient Unit Design_, not a unit test.
+in *ImagePromotingChatClient Unit Design*, not a unit test.
 
 The fake is written by hand rather than substituted, because the streaming member returns an
 asynchronous sequence a substitute would have to be taught to produce anyway. It records the

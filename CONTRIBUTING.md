@@ -49,7 +49,12 @@ We follow a standard GitHub workflow for contributions:
 
 - [.NET SDK][dotnet-download] 8.0, 9.0, or 10.0
 - Git
+- [PowerShell 7+][pwsh] to run `build.ps1`, `fix.ps1`, and `lint.ps1`
+- [Python 3][python] (`lint.ps1` installs the YAML linters `yamllint` and `yamlfix` into a local `.venv`)
 - A code editor (Visual Studio, VS Code, or Rider recommended)
+
+The remaining linters (TextLint for spell-checking and LintMark for Markdown) are .NET local tools restored by
+`dotnet tool restore`; no Node.js or npm installation is required.
 
 ### Getting Started
 
@@ -167,7 +172,7 @@ dotnet test --collect "XPlat Code Coverage"
 
 ### Markdown Guidelines
 
-All markdown files must follow these rules (enforced by markdownlint):
+All markdown files must follow these rules (enforced by LintMark, configured in `.lintmark.yaml`):
 
 - Maximum line length: 120 characters
 - Use ATX-style headers (`# Header`)
@@ -180,11 +185,12 @@ All markdown files must follow these rules (enforced by markdownlint):
 
 ### Spell Checking
 
-All files are spell-checked using cspell. **Never** add a word to the `.cspell.yaml` word list in order to silence a
-spell-checking failure. Doing so defeats the purpose of spell-checking and reduces the quality of the repository.
+All files are spell-checked using TextLint. **Never** add a word to the `.textlint.yaml` word list in order to
+silence a spell-checking failure. Doing so defeats the purpose of spell-checking and reduces the quality of the
+repository.
 
-- If cspell flags a word that is **misspelled**, fix the spelling in the source file.
-- If cspell flags a word that is a **genuine technical term** (tool name, project identifier, etc.) and is spelled
+- If TextLint flags a word that is **misspelled**, fix the spelling in the source file.
+- If TextLint flags a word that is a **genuine technical term** (tool name, project identifier, etc.) and is spelled
   correctly, raise a **proposal** (e.g. comment in a pull request) explaining why the word should be added. The
   proposal must be reviewed and approved before the word is added to the list.
 
@@ -291,6 +297,8 @@ Thank you for contributing to AgentKit!
 
 [code-of-conduct]: https://github.com/demaconsulting/AgentKit/blob/main/CODE_OF_CONDUCT.md
 [dotnet-download]: https://dotnet.microsoft.com/download
+[pwsh]: https://learn.microsoft.com/powershell/scripting/install/installing-powershell
+[python]: https://www.python.org/downloads/
 [csharp-conventions]: https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions
 [reqstream]: https://github.com/demaconsulting/ReqStream
 [discussions]: https://github.com/demaconsulting/AgentKit/discussions

@@ -23,13 +23,13 @@ authority the child carries.
 
 The class is sealed and immutable after construction; a profile is safe for concurrent use.
 
-| Member         | Type                     | Invariant                                                    |
-|----------------|--------------------------|--------------------------------------------------------------|
-| `Name`         | `string`                 | Non-empty; compared ordinally                                |
-| `Instructions` | `string`                 | Non-empty; written by the application                        |
-| `Description`  | `string?`                | Non-null when supplied; shown to the model beside the name   |
-| `Tools`        | `IReadOnlyList<string>`  | Non-null; no null or empty entry; may be empty               |
-| `Grants`       | `IReadOnlyList<PathRule>`| Non-null; no null entry; empty when the profile narrows none |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `Name` | `string` | Non-empty; compared ordinally |
+| `Instructions` | `string` | Non-empty; written by the application |
+| `Description` | `string?` | Non-null when supplied; shown to the model beside the name |
+| `Tools` | `IReadOnlyList<string>` | Non-null; no null or empty entry; may be empty |
+| `Grants` | `IReadOnlyList<PathRule>` | Non-null; no null entry; empty when the profile narrows none |
 
 The tool and grant collections are materialized from their source sequences at construction, so a
 caller mutating the source afterwards cannot change what the profile admits.

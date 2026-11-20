@@ -19,10 +19,10 @@ reason about, and a filtered view is exactly how an item gets forgotten.
 
 The class is static and holds no state. A constructed tool captures only the store it was given.
 
-| Member            | Type     | Invariant                                             |
-| ----------------- | -------- | ----------------------------------------------------- |
-| `ToolName`        | `string` | `todo_list`; public constant; carries the prefix      |
-| Structured result | object   | `itemCount` and an ordered `items` array              |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `todo_list`; public constant; carries the prefix |
+| Structured result | object | `itemCount` and an ordered `items` array |
 
 The structured result has `itemCount` and `items`. Each item has `id`, `title`, `status` and
 `note`. An empty list is reported as an empty result, not refused.

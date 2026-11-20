@@ -18,13 +18,13 @@ model reads a numbered window, cuts the lines it saw, and can later paste the ca
 The class is static and holds no state. A constructed tool captures two immutable references: the
 `PathPolicy` supplied by the pack and the `TextFileLineBuffers` instance shared with paste.
 
-| Member            | Type                  | Invariant                                                  |
-| ----------------- | --------------------- | ---------------------------------------------------------- |
-| `ToolName`        | `string`              | `text_file_cut_lines`; public constant; carries the prefix |
-| `ToolDescription` | `string`              | Non-empty; explains the 1-based inclusive range            |
-| `PathPolicy`      | `PathPolicy`          | Captured by the guarded delegate                           |
-| Buffer store      | `TextFileLineBuffers` | Captured by the delegate; shared with paste                |
-| Denial messages   | `string`              | Tool-composed constants; policy denials come from policy   |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_cut_lines`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; explains the 1-based inclusive range |
+| `PathPolicy` | `PathPolicy` | Captured by the guarded delegate |
+| Buffer store | `TextFileLineBuffers` | Captured by the delegate; shared with paste |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `path`, `startLine`, `endLine`, and optional `name`. A missing or whitespace name
 uses `TextFileLineBuffers.DefaultSlot`.

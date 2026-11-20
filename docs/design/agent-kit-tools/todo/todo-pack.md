@@ -28,12 +28,12 @@ The class is sealed and stateless. The store it allocates is local to each `Crea
 a field on the pack, because a store held on the pack would be shared between every composition
 that used the same pack instance.
 
-| Member                   | Type               | Invariant                                        |
-| ------------------------ | ------------------ | ------------------------------------------------ |
-| `FamilyPrefix`           | `string`           | `todo`; every published tool name starts here    |
-| `IToolPack.FamilyPrefix` | `string`           | Explicit implementation returning `FamilyPrefix` |
-| `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host    |
-| `SuggestedInstruction`   | `string`           | The instruction wording measured at 3-of-3 runs  |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` | `string` | `todo`; every published tool name starts here |
+| `IToolPack.FamilyPrefix` | `string` | Explicit implementation returning `FamilyPrefix` |
+| `RequiredCapabilities` | `HostCapabilities` | `None`; the family is available to every host |
+| `SuggestedInstruction` | `string` | The instruction wording measured at 3-of-3 runs |
 
 The returned tool collection contains, in order, `TodoListTool`, `TodoSetTool` and
 `TodoRemoveTool`.

@@ -98,7 +98,7 @@ sections:
               covers one call only, and calls in flight together may each store.
             justification: |
               Every attempt in the originating spike to have the model notice a contradiction by
-              judgement failed; the arithmetic succeeded, scoring a 12-psi against an 18-psi
+              judgment failed; the arithmetic succeeded, scoring a 12-psi against an 18-psi
               statement of one fact at 0.965 cosine. The check is nearly free because the vectors
               it compares are already computed. Reporting the outcome as structured data is a
               defect fix rather than a style choice: when the same outcome was returned as a

@@ -5,7 +5,7 @@ described earlier in this guide together into a working console application. It 
 locations — a workspace folder of documents and a separate session folder for the artifacts the agent
 produces — hands it the text-file, file, Markdown, and image tool packs, and runs the same conversation against either
 the GitHub Copilot runtime or an Ollama model. Refer to the sample's own README for the full option
-reference and a catalogue of things to try.
+reference and a catalog of things to try.
 
 ## Two Locations, One Anchor
 

@@ -18,12 +18,12 @@ public class MemoryUpdateToolTests
     {
         var token = TestContext.Current.CancellationToken;
         var vector = (await new StubEmbeddingGenerator()
-            .GenerateAsync(["Rear tyre pressure for touring."], options: null, token))[0].Vector;
+            .GenerateAsync(["Rear tire pressure for touring."], options: null, token))[0].Vector;
 
         await store.AddAsync(
             new MemoryRecord(
-                "mem-tyre",
-                "Rear tyre pressure for touring.",
+                "mem-tire",
+                "Rear tire pressure for touring.",
                 "12 psi cold.",
                 "01-initial.md",
                 "Section 4.2",
@@ -65,17 +65,17 @@ public class MemoryUpdateToolTests
         // Arrange: a store holding one memory
         var store = new InMemoryMemoryStore();
         await GivenOneMemoryAsync(store);
-        var before = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var before = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         var tool = MemoryUpdateTool.Create(store);
 
         // Act: correct the payload
-        var result = await UpdateAsync(tool, "mem-tyre", "12 psi cold, measured at the valve.");
+        var result = await UpdateAsync(tool, "mem-tire", "12 psi cold, measured at the valve.");
 
         // Assert: the details changed and nothing else did
         var element = Assert.IsType<JsonElement>(result);
         Assert.True(element.GetProperty("updated").GetBoolean());
 
-        var after = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var after = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.NotNull(after);
         Assert.Equal("12 psi cold, measured at the valve.", after.Details);
         Assert.Equal(before!.Descriptor, after.Descriptor);
@@ -98,11 +98,11 @@ public class MemoryUpdateToolTests
         var tool = MemoryUpdateTool.Create(store);
 
         // Act: update
-        var result = await UpdateAsync(tool, "mem-tyre", "18 psi cold.");
+        var result = await UpdateAsync(tool, "mem-tire", "18 psi cold.");
 
         // Assert: the unchanged parts are stated rather than left for the model to assume
         var element = Assert.IsType<JsonElement>(result);
-        Assert.Equal("Rear tyre pressure for touring.", element.GetProperty("descriptor").GetString());
+        Assert.Equal("Rear tire pressure for touring.", element.GetProperty("descriptor").GetString());
         Assert.Equal("01-initial.md", element.GetProperty("sourceDocument").GetString());
         Assert.Equal("Section 4.2", element.GetProperty("sourceLocator").GetString());
     }
@@ -147,13 +147,13 @@ public class MemoryUpdateToolTests
 
         // Act: omit each required argument in turn
         var noIdentifier = await UpdateAsync(tool, null, "Some details.");
-        var noDetails = await UpdateAsync(tool, "mem-tyre", null);
+        var noDetails = await UpdateAsync(tool, "mem-tire", null);
 
         // Assert: both are refusals and the memory is untouched
         Assert.StartsWith("Denied (", Assert.IsType<string>(noIdentifier), StringComparison.Ordinal);
         Assert.StartsWith("Denied (", Assert.IsType<string>(noDetails), StringComparison.Ordinal);
 
-        var unchanged = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var unchanged = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.Equal("12 psi cold.", unchanged?.Details);
     }
 

@@ -21,10 +21,10 @@ The class is static and stateless and is therefore safe for concurrent use.
 
 `ToolName` holds no instance state:
 
-| Member          | Type              | Description                                               |
-|-----------------|-------------------|-----------------------------------------------------------|
-| `MaxLength`     | `const int`       | The greatest number of characters a name may contain, 64. |
-| `ReservedNames` | `static string[]` | The bare names `read`, `write` and `delete`.              |
+| Member | Type | Description |
+| --- | --- | --- |
+| `MaxLength` | `const int` | The greatest number of characters a name may contain, 64. |
+| `ReservedNames` | `static string[]` | The bare names `read`, `write` and `delete`. |
 
 `MaxLength` is not an arbitrary round number: the major model providers constrain function names
 to `^[a-zA-Z0-9_-]{1,64}$`, so a name this library accepts is guaranteed to be a name a provider
@@ -53,16 +53,16 @@ whatever `Validate` reports for the composed name.
 
 Applies the complete ruleset, in this order:
 
-| #   | Rule                                                     | Failure                                        |
-|-----|----------------------------------------------------------|------------------------------------------------|
-| 1   | `name` is non-null and non-empty                         | `ArgumentNullException` or `ArgumentException` |
-| 2   | `name` is not `read`, `write` or `delete` (ordinal)      | `ArgumentException`                            |
-| 3   | `name.Length` is at most `MaxLength`                     | `ArgumentException`                            |
-| 4   | the first character is a lowercase letter `a`–`z`        | `ArgumentException`                            |
-| 5   | the last character is not `_`                            | `ArgumentException`                            |
-| 6   | every character is `a`–`z`, `0`–`9` or `_`               | `ArgumentException`                            |
-| 7   | no two consecutive `_`                                   | `ArgumentException`                            |
-| 8   | at least one `_` is present                              | `ArgumentException`                            |
+| # | Rule | Failure |
+| --- | --- | --- |
+| 1 | `name` is non-null and non-empty | `ArgumentNullException` or `ArgumentException` |
+| 2 | `name` is not `read`, `write` or `delete` (ordinal) | `ArgumentException` |
+| 3 | `name.Length` is at most `MaxLength` | `ArgumentException` |
+| 4 | the first character is a lowercase letter `a`–`z` | `ArgumentException` |
+| 5 | the last character is not `_` | `ArgumentException` |
+| 6 | every character is `a`–`z`, `0`–`9` or `_` | `ArgumentException` |
+| 7 | no two consecutive `_` | `ArgumentException` |
+| 8 | at least one `_` is present | `ArgumentException` |
 
 **The order matters**, because it determines which explanation a developer sees. The
 reserved-name check comes first so that its explanation — a collision with the Agent Framework's
@@ -84,11 +84,11 @@ Consequences that follow from the ruleset, recorded here so nobody has to re-der
 
 ### Error Handling
 
-| Condition                        | Handling                                   |
-|----------------------------------|--------------------------------------------|
-| Null `name`, `family` or `verb`  | `ArgumentNullException` propagates         |
-| Empty `name`, `family` or `verb` | `ArgumentException` propagates             |
-| A name violating any rule        | `ArgumentException` propagates             |
+| Condition | Handling |
+| --- | --- |
+| Null `name`, `family` or `verb` | `ArgumentNullException` propagates |
+| Empty `name`, `family` or `verb` | `ArgumentException` propagates |
+| A name violating any rule | `ArgumentException` propagates |
 
 Nothing is handled locally, and that is the correct choice here. **A malformed tool name is a
 construction-time programming error** discovered by the developer who wrote it, not a runtime

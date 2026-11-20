@@ -60,15 +60,15 @@ the wrapped form must not read it as a regression.
 
 Verified against the `Microsoft.Extensions.AI.Abstractions` version this library pins:
 
-| Declared return type   | Value returned      | Without the guard                     | With the guard    |
-|------------------------|---------------------|---------------------------------------|-------------------|
-| `Task<object>`         | `DataContent`       | `JsonElement` (a `data:` URI in JSON) | `DataContent`     |
-| `Task<object>`         | `List<AIContent>`   | `JsonElement` (a JSON array)          | `List<AIContent>` |
-| `Task<object>`         | `string`            | `JsonElement` (a JSON string)         | `string`          |
-| `Task<object>`         | anonymous object    | `JsonElement`                         | `JsonElement`     |
-| `Task<object?>`        | `null`              | `null`                                | `null`            |
-| `object` (synchronous) | `DataContent`       | `JsonElement`                         | `DataContent`     |
-| `Task<DataContent>`    | `DataContent`       | `DataContent`                         | `DataContent`     |
+| Declared return type | Value returned | Without the guard | With the guard |
+| --- | --- | --- | --- |
+| `Task<object>` | `DataContent` | `JsonElement` (a `data:` URI in JSON) | `DataContent` |
+| `Task<object>` | `List<AIContent>` | `JsonElement` (a JSON array) | `List<AIContent>` |
+| `Task<object>` | `string` | `JsonElement` (a JSON string) | `string` |
+| `Task<object>` | anonymous object | `JsonElement` | `JsonElement` |
+| `Task<object?>` | `null` | `null` | `null` |
+| `object` (synchronous) | `DataContent` | `JsonElement` | `DataContent` |
+| `Task<DataContent>` | `DataContent` | `DataContent` | `DataContent` |
 
 The last row is the trap. It is characterized by a deliberately unlinked test that lives beside
 the guard it justifies; see *GuardedToolFactory Unit Verification Design*.
@@ -145,12 +145,12 @@ helper never throws for a shape reason.
 
 ### Error Handling
 
-| Condition                                  | Handling                                      |
-|--------------------------------------------|-----------------------------------------------|
-| Null `method`                              | `ArgumentNullException` propagates            |
-| Null or empty `description`                | `ArgumentNullException` / `ArgumentException` |
-| `name` violating the naming convention     | `ArgumentException` propagates                |
-| Null `serializerOptions`                   | Not an error; the factory default is used     |
+| Condition | Handling |
+| --- | --- |
+| Null `method` | `ArgumentNullException` propagates |
+| Null or empty `description` | `ArgumentNullException` / `ArgumentException` |
+| `name` violating the naming convention | `ArgumentException` propagates |
+| Null `serializerOptions` | Not an error; the factory default is used |
 
 Nothing is handled locally. Every condition above is a construction-time programming error
 discovered by the developer writing the tool, so each is surfaced immediately.

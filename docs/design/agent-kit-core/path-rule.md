@@ -26,15 +26,15 @@ A rule is immutable after construction and is safe for concurrent use.
 
 ### Data Model
 
-| Member               | Type                    | Description                                                    |
-|----------------------|-------------------------|----------------------------------------------------------------|
-| `Access`             | `AccessLevel`           | Permission this grant carries: read-only or read-write.        |
-| `Root`               | `string?`               | Real location access is confined to; `null` when unrestricted. |
-| `DenyPatterns`       | `IReadOnlyList<string>` | Patterns whose match denies a path regardless of location.     |
-| `_denyPatterns`      | `string[]`              | Private copy of the validated patterns; never changes.         |
-| `_containmentPrefix` | `string?`               | `Root` plus a trailing directory delimiter; null if unbounded. |
-| `PathComparison`     | `StringComparison`      | Ordinal; ignores case on Windows and macOS only.               |
-| `IgnoreCase`         | `bool`                  | Pattern-matching case sensitivity; matches `PathComparison`.   |
+| Member | Type | Description |
+| --- | --- | --- |
+| `Access` | `AccessLevel` | Permission this grant carries: read-only or read-write. |
+| `Root` | `string?` | Real location access is confined to; `null` when unrestricted. |
+| `DenyPatterns` | `IReadOnlyList<string>` | Patterns whose match denies a path regardless of location. |
+| `_denyPatterns` | `string[]` | Private copy of the validated patterns; never changes. |
+| `_containmentPrefix` | `string?` | `Root` plus a trailing directory delimiter; null if unbounded. |
+| `PathComparison` | `StringComparison` | Ordinal; ignores case on Windows and macOS only. |
+| `IgnoreCase` | `bool` | Pattern-matching case sensitivity; matches `PathComparison`. |
 
 Invariants:
 
@@ -189,14 +189,14 @@ constructed, which would otherwise change an access grant after the fact.
 
 ### Error Handling
 
-| Condition                          | Handling                                       |
-|------------------------------------|------------------------------------------------|
-| Null location supplied to factory  | `ArgumentNullException` propagates             |
-| Empty or invalid location          | `ArgumentException` propagates                 |
-| Null or empty denied pattern       | `ArgumentException` propagates                 |
+| Condition | Handling |
+| --- | --- |
+| Null location supplied to factory | `ArgumentNullException` propagates |
+| Empty or invalid location | `ArgumentException` propagates |
+| Null or empty denied pattern | `ArgumentException` propagates |
 | Null or empty argument to `Allows` | `ArgumentNullException` or `ArgumentException` |
-| Location outside the root          | Handled locally; `Allows` returns `false`      |
-| Location matching a denied pattern | Handled locally; `Allows` returns `false`      |
+| Location outside the root | Handled locally; `Allows` returns `false` |
+| Location matching a denied pattern | Handled locally; `Allows` returns `false` |
 
 Construction-time failures are propagated because a malformed grant is a defect in the calling
 code, and accepting one would produce an access grant that looks configured while permitting more

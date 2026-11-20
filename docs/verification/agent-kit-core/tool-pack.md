@@ -19,7 +19,7 @@ failure nobody would notice by reading the diff.
 
 Nothing in this unit is reachable from a model's tool call, so no scenario here concerns a runtime
 refusal; the obligations the contract places on an implementation are enforced and verified in
-_ToolPackBuilder Unit Verification Design_.
+*ToolPackBuilder Unit Verification Design*.
 
 Unit tests reside in `ToolPackTests.cs`, with the shared test double in `StubToolPack.cs`, within
 the `DemaConsulting.AgentKit.Core.Tests` project.

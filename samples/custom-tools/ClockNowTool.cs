@@ -49,7 +49,7 @@ public static class ClockNowTool
     /// </summary>
     /// <remarks>
     ///     Unlike a path-taking tool's factory, this one accepts no <see cref="PathPolicy"/>: the
-    ///     tool governs nothing a policy could constrain, so consulting one would be theatre. It is
+    ///     tool governs nothing a policy could constrain, so consulting one would be theater. It is
     ///     still built through <see cref="GuardedToolFactory"/>, because that is the single supported
     ///     construction path — the guarantee it enforces (a validated name, a mandatory description,
     ///     and correct result delivery) is exactly as relevant to a no-path tool as to any other.

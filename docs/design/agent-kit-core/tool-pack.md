@@ -26,11 +26,11 @@ receives everything it needs as an argument.
 
 `HostCapabilities` is a flags enumeration:
 
-| Member       | Value | Meaning                                                                    |
-|--------------|-------|----------------------------------------------------------------------------|
-| `None`       | `0`   | No capability is required or declared.                                     |
-| `Vision`     | `1`   | The host can accept image content in a result and present it to the model. |
-| `Delegation` | `2`   | The host can create and run a further agent on its own model provider.     |
+| Member | Value | Meaning |
+| --- | --- | --- |
+| `None` | `0` | No capability is required or declared. |
+| `Vision` | `1` | The host can accept image content in a result and present it to the model. |
+| `Delegation` | `2` | The host can create and run a further agent on its own model provider. |
 
 A capability is a property of the *host* — the application and the model behind it — not of the
 machine. Whether a model can accept image content is the host's to declare, and no library can
@@ -56,11 +56,11 @@ said nothing about whether it will start a second agent, so neither declaration 
 
 `IToolPack` holds no state of its own; it states what an implementation must provide:
 
-| Member                    | Type                      | Invariant                                    |
-|---------------------------|---------------------------|----------------------------------------------|
-| `FamilyPrefix`            | `string`                  | Non-null, non-empty; leads every tool's name |
-| `RequiredCapabilities`    | `HostCapabilities`        | `None` means the pack is always registered   |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; may be a subset   |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` | `string` | Non-null, non-empty; leads every tool's name |
+| `RequiredCapabilities` | `HostCapabilities` | `None` means the pack is always registered |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; may be a subset |
 
 ### Key Methods
 

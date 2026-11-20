@@ -97,4 +97,4 @@ the level before any consolidation is requested.
 ### Callers
 
 Applications implement `ISummarizer`. `RotationEngine` calls it during rotation, once for the
-material ageing out of the verbatim tail and again for each cascade that consolidates a full tier.
+material aging out of the verbatim tail and again for each cascade that consolidates a full tier.

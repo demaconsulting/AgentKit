@@ -175,7 +175,7 @@ end-of-input to leave.
 ## Options
 
 | Option | Description |
-| -------- | ------------- |
+| --- | --- |
 | `--workspace <path>` | Folder relative paths anchor to, and which is granted. **Required.** |
 | `--session <path>` | Folder for agent-written artifacts. Granted read-write; created if absent. |
 | `--read-only-workspace` | Grant the workspace read-only; the session folder stays writable. |

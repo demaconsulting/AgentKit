@@ -22,12 +22,12 @@ durable document store.
 The class is sealed and internal. One instance is allocated by `TextFilePack.CreateTools` for each
 composition and shared by that composition's write, cut, copy and paste tools.
 
-| Member            | Type                         | Invariant                                                |
-| ----------------- | ---------------------------- | -------------------------------------------------------- |
-| `DefaultSlot`     | `string`                     | `default`; used when cut, copy or paste supplies no name |
-| `OverwrittenSlot` | `string`                     | `overwritten`; where a write puts content it displaces   |
-| `_gate`           | `object`                     | Lock guarding all access to `_slots`                     |
-| `_slots`          | `Dictionary<string, string>` | Ordinal names; each value is raw captured text           |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `DefaultSlot` | `string` | `default`; used when cut, copy or paste supplies no name |
+| `OverwrittenSlot` | `string` | `overwritten`; where a write puts content it displaces |
+| `_gate` | `object` | Lock guarding all access to `_slots` |
+| `_slots` | `Dictionary<string, string>` | Ordinal names; each value is raw captured text |
 
 Slot names must be non-null and non-empty. Captured text must be non-null; empty text is permitted,
 although the cut tool normally captures at least one line.

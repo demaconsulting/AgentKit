@@ -1,7 +1,6 @@
 ---
 # VersionMark Configuration File
 # This file defines which tools to capture and how to extract their version information.
-
 tools:
   # .NET SDK
   dotnet:
@@ -12,16 +11,6 @@ tools:
   git:
     command: git --version
     regex: '(?i)git version (?<version>\d+\.\d+\.\d+)'
-
-  # Node.js
-  node:
-    command: node --version
-    regex: '(?i)v(?<version>\d+\.\d+\.\d+)'
-
-  # npm
-  npm:
-    command: npm --version
-    regex: '(?<version>\d+\.\d+\.\d+)'
 
   # SonarScanner for .NET (from dotnet tool list)
   dotnet-sonarscanner:
@@ -37,16 +26,6 @@ tools:
   weasyprint:
     command: dotnet tool list
     regex: '(?i)demaconsulting\.weasyprinttool\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
-
-  # SarifMark (DemaConsulting.SarifMark from dotnet tool list)
-  sarifmark:
-    command: dotnet tool list
-    regex: '(?i)demaconsulting\.sarifmark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
-
-  # SonarMark (DemaConsulting.SonarMark from dotnet tool list)
-  sonarmark:
-    command: dotnet tool list
-    regex: '(?i)demaconsulting\.sonarmark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
 
   # ReqStream (DemaConsulting.ReqStream from dotnet tool list)
   reqstream:
@@ -73,7 +52,37 @@ tools:
     command: dotnet tool list
     regex: '(?i)demaconsulting\.fileassert\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
 
-  # sysml2tools (DemaConsulting.Sysml2Tools.Tool from dotnet tool list)
+  # DictionaryMark (DemaConsulting.DictionaryMark from dotnet tool list)
+  dictionarymark:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.dictionarymark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # TextLint (DemaConsulting.TextLint.Tool from dotnet tool list)
+  textlint:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.textlint\.tool\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # LintMark (DemaConsulting.LintMark from dotnet tool list)
+  lintmark:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.lintmark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # SysML2Tools (DemaConsulting.SysML2Tools.Tool from dotnet tool list)
   sysml2tools:
     command: dotnet tool list
     regex: '(?i)demaconsulting\.sysml2tools\.tool\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # CanvasNet (DemaConsulting.CanvasNet.Tool from dotnet tool list)
+  canvasnet:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.canvasnet\.tool\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # SarifMark (DemaConsulting.SarifMark from dotnet tool list)
+  sarifmark:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.sarifmark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'
+
+  # SonarMark (DemaConsulting.SonarMark from dotnet tool list)
+  sonarmark:
+    command: dotnet tool list
+    regex: '(?i)demaconsulting\.sonarmark\s+(?<version>\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)'

@@ -173,7 +173,7 @@ signal.
 
 **The threshold is asserted rather than the enablement flag, and that is the point of the scenario.**
 Manual measurement against the live runtime established that the flag is ignored and the threshold is
-honored; the numbers are recorded in _AgentKitAgentsCopilot System Verification Design_. The flag is
+honored; the numbers are recorded in *AgentKitAgentsCopilot System Verification Design*. The flag is
 asserted too, because the configuration still states the intent, but a change that kept the flag and
 dropped the threshold would leave the two compactors a tenth of a window apart and is what this
 scenario is here to catch. What remains unverified is whether a live conversation ever crosses the

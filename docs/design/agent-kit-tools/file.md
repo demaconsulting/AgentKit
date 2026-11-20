@@ -23,16 +23,16 @@ file as the thing being managed.
 
 The subsystem contains eight units:
 
-| Unit                      | Responsibility                                                          |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `FileListTool`            | Publishes `file_list`: lists permitted files of any type                |
-| `FileCopyTool`            | Publishes `file_copy`: copies one readable file to one writable path    |
-| `FileMoveTool`            | Publishes `file_move`: moves one writable source to one writable path   |
-| `FileDeleteTool`          | Publishes `file_delete`: deletes one writable file                      |
-| `FileCreateDirectoryTool` | Publishes `file_create_directory`: creates a directory and its parents  |
-| `FileMoveDirectoryTool`   | Publishes `file_move_directory`: moves or renames a whole directory     |
-| `FileDeleteDirectoryTool` | Publishes `file_delete_directory`: removes a directory tree, bounded    |
-| `FilePack`                | Publishes the file tools as one family under the `file` prefix          |
+| Unit | Responsibility |
+| --- | --- |
+| `FileListTool` | Publishes `file_list`: lists permitted files of any type |
+| `FileCopyTool` | Publishes `file_copy`: copies one readable file to one writable path |
+| `FileMoveTool` | Publishes `file_move`: moves one writable source to one writable path |
+| `FileDeleteTool` | Publishes `file_delete`: deletes one writable file |
+| `FileCreateDirectoryTool` | Publishes `file_create_directory`: creates a directory and its parents |
+| `FileMoveDirectoryTool` | Publishes `file_move_directory`: moves or renames a whole directory |
+| `FileDeleteDirectoryTool` | Publishes `file_delete_directory`: removes a directory tree, bounded |
+| `FilePack` | Publishes the file tools as one family under the `file` prefix |
 
 `LinkGuard` is a shared helper rather than a unit: it publishes no tool, holds no state, and exists
 only so that the two destructive directory tools ask one question — *is this entry a link, and was
@@ -53,12 +53,12 @@ The subsystem exposes exactly one public type, `FilePack`, plus the name constan
 publishes. Each tool's factory is `internal`, so a tool cannot be obtained except through the pack
 that claims its family prefix.
 
-| Interface            | Direction | Format                       | Constraints                           |
-| -------------------- | --------- | ---------------------------- | ------------------------------------- |
-| `FilePack`           | Outbound  | AgentKitCore `IToolPack`     | Prefix `file`; no capability          |
-| `File*Tool.ToolName` | Outbound  | `string` constant            | The name each tool is published under |
-| `PathPolicy`         | Inbound   | AgentKitCore policy object   | Supplied at construction              |
-| File system          | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `FilePack` | Outbound | AgentKitCore `IToolPack` | Prefix `file`; no capability |
+| `File*Tool.ToolName` | Outbound | `string` constant | The name each tool is published under |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Supplied at construction |
+| File system | Inbound | Base Class Library file APIs | Reached only where policy permits |
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, and `AIFunction` from

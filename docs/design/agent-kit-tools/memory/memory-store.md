@@ -22,9 +22,9 @@ persistence has to be able to name what they are persisting.
 
 `IMemoryStore` holds no state. `InMemoryMemoryStore` is sealed and holds:
 
-| Member      | Type                 | Invariant                                   |
-| ----------- | -------------------- | ------------------------------------------- |
-| `_gate`     | `object`             | Lock guarding all access to `_memories`     |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `_gate` | `object` | Lock guarding all access to `_memories` |
 | `_memories` | `List<MemoryRecord>` | Ordered; ids unique; vectors all one length |
 
 `MemoryRecord` and `MemoryMatch` are sealed positional records enforcing no invariants of their own:
@@ -33,21 +33,21 @@ happens below.
 
 `MemoryRecord`:
 
-| Member           | Type                    | Invariant                                     |
-| ---------------- | ----------------------- | --------------------------------------------- |
-| `Id`             | `string`                | Unique within the store; never changed        |
-| `Descriptor`     | `string`                | The only text embedded, and the only searched |
-| `Details`        | `string`                | Never embedded; returned whole on recall      |
-| `SourceDocument` | `string?`               | The document the fact came from, or absent    |
-| `SourceLocator`  | `string?`               | Where in that document, or absent             |
-| `Embedding`      | `ReadOnlyMemory<float>` | The vector `Descriptor` produced              |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `Id` | `string` | Unique within the store; never changed |
+| `Descriptor` | `string` | The only text embedded, and the only searched |
+| `Details` | `string` | Never embedded; returned whole on recall |
+| `SourceDocument` | `string?` | The document the fact came from, or absent |
+| `SourceLocator` | `string?` | Where in that document, or absent |
+| `Embedding` | `ReadOnlyMemory<float>` | The vector `Descriptor` produced |
 
 `MemoryMatch`:
 
-| Member       | Type           | Invariant                                         |
-| ------------ | -------------- | ------------------------------------------------- |
-| `Memory`     | `MemoryRecord` | The memory found                                  |
-| `Similarity` | `double`       | Cosine of one comparison, inclusive range -1 to 1 |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `Memory` | `MemoryRecord` | The memory found |
+| `Similarity` | `double` | Cosine of one comparison, inclusive range -1 to 1 |
 
 Four properties of the model are deliberate. A record rather than a class, so a store can hand a
 memory out without any caller being able to mutate what it holds, and so `MemoryUpdateTool` can
@@ -159,7 +159,7 @@ composing application — it can only arise from changing embedding generator ag
 store — and is refused rather than scored, because mixing two models produces similarity numbers
 that look ordinary and mean nothing. The lock makes each individual call safe against concurrent
 callers; it does not combine two calls into one, so a file tool's search and its subsequent add
-remain separable — see _MemoryFileTool_.
+remain separable — see *MemoryFileTool*.
 
 #### Dependencies
 

@@ -27,12 +27,12 @@ The class is static and holds no state. A constructed tool holds exactly two cap
 `PathPolicy` and the `TextFileLineBuffers` instance supplied at construction — and neither can be
 replaced afterwards.
 
-| Member            | Type                  | Invariant                                                  |
-| ----------------- | --------------------- | ---------------------------------------------------------- |
-| `ToolName`        | `string`              | `text_file_write`; public constant; carries family prefix  |
-| `ToolDescription` | `string`              | Non-empty; names the sibling tools and the recovery slot   |
-| Denial messages   | `string`              | Tool-composed constants; policy denials come from policy   |
-| Captured buffer   | `TextFileLineBuffers` | The composition's single instance, shared with paste       |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_write`; public constant; carries family prefix |
+| `ToolDescription` | `string` | Non-empty; names the sibling tools and the recovery slot |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
+| Captured buffer | `TextFileLineBuffers` | The composition's single instance, shared with paste |
 
 The model supplies `path` and `content`. A null `content` is malformed, but empty content is a valid
 request and empties the file.

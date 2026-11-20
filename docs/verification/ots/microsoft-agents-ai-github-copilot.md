@@ -35,9 +35,9 @@ and the adapter watches for the runtime's own compaction and truncation events s
 refused rather than silently absorbed. How the SDK treats the infinite-session configuration is no
 longer open: manual measurement against the live runtime showed the enablement flag is ignored and
 the background-compaction threshold is honored, so AgentKit raises the threshold and does not rely on
-the flag. The numbers are recorded in the _AgentKitAgentsCopilot System Verification Design_, which
+the flag. The numbers are recorded in the *AgentKitAgentsCopilot System Verification Design*, which
 also records both boundaries above. The SDK's RID-specific native runtime, a deployment property
-rather than a testable behavior, is documented in the _Microsoft.Agents.AI.GitHub.Copilot Design_.
+rather than a testable behavior, is documented in the *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ### Test Scenarios
 

@@ -79,9 +79,9 @@ compaction level and dropped-material flag.
 
 ### Dependencies
 
-- **ContextUsage** — Reported after every turn; see _ContextUsage Unit Design_.
+- **ContextUsage** — Reported after every turn; see *ContextUsage Unit Design*.
 - **CompactionLevel** — Public fidelity state reported by session and response.
-- **CompactingAgentSession** — Implements the interface; see _CompactingAgentSession Unit Design_.
+- **CompactingAgentSession** — Implements the interface; see *CompactingAgentSession Unit Design*.
 
 ### Callers
 

@@ -16,14 +16,14 @@ returns a union — a refusal, or text, or content, or structured data — and `
 type that expresses it. No strongly-typed signature captures that union: a bespoke result type
 would be a plain object and would be serialized just the same. That union is also precisely the
 declared return type the underlying function factory would serialize into JSON, which is why a
-tool built from these results must be built through `GuardedToolFactory`; see _GuardedToolFactory
-Unit Design_ for why that matters and what goes wrong when it is bypassed.
+tool built from these results must be built through `GuardedToolFactory`; see *GuardedToolFactory
+Unit Design* for why that matters and what goes wrong when it is bypassed.
 
 **A refusal is a return value, not an exception.** An exception raised while a model is calling a
 tool ends the agent's turn and strands it with no way forward. A returned refusal lets the model
 read the reason and choose a permitted alternative. Only programming errors — a missing text, an
 invalid media type, an undefined reason — are exceptions. This is the same dividing line
-_PathPolicy Unit Design_ draws.
+*PathPolicy Unit Design* draws.
 
 The class is static and stateless and is therefore safe for concurrent use.
 
@@ -32,22 +32,22 @@ The class is static and stateless and is therefore safe for concurrent use.
 `ToolResult` holds no state. Its only data are the fixed fragments from which a refusal is
 composed:
 
-| Member           | Type           | Description                                                     |
-|------------------|----------------|-----------------------------------------------------------------|
-| `DenialPrefix`   | `const string` | The fixed word introducing a refusal.                           |
-| `RedirectPrefix` | `const string` | The fixed opening of the classification sentence.               |
-| `RedirectSuffix` | `const string` | The fixed close of the classification sentence.                 |
+| Member | Type | Description |
+| --- | --- | --- |
+| `DenialPrefix` | `const string` | The fixed word introducing a refusal. |
+| `RedirectPrefix` | `const string` | The fixed opening of the classification sentence. |
+| `RedirectSuffix` | `const string` | The fixed close of the classification sentence. |
 
 `DenialReason` names the situations a tool may refuse for:
 
-| Member                      | Value | The situation it names                                      |
-|-----------------------------|-------|-------------------------------------------------------------|
-| `PathNotPermitted`          | 1     | The requested path lies outside the permitted location.     |
-| `ResourceTooLarge`          | 2     | The resource exceeds a ceiling the host configured.         |
-| `UnsupportedMediaType`      | 3     | The media type is not one this tool can handle.             |
-| `TargetNotFound`            | 4     | The requested target does not exist.                        |
-| `HostCapabilityUnavailable` | 5     | The host does not provide the required capability.          |
-| `InvalidRequest`            | 6     | The request is malformed or self-contradictory.             |
+| Member | Value | The situation it names |
+| --- | --- | --- |
+| `PathNotPermitted` | 1 | The requested path lies outside the permitted location. |
+| `ResourceTooLarge` | 2 | The resource exceeds a ceiling the host configured. |
+| `UnsupportedMediaType` | 3 | The media type is not one this tool can handle. |
+| `TargetNotFound` | 4 | The requested target does not exist. |
+| `HostCapabilityUnavailable` | 5 | The host does not provide the required capability. |
+| `InvalidRequest` | 6 | The request is malformed or self-contradictory. |
 
 **There is deliberately no zero member.** `default(DenialReason)` is therefore not a valid reason
 and `Denied` rejects it. A refusal with an unspecified reason is a bug, and the absence of a zero
@@ -133,7 +133,7 @@ name no tool could legally carry.
 `redirectToolName` is not a general recovery hint. The library's rule is that **a denial states a
 fact and never prescribes a remedy** — a denial that suggested another tool was measured pushing a
 model into a destructive workaround the user had explicitly forbidden. The redirect survives that
-rule in exactly two places, and only because in both the naming _is_ the fact being stated rather
+rule in exactly two places, and only because in both the naming *is* the fact being stated rather
 than a route around what was withheld: binary content is offered to `image_read`, and an `.svg`,
 which genuinely is text, is offered to `text_file_read`. Every other refusal — including every
 policy refusal — passes `null`.
@@ -144,16 +144,16 @@ name.
 
 ### Error Handling
 
-| Condition                              | Handling                                      |
-|----------------------------------------|-----------------------------------------------|
-| Null `text`                            | `ArgumentNullException` propagates            |
-| Null structured `value`                | `ArgumentNullException` propagates            |
-| Null or empty `mediaType`              | `ArgumentNullException` / `ArgumentException` |
-| `mediaType` not denoting an image      | `ArgumentException` propagates                |
-| Undefined `DenialReason`               | `ArgumentOutOfRangeException` propagates      |
-| Null or empty refusal `message`        | `ArgumentNullException` / `ArgumentException` |
-| Invalid `redirectToolName`             | `ArgumentException` propagates                |
-| A refused operation                    | Not an error; a refusal is returned           |
+| Condition | Handling |
+| --- | --- |
+| Null `text` | `ArgumentNullException` propagates |
+| Null structured `value` | `ArgumentNullException` propagates |
+| Null or empty `mediaType` | `ArgumentNullException` / `ArgumentException` |
+| `mediaType` not denoting an image | `ArgumentException` propagates |
+| Undefined `DenialReason` | `ArgumentOutOfRangeException` propagates |
+| Null or empty refusal `message` | `ArgumentNullException` / `ArgumentException` |
+| Invalid `redirectToolName` | `ArgumentException` propagates |
+| A refused operation | Not an error; a refusal is returned |
 
 The dividing line is the same one `PathPolicy` draws: **programming errors propagate; runtime
 policy outcomes are returned.**
@@ -174,15 +174,15 @@ legitimate messages contain `/` — for example, "unsupported media type image/s
 check would refuse correct refusals while still not preventing a determined caller from
 interpolating a path.
 
-**Refusals are returned, never thrown.** See _Purpose_. A future change that converts a refusal
+**Refusals are returned, never thrown.** See *Purpose*. A future change that converts a refusal
 into an exception would strand every agent that encounters it.
 
 **Every constructor returns `object`.** This must not be "tightened" into strongly-typed
-overloads to make the guarded factory look unnecessary; see _GuardedToolFactory Unit Design_.
+overloads to make the guarded factory look unnecessary; see *GuardedToolFactory Unit Design*.
 
 ### Dependencies
 
-- **ToolName** — validates a redirect tool name; see _ToolName Unit Design_.
+- **ToolName** — validates a redirect tool name; see *ToolName Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIContent`, `TextContent` and
   `DataContent`, the content types a provider recognizes.
 

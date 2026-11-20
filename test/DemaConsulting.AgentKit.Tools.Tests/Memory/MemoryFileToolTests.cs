@@ -61,7 +61,7 @@ public class MemoryFileToolTests
         var tool = MemoryFileTool.Create(store, new StubEmbeddingGenerator(), MemoryOptions.Default);
 
         // Act: file one memory
-        var result = await FileAsync(tool, "Rear tyre pressure for the touring model.", "18 psi cold.");
+        var result = await FileAsync(tool, "Rear tire pressure for the touring model.", "18 psi cold.");
 
         // Assert: stored, identified and counted
         var element = Assert.IsType<JsonElement>(result);
@@ -85,14 +85,14 @@ public class MemoryFileToolTests
         var tool = MemoryFileTool.Create(store, generator, MemoryOptions.Default);
 
         // Act: file one memory whose details are long and whose descriptor is short
-        await FileAsync(tool, "Rear tyre pressure.", "A very long passage that shares no words at all.");
+        await FileAsync(tool, "Rear tire pressure.", "A very long passage that shares no words at all.");
 
         // Assert: exactly one text was embedded, and the memory holds the descriptor's vector
         Assert.Equal(1, generator.CallCount);
         var stored = Assert.Single(
             await store.SearchAsync(
                 (await new StubEmbeddingGenerator().GenerateAsync(
-                    ["Rear tyre pressure."],
+                    ["Rear tire pressure."],
                     options: null,
                     TestContext.Current.CancellationToken))[0].Vector,
                 1,
@@ -115,11 +115,11 @@ public class MemoryFileToolTests
         // Arrange: a store already holding a statement of one fact
         var store = new InMemoryMemoryStore();
         var tool = MemoryFileTool.Create(store, new StubEmbeddingGenerator(), MemoryOptions.Default);
-        var first = await FileAsync(tool, "The rear tyre pressure for the touring model.", "12 psi cold.");
+        var first = await FileAsync(tool, "The rear tire pressure for the touring model.", "12 psi cold.");
         var firstId = Assert.IsType<JsonElement>(first).GetProperty("memoryId").GetString();
 
         // Act: file a contradicting statement of the same fact
-        var result = await FileAsync(tool, "The rear tyre pressure for the touring model.", "18 psi cold.");
+        var result = await FileAsync(tool, "The rear tire pressure for the touring model.", "18 psi cold.");
 
         // Assert: not stored, and the conflict is named in fields the model cannot misread
         var element = Assert.IsType<JsonElement>(result);
@@ -127,7 +127,7 @@ public class MemoryFileToolTests
         Assert.Equal("near_duplicate", element.GetProperty("reason").GetString());
         Assert.Equal(firstId, element.GetProperty("conflictingMemoryId").GetString());
         Assert.Equal(
-            "The rear tyre pressure for the touring model.",
+            "The rear tire pressure for the touring model.",
             element.GetProperty("conflictingDescriptor").GetString());
         Assert.Equal("12 psi cold.", element.GetProperty("conflictingDetails").GetString());
         Assert.True(element.GetProperty("similarity").GetDouble() >= 0.88);
@@ -146,10 +146,10 @@ public class MemoryFileToolTests
         // Arrange: a store already holding the fact
         var store = new InMemoryMemoryStore();
         var tool = MemoryFileTool.Create(store, new StubEmbeddingGenerator(), MemoryOptions.Default);
-        await FileAsync(tool, "The rear tyre pressure for the touring model.", "12 psi cold.");
+        await FileAsync(tool, "The rear tire pressure for the touring model.", "12 psi cold.");
 
         // Act: provoke the near-duplicate result
-        var result = await FileAsync(tool, "The rear tyre pressure for the touring model.", "18 psi cold.");
+        var result = await FileAsync(tool, "The rear tire pressure for the touring model.", "18 psi cold.");
 
         // Assert: no sibling tool is named anywhere in the result
         var rendered = Assert.IsType<JsonElement>(result).GetRawText();
@@ -178,12 +178,12 @@ public class MemoryFileToolTests
             new StubEmbeddingGenerator(),
             new MemoryOptions(nearDuplicateThreshold: 0.2));
 
-        await FileAsync(strict, "The rear tyre pressure for the touring model.", "12 psi.");
-        await FileAsync(loose, "The rear tyre pressure for the touring model.", "12 psi.");
+        await FileAsync(strict, "The rear tire pressure for the touring model.", "12 psi.");
+        await FileAsync(loose, "The rear tire pressure for the touring model.", "12 psi.");
 
         // Act: file a partly overlapping descriptor against each
-        var strictResult = await FileAsync(strict, "The front tyre pressure for the racing model.", "20 psi.");
-        var looseResult = await FileAsync(loose, "The front tyre pressure for the racing model.", "20 psi.");
+        var strictResult = await FileAsync(strict, "The front tire pressure for the racing model.", "20 psi.");
+        var looseResult = await FileAsync(loose, "The front tire pressure for the racing model.", "20 psi.");
 
         // Assert: the same texts land differently because the author configured differently
         Assert.True(Assert.IsType<JsonElement>(strictResult).GetProperty("stored").GetBoolean());

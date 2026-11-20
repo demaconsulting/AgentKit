@@ -65,6 +65,7 @@ reviews:
       - "docs/user_guide/**/*.md"
     paths:
       - "requirements.yaml"
+      - "docs/reqstream/quality.yaml"
       - "docs/design/introduction.md"
 ```
 
@@ -91,7 +92,7 @@ Context files are shown to reviewers for orientation but not fingerprinted. Add 
 as global context.
 
 | Review Type | Context to add |
-| :---------- | :------------- |
+| :--- | :--- |
 | `Decomposition` | `README.md`, `docs/user_guide/**/*.md` |
 | `{SystemName}-Architecture` | `README.md`, `docs/user_guide/**/*.md` |
 | `{SystemName}-Design` | `docs/reqstream/{system-name}.yaml` |
@@ -126,9 +127,11 @@ placeholders are always PascalCase (e.g., `{SystemName}`).
 - **Title**: "Review that {SystemName} Decomposition Addresses the Stated Purpose"
 - **ID**: `Decomposition` (no system prefix — one per repository)
 - **Scope**: introduction.md (the decomposition narrative), the SysML2 model (the
-  authoritative structural tree), and requirements.yaml; no system-level detail
+  authoritative structural tree), requirements.yaml, and quality.yaml (the root requirements
+  that tooling requirements trace to); no system-level detail
 - **File Path Patterns**:
   - Root requirements: `requirements.yaml`
+  - Quality requirements: `docs/reqstream/quality.yaml`
   - Design introduction: `docs/design/introduction.md`
   - SysML2 model: `docs/sysml2/**/*.sysml`
 - **Context Files**: `README.md`, `docs/user_guide/**/*.md`
@@ -159,8 +162,8 @@ placeholders are always PascalCase (e.g., `{SystemName}`).
   - Design introduction: `docs/design/introduction.md`
   - System design: `docs/design/{system-name}.md`
   - System design files: `docs/design/{system-name}/**/*.md`
-  - OTS overview: `docs/design/ots.md` _(only if OTS items exist)_
-  - Shared Package overview: `docs/design/shared.md` _(only if Shared Package items exist)_
+  - OTS overview: `docs/design/ots.md` *(only if OTS items exist)*
+  - Shared Package overview: `docs/design/shared.md` *(only if Shared Package items exist)*
 
 ## `{SystemName}-Verification` Review (one per system)
 
@@ -172,8 +175,8 @@ placeholders are always PascalCase (e.g., `{SystemName}`).
   - Verification introduction: `docs/verification/introduction.md`
   - System verification: `docs/verification/{system-name}.md`
   - System verification files: `docs/verification/{system-name}/**/*.md`
-  - OTS overview: `docs/verification/ots.md` _(only if OTS items exist)_
-  - Shared Package overview: `docs/verification/shared.md` _(only if Shared Package items exist)_
+  - OTS overview: `docs/verification/ots.md` *(only if OTS items exist)*
+  - Shared Package overview: `docs/verification/shared.md` *(only if Shared Package items exist)*
 
 ## `{SystemName}-AllRequirements` Review (one per system)
 

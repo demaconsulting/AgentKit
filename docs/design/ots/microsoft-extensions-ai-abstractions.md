@@ -2,7 +2,7 @@
 
 ### Purpose
 
-`Microsoft.Extensions.AI.Abstractions` is used because an AgentKit tool _is_ an
+`Microsoft.Extensions.AI.Abstractions` is used because an AgentKit tool *is* an
 `AIFunction`, the provider-neutral shape that the GitHub Copilot SDK, the Microsoft Agent
 Framework, and any `Microsoft.Extensions.AI` `IChatClient` all consume. It was chosen — rather
 than a provider, runtime, or agent-loop package — so that one guarded tool can be offered to every
@@ -25,7 +25,7 @@ NuGet dependency AgentKit Core carries.
 `Microsoft.Extensions.AI.Abstractions` is consumed as the tool currency by `GuardedToolFactory`
 in `AgentKitCore`, which references it as a **direct** `PackageReference`.
 `AgentKitTools` reaches the same abstraction **transitively** through its `ProjectReference` to
-`AgentKitCore`; it takes no direct package reference to _this_ library of its own, so a tool
+`AgentKitCore`; it takes no direct package reference to *this* library of its own, so a tool
 family composes through the same currency Core publishes without restating a dependency Core
 already owns. There is no
 initialization, configuration object, or disposal step: tools are constructed once through the

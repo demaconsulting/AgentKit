@@ -29,7 +29,7 @@ compliance evidence is generated automatically on every CI run.
 
 - **Requirements Traceability**: Every requirement is linked to passing tests, and a trace matrix is
   auto-generated on each release
-- **Linting Enforcement**: markdownlint, cspell, and yamllint are enforced before any build proceeds
+- **Linting Enforcement**: LintMark, TextLint, and yamllint are enforced before any build proceeds
 - **Automated Audit Documentation**: Each release ships with generated requirements, justifications,
   trace matrix, and quality reports
 - **CodeQL and SonarCloud**: Security and quality analysis runs on every build
@@ -270,36 +270,36 @@ row.
 
 ## Available Tools
 
-| Family    | Tool                    | Purpose                                          | Capability   | Write grant |
-|-----------|-------------------------|--------------------------------------------------|--------------|-------------|
-| Text file | `text_file_search`      | Searches permitted text files for a pattern      | None         | No          |
-| Text file | `text_file_read`        | Reads a paged, line-numbered file window         | None         | No          |
-| Text file | `text_file_create`      | Creates a new text file within the policy        | None         | Yes         |
-| Text file | `text_file_write`       | Sets a file's whole content, capturing the old   | None         | Yes         |
-| Text file | `text_file_replace`     | Replaces an exact span of text in a file         | None         | Yes         |
-| Text file | `text_file_cut_lines`   | Removes a line range into a named buffer         | None         | Yes         |
-| Text file | `text_file_copy_lines`  | Copies a line range into a buffer, source kept   | None         | No          |
-| Text file | `text_file_paste_lines` | Pastes lines held in a buffer into a file        | None         | Yes         |
-| File      | `file_list`             | Lists files of any type within the policy        | None         | No          |
-| File      | `file_copy`             | Copies a file within the policy                  | None         | Yes         |
-| File      | `file_move`             | Moves a file within the policy                   | None         | Yes         |
-| File      | `file_delete`           | Deletes a single file within the policy          | None         | Yes         |
-| File      | `file_create_directory` | Creates a directory, with missing parents        | None         | Yes         |
-| File      | `file_move_directory`   | Moves or renames a directory within the policy   | None         | Yes         |
-| File      | `file_delete_directory` | Deletes a directory and all it contains          | None         | Yes         |
-| Markdown  | `markdown_outline`      | Reports the heading outline of a Markdown file   | None         | No          |
-| Image     | `image_read`            | Reads an image or PDF, reporting pixel size      | `Vision`     | No          |
-| Image     | `image_crop`            | Returns or writes a pixel region of a PNG/JPEG   | `Vision`     | No          |
-| Image     | `image_auto_crop`       | Trims an image to its content, with padding      | `Vision`     | No          |
-| Todo      | `todo_list`             | Reports the recorded steps, in recorded order    | None         | No          |
-| Todo      | `todo_set`              | Records a step, or updates the step with that id | None         | No          |
-| Todo      | `todo_remove`           | Drops a step by id from the task list            | None         | No          |
-| Memory    | `memory_file`           | Stores one memory under a short descriptor       | None         | No          |
-| Memory    | `memory_recall`         | Returns the memories nearest a stated question   | None         | No          |
-| Memory    | `memory_update`         | Replaces a memory's details, keeping its subject | None         | No          |
-| Memory    | `memory_revise`         | Replaces a memory's subject, details and source  | None         | No          |
-| Memory    | `memory_forget`         | Removes one memory permanently                   | None         | No          |
-| Agent     | `agent_run`             | Delegates a task to a named child agent profile  | `Delegation` | No          |
+| Family | Tool | Purpose | Capability | Write grant |
+| --- | --- | --- | --- | --- |
+| Text file | `text_file_search` | Searches permitted text files for a pattern | None | No |
+| Text file | `text_file_read` | Reads a paged, line-numbered file window | None | No |
+| Text file | `text_file_create` | Creates a new text file within the policy | None | Yes |
+| Text file | `text_file_write` | Sets a file's whole content, capturing the old | None | Yes |
+| Text file | `text_file_replace` | Replaces an exact span of text in a file | None | Yes |
+| Text file | `text_file_cut_lines` | Removes a line range into a named buffer | None | Yes |
+| Text file | `text_file_copy_lines` | Copies a line range into a buffer, source kept | None | No |
+| Text file | `text_file_paste_lines` | Pastes lines held in a buffer into a file | None | Yes |
+| File | `file_list` | Lists files of any type within the policy | None | No |
+| File | `file_copy` | Copies a file within the policy | None | Yes |
+| File | `file_move` | Moves a file within the policy | None | Yes |
+| File | `file_delete` | Deletes a single file within the policy | None | Yes |
+| File | `file_create_directory` | Creates a directory, with missing parents | None | Yes |
+| File | `file_move_directory` | Moves or renames a directory within the policy | None | Yes |
+| File | `file_delete_directory` | Deletes a directory and all it contains | None | Yes |
+| Markdown | `markdown_outline` | Reports the heading outline of a Markdown file | None | No |
+| Image | `image_read` | Reads an image or PDF, reporting pixel size | `Vision` | No |
+| Image | `image_crop` | Returns or writes a pixel region of a PNG/JPEG | `Vision` | No |
+| Image | `image_auto_crop` | Trims an image to its content, with padding | `Vision` | No |
+| Todo | `todo_list` | Reports the recorded steps, in recorded order | None | No |
+| Todo | `todo_set` | Records a step, or updates the step with that id | None | No |
+| Todo | `todo_remove` | Drops a step by id from the task list | None | No |
+| Memory | `memory_file` | Stores one memory under a short descriptor | None | No |
+| Memory | `memory_recall` | Returns the memories nearest a stated question | None | No |
+| Memory | `memory_update` | Replaces a memory's details, keeping its subject | None | No |
+| Memory | `memory_revise` | Replaces a memory's subject, details and source | None | No |
+| Memory | `memory_forget` | Removes one memory permanently | None | No |
+| Agent | `agent_run` | Delegates a task to a named child agent profile | `Delegation` | No |
 
 The **Capability** column is the host capability the family requires; the **Write grant** column
 says whether the tool is published only when the access policy permits writing somewhere.

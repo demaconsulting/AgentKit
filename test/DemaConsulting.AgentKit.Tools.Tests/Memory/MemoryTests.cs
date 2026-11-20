@@ -103,7 +103,7 @@ public class MemoryTests
             MemoryFileTool.ToolName,
             new AIFunctionArguments
             {
-                ["descriptor"] = "Rear tyre pressure for the touring model.",
+                ["descriptor"] = "Rear tire pressure for the touring model.",
                 ["details"] = "12 psi cold.",
                 ["sourceDocument"] = "01-initial.md",
                 ["sourceLocator"] = "Section 4.2",
@@ -127,7 +127,7 @@ public class MemoryTests
             new AIFunctionArguments
             {
                 ["memoryId"] = memoryId!,
-                ["descriptor"] = "Rear tyre pressure for the touring model.",
+                ["descriptor"] = "Rear tire pressure for the touring model.",
                 ["details"] = "18 psi cold, measured at the valve.",
                 ["sourceDocument"] = "02-revision.md",
                 ["sourceLocator"] = "Section 4.2",
@@ -136,7 +136,7 @@ public class MemoryTests
         var recalled = await InvokeAsync(
             tools,
             MemoryRecallTool.ToolName,
-            new AIFunctionArguments { ["query"] = "Rear tyre pressure for the touring model." });
+            new AIFunctionArguments { ["query"] = "Rear tire pressure for the touring model." });
 
         // Assert: one store, seen the same way by every tool, carrying the revised fact and the
         // document that fact actually came from
@@ -154,7 +154,7 @@ public class MemoryTests
         var afterForgetting = await InvokeAsync(
             tools,
             MemoryRecallTool.ToolName,
-            new AIFunctionArguments { ["query"] = "Rear tyre pressure for the touring model." });
+            new AIFunctionArguments { ["query"] = "Rear tire pressure for the touring model." });
 
         // Assert: the store is empty and says so rather than refusing
         Assert.Equal(0, Assert.IsType<JsonElement>(forgotten).GetProperty("memoryCount").GetInt32());
@@ -176,7 +176,7 @@ public class MemoryTests
             MemoryFileTool.ToolName,
             new AIFunctionArguments
             {
-                ["descriptor"] = "Rear tyre pressure for the touring model.",
+                ["descriptor"] = "Rear tire pressure for the touring model.",
                 ["details"] = "12 psi cold.",
             });
 
@@ -186,7 +186,7 @@ public class MemoryTests
             MemoryFileTool.ToolName,
             new AIFunctionArguments
             {
-                ["descriptor"] = "Rear tyre pressure for the touring model.",
+                ["descriptor"] = "Rear tire pressure for the touring model.",
                 ["details"] = "18 psi cold.",
             });
 
@@ -198,7 +198,7 @@ public class MemoryTests
         var recalled = await InvokeAsync(
             tools,
             MemoryRecallTool.ToolName,
-            new AIFunctionArguments { ["query"] = "Rear tyre pressure for the touring model." });
+            new AIFunctionArguments { ["query"] = "Rear tire pressure for the touring model." });
         Assert.Equal(1, Assert.IsType<JsonElement>(recalled).GetProperty("matchCount").GetInt32());
     }
 
@@ -256,7 +256,7 @@ public class MemoryTests
         var filed = await InvokeAsync(
             tools,
             MemoryFileTool.ToolName,
-            new AIFunctionArguments { ["descriptor"] = "Tyre pressures.", ["details"] = "12 psi." });
+            new AIFunctionArguments { ["descriptor"] = "Tire pressures.", ["details"] = "12 psi." });
         var memoryId = Assert.IsType<JsonElement>(filed).GetProperty("memoryId").GetString();
 
         // Act: revise it onto an entirely different subject, then search for that subject

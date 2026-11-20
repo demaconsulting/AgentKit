@@ -66,13 +66,13 @@ carrying exactly the composed prompt.
 
 ### Error Handling
 
-| Condition                         | Handling                                |
-|-----------------------------------|-----------------------------------------|
-| Null `client`                     | `ArgumentNullException` propagates      |
-| Null `request`                    | `ArgumentNullException` propagates      |
-| Cancellation before the request   | `OperationCanceledException` propagates |
-| Model answered with nothing       | Returned as an empty record             |
-| Client failure during the request | Propagates unchanged to the engine      |
+| Condition | Handling |
+| --- | --- |
+| Null `client` | `ArgumentNullException` propagates |
+| Null `request` | `ArgumentNullException` propagates |
+| Cancellation before the request | `OperationCanceledException` propagates |
+| Model answered with nothing | Returned as an empty record |
+| Client failure during the request | Propagates unchanged to the engine |
 
 A client failure is deliberately not wrapped: the session engine already treats a consolidation it
 could not obtain as material to keep, and the application is better served by the provider's own
@@ -81,12 +81,12 @@ failure than by this library's paraphrase of it.
 ### Dependencies
 
 - **AgentKitCore** — supplies `ISummarizer`, `ConsolidationRequest` and `ConsolidationPrompt`; see
-  _Summarizer Unit Design_.
+  *Summarizer Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient` and `ChatMessage`; see
-  _Microsoft.Extensions.AI.Abstractions Design_.
+  *Microsoft.Extensions.AI.Abstractions Design*.
 
 ### Callers
 
 An application constructs one and hands it to `AgentSessionOptions`; the rotation engine calls
-`ConsolidateAsync` once per consolidation a rotation performs; see _RotationEngine Unit Design_.
+`ConsolidateAsync` once per consolidation a rotation performs; see *RotationEngine Unit Design*.
 Within this system nothing else calls it.

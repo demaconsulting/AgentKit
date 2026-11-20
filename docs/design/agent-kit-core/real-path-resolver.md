@@ -61,12 +61,12 @@ does.
 
 ### Error Handling
 
-| Condition                           | Handling                             |
-|-------------------------------------|--------------------------------------|
-| `path` is null                      | `ArgumentNullException` propagates   |
-| `path` is empty or not a valid path | `ArgumentException` propagates       |
-| The normalized result is too long   | `IOException` propagates             |
-| A path does not exist               | Not an error; the location is stated |
+| Condition | Handling |
+| --- | --- |
+| `path` is null | `ArgumentNullException` propagates |
+| `path` is empty or not a valid path | `ArgumentException` propagates |
+| The normalized result is too long | `IOException` propagates |
+| A path does not exist | Not an error; the location is stated |
 
 Nothing is handled locally. A missing path is a programming error in the caller and is surfaced
 immediately. A path the platform cannot express as a location is deliberately **not** converted

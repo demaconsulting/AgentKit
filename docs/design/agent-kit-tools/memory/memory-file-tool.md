@@ -15,11 +15,11 @@ performed.
 The class is stateless. A constructed tool captures the store, the embedding generator and the
 author's controls it was given. Three constants govern its behavior:
 
-| Member                 | Type     | Value         | Rationale                                  |
-| ---------------------- | -------- | ------------- | ------------------------------------------ |
-| `ToolName`             | `string` | `memory_file` | The name the model is offered              |
-| `NearestNeighborCount` | `int`    | 1             | The store returns nearest first            |
-| `IdentifierLength`     | `int`    | 8             | Hex characters of a new identifier         |
+| Member | Type | Value | Rationale |
+| --- | --- | --- | --- |
+| `ToolName` | `string` | `memory_file` | The name the model is offered |
+| `NearestNeighborCount` | `int` | 1 | The store returns nearest first |
+| `IdentifierLength` | `int` | 8 | Hex characters of a new identifier |
 
 `NearestNeighborCount` is one because if the closest memory is below the threshold no other memory
 can be above it. `IdentifierLength` is eight because a full GUID demonstrably produces transcription
@@ -59,7 +59,7 @@ every detection.
 
 The search and the add are two separate calls into the store, and nothing spans them, so the
 comparison is scoped to the call that performs it: two `memory_file` calls in flight together can
-both search before either adds, and both then store. See _Memory_ for why that window is documented
+both search before either adds, and both then store. See *Memory* for why that window is documented
 rather than closed.
 
 **Postconditions:** either exactly one memory was added and the result reports `stored: true`, its

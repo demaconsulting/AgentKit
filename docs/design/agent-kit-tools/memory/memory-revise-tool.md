@@ -52,7 +52,7 @@ carries an absence that JSON serialization would otherwise express only by omitt
 
 Two design decisions are recorded here because both are the subject of requirements:
 
-_Provenance is taken from the call, never from the memory._ The spike's revision silently preserved
+*Provenance is taken from the call, never from the memory.* The spike's revision silently preserved
 the original source document and locator, so a fact revised from a different document went on citing
 the superseded one — observed with details drawn from `02-revision.md` beside a structured field
 still reading `01-initial.md`. Inheriting when the caller states nothing would be the same defect in
@@ -60,7 +60,7 @@ another form, so an omitted source clears. No policy about whether sources repla
 require corroboration is imposed: that is the application author's instruction to give, and this
 tool's only job is not to silently keep data it knows may be wrong.
 
-_A revision is not near-duplicate checked._ The check exists to stop a second memory being filed
+*A revision is not near-duplicate checked.* The check exists to stop a second memory being filed
 about a fact already held. A revision names one existing memory and changes it, so there is no second
 memory to prevent — and because most corrections keep wording close to the original, checking would
 refuse the very corrections the family exists to make possible, including refusing a memory against

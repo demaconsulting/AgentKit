@@ -24,11 +24,11 @@ never widens a grant, and never hands a tool list down.
 
 The subsystem contains three units:
 
-| Unit                | Responsibility                                                            |
-|---------------------|---------------------------------------------------------------------------|
-| `AgentProfile`      | One named child agent the application is willing to have started          |
-| `AgentRunTool`      | Publishes `agent_run`; chooses, composes, and shapes the host's request   |
-| `AgentPack`         | Publishes the family under the `agent` prefix, gated on Delegation        |
+| Unit | Responsibility |
+| --- | --- |
+| `AgentProfile` | One named child agent the application is willing to have started |
+| `AgentRunTool` | Publishes `agent_run`; chooses, composes, and shapes the host's request |
+| `AgentPack` | Publishes the family under the `agent` prefix, gated on Delegation |
 
 ### Interfaces
 
@@ -38,15 +38,15 @@ constant `AgentRunTool` publishes. The `AgentRunTool` factory and `ChildToolComp
 `internal`: the tool is only obtainable through the pack that claims its family prefix, and the
 composition seam is the mechanism the family's safety-critical property depends on.
 
-| Interface               | Direction | Format                     | Constraints                          |
-|-------------------------|-----------|----------------------------|--------------------------------------|
-| `AgentPack`             | Outbound  | AgentKitCore `IToolPack`   | Prefix `agent`; requires Delegation  |
-| `AgentProfile`          | Outbound  | Immutable sealed class     | Constructed by the application       |
-| `ChildAgentRequest`     | Outbound  | Immutable sealed class     | Constructed only by the library      |
-| `AgentRunTool.ToolName` | Outbound  | `string` constant          | The name the tool is published under |
-| Host delegation runner  | Inbound   | `Func` returning a string  | Supplied at pack construction        |
-| Registered child packs  | Inbound   | `IEnumerable<IToolPack>`   | Packs, not tools; no `AgentPack`     |
-| `PathPolicy`            | Inbound   | AgentKitCore policy object | Supplied to `CreateTools`            |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `AgentPack` | Outbound | AgentKitCore `IToolPack` | Prefix `agent`; requires Delegation |
+| `AgentProfile` | Outbound | Immutable sealed class | Constructed by the application |
+| `ChildAgentRequest` | Outbound | Immutable sealed class | Constructed only by the library |
+| `AgentRunTool.ToolName` | Outbound | `string` constant | The name the tool is published under |
+| Host delegation runner | Inbound | `Func` returning a string | Supplied at pack construction |
+| Registered child packs | Inbound | `IEnumerable<IToolPack>` | Packs, not tools; no `AgentPack` |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Supplied to `CreateTools` |
 
 The subsystem consumes `PathPolicy`, `PathRule`, `AccessLevel`, `ToolLimits`, `ToolResult`,
 `GuardedToolFactory`, `IToolPack`, `ToolPackBuilder` and `HostCapabilities` from AgentKitCore, and
