@@ -234,7 +234,7 @@ public class CopilotTurnChannelTests
 
     /// <summary>
     ///     Proves a server the runtime still reports enabled after creation — one that discovery did
-    ///     not report, such as an account- or organization-provided server — is disabled for the
+    ///     not report, such as a server from a managed catalog — is disabled for the
     ///     session and then verified, and the session is accepted once none remains enabled.
     /// </summary>
     [Fact]

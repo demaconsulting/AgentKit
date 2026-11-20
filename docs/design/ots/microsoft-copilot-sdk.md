@@ -60,7 +60,8 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
   each server's enablement after configuration and policy filtering across every source; the
   session-scoped disable (`session.mcp.disable`); and the session-options patch whose plugin options
   replace the session's installed plugins (`plugins.installed`). AgentKit uses them to close every
-  ambient MCP server and clear installed plugins on every session, whatever the client's mode
+  ambient MCP server a session lists and clear installed plugins on every session, independently of
+  the client's mode
 
 ### Integration Pattern
 
@@ -77,9 +78,10 @@ The integration requires it, and AgentKit cannot enforce it: `CopilotClient` exp
 its mode back. AgentKit therefore relies on the mode for nothing that reaches the model. Every
 capability or context default Empty mode supplies per session is set by AgentKit on each session —
 the host environment context removed through the same section override, experimental features off,
-embedding retrieval skipped, every other option channel closed — and the installed plugins are
+embedding retrieval skipped, commit co-author trailers off, every other option channel closed — and
+the installed plugins are
 cleared with the same options patch Empty mode sends after every create and resume. Every MCP server
-is closed and verified too, which Empty mode does not do. What a client that violates the
+the session lists is closed and verified too, which Empty mode does not do. What a client that violates the
 precondition can still add is host-side behavior no session option reaches: settings in a shared
 data directory such as user-level hooks, credential storage in the system keychain rather than the
 data directory, telemetry and runtime file logging, and anything the host attaches at client level
@@ -111,15 +113,23 @@ the opt-in live suite where noted:**
   every session.
 - **Empty mode does not stop ambient MCP servers.** Its only MCP default is in-memory token storage.
   The runtime starts servers configured in the data directory's `mcp-config.json`, in the workspace,
-  by installed plugins, and by the account or a managed catalog; Empty mode's base-directory
+  by installed plugins, and by a managed catalog; Empty mode's base-directory
   requirement keeps the data directory's configuration out only when the directory is the host's own,
-  and reaches neither the workspace nor the account or managed sources. AgentKit
+  and reaches neither the workspace nor the managed source. AgentKit
   therefore discovers and disables every server before creating or resuming a session, then lists the
   session's effective MCP configuration, disables any server still enabled for that session, and
-  refuses the session if one stays enabled. The live suite configures a non-GitHub server in a
-  CodingAgent client's data directory and shows it is enabled on a session created directly and
-  disabled on one opened through AgentKit's channel, with the tool set still exactly the supplied tools
-  (re-verified by the live suite).
+  refuses the session if one stays enabled. The runtime's MCP discovery covers only the sources the
+  SDK documents for it — user, workspace, plugin and builtin — so a server from any other source,
+  such as a managed catalog, may start before the seal disables it; no turn runs before the seal, and
+  a server that cannot be closed refuses the session. The live suite configures a non-GitHub server
+  in a CodingAgent client's data directory, and discovery reports it in every scenario. On a session
+  opened through AgentKit's channel it is named on the create-time disabled list and reported
+  disabled, with no server enabled (L12a); on a session created directly it is enabled (L12b); when
+  discovery is replaced with one that finds nothing, it is enabled when the seal begins and the seal's
+  session-scoped disable closes it, which the re-listing confirms (L12c); and on a session resumed
+  through the channel it is named before the resume and no server is enabled afterwards (L12d). In
+  each scenario through the channel the tool set is exactly the supplied tools and the plugins patch
+  is accepted; no fixture installs a plugin, so clearing an installed plugin is shown only offline.
 - **The infinite-session enablement flag is ignored.** A session created with it false still
   compacted as soon as its threshold was crossed; the flag only suppresses the session's workspace.
   The background-compaction threshold **is** honored, so AgentKit relies on the threshold and on

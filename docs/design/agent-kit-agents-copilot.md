@@ -192,7 +192,8 @@ on the client's mode, which AgentKit cannot read:
   the list name only the tools this package registered. The runtime classifies a tool by where it was
   registered rather than by parsing its name, so a colliding name cannot spoof the qualifier.
 - **Closes every other channel of injected capability.** Skills and the built-in skills, discovered
-  custom instructions and on-demand instruction discovery, repository hooks, host git operations,
+  custom instructions and on-demand instruction discovery, repository hooks, host git operations and
+  commit co-author trailers,
   the cross-session store and memory, the built-in sub-agents and non-local agent discovery,
   extensions, configuration discovery, tool search, schedule management, image generation,
   experimental features, embedding retrieval, and the runtime's diversion of large tool results to a
@@ -215,16 +216,21 @@ only with the live client and session, which the options builders deliberately d
 production turn channel applies them on the one path every opener and resumer shares:
 
 - **Every ambient MCP server is closed.** The runtime starts MCP servers from ambient configuration —
-  the data directory, the workspace, installed plugins, its built-in servers, and sources the
-  signed-in account or a managed catalog provide — and Empty mode does not stop them. Before a session
+  the data directory, the workspace, installed plugins, its built-in servers, and a managed
+  catalog — and Empty mode does not stop them. Before a session
   is created or resumed, the channel asks the runtime to discover the servers it would start and
-  names every one in the session's disabled servers, so none of them starts. The allow-list already
+  names every one in the session's disabled servers, so none of those is started at creation or cold
+  resumption. The allow-list already
   keeps an MCP server's tools from the model; closing the server also keeps it from running a process
   with the user's environment and from contributing instructions.
 - **The session is sealed.** Once the session exists, its installed plugins — which can contribute
   servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
   sends; every MCP server the session still reports enabled, including one from a source discovery
-  does not cover, is disabled for that session only; and the configuration is listed again.
+  does not cover, is disabled for that session only; and the configuration is listed again. The
+  runtime's MCP discovery covers only the sources the SDK documents for it — user, workspace, plugin
+  and builtin — so a server from any other source, such as a managed catalog, may start before the
+  seal disables it; no turn runs before the seal, and a server that cannot be closed refuses the
+  session.
 - **It fails closed.** A server the runtime keeps enabled refuses the session with an
   `InvalidOperationException` naming it, so the run fails rather than continuing with the server
   available. A created session nothing has recorded is released and deleted; a resumed session is
@@ -470,9 +476,12 @@ The host constructs the client, and three of its choices bear on this system:
   it, and AgentKit cannot detect it: the SDK offers no way to read a client's mode back. AgentKit
   therefore does not rely on the mode for anything that reaches the model. On any client it applies,
   per session, the custom allow-list and the pinned default-deny permission handling; every runtime
-  option channel closed; the host environment context removed; experimental features off and
-  embedding retrieval skipped; the installed plugins cleared; and every MCP server disabled and
-  verified, with the session refused if one stays enabled. What a client that violates the
+  option channel closed, including host git operations and commit co-author trailers; the host
+  environment context removed; experimental features off and
+  embedding retrieval skipped; the installed plugins cleared; and every MCP server the session lists
+  disabled and verified, with the session refused if one stays enabled — though a server from a
+  source discovery does not cover may start before the seal disables it, as *The session is sealed*
+  above records. What a client that violates the
   precondition can still add is host-side behavior no session option reaches: settings in a shared
   data directory such as user-level hooks, credential storage in the system keychain rather than the
   data directory, telemetry and runtime file logging, and anything the host attaches at client level,
@@ -607,14 +616,16 @@ so no path can acquire capability another path withholds.
   including every built-in request — is rejected without asking a user who could not adjudicate it.
   The manual mode ensures every request reaches the handler. A host handler replaces this default
   outright; see *Permission Handling Is Default-Deny*.
-- **The closed injection channels.** Skills, discovered instructions, hooks, git operations, memory
+- **The closed injection channels.** Skills, discovered instructions, hooks, git operations and
+  commit co-author trailers, memory
   and the cross-session store, sub-agents, extensions, configuration discovery, tool search, schedule
   management, image generation, experimental features and embedding retrieval are closed on every
   session, the host environment context is removed from the system prompt, the built-in GitHub MCP
   server is disabled, every other MCP server the runtime would start is disabled and verified, and
   the session's installed plugins are cleared, because each would attach capability, direction or
   identity the composing application never granted. A session in which an MCP server stays enabled
-  is refused rather than used.
+  is refused rather than used; a server from a source discovery does not cover may start before the
+  seal disables it, though no turn runs first.
 - **A documented client precondition.** Empty mode on a host-owned data directory is required and
   cannot be detected; what a client violating it could still add is host-side behavior no session
   option reaches, listed under *Host Client Construction*.

@@ -197,8 +197,8 @@ that does not exist rather than leaving the choice to it.
 `CopilotAgentFactory_BuildSessionConfig_GitHubMcpServer_IsDisabled`,
 `CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled`,
 `CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved`,
-`CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff`
-
+`CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff`,
+`CopilotAgentFactory_BuildSessionConfig_GitCoauthorTrailers_AreOff`
 The first asserts, on the options the factory builds, that the runtime's skills are disabled, its
 custom instructions skipped, tool search and memory disabled, the cross-session store and repository
 hooks off, the built-in sub-agents removed, and no MCP server of the host's configured, so a confined
@@ -211,7 +211,9 @@ engine session, each with and without instructions, that the system message is i
 with the host environment context section removed and the instructions, or nothing, as its content:
 the confinement does not depend on the client's mode, so the context Empty mode would remove is
 removed here in any mode. The fifth asserts, on all three, that experimental features are off and
-embedding retrieval is skipped. Every value is read from the built options rather than inferred, so
+embedding retrieval is skipped. The sixth asserts, on all three, that commit co-author trailers are
+set off rather than left unset: off is an Empty-mode default, and the SDK forwards the setting in any
+other mode only when it is set. Every value is read from the built options rather than inferred, so
 any one reverting to the permissive value — which would widen the agent without changing anything
 the host wrote — fails its scenario. Closing every other MCP server and clearing the installed
 plugins need the live session and are verified in *CopilotTurnChannel Unit Verification Design*.

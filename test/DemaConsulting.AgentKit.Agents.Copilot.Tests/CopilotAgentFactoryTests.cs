@@ -173,6 +173,29 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
+    ///     Proves every session the factory builds switches the runtime's commit co-author trailers
+    ///     off. Off is an Empty-mode default; the SDK forwards the setting in any other mode only when
+    ///     it is set, so leaving it unset would hand a non-Empty client's own default to the session.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_GitCoauthorTrailers_AreOff()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        SessionOptionsBase[] configs =
+        [
+            CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null),
+        ];
+
+        // Assert: set to false on every builder, not merely left unset
+        Assert.All(configs, config => Assert.False(config.Git.CoauthorEnabled));
+    }
+
+    /// <summary>
     ///     Proves a supplied model name is carried onto the session, so an application can choose
     ///     which Copilot model backs its agent without going around this factory — going around it
     ///     forfeits the built-in suppression and the default-safe permission handler.

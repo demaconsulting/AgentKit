@@ -163,8 +163,9 @@ session's installed plugins were cleared, that the server was disabled for the s
 session was then refused with an error naming the server and abandoned. A confined agent receives no
 MCP server: the allow-list keeps a server's tools from the model, but a started server still runs a
 process with the user's environment and can contribute instructions, so a server that cannot be
-closed refuses the session rather than letting the run continue. That the runtime honors these calls
-is shown by the live suite's ambient-server scenario.
+closed refuses the session rather than letting the run continue. That the runtime honors the
+create-time disabled list, the session-scoped disable and the seal on a resumed session is shown by
+the live suite's ambient-server scenarios L12a, L12c and L12d.
 
 ### Permission Handling: A Supplied Tool Is Approved
 
@@ -355,7 +356,7 @@ that what those tests assert about the options is what the runtime honors.
   generated PNG split blue and yellow; a file outside the sandbox carries a second codeword no confined
   tool may return. The tests run sequentially in one collection, to control cost and because one
   scenario changes the process environment. The ambient-server scenario, L12, starts a second,
-  short-lived client of its own in CodingAgent mode, spawned out of process on the runtime the SDK
+  short-lived client of its own per test in CodingAgent mode, spawned out of process on the runtime the SDK
   provisioned, whose data directory under the run's temporary root configures one non-GitHub MCP
   server whose command does not exist — never the user's own Copilot home.
 
@@ -384,9 +385,9 @@ holding the TRX test results and the run's `live-*.log`. A manual run leaves the
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Fifteen tests
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Seventeen tests
 cover twelve scenarios; the agent scenario, L10, is three tests, and the ambient-server scenario, L12,
-is two.
+is four.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -405,6 +406,8 @@ is two.
 | L11 | `ClientStarter_AmbientCopilotCliPath_IsExplained` | Pass |
 | L12a | `Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled` | Pass |
 | L12b | `Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled` | Pass |
+| L12c | `Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal` | Pass |
+| L12d | `Confinement_AmbientMcpServerOnAResumedSession_IsDisabled` | Pass |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -443,6 +446,17 @@ few that rest on the model's prose are marked.
   exactly the supplied tools.
 - **L12b**: a control. The same options handed to the same kind of client directly, bypassing the
   channel, leave the server enabled, proving the channel's closure is load-bearing.
+- **L12c**: the production channel's opening protocol with its discovery step replaced by one that
+  finds nothing, so the server is not on the create-time disabled list. The server is asserted
+  enabled in the listing taken just before the production seal runs, and after the seal it is listed
+  disabled, no MCP server is enabled, and the session exposes exactly the supplied tools — so the
+  seal's own session-scoped disable closed it. The server's command does not exist, so this shows
+  the runtime's enablement closed and re-listed, not a running process terminated.
+- **L12d**: a session created on the same kind of client directly, with the server listed enabled,
+  takes one short turn so the runtime persists it, and is released; it is then resumed through the
+  production channel's resume path. The resumed session keeps its identifier, the server is named in
+  the resume options' disabled servers, no MCP server is enabled in its effective configuration, and
+  it exposes exactly the supplied tools.
 
 ### Live Acceptance Criteria
 
@@ -454,7 +468,8 @@ result does not reach the model intact; of L9, that the session engine does not 
 runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
 as designed; of L11, that a host is not told why its runtime did not load; of L12a, that an ambient
 MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
-nothing. Any such failure is investigated before a release.
+nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime;
+of L12d, that a resumed session is not confined. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -470,5 +485,17 @@ and L9 and L10a to L10c, whose sessions are opened and resumed through the proto
 L12a's discovery reported the probe server from the user source, enabled; the session opened through
 the channel listed it disabled and exposed exactly the two supplied tools, while L12b's session,
 created directly, listed it enabled. L9 rotated three times. The other scenarios open no session
-through the channel and were not re-run. Later runs of the CI job record their results in the
+through the channel and were not re-run.
+
+When L12c and L12d were added, the four ambient-server tests were run again on 2026-11-20, on the
+same machine and model, filtered to `*Confinement_AmbientMcpServer*`; all four passed, in 52
+seconds. Discovery reported the probe server from the user source, enabled, in every test. L12a's
+session named it on the create-time disabled list and listed it disabled; L12b's, created directly,
+listed it enabled. L12c's create-time disabled list held only the built-in GitHub server; the
+listing taken before the seal showed the probe enabled, and the listing after it showed the probe
+disabled. L12d's directly created session listed the probe enabled; its first attempt to resume a
+session that had taken no turn was refused by the runtime with "Session not found", so the scenario
+takes one short turn before releasing it, after which the resume through the channel named the
+probe on the disabled list and listed it disabled. Every session opened or resumed through the
+channel exposed exactly the two supplied tools. Later runs of the CI job record their results in the
 `live-copilot-suite` artifact of each workflow run.

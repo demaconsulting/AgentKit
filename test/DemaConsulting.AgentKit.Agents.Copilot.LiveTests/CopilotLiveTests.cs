@@ -489,6 +489,119 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     L12c: the seal alone closes an ambient MCP server the session enabled at creation — the
+    ///     production channel's discovery step is replaced with one that finds nothing, so the server
+    ///     is enabled when the session opens, and the production seal's session-scoped disable is what
+    ///     closes it. This is the path a server from a source discovery does not cover takes.
+    /// </summary>
+    /// <remarks>
+    ///     The server's command does not exist, so "enabled" here is the runtime's configuration
+    ///     state, not a running process: the scenario shows the session-scoped disable closes the
+    ///     server's enablement and the re-listing confirms it, not that a live process is terminated.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal()
+    {
+        // Arrange
+        _live.RequireOptIn();
+        await using var client = await StartAmbientMcpClientAsync("ambient-home-c");
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
+        IList<McpConfiguredServer> beforeSeal = [];
+
+        // Act: open through the production channel with discovery finding nothing, recording the
+        // listing the production seal starts from
+        var session = await CopilotSessionChannel.OpenConfinedAsync(
+            config,
+            _ => Task.FromResult<IEnumerable<string>>([]),
+            token => client.CreateSessionAsync(config, token),
+            async (opened, token) =>
+            {
+                beforeSeal = (await opened.Rpc.Mcp.ListConfiguredAsync(token)).Servers;
+                await CopilotSessionChannel.SealSessionAsync(opened, token);
+            },
+            opened => CopilotSessionChannel.ReleaseAsync(
+                opened.DisposeAsync,
+                () => client.DeleteSessionAsync(opened.SessionId, CancellationToken.None)),
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            var metadata = await session.Rpc.Tools.GetCurrentMetadataAsync(TestContext.Current.CancellationToken);
+            var names = (metadata.Tools ?? []).Select(tool => tool.Name).ToList();
+            _live.Log($"L12c before seal: [{Describe(beforeSeal)}] after seal: [{Describe(configured.Servers)}] disabled at creation: [{string.Join(", ", config.Mcp.DisabledServers ?? [])}]");
+            _live.Log($"L12c tools: [{string.Join(", ", names)}]");
+
+            // Assert: the probe was not named at creation, so the seal alone is responsible; it was
+            // enabled when the seal began; it is disabled afterwards with no server enabled; and the
+            // tool set is exactly the supplied tools
+            Assert.DoesNotContain(AmbientMcpProbe, config.Mcp.DisabledServers ?? []);
+            Assert.Contains(beforeSeal, server => server.Name == AmbientMcpProbe && server.Enabled);
+            Assert.Contains(configured.Servers, server => server.Name == AmbientMcpProbe && !server.Enabled);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+            Assert.Equal(_live.ReadTools.Select(tool => tool.Name).Order(), names.Order());
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L12d: a session created without the production channel, with the ambient MCP server
+    ///     enabled and one short turn taken so the runtime persists it, is resumed through the
+    ///     production channel's resume path — the server is named before the resume, no server is
+    ///     enabled on the resumed session, and it exposes exactly the supplied tools.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnAResumedSession_IsDisabled()
+    {
+        // Arrange: a session created directly, so the probe is enabled on it, then released
+        _live.RequireOptIn();
+        await using var client = await StartAmbientMcpClientAsync("ambient-home-d");
+        var created = await client.CreateSessionAsync(
+            CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox),
+            TestContext.Current.CancellationToken);
+        var sessionId = created.SessionId;
+        var createdConfigured = await created.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+        _live.Log($"L12d created directly: [{Describe(createdConfigured.Servers)}]");
+
+        // Measured: the runtime persists a session only once it has taken a turn, and refuses to
+        // resume one that never has ("Session not found"), so one short turn makes it resumable
+        var reply = await created.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
+        _live.Log($"L12d turn before release: {reply?.Data?.Content}");
+        await created.DisposeAsync();
+        var resume = CopilotAgentFactory.BuildResumeSessionConfig(_live.ReadTools, null, null, _live.Model, _live.Sandbox);
+
+        try
+        {
+            // Act: resume exactly as production resumes one
+            await using var session = await CopilotSessionChannel.ResumeConfinedSessionAsync(
+                client,
+                sessionId,
+                resume,
+                TestContext.Current.CancellationToken);
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            var metadata = await session.Rpc.Tools.GetCurrentMetadataAsync(TestContext.Current.CancellationToken);
+            var names = (metadata.Tools ?? []).Select(tool => tool.Name).ToList();
+            _live.Log($"L12d resumed: [{Describe(configured.Servers)}] disabled at resume: [{string.Join(", ", resume.Mcp.DisabledServers ?? [])}]");
+            _live.Log($"L12d tools: [{string.Join(", ", names)}]");
+
+            // Assert: the same session, the probe named before the resume, no server enabled, and
+            // exactly the supplied tools
+            Assert.Equal(sessionId, session.SessionId);
+            Assert.Contains(createdConfigured.Servers, server => server.Name == AmbientMcpProbe && server.Enabled);
+            Assert.Contains(AmbientMcpProbe, resume.Mcp.DisabledServers ?? []);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+            Assert.Equal(_live.ReadTools.Select(tool => tool.Name).Order(), names.Order());
+        }
+        finally
+        {
+            await client.DeleteSessionAsync(sessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
     ///     Builds an agent over the run's client, confined to the read tools and the sandbox.
     /// </summary>
     /// <returns>The agent.</returns>

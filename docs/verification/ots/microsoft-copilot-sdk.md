@@ -259,7 +259,12 @@ scenarios exercise the lifecycle only through AgentKit's own seam. They show Age
 features correctly; that the SDK and its runtime implement them is shown by the live Copilot suite,
 which is supplementary evidence and is not traced. The MCP and plugin control entries are qualified
 the same way: the calls reach the runtime, so the offline tests drive AgentKit's policy over the
-SDK's own result and patch types, and the live suite shows the runtime honors the calls.
+SDK's own result and patch types. The live suite shows on the real runtime that discovery reports an
+ambient server and the create-time disabled list names it (L12a), that the seal's session-scoped
+disable closes a server left enabled at creation and the re-listing confirms it (L12c), and that a
+session resumed through the channel has the server named before the resume and no server enabled
+afterwards (L12d); it shows the plugins patch accepted, not clearing an installed
+plugin, because no fixture installs one.
 
 - **`AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`**:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools,
@@ -304,4 +309,6 @@ The live suite's supplementary evidence for the same functionality, by scenario:
   `AgentKitAgentsCopilotLive_ImageDelivery_ImageReadResult_ReachesTheModel`,
   `AgentKitAgentsCopilotLive_Usage_RotationOnTheRuntimesUsage_PreservesTheCodeword`
 - **MCP and plugin control**: `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled`,
-  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled`
+  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled`,
+  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal`,
+  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnAResumedSession_IsDisabled`

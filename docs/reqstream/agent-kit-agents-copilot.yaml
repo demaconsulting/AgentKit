@@ -17,10 +17,11 @@ sections:
           The library shall withhold the capability the Copilot runtime injects, suppressing the
           runtime's tools by deriving a source-qualified session allow-list from the same tool
           collection it publishes to the session, so the published tools and the allow-list cannot
-          diverge, refusing a supplied tool named like a built-in, and closing every other channel of
-          injected capability — including every MCP server the runtime would start, the session's
-          installed plugins and the host environment context — on every session it builds, whatever
-          the client's mode.
+          diverge, refusing a supplied tool named like a built-in, and closing, on every session it
+          builds, every other channel of injected capability that the session's options and the live
+          session can reach — including the MCP servers the session would start, the session's
+          installed plugins and the host environment context — while the channels only a client
+          reaches are left to the required Empty-mode client on a data directory the host owns.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -41,7 +42,11 @@ sections:
           client's mode back, so the confinement cannot depend on it; and MCP servers are closed
           rather than merely filtered out of the allow-list, because Empty mode does not itself stop
           ambient MCP servers, and a server that is started runs a process with the user's
-          environment and can contribute instructions even when none of its tools is allowed.
+          environment and can contribute instructions even when none of its tools is allowed. The
+          runtime's MCP discovery covers only the sources the SDK documents for it — user, workspace,
+          plugin and builtin — so a server from any other source, such as a managed catalog, may
+          start before the seal disables it; no turn runs before the seal, and a server that cannot
+          be closed refuses the session.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
           - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability

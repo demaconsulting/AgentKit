@@ -57,6 +57,7 @@ so the confinement does not depend on the client's mode, which the factory canno
 | `Instructions.OnDemandDiscovery` | `false` | withholds instructions discovered during a run |
 | `Hooks.EnableRepositoryHooks` | `false` | a repository's hooks would run code the host never saw |
 | `Git.EnableHostGitOperations` | `false` | withholds git operations on the host |
+| `Git.CoauthorEnabled` | `false` | no co-author trailer is added to a commit the host never chose |
 | `State.EnableCrossSessionStore` | `false` | nothing carries over from another session |
 | `State.Memory.Enabled` | `false` | withholds the runtime's own memory |
 | `Agents.IncludedBuiltInAgents` | empty | withholds the built-in sub-agents |
@@ -75,11 +76,16 @@ the system message's section overrides, the same shape Empty mode sends, so it i
 the client's mode. For an Empty-mode client the wire payload is unchanged. The host's instructions,
 if any, are this message's content, which the runtime appends in this mode just as it does in append mode.
 
+**Commit co-author trailers are set off, not left unset.** Off is an Empty-mode default: in Empty
+mode the SDK sends the setting as off unless it is set, but in any other mode it forwards the
+setting only when it is set, in the options patch it sends after the session opens. Leaving it
+unset would hand a non-Empty client's own default to the session, so the factory sets it off.
+
 **The built-in GitHub MCP server is disabled by name.** Measured against the live runtime, it is
 started and authenticated with the user's GitHub identity on every session, even in the client's
 Empty mode. The source-qualified allow-list already keeps its tools out of reach, but a server
 holding the user's identity is disabled outright rather than merely filtered. Every other MCP server
-— from the data directory's configuration, the workspace, a plugin, the account or a managed catalog
+— from the user, workspace, plugin, builtin or managed source
 — is closed by the production turn channel, which adds every server the runtime discovers to this
 list before the session is created, then disables and verifies whatever is still enabled once the
 session exists. That needs the live client and session, which this builder does not have.
@@ -386,7 +392,9 @@ its handler reproduces it. The pinned manual mode applies either way.
 and cannot enforce it: the SDK offers no way to read a client's mode back. The factory therefore
 relies on the mode for nothing that reaches the model: every capability or context default Empty
 mode supplies is set on each session here, and the turn channel clears the installed plugins and
-closes every MCP server. What a client that violates the precondition can still add is host-side
+closes every MCP server the session lists — a server from a source discovery does not cover may
+start before it is closed, though no turn runs first. What a client that violates the precondition
+can still add is host-side
 behavior no session option reaches: settings in a shared data directory such as user-level hooks,
 credential storage in the system keychain rather than the data directory, telemetry and runtime
 file logging, and anything the host attaches at client level, such as plugin directories or

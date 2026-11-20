@@ -35,9 +35,14 @@ disable every server still enabled, verify, and refuse naming any that remains �
 recording delegates over the SDK's own configured-server type and assert the order of the steps,
 what the options carried when the session was opened, the abandonment, and the refusal. The live
 compositions over the SDK — the client's discovery, the session's options patch, listing and disable,
-and which abandonment a created and a resumed session receive — are reviewed rather than tested here;
-the opt-in live suite shows on the real runtime that an ambient server is disabled on a session
-opened through them and enabled on one created without them.
+and which abandonment a created and a resumed session receive — are reviewed rather than tested here.
+The opt-in live suite shows on the real runtime what each ambient-server scenario covers: discovery
+reports the server and the channel names it on the create-time disabled list, with no server enabled
+afterwards (L12a); a session created without the channel has it enabled (L12b); the seal's
+session-scoped disable closes a server left enabled at creation, and the re-listing confirms it
+(L12c); and a session resumed through the channel has it named before the resume and no server
+enabled afterwards (L12d). The plugins patch is shown accepted, not shown clearing an installed
+plugin, because no fixture installs one.
 
 **What is verified through the units above, and what that is worth.** The *contract* this unit
 publishes — that a channel names its session, takes a turn carrying a prompt and any attachments, and
@@ -56,7 +61,10 @@ rather than tested, and each is recorded here rather than implied to be covered:
   take effect, and that the runtime honors the MCP and plugin calls of the opening protocol** — all of
   which require the live runtime. The opt-in live Copilot suite shows
   the first three on the real runtime, including a conversation released by one agent and resumed by
-  another; it is supplementary evidence outside the trace matrix, described in *AgentKitAgentsCopilot
+  another, and shows of the fourth exactly what L12a to L12d cover, as listed above: the create-time
+  disabled list, the seal's session-scoped disable and re-listing, and the resumed path sealed, with
+  the plugins patch accepted but not shown clearing an installed plugin. It is supplementary evidence
+  outside the trace matrix, described in *AgentKitAgentsCopilot
   System Verification Design*.
 - **That the SDK accepts an infinite timeout and treats it as "no deadline".** This was established
   by reading the SDK's own implementation, which carries the value into a linked cancellation
@@ -224,4 +232,5 @@ would read as no change.
 Which abandonment a created and a resumed session receive — deleted, or only released — is a
 composition over the SDK and is reviewed rather than tested; the system-level ambient-server scenario
 in *AgentKitAgentsCopilot System Verification Design* runs the protocol end to end over the
-factory's own configurations, and the opt-in live suite shows the runtime honors it.
+factory's own configurations, and the opt-in live suite shows the created path (L12a, L12c) and the
+resumed path (L12d) sealed on the real runtime; the abandonment policy itself is reviewed.

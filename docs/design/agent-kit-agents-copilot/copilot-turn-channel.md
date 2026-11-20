@@ -32,13 +32,14 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
    working directory — from the data directory's configuration, the workspace, installed plugins and
    its built-in servers — and every name is added to the session's disabled servers. The SDK
    documents a server named there as not started or authenticated on creation or cold resumption, so
-   none of them starts. The session options take exact names only, which is why the names come from
+   none of those is started. The session options take exact names only, which is why the names come from
    the runtime.
 2. **Open.** The session is created or resumed from the updated options.
 3. **Seal.** The session's installed plugins — which can contribute MCP servers, hooks, skills and
    agents — are replaced with none, the call Empty mode itself makes after every create and resume,
-   made here so it holds in any mode. The session's effective MCP configuration, which covers every
-   source including the account and managed sources discovery does not document, is listed; every
+   made here so it holds in any mode. The session's effective MCP configuration, which reports each
+   server's provenance — user, workspace, plugin, builtin or managed — including the managed source
+   discovery does not document, is listed; every
    server still enabled is disabled for this session only, never in the user's persistent
    configuration; and the configuration is listed again.
 4. **Fail closed.** A server the runtime keeps enabled refuses the session with an
@@ -47,9 +48,10 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
    released and deleted; a resumed session is only released, because refusing to continue a
    conversation must not destroy it.
 
-A server from a source discovery does not report may start before step 3 disables it. The allow-list
-already keeps its tools from the model, no turn runs before the seal, and a server that cannot be
-closed refuses the session.
+The runtime's MCP discovery covers only the sources the SDK documents for it — user, workspace,
+plugin and builtin — so a server from any other source, such as a managed catalog, may start before
+step 3 disables it. The allow-list already keeps its tools from the model, no turn runs before the
+seal, and a server that cannot be closed refuses the session.
 
 **What it deliberately does not do.** It exposes no event subscription and no configuration. A
 session's event handler and every other setting are reached through the session options at creation
@@ -192,6 +194,22 @@ one reported enabled. List again; if any server is still enabled, throw an
 **Postconditions:** No configured MCP server is reported enabled, or an exception naming those that
 are.
 
+#### SealSessionAsync(CopilotSession session, CancellationToken cancellationToken)
+
+**Purpose:** Seal a live session through its RPC surface.
+
+**Algorithm:** Call `SealAsync` with the session's options patch carrying
+`CreateNoInstalledPluginsPatch()`, its MCP configuration listing, and its session-scoped disable of
+one named server.
+
+**Why it is internal.** The opt-in live suite drives this exact seal over a session opened without
+discovery (L12c), so the seal's own session-scoped disable is shown on the real runtime rather than
+only the create-time disabled list.
+
+**Preconditions:** `session` is not null.
+
+**Postconditions:** As `SealAsync`.
+
 #### DisableMcpServers(SessionOptionsBase config, IEnumerable&lt;string&gt; names)
 
 **Purpose:** Add discovered server names to a session's disabled servers.
@@ -289,12 +307,16 @@ recoverable disk state.
 | Creating or resuming a session fails | Propagates from the opener or resumer; nothing to release |
 | The seal fails | Session abandoned (see below); the failure propagates |
 | An MCP server stays enabled after it was disabled | `InvalidOperationException` naming it; abandoned |
+| The runtime refuses a disable, as an owned MCP installation may | `RemoteRpcException` propagates; abandoned |
 | Session release fails in transit | Swallowed; the handle is abandoned either way |
 | Session deletion fails on release | Swallowed; the handle is already released |
 
 A seal fails when the runtime refuses the plugins patch, the listing or a disable, or when a server
 stays enabled. The session is then abandoned before the failure propagates: a created session is
-released and deleted, a resumed one only released, so a conversation is never destroyed.
+released and deleted, a resumed one only released, so a conversation is never destroyed. The SDK
+documents its session-scoped disable as requiring an installation id for an owned MCP installation,
+and its listing exposes no such id, so such a server can only be disabled by name; if the runtime
+refuses that, or keeps the server enabled, the session is refused rather than used.
 
 Both swallowed failures are discarded for the reason `CompactingAgentSession` discards a failed
 release during a rotation: by that point the operation the caller asked for has already succeeded,

@@ -558,7 +558,9 @@ The host owns the `CopilotClient`: it constructs, starts and disposes it, and no
 builds ever disposes it. **The client must be in `CopilotClientMode.Empty` on a data directory the
 host owns**, where the runtime keeps its session state. That is a precondition AgentKit cannot
 detect — the SDK offers no way to read a client's mode back — so AgentKit relies on the mode for
-nothing that reaches the model and closes the runtime's ambient channels on every session itself. A
+nothing that reaches the model and closes the runtime's ambient channels on every session itself,
+except that a server from a source the runtime's discovery does not cover may start before it is
+closed (see below). A
 client that violates the precondition can still bring host-side behavior no session option reaches:
 settings in a shared data directory such as user-level hooks, credential storage in the system
 keychain rather than the data directory, telemetry and runtime file logging, and anything attached
@@ -602,12 +604,16 @@ The factory suppresses them by deriving the session allow-list from the same too
 a confined agent is offered only the tools you gave it. Every entry is source-qualified as a custom
 tool: a bare name would also admit a built-in tool of the same name. The factory also closes the
 runtime's other channels of injected capability on every session — skills, custom instructions,
-repository hooks, extensions, built-in sub-agents, memory, experimental features, embedding
+repository hooks, host git operations and commit co-author trailers, extensions, built-in
+sub-agents, memory, experimental features, embedding
 retrieval, and the host environment context the runtime would write into the system prompt. When a
 session is opened, every MCP server the runtime would start — the built-in GitHub server, servers
 configured in the data directory or the workspace, and servers plugins bring — is discovered and
 disabled before the session starts; once it exists, its installed plugins are cleared and any MCP
-server still enabled, such as one the signed-in account provides, is disabled and verified. A
+server still enabled, such as one from a managed catalog, is disabled and verified. The runtime's
+MCP discovery covers only the sources the SDK documents for it — user, workspace, plugin and
+builtin — so a server from any other source, such as a managed catalog, may start before it is
+disabled; no turn runs before then, and a server that cannot be closed refuses the session. A
 session in which a server stays enabled is refused rather than used. It does
 **not** install the image-promoting decorator, because the Copilot runtime already delivers a
 tool-returned image to the model.
@@ -793,8 +799,13 @@ for answer quality across a long conversation, not to save money.
   an MCP server for the session and the runtime still reported it enabled, so the session was refused
   rather than handed to the model with the server available. Run the client in
   `CopilotClientMode.Empty` on a data directory of the application's own that configures no MCP
-  servers, and check for MCP servers the signed-in account or its organization provides. A resumed
+  servers, and check for MCP servers a managed catalog provides. A resumed
   conversation that is refused this way is kept, not deleted.
+- **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
+  runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP
+  installation, which the runtime's session-scoped disable may require an installation id to close.
+  The SDK's listing of a session's MCP servers does not expose that id, so AgentKit cannot supply it
+  and refuses the session instead. Use a data directory with no MCP installations.
 - **A rejected permission request in the runtime's log.** The model asked for something other than
   one of your tools — a built-in shell or file read, say — and default-deny refused it. That is the
   intended outcome.

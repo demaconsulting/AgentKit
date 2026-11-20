@@ -294,9 +294,10 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     </para>
     ///     <para>
     ///     <b>Why sealing follows anyway.</b> The runtime's discovery documents the user, workspace,
-    ///     plugin and built-in sources, not the managed or account sources a session's configuration
-    ///     can also carry, and the session's installed plugins can only be cleared once it exists. The
-    ///     seal closes both and verifies the result.
+    ///     plugin and builtin sources, not the managed source the session's effective configuration
+    ///     can also report, and the session's installed plugins can only be cleared once it exists. A
+    ///     server from such a source may start before the seal disables it; no turn runs before the
+    ///     seal. The seal closes both and verifies the result.
     ///     </para>
     ///     <para>
     ///     <b>An unsealed session never reaches a caller.</b> If the seal fails — a server stays
@@ -350,13 +351,15 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     <b>Plugins first.</b> An installed plugin can contribute MCP servers, hooks, skills and
     ///     agents. No create-time option removes installed plugins; the session-options patch that
     ///     replaces the list with an empty one is the call <c>CopilotClientMode.Empty</c> itself makes
-    ///     after every create and resume, made here so it holds whatever the client's mode. Clearing
-    ///     them before listing means a server a plugin contributed is gone before the listing.
+    ///     after every create and resume, made here so it does not depend on the client's mode.
+    ///     Clearing them before listing means a server a plugin contributed is gone before the
+    ///     listing.
     ///     </para>
     ///     <para>
     ///     <b>Disable, then verify.</b> The listing reports each server's enablement "after session
-    ///     configuration and policy filtering", across every source — including the managed and
-    ///     account sources discovery does not cover. Each server still enabled is disabled for this
+    ///     configuration and policy filtering", whatever its source — the SDK names user, workspace,
+    ///     plugin, builtin and managed — including the managed source discovery does not cover. Each
+    ///     server still enabled is disabled for this
     ///     session only (never in the user's persistent configuration), and the configuration is
     ///     listed again: a server the runtime keeps enabled refuses the session, naming it, because a
     ///     confined agent receives no MCP server.
@@ -390,7 +393,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
                 + " enabled for this session after AgentKit disabled them, so the session was refused: a "
                 + "confined agent receives no MCP server. Run the Copilot client in CopilotClientMode.Empty on a "
                 + "data directory the host owns and that configures no MCP servers, and check for MCP servers "
-                + "the signed-in account or its organization provides.");
+                + "from a managed catalog or an owned MCP installation, which a session cannot disable by name.");
         }
     }
 
@@ -487,10 +490,14 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// <summary>
     ///     Seals a live session through its RPC surface; see <see cref="SealAsync"/> for the policy.
     /// </summary>
+    /// <remarks>
+    ///     Internal so the opt-in live suite can drive this exact seal over a session opened without
+    ///     discovery (L12c).
+    /// </remarks>
     /// <param name="session">The session to seal.</param>
     /// <param name="cancellationToken">Cancels the seal.</param>
     /// <returns>A task that completes when the session is sealed.</returns>
-    private static Task SealSessionAsync(CopilotSession session, CancellationToken cancellationToken) =>
+    internal static Task SealSessionAsync(CopilotSession session, CancellationToken cancellationToken) =>
         SealAsync(
             token => session.Rpc.Options.UpdateAsync(plugins: CreateNoInstalledPluginsPatch(), cancellationToken: token),
             async token => (await session.Rpc.Mcp.ListConfiguredAsync(token).ConfigureAwait(false)).Servers,
