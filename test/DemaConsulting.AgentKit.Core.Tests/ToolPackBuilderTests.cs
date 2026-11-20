@@ -580,4 +580,54 @@ public class ToolPackBuilderTests
         // Assert: composed as it always was
         Assert.Equal(["tool_output_peek"], tools.Select(tool => tool.Name));
     }
+
+    /// <summary>
+    ///     Proves that while retention is composed, two composed tools of one name are reported
+    ///     with the exception every other composition mistake is reported with, naming the tool,
+    ///     whether one pack returned the name twice or two packs with overlapping prefixes both
+    ///     published it.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_DuplicateToolName_ThrowsInvalidOperationException()
+    {
+        // Arrange: one pack returning a name twice, and two packs whose prefixes overlap
+        var twice = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read"), StubToolPack.Tool("notes_read")]))
+            .WithToolOutputSpill();
+        var overlapping = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("file", tools: [StubToolPack.Tool("file_list_x")]))
+            .Add(new StubToolPack("file_list", tools: [StubToolPack.Tool("file_list_x")]))
+            .WithToolOutputSpill();
+
+        // Act: compose both
+        var twiceError = Assert.Throws<InvalidOperationException>(() => twice.Build());
+        var overlappingError = Assert.Throws<InvalidOperationException>(() => overlapping.Build());
+
+        // Assert: each error names the tool that was published twice
+        Assert.Contains("'notes_read'", twiceError.Message, StringComparison.Ordinal);
+        Assert.Contains("'file_list_x'", overlappingError.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that without retention a composition holding two tools of one name is returned
+    ///     exactly as it always was, so a composition that never opts in does not change.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_Build_WithoutToolOutputSpill_DuplicateToolNames_AreReturnedUnchanged()
+    {
+        // Arrange: the same two duplicate compositions, with retention never chosen
+        var twice = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read"), StubToolPack.Tool("notes_read")]));
+        var overlapping = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("file", tools: [StubToolPack.Tool("file_list_x")]))
+            .Add(new StubToolPack("file_list", tools: [StubToolPack.Tool("file_list_x")]));
+
+        // Act: compose both
+        var twiceTools = twice.Build();
+        var overlappingTools = overlapping.Build();
+
+        // Assert: both duplicates are returned, in order, with nothing appended
+        Assert.Equal(["notes_read", "notes_read"], twiceTools.Select(tool => tool.Name));
+        Assert.Equal(["file_list_x", "file_list_x"], overlappingTools.Select(tool => tool.Name));
+    }
 }

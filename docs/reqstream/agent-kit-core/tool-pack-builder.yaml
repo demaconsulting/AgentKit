@@ -165,3 +165,20 @@ sections:
             tests:
               - ToolPackBuilder_WithToolOutputSpill_ReservedPrefix_ThrowsInvalidOperationException
               - ToolPackBuilder_Build_WithoutToolOutputSpill_DoesNotReserveThePrefix
+
+          - id: AgentKitCore-ToolPackBuilder-DuplicateToolNamesWithSpill
+            title: >-
+              While retention of large outputs is composed, the builder shall reject a composition
+              publishing two tools of one name with the exception it reports other composition
+              mistakes with, naming the tool, and without retention shall return the composed tools
+              unchanged.
+            justification: |
+              A model selects a tool by its name, so a composition publishing two tools of one name
+              is a mistake whichever tool the model would reach. One pack can return a name
+              twice, and two packs whose prefixes overlap can both publish it. Reporting it as a
+              composition mistake keeps the builder to the one exception type it documents. Checking
+              only when retention is chosen keeps every existing composition unchanged; without
+              retention the agent factories already refuse a list holding two tools of one name.
+            tests:
+              - ToolPackBuilder_WithToolOutputSpill_DuplicateToolName_ThrowsInvalidOperationException
+              - ToolPackBuilder_Build_WithoutToolOutputSpill_DuplicateToolNames_AreReturnedUnchanged

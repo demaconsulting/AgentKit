@@ -175,9 +175,16 @@ internal sealed class ToolOutputStore
     ///     Normalizes and retains one output, evicting the oldest outputs as needed.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     An output whose normalized size exceeds the per-output ceiling is not retained and
     ///     evicts nothing: refusing one output must not cost the model the outputs it already
     ///     holds references to.
+    ///     </para>
+    ///     <para>
+    ///     An output whose raw length alone proves it exceeds the ceiling is refused before it is
+    ///     normalized, so a very large output is never copied into lines only to be discarded. The
+    ///     test never refuses an output that would fit; see <see cref="MustExceed"/>.
+    ///     </para>
     /// </remarks>
     /// <param name="text">The output text. Must not be null.</param>
     /// <returns>
@@ -190,6 +197,13 @@ internal sealed class ToolOutputStore
     public ToolOutputEntry? Add(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
+
+        // Refuse on the raw length before any copy is made. The bound is exact, so an output that
+        // would fit once normalized is never refused here; it is refused below if it does not fit.
+        if (MustExceed(text.Length, _options.MaxOutputCharacters))
+        {
+            return null;
+        }
 
         // Normalize outside the lock: it is pure and can be the most expensive step.
         var lines = Normalize(text, out var characters, out var wrapped);
@@ -312,6 +326,35 @@ internal sealed class ToolOutputStore
 
         return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
+
+    /// <summary>
+    ///     Determines whether an output's raw length alone proves that its normalized size exceeds
+    ///     a per-output ceiling.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Normalization keeps every character that is not part of a line break, counts each break
+    ///     sequence as one character whether it was <c>\r\n</c>, <c>\r</c> or <c>\n</c>, drops at
+    ///     most one break at the very end, and wrapping only adds breaks. With <c>C</c> characters
+    ///     outside breaks and <c>B</c> break sequences, the raw length <c>L</c> is at most
+    ///     <c>C + 2B</c> and the normalized size <c>N</c> is at least <c>C + B - 1</c>, so
+    ///     <c>N</c> is at least <c>L / 2 - 1</c>. A raw length above <c>2(M + 1)</c> therefore
+    ///     forces <c>N</c> above <c>M</c>.
+    ///     </para>
+    ///     <para>
+    ///     The bound is tight: an output of <c>M + 1</c> <c>\r\n</c> pairs is <c>2(M + 1)</c>
+    ///     characters long, normalizes to exactly <c>M</c>, and fits. Computed in 64 bits because
+    ///     the ceiling may be as large as <see cref="int.MaxValue"/>.
+    ///     </para>
+    /// </remarks>
+    /// <param name="rawLength">The output's length before normalization.</param>
+    /// <param name="maxCharacters">The per-output ceiling, in normalized characters.</param>
+    /// <returns>
+    ///     <see langword="true"/> when the output cannot fit; <see langword="false"/> when it might,
+    ///     and must be normalized to tell.
+    /// </returns>
+    internal static bool MustExceed(int rawLength, int maxCharacters) =>
+        rawLength > 2L * ((long)maxCharacters + 1);
 
     /// <summary>
     ///     Splits an output into the lines it is retained as.

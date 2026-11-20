@@ -24,10 +24,10 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all eleven scenarios below pass. Any identifier issued out of order or
-twice, any retained line altered or lost, any output over the per-output ceiling retained, any
-eviction other than oldest-first, any lookup outcome misreported, or any inconsistency under
-concurrent addition constitutes a failure.
+A unit test run passes when all fourteen scenarios below pass. Any identifier issued out of order
+or twice, any retained line altered or lost, any output over the per-output ceiling retained, any
+output that fits refused by the early raw-length check, any eviction other than oldest-first, any
+lookup outcome misreported, or any inconsistency under concurrent addition constitutes a failure.
 
 ### Test Scenarios
 
@@ -71,6 +71,28 @@ brackets readable.
 
 Error path: the oversized output is refused and the output already held survives.
 
+#### AgentKitCore-ToolOutputStore-PerOutputCeiling: An Output at the Raw-Length Bound Still Fits
+
+**Test**: `ToolOutputStore_Add_OutputAtTheRawLengthBound_IsRetainedWhenItFits`
+
+Boundary value: with ceilings of one and three, outputs of nothing but CRLF pairs, twice the
+ceiling plus two characters long, are retained and each normalizes to exactly its ceiling.
+
+#### AgentKitCore-ToolOutputStore-PerOutputCeiling: An Output Beyond the Raw-Length Bound Is Refused
+
+**Test**: `ToolOutputStore_Add_OutputBeyondTheRawLengthBound_IsRefusedAndEvictsNothing`
+
+Error path: with a ceiling of one, an output one character beyond the bound is refused and the
+output already held survives.
+
+#### AgentKitCore-ToolOutputStore-PerOutputCeiling: The Early Refusal Never Refuses an Output That Fits
+
+**Test**: `ToolOutputStore_MustExceed_NeverRefusesAnOutputThatFits`
+
+Exhaustive boundary analysis: for every output of up to eight characters drawn from a letter, CR
+and LF, and every ceiling from one to five, an output the raw-length check refuses normalizes to
+more than the ceiling; and for each ceiling the CRLF output of exactly the bound is not refused and
+normalizes to exactly the ceiling, proving the bound tight.
 #### AgentKitCore-ToolOutputStore-OldestEvictedFirst: The Count Ceiling Evicts the Oldest
 
 **Test**: `ToolOutputStore_Add_BeyondTheCountCeiling_EvictsTheOldestFirst`

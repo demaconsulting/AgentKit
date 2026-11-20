@@ -244,7 +244,9 @@ public sealed class ToolPackBuilder
     ///     <para>
     ///     When <see cref="WithToolOutputSpill"/> was called, the composed tools are wrapped so
     ///     oversized outputs are retained, and the two reader tools are appended after every
-    ///     pack's tools.
+    ///     pack's tools. Because a model selects a tool by its name, two composed tools of one name
+    ///     are then rejected. Without retention the composed tools are returned as the packs
+    ///     produced them, and the agent factories refuse a list holding two tools of one name.
     ///     </para>
     /// </remarks>
     /// <returns>The composed tools.</returns>
@@ -252,7 +254,7 @@ public sealed class ToolPackBuilder
     ///     Thrown when a pack returns no tool collection, returns a null tool, or returns a tool
     ///     whose name does not carry the pack's declared family prefix; or, when retention of large
     ///     outputs is composed, when a pack claims the reserved <c>tool_output</c> prefix or
-    ///     publishes a tool under it.
+    ///     publishes a tool under it, or when two composed tools share a name.
     /// </exception>
     public IReadOnlyList<AIFunction> Build()
     {
@@ -297,6 +299,20 @@ public sealed class ToolPackBuilder
                 "A pack published the tool '" + reserved.Name + "', whose name carries the '"
                 + ToolOutputSpill.ReservedPrefix + "' prefix reserved for the reader tools a "
                 + "composition retaining large outputs appends.");
+        }
+
+        // Two tools of one name would make Apply raise an ArgumentException, which is not what this
+        // method documents. A pack returning a name twice, or two packs with overlapping prefixes,
+        // is a composition mistake, so it is reported like the others. Checked only here so that a
+        // composition that never opts in behaves exactly as it did.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicate = tools.Find(tool => !seen.Add(tool.Name));
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException(
+                "The composition publishes the tool '" + duplicate.Name + "' twice, because a pack "
+                + "returned it twice or two packs with overlapping prefixes both published it, and "
+                + "a model selects a tool by its name.");
         }
 
         return ToolOutputSpill.Apply(tools, _policy.Limits, _toolOutput);

@@ -38,11 +38,12 @@ within the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twenty-nine scenarios below pass without error or exception beyond
+A unit test run passes when all thirty-one scenarios below pass without error or exception beyond
 those explicitly asserted. A pack registered without its capabilities being satisfied, an
 unsupported pack asked to create tools, a composition in the wrong order, an accepted collision,
-an accepted foreign tool name, and any malformed pack that is not refused each constitute a
-failure.
+an accepted foreign tool name, any malformed pack that is not refused, and a duplicate tool name
+reported with any exception other than `InvalidOperationException` while retention is requested,
+or rejected at all while it is not, each constitute a failure.
 
 ### Test Scenarios
 
@@ -241,3 +242,18 @@ Error path: with retention requested, a pack claiming `tool_output` and a pack p
 **Test**: `ToolPackBuilder_Build_WithoutToolOutputSpill_DoesNotReserveThePrefix`
 
 Boundary: without the request the same pack composes as it always did.
+
+#### AgentKitCore-ToolPackBuilder-DuplicateToolNamesWithSpill: A Duplicate Name Is Rejected
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_DuplicateToolName_ThrowsInvalidOperationException`
+
+Error path: with retention requested, a pack returning `notes_read` twice, and two packs with the
+overlapping prefixes `file` and `file_list` both publishing `file_list_x`, each throw
+`InvalidOperationException` at `Build`, not `ArgumentException`, and each message names the tool.
+
+#### AgentKitCore-ToolPackBuilder-DuplicateToolNamesWithSpill: Without Retention Duplicates Are Unchanged
+
+**Test**: `ToolPackBuilder_Build_WithoutToolOutputSpill_DuplicateToolNames_AreReturnedUnchanged`
+
+Boundary: without the request the same two compositions return both duplicates in order with
+nothing appended, so a composition that never opts in behaves as it always did.

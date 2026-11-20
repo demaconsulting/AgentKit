@@ -49,7 +49,24 @@ if the store evicts it meanwhile.
 
 #### Add(string text)
 
-Normalizes the output outside the lock, then retains it.
+Refuses an output whose raw length alone proves it cannot fit, then normalizes the output outside
+the lock, then retains it.
+
+**Early refusal:** before any copy is made, `Add` returns `null` when `MustExceed(text.Length,
+MaxOutputCharacters)` holds, that is when the raw length `L` exceeds `2(M + 1)` for a ceiling `M`.
+Normalization keeps every character outside a line break, counts each break sequence as one
+character whether it was `\r\n`, `\r` or `\n`, drops at most one break at the very end, and wrapping
+only adds breaks. With `C` characters outside breaks and `B` break sequences, `L` is at most
+`C + 2B` and the normalized size `N` is at least `C + B - 1`, so `N` is at least `L / 2 - 1`, and a
+raw length above `2(M + 1)` forces `N` above `M`. The bound is tight: `M + 1` CRLF pairs are
+`2(M + 1)` characters long and normalize to exactly `M`, which fits. The comparison is made in 64
+bits because `M` may be as large as `int.MaxValue`. A very large output is therefore never copied
+into lines only to be discarded, and no output that would fit is refused early.
+
+The check is made in `Add`, on exactly the text about to be normalized, so every retention path
+goes through it. It is not made on compact JSON before `Indent`: re-indenting with the relaxed
+encoder can shorten escaped JSON (`\u00e9` becomes `é`), so the compact length does not bound the
+indented one.
 
 **Normalization:** `\r\n`, `\r` and `\n` each end a line, and a break at the very end ends the last
 line rather than opening an empty one (matching how `text_file_read` counts a file's lines). A line
@@ -82,12 +99,19 @@ Writes a JSON document indented through a `Utf8JsonWriter` with a relaxed encode
 — one line a model could not page — spans one value per line and stays readable. No reflection is involved, so
 no trimming warning reaches a consumer.
 
+#### MustExceed(int rawLength, int maxCharacters)
+
+Reports whether `rawLength > 2(maxCharacters + 1)`, computed in 64 bits: the early-refusal test
+`Add` makes before normalizing, derived under `Add` above. Internal so the unit tests can prove it
+never refuses an output that fits.
+
 ### Error Handling
 
 | Condition | Handling |
 | --- | --- |
 | Null options or text | `ArgumentNullException` propagates |
 | Output over the per-output ceiling | `Add` returns `null`; the caller refuses |
+| Raw length over `2(M + 1)` | `Add` returns `null` before normalizing; the caller refuses |
 | Malformed, unknown or evicted identifier | `Find` reports the outcome; `Refusal` composes it |
 | `Refusal` asked about `Found` | `ArgumentOutOfRangeException` (a defect in the caller) |
 

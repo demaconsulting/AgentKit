@@ -379,6 +379,7 @@ sections:
           - AgentKitCore-GuardedToolFactory-OversizedResolvedWithoutRetention
           - AgentKitCore-ToolPackBuilder-ToolOutputSpill
           - AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix
+          - AgentKitCore-ToolPackBuilder-DuplicateToolNamesWithSpill
           - AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
           - AgentKitCore-ToolOutputSpill-PreviewComposition
           - AgentKitCore-ToolOutputSpill-TextualResultsRetained

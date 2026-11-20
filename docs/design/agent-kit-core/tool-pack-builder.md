@@ -120,16 +120,27 @@ call and creates a fresh set of tools each time.
    `tool_output`;
 2. after composing, rejects any composed tool whose name starts with `tool_output_` (a pack with a
    shorter prefix such as `tool` could otherwise publish one);
-3. returns `ToolOutputSpill.Apply(composed, policy.Limits, options)`, which wraps every tool and
+3. rejects two composed tools of one name, naming the tool, before calling `Apply`. A pack can
+   return a name twice, and two packs whose prefixes overlap (such as `file` and `file_list`) can
+   both publish it;
+4. returns `ToolOutputSpill.Apply(composed, policy.Limits, options)`, which wraps every tool and
    appends `tool_output_read` and `tool_output_search`. A fresh store is allocated per `Build`, so
    two built lists never share references.
 
 The reserved-prefix checks run at `Build` rather than at `Add` because the request may be made
 after the packs are added; without the request nothing is reserved.
 
+The duplicate-name check is made by `Build` itself rather than left to `Apply`, which reports a
+duplicate as an `ArgumentException` because the list is its own argument. For `Build` the
+duplicate is a mistake in a pack added earlier, so it is reported with the
+`InvalidOperationException` `Build` documents for every other composition mistake. Without the
+request the check is not made and the composed tools are returned as the packs produced them, so
+a composition that never opts in is unchanged; the agent factories already refuse a tool list
+holding two tools of one name.
+
 **Throws:** `InvalidOperationException` when a pack returns no collection, a null tool, or a tool
 outside its declared family; or, with retention requested, when a pack claims or publishes under
-the reserved prefix.
+the reserved prefix, or when two composed tools share a name.
 
 ### Error Handling
 
@@ -139,6 +150,8 @@ the reserved prefix.
 | Empty family prefix, colliding family prefix | `ArgumentException` propagates |
 | Null tool collection, null tool, foreign name | `InvalidOperationException` propagates |
 | Reserved `tool_output` prefix claimed or used (retention requested) | `InvalidOperationException` propagates |
+| Two composed tools of one name (retention requested) | `InvalidOperationException` propagates |
+| Two composed tools of one name (retention not requested) | Returned unchanged; the agent factories refuse them |
 | A pack the host cannot support | Skipped silently; no tools created |
 
 **Composition-time programming errors throw; only runtime policy decisions are returned.** This is

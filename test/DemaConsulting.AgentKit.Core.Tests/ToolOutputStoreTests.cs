@@ -125,6 +125,80 @@ public class ToolOutputStoreTests
     }
 
     /// <summary>
+    ///     Proves an output whose raw length is exactly at the early-refusal bound is still
+    ///     retained when it fits once normalized.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Add_OutputAtTheRawLengthBound_IsRetainedWhenItFits()
+    {
+        // Arrange: ceilings of one and three characters
+        var one = new ToolOutputStore(new ToolOutputOptions(maxOutputCharacters: 1, maxRetainedCharacters: 1));
+        var three = new ToolOutputStore(new ToolOutputOptions(maxOutputCharacters: 3, maxRetainedCharacters: 3));
+
+        // Act: offer outputs of nothing but CRLF pairs, twice the ceiling plus two characters long
+        var atOne = one.Add("\r\n\r\n");
+        var atThree = three.Add(string.Concat(Enumerable.Repeat("\r\n", 4)));
+
+        // Assert: both are retained, each normalized to exactly its ceiling
+        Assert.NotNull(atOne);
+        Assert.Equal(1, atOne.Characters);
+        Assert.NotNull(atThree);
+        Assert.Equal(3, atThree.Characters);
+    }
+
+    /// <summary>
+    ///     Proves an output beyond the early-refusal bound is refused and evicts nothing.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Add_OutputBeyondTheRawLengthBound_IsRefusedAndEvictsNothing()
+    {
+        // Arrange: a one-character store already holding one output
+        var store = new ToolOutputStore(new ToolOutputOptions(maxOutputCharacters: 1, maxRetainedCharacters: 1));
+        store.Add("a");
+
+        // Act: offer an output one character beyond the bound
+        var refused = store.Add("x\r\n\r\n");
+
+        // Assert: nothing retained, and the earlier output survives
+        Assert.Null(refused);
+        Assert.Equal(ToolOutputLookup.Found, store.Find("output-1", out _));
+    }
+
+    /// <summary>
+    ///     Proves exhaustively over short outputs that the early refusal never refuses an output that
+    ///     would fit, and that its bound is tight.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_MustExceed_NeverRefusesAnOutputThatFits()
+    {
+        // Arrange: every output of up to eight characters drawn from a letter and both break characters
+        char[] alphabet = ['a', '\r', '\n'];
+        var outputs = new List<string> { string.Empty };
+        var previous = new List<string> { string.Empty };
+        for (var length = 1; length <= 8; length++)
+        {
+            previous = [.. previous.SelectMany(prefix => alphabet.Select(c => prefix + c))];
+            outputs.AddRange(previous);
+        }
+
+        for (var max = 1; max <= 5; max++)
+        {
+            // Act & Assert: wherever the raw length refuses, normalization would have refused too
+            foreach (var output in outputs.Where(output => ToolOutputStore.MustExceed(output.Length, max)))
+            {
+                ToolOutputStore.Normalize(output, out var characters, out _);
+                Assert.True(characters > max, $"'{output.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal)}' fits a ceiling of {max} but was refused.");
+            }
+
+            // Act & Assert: the longest output the bound admits can fit exactly
+            var tightest = string.Concat(Enumerable.Repeat("\r\n", max + 1));
+            ToolOutputStore.Normalize(tightest, out var tightCharacters, out _);
+            Assert.False(ToolOutputStore.MustExceed(tightest.Length, max));
+            Assert.Equal(max, tightCharacters);
+        }
+    }
+
+    /// <summary>
     ///     Proves the oldest outputs are evicted first when the count ceiling would be exceeded.
     /// </summary>
     [Fact]
