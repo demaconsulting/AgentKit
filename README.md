@@ -60,6 +60,12 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   each family; this README deliberately does not restate it.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
+- **Large tool outputs, retained rather than lost (opt-in)**: a tool result too large for the result
+  ceiling is normally refused, never truncated. Composed with `WithToolOutputSpill()`, it is kept
+  whole in memory instead, and the model receives a bounded preview and an opaque reference it pages
+  through with `tool_output_read` or searches with `tool_output_search` — readers that take no path,
+  so retention adds no reach. Retention is bounded, survives session compaction, and behaves the
+  same on every provider.
 - **A session that outlives the context window**: an AgentKit-owned session keeps its own transcript
   out of session, and when the provider's window fills it consolidates older history into a
   round-robin structure of tiered records, seeds a fresh provider session with them, and only then
@@ -311,6 +317,8 @@ conversation alive:
   cannot be forgotten
 - **Tool results**: text, structured data, binary, and image results, and refusals that carry a
   reason
+- **Large tool output retention**: opt-in, bounded, in-memory retention of a result too large to
+  return, answered with a preview and a reference the model reads through two path-free reader tools
 - **Tool pack contract**: composition of packs into the tool list an application offers a model,
   gated on host capability and narrowed by the access policy — a pack withholds the tools whose
   writes the policy governs when no grant permits writing anywhere
@@ -336,6 +344,18 @@ IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
     .Build();
 
 // Hand `tools` to ChatOptions.Tools, an IChatClient, or Microsoft Agent Framework.
+```
+
+To keep a result that is too large to return rather than have it refused, add
+`.WithToolOutputSpill()` before `.Build()`. An oversized listing, search or report is then retained
+and replaced by a preview naming a reference such as `output-3`, and `tool_output_read` and
+`tool_output_search` are appended to the list so the model can page through or search it:
+
+```csharp
+IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
+    .Add(new TextFilePack())
+    .WithToolOutputSpill()
+    .Build();
 ```
 
 A `PathPolicy` separates two orthogonal ideas. The **working directory** is the single location a
