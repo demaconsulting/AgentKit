@@ -501,6 +501,61 @@ public class CopilotAgentTests
     }
 
     /// <summary>
+    ///     Proves a serialized form whose state bag is present but not an object is refused, rather
+    ///     than restored with its state silently discarded, while a <c>null</c> state bag is still
+    ///     accepted as an empty one.
+    /// </summary>
+    [Fact]
+    public async Task CopilotAgent_DeserializeSession_NonObjectStateBag_Throws()
+    {
+        // Arrange
+        var agent = MakeAgent(new FakeCopilotRuntime());
+        var corrupted = JsonDocument.Parse("""{ "sessionId": "session-1", "stateBag": "invalid" }""").RootElement.Clone();
+        var nullBag = JsonDocument.Parse("""{ "sessionId": "session-1", "stateBag": null }""").RootElement.Clone();
+
+        // Act / Assert: the malformed bag is refused, the null bag is restored
+        await Assert.ThrowsAsync<ArgumentException>(
+            async () => await agent.DeserializeSessionAsync(corrupted, cancellationToken: TestContext.Current.CancellationToken));
+        var restored = await agent.DeserializeSessionAsync(nullBag, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("session-1", Assert.IsType<CopilotAgentSession>(restored).SessionId);
+    }
+
+    /// <summary>
+    ///     Proves serializing a conversation does not wait for a run in progress on it, and carries
+    ///     the identifier the run recorded when it opened its runtime session.
+    /// </summary>
+    /// <remarks>
+    ///     The run holds the conversation's gate for its whole streamed enumeration, so a
+    ///     serialization that waited on it would deadlock a host serializing from inside its own
+    ///     streaming loop.
+    /// </remarks>
+    [Fact]
+    public async Task CopilotAgent_SerializeSession_DuringARun_ReturnsWithoutWaitingForTheRun()
+    {
+        // Arrange: a first turn held open until the test releases it
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new FakeCopilotRuntime(_ =>
+            [new ScriptedTurn([], During: async _ => { started.SetResult(); await release.Task; })]);
+        var agent = MakeAgent(runtime);
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        var run = agent.RunAsync("first", session, cancellationToken: TestContext.Current.CancellationToken);
+        await started.Task;
+
+        // Act: serialize while the run still holds the conversation
+        var serializing = agent
+            .SerializeSessionAsync(session, cancellationToken: TestContext.Current.CancellationToken)
+            .AsTask();
+        var completedWhileRunning = serializing.IsCompleted;
+        release.SetResult();
+        await run;
+
+        // Assert: it did not wait, and it carries the identifier recorded when the session was opened
+        Assert.True(completedWhileRunning);
+        Assert.Equal("session-1", (await serializing).GetProperty("sessionId").GetString());
+    }
+
+    /// <summary>
     ///     Proves a session another kind of agent created cannot be serialized by this one.
     /// </summary>
     [Fact]

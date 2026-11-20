@@ -18,8 +18,9 @@ occupancy at all.
 **The events driven through it are the SDK's own event objects.** Every session event type the
 adapter matches on has a public constructor taking no arguments and a settable payload, so the tests
 construct genuine `SessionUsageInfoEvent`, `ToolExecutionStartEvent`, `ToolExecutionCompleteEvent`,
-`AssistantMessageEvent`, `SessionTruncationEvent`, `SessionCompactionStartEvent` and
-`SessionErrorEvent` instances and dispatch them through the adapter's own matching code. Nothing
+`AssistantMessageEvent`, `SessionTruncationEvent`, `SessionCompactionStartEvent`,
+`SessionContextClearedEvent`, `SessionSnapshotRewindEvent` and `SessionErrorEvent` instances and
+dispatch them through the adapter's own matching code. Nothing
 about the event shapes is simulated, which is what makes an offline test of this adapter worth
 running.
 
@@ -164,6 +165,7 @@ fixed.
 **Tests**:
 
 - `CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn`
+- `CopilotProviderSession_Send_ContextClearedOrRewound_RefusesNamingTheRewrite`
 - `CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn`
 
 Error path, and the one guarding a defect that is otherwise invisible. Scripts a turn during which
@@ -174,7 +176,12 @@ created with, because that is what an application would need to act on. Without 
 compactors acting on one conversation would produce no exception anywhere: the engine would simply
 start seeding replacements from a history the provider had discarded.
 
-The second proves the refusal is raised *before* the next turn is sent, by asserting the runtime
+The second scripts one session whose runtime clears the context window and one whose runtime rewinds
+to a snapshot, each then answering normally. It asserts both turns are refused and that each message
+names the rewrite that happened — cleared, or rewound — rather than only compaction and truncation,
+so the diagnostic states the actual cause.
+
+The third proves the refusal is raised *before* the next turn is sent, by asserting the runtime
 received no further prompt. That distinction is the whole value of the latch: detecting the first
 rewrite can only happen after the fact, but a later turn that reached the runtime would let the model
 run the application's tools, with their real side effects, against a conversation the engine no longer

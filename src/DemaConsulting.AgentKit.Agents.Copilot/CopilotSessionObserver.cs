@@ -169,12 +169,15 @@ internal sealed class CopilotSessionObserver
     ///     one.
     ///     </para>
     ///     <para>
-    ///     <b>Events attributed to a sub-agent are skipped.</b> A nested agent the runtime ran on
-    ///     this session's behalf has its own thread of tool traffic, tagged on the event envelope
-    ///     with that agent's identity. Those messages were never part of this conversation and the model was never
-    ///     shown them as such, so recording them would seed a future session with a history the
-    ///     model does not recognize. The call that started the nested agent <em>is</em> recorded,
-    ///     because that one happened in this conversation.
+    ///     <b>Every event attributed to a sub-agent is skipped, before it is matched.</b> A nested
+    ///     agent the runtime ran on this session's behalf has its own thread of events, tagged on the
+    ///     event envelope with that agent's identity. Not only its tool traffic and messages but any
+    ///     usage reading, history rewrite or error it reports describe the nested agent's own context
+    ///     rather than this session's. Recording its messages would seed a future session with a
+    ///     history the model does not recognize, and taking its usage, rewrite or error would move
+    ///     this session's occupancy, end it over a rewrite it never underwent, or name the wrong cause.
+    ///     The call that started the nested agent <em>is</em> recorded, because that one happened in
+    ///     this conversation.
     ///     </para>
     ///     <para>
     ///     Never throws. It runs on the runtime's dispatch thread, where an exception would be
@@ -185,6 +188,15 @@ internal sealed class CopilotSessionObserver
     /// <param name="sessionEvent">The event the runtime dispatched.</param>
     internal void OnEvent(SessionEvent sessionEvent)
     {
+        // Attribution rides the event envelope: AgentId is absent for the root agent and for
+        // session-level events, and names the sub-agent otherwise. A sub-agent's events - its tool
+        // traffic and messages, and any usage, rewrite or error it reports - describe its own
+        // context rather than this conversation, so none of them may change this observer's state.
+        if (sessionEvent.AgentId is not null)
+        {
+            return;
+        }
+
         switch (sessionEvent)
         {
             case SessionUsageInfoEvent { Data: { } usage }:
@@ -203,19 +215,17 @@ internal sealed class CopilotSessionObserver
                 });
                 break;
 
-            // Attribution rides the event envelope: AgentId is absent for the root agent and names
-            // the sub-agent otherwise, so only the root agent's own traffic is recorded.
-            case ToolExecutionStartEvent { AgentId: null, Data: { ToolCallId: { } callId } start }
+            case ToolExecutionStartEvent { Data: { ToolCallId: { } callId } start }
                 when !string.IsNullOrWhiteSpace(callId):
                 Record(() => _entries.Add(TranscriptEntry.ToolCall(callId, DescribeCall(start))));
                 break;
 
-            case ToolExecutionCompleteEvent { AgentId: null, Data: { ToolCallId: { } resultId } complete }
+            case ToolExecutionCompleteEvent { Data: { ToolCallId: { } resultId } complete }
                 when !string.IsNullOrWhiteSpace(resultId):
                 Record(() => _entries.Add(TranscriptEntry.ToolResult(resultId, DescribeResult(complete))));
                 break;
 
-            case AssistantMessageEvent { AgentId: null, Data: { Content: { Length: > 0 } content } }:
+            case AssistantMessageEvent { Data: { Content: { Length: > 0 } content } }:
                 Record(() => _entries.Add(TranscriptEntry.Assistant(content)));
                 break;
 

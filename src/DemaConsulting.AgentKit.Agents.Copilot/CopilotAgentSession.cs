@@ -29,8 +29,13 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <c>CopilotClient.DeleteSessionAsync</c>.
 ///     </para>
 ///     <para>
-///     Safe to share between threads: runs on one session are serialized by the agent, and
-///     <see cref="SessionId"/> is written only while a run holds that serialization.
+///     Runs on one session are serialized by the agent, and <see cref="SessionId"/> is written only
+///     while a run holds that serialization, so two concurrent runs cannot fork the conversation.
+///     Serialization is a snapshot and does <em>not</em> wait for a run in progress. A run records
+///     the identifier as soon as it has opened its runtime session, before its first update is
+///     produced, but a session serialized before that point carries no identifier. Serialize after
+///     a run has returned, or after its first update, to be sure the identifier is included.
+///     Waiting on the run would deadlock a host that serializes from inside its own streaming loop.
 ///     </para>
 /// </remarks>
 public sealed class CopilotAgentSession : AgentSession
@@ -119,15 +124,17 @@ public sealed class CopilotAgentSession : AgentSession
     ///     Reads a conversation from the JSON object <see cref="Serialize"/> writes.
     /// </summary>
     /// <remarks>
-    ///     Both properties are optional, so an object written before a first run, or by a writer that
-    ///     carried no state bag, is still accepted. Anything other than an object is refused, because
-    ///     no well-formed serialized session has another shape.
+    ///     Both properties are optional, and either may be <c>null</c>, so an object written before a
+    ///     first run, or by a writer that carried no state bag, is still accepted. Anything other than
+    ///     an object is refused, and so is a property that is present with any other kind, because no
+    ///     well-formed serialized session has that shape — restoring it would silently drop state.
     /// </remarks>
     /// <param name="serializedState">The serialized conversation.</param>
     /// <returns>The restored conversation.</returns>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="serializedState"/> is not a JSON object, or its <c>sessionId</c> is
-    ///     neither a string nor <c>null</c>.
+    ///     <paramref name="serializedState"/> is not a JSON object, its <c>sessionId</c> is
+    ///     neither a string nor <c>null</c>, or its <c>stateBag</c> is neither an object nor
+    ///     <c>null</c>.
     /// </exception>
     internal static CopilotAgentSession Deserialize(JsonElement serializedState)
     {
@@ -151,10 +158,18 @@ public sealed class CopilotAgentSession : AgentSession
             };
         }
 
-        var stateBag = serializedState.TryGetProperty(StateBagProperty, out var bag)
-            && bag.ValueKind == JsonValueKind.Object
-                ? AgentSessionStateBag.Deserialize(bag)
-                : new AgentSessionStateBag();
+        var stateBag = new AgentSessionStateBag();
+        if (serializedState.TryGetProperty(StateBagProperty, out var bag))
+        {
+            stateBag = bag.ValueKind switch
+            {
+                JsonValueKind.Object => AgentSessionStateBag.Deserialize(bag),
+                JsonValueKind.Null => new AgentSessionStateBag(),
+                _ => throw new ArgumentException(
+                    "The 'stateBag' of a serialized Copilot agent session must be an object or null.",
+                    nameof(serializedState)),
+            };
+        }
 
         return new CopilotAgentSession(sessionId, stateBag);
     }

@@ -51,6 +51,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <b>Thread safety.</b> The agent holds no mutable state and may be shared. Runs on one
 ///     <see cref="CopilotAgentSession"/> are serialized, so two concurrent first runs cannot fork a
 ///     conversation into two runtime sessions; runs on different sessions proceed independently.
+///     Serializing a session does not wait for a run in progress on it; it returns a snapshot.
 ///     </para>
 /// </remarks>
 internal sealed class CopilotAgent : AIAgent
@@ -151,6 +152,11 @@ internal sealed class CopilotAgent : AIAgent
         ValueTask.FromResult<AgentSession>(new CopilotAgentSession());
 
     /// <inheritdoc/>
+    /// <remarks>
+    ///     Takes a snapshot without waiting for a run in progress on the session: the run holds the
+    ///     session's gate across its whole streamed enumeration, so waiting on it would deadlock a
+    ///     host that serializes from inside its own streaming loop.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="session"/> was not created by an agent of this kind.
     /// </exception>

@@ -687,7 +687,9 @@ yourself should bound its output the same way.
 A conversation is a `CopilotAgentSession`. The runtime holds the conversation's history, so the
 session object only names it: the first run creates a runtime session and records its identifier in
 `SessionId`, and every later run resumes that session, confined exactly as before. Runs on one
-session are serialized, so two concurrent first runs cannot fork the conversation.
+session are serialized, so two concurrent first runs cannot fork the conversation. Serializing a
+session does not wait for a run in progress; serialize after a run returns to be sure the identifier
+it recorded is included.
 
 ```csharp
 var session = (CopilotAgentSession)await agent.CreateSessionAsync();

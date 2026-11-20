@@ -161,12 +161,24 @@ joined by a newline and that no attachment list is sent when the input carries n
 
 - `CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag`
 - `CopilotAgent_DeserializeSession_NonObject_Throws`
+- `CopilotAgent_DeserializeSession_NonObjectStateBag_Throws`
+- `CopilotAgent_SerializeSession_DuringARun_ReturnsWithoutWaitingForTheRun`
 
 The first runs a conversation once, stores a value in its state bag, serializes it, restores it on a
 **second** agent and runs there. It asserts the serialized form carries `sessionId` and a `stateBag`
 object, that the restored session carries the same identity and the same state bag value, and that
 the second agent's run resumed the same runtime session. The second asserts a serialized form that is
 a JSON array is refused with `ArgumentException`.
+
+The third asserts a serialized form whose `stateBag` is present but a string is refused with
+`ArgumentException`, rather than restored with its state silently replaced by an empty bag, and that
+a form whose `stateBag` is `null` is still restored, carrying its session identity.
+
+The fourth holds a first run's turn open after it has opened its runtime session, serializes the
+conversation, and asserts the serialization had already completed before the run was released and
+carries the identifier the run recorded. It pins the decision that serialization is a snapshot: a run
+holds the conversation's gate across its whole streamed enumeration, so a serialization that waited
+on it would deadlock a host serializing from inside its own streaming loop.
 
 #### AgentKitAgentsCopilot-CopilotAgent-SerializesRunsOnASession: One Conversation, One Runtime Session
 

@@ -129,6 +129,42 @@ public class CopilotSessionObserverTests
     }
 
     /// <summary>
+    ///     Proves a usage reading, history rewrite or error attributed to a sub-agent changes nothing.
+    ///     Those describe the nested agent's own context, so taking them would replace this session's
+    ///     occupancy, end the session over a rewrite it never underwent, or name the wrong cause.
+    /// </summary>
+    [Fact]
+    public void CopilotSessionObserver_OnEvent_SubAgentSessionEvents_ChangeNothing()
+    {
+        // Arrange: a turn in flight, and session-level events a sub-agent reported
+        var observer = new CopilotSessionObserver();
+        observer.BeginTurn();
+        SessionEvent[] nested =
+        [
+            CopilotEvents.Usage(currentTokens: 1200, tokenLimit: 8000),
+            CopilotEvents.CompactionStart(),
+            CopilotEvents.Truncation(),
+            new SessionContextClearedEvent { Data = new SessionContextClearedData { MessagesCleared = 4 } },
+            new SessionSnapshotRewindEvent { Data = new SessionSnapshotRewindData { EventsRemoved = 3, UpToEventId = "event-1" } },
+            CopilotEvents.Error("sub-agent failed"),
+        ];
+
+        // Act: each attributed on the envelope to the sub-agent
+        foreach (var sessionEvent in nested)
+        {
+            sessionEvent.AgentId = "sub-agent-1";
+            observer.OnEvent(sessionEvent);
+        }
+
+        // Assert: no reading, no per-turn report, no rewrite, no error, no entries
+        Assert.Null(observer.LatestUsage);
+        Assert.False(observer.UsageReportedThisTurn);
+        Assert.False(observer.ProviderRewroteHistory);
+        Assert.Null(observer.LastErrorMessage);
+        Assert.Empty(observer.DrainEntries());
+    }
+
+    /// <summary>
     ///     Proves an event the adapter has no use for changes nothing. The runtime emits a great deal
     ///     that is not part of a conversation, and recording it would seed a future session with a
     ///     history the model never saw.

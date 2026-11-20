@@ -69,7 +69,8 @@ keeps the wider currency so the narrowing happens in one visible place, in
 
 **Purpose:** Record one event from the session's stream.
 
-**Algorithm:** Match the event against the kinds this adapter has a use for and record the
+**Algorithm:** An event attributed to a sub-agent is skipped before matching. Otherwise, match the
+event against the kinds this adapter has a use for and record the
 corresponding state change under the lock. A usage event becomes the latest reading and marks the
 turn as having reported, both in one action so the two are never read out of step. A tool
 execution start becomes a tool-call entry rendered by name and arguments; its completion becomes a
@@ -81,14 +82,17 @@ truncation, the context window cleared, and a rewind to a snapshot. Each discard
 the engine believes it owns, so each is treated alike. A session error is remembered. Everything else
 is ignored.
 
-**Events attributed to a sub-agent are skipped.** A nested agent the runtime ran on this session's
-behalf has its own thread of tool traffic and its own messages, and the runtime attributes each such
-event on the event envelope: an event's `AgentId` is absent for the root agent and names the
-sub-agent otherwise. Only events whose `AgentId` is absent are recorded. The sub-agent's events were
-never part of this conversation and the model was never shown them as such, so recording them would
-seed a future session with a history it does not recognize. The call that *started* the nested agent
-is recorded, because that one happened in this conversation. This is a judgment call, recorded rather
-than assumed.
+**Every event attributed to a sub-agent is skipped, before it is matched.** A nested agent the
+runtime ran on this session's behalf has its own thread of tool traffic and its own messages, and the
+runtime attributes each such event on the event envelope: an event's `AgentId` is absent for the root
+agent and for session-level events, and names the sub-agent otherwise. Only events whose `AgentId` is
+absent change any state. The sub-agent's tool traffic and messages were never part of this
+conversation and the model was never shown them as such, so recording them would seed a future
+session with a history it does not recognize. Any usage reading, history rewrite or error a sub-agent
+reports describes its own context rather than this session's, so taking it would move this session's
+occupancy, end the session over a rewrite it never underwent, or name the wrong cause. The call that
+*started* the nested agent is recorded, because that one happened in this conversation. This is a
+judgment call, recorded rather than assumed.
 
 **A tool call with no usable identifier is skipped**, because a transcript entry requires one so a
 call can be paired with its result, and an unidentified call could not be paired. The runtime's
@@ -168,7 +172,7 @@ forgets to take the lock.
 | Event kind this adapter has no use for | Ignored |
 | Tool event with no usable call identifier | Skipped; nothing recorded |
 | Assistant message with no text | Skipped; nothing recorded |
-| Event belonging to a nested agent | Skipped; nothing recorded |
+| Event belonging to a nested agent | Skipped before matching; no state changes |
 | Tool reported neither result nor error | Recorded as an empty result |
 
 Nothing here throws, by design. This class runs on the runtime's own dispatch thread, and an

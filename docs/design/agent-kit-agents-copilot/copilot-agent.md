@@ -33,7 +33,10 @@ what happens around a turn:
 
 **Thread safety.** The agent holds no mutable state and may be shared. Runs on one
 `CopilotAgentSession` are serialized, so two concurrent first runs cannot fork a conversation into two
-runtime sessions; runs on different sessions proceed independently.
+runtime sessions; runs on different sessions proceed independently. Serializing a session does not
+wait for a run in progress on it: it returns a snapshot, because a run holds the gate across its whole
+streamed enumeration and waiting on it would deadlock a host that serializes from inside its own
+streaming loop.
 
 `CopilotAgent` is internal; an application sees it only as an `AIAgent`. `CopilotAgentSession` is
 public, because a host needs its `SessionId` to delete a finished conversation.
@@ -68,7 +71,8 @@ handed and its clone is shallow, so each run builds its own through the delegate
 
 - **`SessionId`** (`string?`, public get, internal set) — The identifier of the runtime session that
   holds the conversation, or null before the first run. Invariant: written only while a run holds the
-  session's gate, and set as soon as a runtime session exists, before any turn is taken.
+  session's gate, and set as soon as a runtime session exists, before any turn is taken. Read by
+  serialization without the gate: serialization is a snapshot.
 - **`Gate`** (`SemaphoreSlim`, internal, one slot) — Keeps runs on this conversation sequential. Never
   disposed: no wait handle is ever requested from it, so it holds no unmanaged resource.
 - **`StateBag`** (`AgentSessionStateBag`, inherited) — The Agent Framework's state bag, carried
@@ -84,8 +88,8 @@ its own history, so nothing is replayed from here.
 ```
 
 The shape is the one the earlier Agent Framework Copilot adapter wrote, so a conversation it
-serialized remains readable. Both properties are optional when reading, so an object written before a
-first run, or by a writer that carried no state bag, is accepted.
+serialized remains readable. Both properties are optional when reading, and either may be `null`, so an
+object written before a first run, or by a writer that carried no state bag, is accepted.
 
 **`UpdateMapper`** (private nested class, one per run) — Turns the run's session events into updates
 and writes them to the run's update stream.
@@ -118,9 +122,11 @@ runtime: the runtime session is created by the conversation's first run.
 **Purpose:** Let a conversation outlive the process.
 
 **Algorithm:** Serializing accepts only a `CopilotAgentSession` and writes `sessionId` — the string, or
-`null` — and `stateBag`. Deserializing refuses anything but a JSON object, refuses a `sessionId` that
-is neither a string nor `null`, takes the state bag when it is an object and starts an empty one
-otherwise, and returns a `CopilotAgentSession` whose next run resumes the recorded runtime session.
+`null` — and `stateBag`. It does not take the gate, so it never waits for a run in progress and
+returns a snapshot. Deserializing refuses anything but a JSON object, refuses a `sessionId` that
+is neither a string nor `null`, takes the state bag when it is an object, starts an empty one when it
+is absent or `null`, and refuses any other kind. It returns a `CopilotAgentSession` whose next run
+resumes the recorded runtime session.
 
 **Resume-by-identifier goes through deserialization.** A host holding only a runtime session
 identifier writes the serialized form around it and deserializes it; there is no typed
@@ -351,7 +357,7 @@ Each is deliberate and recorded so it is not mistaken for an omission:
 | Null `messages` | `ArgumentNullException` at the call |
 | Session created by another kind of agent | `InvalidOperationException` at the call; nothing is opened |
 | Serializing another kind of agent's session | `InvalidOperationException` propagates |
-| Serialized form not a JSON object, or `sessionId` neither string nor null | `ArgumentException` |
+| Serialized form not an object; `sessionId` not string/null; `stateBag` not object/null | `ArgumentException` |
 | Opener or resumer returned null | `InvalidOperationException` propagates |
 | Creating or resuming the runtime session fails | Propagates; nothing to release; gate released |
 | Root-agent session error during the turn | Run fails with `InvalidOperationException` |

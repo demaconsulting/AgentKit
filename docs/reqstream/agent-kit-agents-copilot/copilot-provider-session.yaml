@@ -104,8 +104,8 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-RefusesARewrittenHistory
             title: >-
-              The session shall refuse a turn once the Copilot runtime has compacted or truncated the
-              session's history itself, naming that cause.
+              The session shall refuse a turn once the Copilot runtime has compacted, truncated,
+              cleared or rewound the session's history itself, naming that cause.
             justification: |
               Every session the engine drives is created with the runtime's own compaction threshold
               raised clear of the engine's rotation point, so the engine always acts first. That is a
@@ -127,6 +127,7 @@ sections:
               processed that the session could not record.
             tests:
               - CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn
+              - CopilotProviderSession_Send_ContextClearedOrRewound_RefusesNamingTheRewrite
               - CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn
 
           - id: AgentKitAgentsCopilot-CopilotProviderSession-EndsOnATurnItCouldNotRecord

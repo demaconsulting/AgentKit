@@ -93,15 +93,24 @@ sections:
             title: >-
               The agent shall serialize a conversation as its runtime session identity and its state
               bag, shall restore a conversation from that form so a later run resumes the same
-              runtime session, and shall refuse a serialized form that is not a JSON object.
+              runtime session, shall serialize without waiting for a run in progress on the
+              conversation, and shall refuse a serialized form that is not a JSON object or whose
+              `sessionId` or `stateBag` has the wrong kind.
             justification: |
               A conversation that must outlive the process — a host restarting, a request served by
               another instance — is persisted and restored through the Agent Framework's session
               serialization. The shape is the one the earlier Agent Framework Copilot adapter wrote,
-              so a conversation it serialized remains readable.
+              so a conversation it serialized remains readable. A run holds the conversation's gate
+              across its whole streamed enumeration, so serialization that waited on it would
+              deadlock a host serializing from inside its own streaming loop; serialization is a
+              snapshot, as it is for the Agent Framework's own chat-client agent and the earlier
+              adapter. Restoring a present but malformed state bag as an empty one would let the
+              next run continue with wrong session metadata, and the earlier adapter refused it too.
             tests:
               - CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag
               - CopilotAgent_DeserializeSession_NonObject_Throws
+              - CopilotAgent_DeserializeSession_NonObjectStateBag_Throws
+              - CopilotAgent_SerializeSession_DuringARun_ReturnsWithoutWaitingForTheRun
 
           - id: AgentKitAgentsCopilot-CopilotAgent-SerializesRunsOnASession
             title: >-

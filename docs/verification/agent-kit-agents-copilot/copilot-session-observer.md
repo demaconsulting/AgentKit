@@ -108,6 +108,7 @@ part of a conversation.
 - `CopilotSessionObserver_OnEvent_ToolCallWithoutAnIdentifier_IsSkipped`
 - `CopilotSessionObserver_OnEvent_EmptyAssistantMessage_IsNotRecorded`
 - `CopilotSessionObserver_OnEvent_NestedAgentEvents_AreNotRecorded`
+- `CopilotSessionObserver_OnEvent_SubAgentSessionEvents_ChangeNothing`
 
 The first asserts a failed tool is recorded with the runtime's error as that call's result. The model
 saw the failure and reasoned from it, so a history showing the call succeeding — or showing no result
@@ -127,6 +128,13 @@ is scripted: this conversation's call, the child's own call, result and message,
 the SDK's agent identity to the child rather than to the root agent, and then this conversation's
 result. The test asserts exactly two entries — the outer call and its result — so the child's three
 events are demonstrably excluded while the call that started the child is demonstrably kept.
+
+The fifth dispatches, each attributed to a sub-agent on the event envelope, a usage reading, a
+compaction start, a truncation, a cleared context, a snapshot rewind and a session error, during a
+turn in flight. It asserts no usage reading is held, the turn has not reported usage, the history is
+not marked rewritten, no error is remembered and no entry is recorded. Those events describe the
+nested agent's own context, so taking any of them would move this session's occupancy, end the
+session over a rewrite it never underwent, or name the wrong cause.
 
 #### AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory: Every Way the Runtime Rewrites
 

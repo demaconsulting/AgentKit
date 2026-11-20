@@ -290,6 +290,36 @@ public class CopilotProviderSessionTests
     }
 
     /// <summary>
+    ///     Proves a cleared context and a snapshot rewind are refused like any other rewrite, with a
+    ///     message that names them rather than only compaction and truncation.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSession_Send_ContextClearedOrRewound_RefusesNamingTheRewrite()
+    {
+        // Arrange: one session whose runtime clears the context, one whose runtime rewinds it
+        var cleared = Runtime(Turn(
+            new SessionContextClearedEvent { Data = new SessionContextClearedData { MessagesCleared = 4 } },
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant("the answer")));
+        var rewound = Runtime(Turn(
+            new SessionSnapshotRewindEvent { Data = new SessionSnapshotRewindData { EventsRemoved = 3, UpToEventId = "event-1" } },
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant("the answer")));
+        await using var clearedSession = await OpenAsync(cleared);
+        await using var rewoundSession = await OpenAsync(rewound);
+
+        // Act
+        var clearedError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => clearedSession.SendAsync("a question", TestContext.Current.CancellationToken));
+        var rewoundError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => rewoundSession.SendAsync("a question", TestContext.Current.CancellationToken));
+
+        // Assert: each refusal names the kinds of rewrite, including the one that happened
+        Assert.Contains("cleared", clearedError.Message, StringComparison.Ordinal);
+        Assert.Contains("rewound", rewoundError.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a session that has observed a rewrite refuses the <em>next</em> turn without
     ///     sending it, rather than running it and reporting the divergence afterwards.
     /// </summary>
