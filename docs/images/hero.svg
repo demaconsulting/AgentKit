@@ -1,0 +1,282 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="640" viewBox="0 0 1600 640">
+  <!-- The README hero banner. An agent's tool calls, the application's path grants and tool limits, and long
+       conversations flow into the AgentKit library and come out as confined tool results, a guarded tool list,
+       a session compacted into tiered context, and agents on any provider.
+       The definitions and the left panel follow the shared DEMA Consulting hero (CanvasNet and BuildMark).
+       This file is docs/images/hero.svg, beside its rendered docs/images/hero.png (matching base names, per the
+       diagram documentation standard); the files it embeds are in docs/images/hero/. -->
+  <defs>
+    <style>
+      .word { font: bold 92px sans-serif; fill: #ffffff; }
+      .eyebrow { font: bold 25px sans-serif; fill: #a5b4fc; }
+      .tag { font: bold 40px sans-serif; fill: #f8fafc; }
+      .body { font: 25px sans-serif; fill: #cbd5e1; }
+      .cmd { font: 25px monospace; fill: #e2e8f0; }
+      .prompt { fill: #5eead4; }
+      .file { fill: #f9a8d4; }
+      .brandText { fill: url(#brand); }
+      .note { font: italic 25px sans-serif; fill: #94a3b8; }
+      .label { font: bold 25px sans-serif; fill: #f1f5f9; text-anchor: middle; }
+      .engine { font: bold 32px monospace; fill: #ffffff; }
+      .api { font: bold 25px sans-serif; fill: #c4b5fd; }
+      .card { fill: url(#glass); stroke: url(#rim); stroke-width: 1.5; filter: url(#shadow); }
+      .panel { fill: #0a1022; stroke: #ffffff; stroke-opacity: 0.06; }
+      .flow { fill: none; stroke-width: 3; stroke-linecap: round; }
+      .page { fill: #ffffff; filter: url(#paper); }
+    </style>
+
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b1f"/>
+      <stop offset="0.55" stop-color="#130f3b"/>
+      <stop offset="1" stop-color="#071a2e"/>
+    </linearGradient>
+    <radialGradient id="glowViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#7c3aed" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#06b6d4" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#06b6d4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowPink" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#db2777" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#db2777" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.2" fill="#a5b4fc" fill-opacity="0.16"/>
+    </pattern>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="engineFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#0b1022"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="paper" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="blur" x="-30%" y="-150%" width="160%" height="400%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="heat" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+
+    <marker id="headPink" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#f472b6"/>
+    </marker>
+    <marker id="headAmber" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="headCyan" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="headViolet" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#a78bfa"/>
+    </marker>
+    <marker id="headBlue" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#60a5fa"/>
+    </marker>
+    <marker id="headMint" viewBox="0 0 10 10" refX="2.5" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+      <path d="M0,0 L10,5 L0,10 L2.5,5 z" fill="#5eead4"/>
+    </marker>
+
+    <!-- The text and shapes inside the mini illustrations -->
+    <style>
+      .mini { font: bold 22px sans-serif; }
+      .miniMono { font: bold 22px monospace; }
+      .bar { fill: #cbd5e1; }
+      .ink { fill: #1e293b; }
+    </style>
+  </defs>
+
+  <!-- Background: deep gradient, soft glows, and a dot grid -->
+  <rect width="1600" height="640" fill="url(#bg)"/>
+  <ellipse cx="250" cy="170" rx="420" ry="300" fill="url(#glowViolet)"/>
+  <ellipse cx="1070" cy="294" rx="420" ry="220" fill="url(#glowCyan)"/>
+  <ellipse cx="1480" cy="620" rx="380" ry="260" fill="url(#glowPink)"/>
+  <rect width="1600" height="640" fill="url(#dots)"/>
+
+  <!-- Wordmark and tagline -->
+  <image href="hero/dc-logo-dark.svg" x="46" y="54" width="50" height="50"/>
+  <text class="eyebrow" x="100" y="90">DEMA Consulting</text>
+  <text class="word" x="52" y="176">Agent</text>
+  <text class="word brandText" x="312.6" y="176">Kit</text>
+  <rect x="58" y="200" width="132" height="6" rx="3" fill="url(#brand)"/>
+  <text class="tag" x="56" y="266">Every tool, guarded.</text>
+  <text class="tag brandText" x="56" y="316">Every chat, compacted.</text>
+  <text class="body" x="58" y="368">Hardened, provider-neutral tools for</text>
+  <text class="body" x="58" y="402">.NET AI agents, and sessions that</text>
+  <text class="body" x="58" y="436">outlive the model's context window.</text>
+  <rect x="56" y="468" width="480" height="90" rx="12" fill="#0a1022" fill-opacity="0.8" stroke="#a78bfa" stroke-opacity="0.45" stroke-width="1.5"/>
+  <text class="cmd" x="78" y="503">new ToolPackBuilder(</text>
+  <text class="cmd file" x="378" y="503">policy</text>
+  <text class="cmd" x="468" y="503">)</text>
+  <text class="cmd" x="108" y="539">.Add(new FilePack()).Build()</text>
+  <text class="note" x="58" y="604">Unsafe calls cannot be expressed.</text>
+
+  <!-- Input cards -->
+  <g>
+    <!-- Input one: a tool call the model makes, naming a tool and a path -->
+    <rect class="card" x="580" y="40" width="236" height="160" rx="16"/>
+    <rect x="642" y="40" width="112" height="3" rx="1.5" fill="#fbbf24"/>
+    <rect class="panel" x="588" y="48" width="220" height="112" rx="10"/>
+    <g transform="translate(588 48)">
+      <text class="miniMono" x="16" y="38" fill="#fde68a">text_file_read</text>
+      <rect x="16" y="54" width="188" height="40" rx="8" fill="#fbbf24" fill-opacity="0.12" stroke="#fbbf24" stroke-opacity="0.6" stroke-width="1.5"/>
+      <text class="miniMono" x="110" y="81" fill="#e2e8f0" text-anchor="middle">"notes.md"</text>
+    </g>
+    <text class="label" x="698" y="190">Tool calls</text>
+
+    <!-- Input two: the path grants the application configures, read-write and read-only -->
+    <rect class="card" x="828" y="40" width="236" height="160" rx="16"/>
+    <rect x="890" y="40" width="112" height="3" rx="1.5" fill="#22d3ee"/>
+    <rect class="panel" x="836" y="48" width="220" height="112" rx="10"/>
+    <g transform="translate(836 48)">
+      <path d="M16 20 H30 L35 25 H52 V46 H16 Z" fill="#22d3ee"/>
+      <text class="miniMono" x="64" y="42" fill="#f8fafc">/work</text>
+      <rect x="146" y="18" width="56" height="30" rx="15" fill="#4ade80" fill-opacity="0.18" stroke="#4ade80" stroke-width="1.5"/>
+      <text class="mini" x="174" y="40" fill="#bbf7d0" text-anchor="middle">RW</text>
+      <path d="M16 66 H30 L35 71 H52 V92 H16 Z" fill="#22d3ee" fill-opacity="0.6"/>
+      <text class="miniMono" x="64" y="88" fill="#f8fafc">/docs</text>
+      <rect x="146" y="64" width="56" height="30" rx="15" fill="#22d3ee" fill-opacity="0.16" stroke="#22d3ee" stroke-width="1.5"/>
+      <text class="mini" x="174" y="86" fill="#a5f3fc" text-anchor="middle">RO</text>
+    </g>
+    <text class="label" x="946" y="190">Path grants</text>
+
+    <!-- Input three: the tool limits every tool observes, with one bar stopped at its ceiling -->
+    <rect class="card" x="1076" y="40" width="236" height="160" rx="16"/>
+    <rect x="1138" y="40" width="112" height="3" rx="1.5" fill="#f472b6"/>
+    <rect class="panel" x="1084" y="48" width="220" height="112" rx="10"/>
+    <g transform="translate(1084 48)">
+      <text class="miniMono" x="16" y="38" fill="#fbcfe8">max 64 KB</text>
+      <rect x="16" y="56" width="188" height="10" rx="5" fill="#ffffff" fill-opacity="0.12"/>
+      <rect x="16" y="56" width="104" height="10" rx="5" fill="#f472b6"/>
+      <rect x="16" y="82" width="188" height="10" rx="5" fill="#ffffff" fill-opacity="0.12"/>
+      <rect x="16" y="82" width="148" height="10" rx="5" fill="#f472b6"/>
+      <line x1="164" y1="48" x2="164" y2="100" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 3"/>
+    </g>
+    <text class="label" x="1194" y="190">Tool limits</text>
+
+    <!-- Input four: a long conversation, turn after turn -->
+    <rect class="card" x="1324" y="40" width="236" height="160" rx="16"/>
+    <rect x="1386" y="40" width="112" height="3" rx="1.5" fill="#60a5fa"/>
+    <rect class="panel" x="1332" y="48" width="220" height="112" rx="10"/>
+    <g transform="translate(1332 48)">
+      <rect x="16" y="12" width="128" height="26" rx="13" fill="#60a5fa" fill-opacity="0.22" stroke="#60a5fa" stroke-width="1.5"/>
+      <rect class="bar" x="30" y="22" width="88" height="6" rx="3"/>
+      <rect x="76" y="44" width="128" height="26" rx="13" fill="#ffffff" fill-opacity="0.08" stroke="#cbd5e1" stroke-opacity="0.5" stroke-width="1.5"/>
+      <rect class="bar" x="90" y="54" width="96" height="6" rx="3"/>
+      <rect x="16" y="76" width="148" height="26" rx="13" fill="#60a5fa" fill-opacity="0.22" stroke="#60a5fa" stroke-width="1.5"/>
+      <rect class="bar" x="30" y="86" width="108" height="6" rx="3"/>
+    </g>
+    <text class="label" x="1442" y="190">Long chats</text>
+  </g>
+
+  <!-- Flows into the engine -->
+  <g class="flow">
+    <path d="M698,206 C698,236 950,226 950,253" stroke="#fbbf24" marker-end="url(#headAmber)"/>
+    <path d="M946,206 C946,236 1030,226 1030,253" stroke="#22d3ee" marker-end="url(#headCyan)"/>
+    <path d="M1194,206 C1194,236 1110,226 1110,253" stroke="#f472b6" marker-end="url(#headPink)"/>
+    <path d="M1442,206 C1442,236 1190,226 1190,253" stroke="#60a5fa" marker-end="url(#headBlue)"/>
+  </g>
+  <g stroke="#0a1022" stroke-width="2">
+    <circle cx="698" cy="206" r="5" fill="#fbbf24"/>
+    <circle cx="946" cy="206" r="5" fill="#22d3ee"/>
+    <circle cx="1194" cy="206" r="5" fill="#f472b6"/>
+    <circle cx="1442" cy="206" r="5" fill="#60a5fa"/>
+  </g>
+  <!-- The engine -->
+  <rect x="853" y="262" width="434" height="64" rx="32" fill="url(#brand)" opacity="0.55" filter="url(#blur)"/>
+  <rect x="853" y="262" width="434" height="64" rx="32" fill="url(#engineFill)" stroke="url(#brand)" stroke-width="2.5"/>
+  <rect x="877" y="276" width="36" height="36" rx="9" fill="url(#brand)"/>
+  <path d="M895 281 L906 285 V293 C906 300 901 304 895 307 C889 304 884 300 884 293 V285 Z" fill="#ffffff"/>
+  <path d="M890 293 L894 297 L900 289" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text class="engine" x="929" y="305">AgentKit</text>
+  <line x1="1095" y1="278" x2="1095" y2="310" stroke="#ffffff" stroke-opacity="0.25" stroke-width="1.5"/>
+  <text class="api" x="1115" y="303">.NET library</text>
+  <!-- Flows out of the engine -->
+  <g class="flow" stroke="#5eead4">
+    <path d="M980,330 C980,356 728,356 728,381" marker-end="url(#headMint)"/>
+    <path d="M1040,330 C1040,356 999,356 999,381" marker-end="url(#headMint)"/>
+    <path d="M1100,330 C1100,356 1232,356 1232,381" marker-end="url(#headMint)"/>
+    <path d="M1160,330 C1160,356 1457,356 1457,381" marker-end="url(#headMint)"/>
+  </g>
+  <g fill="#5eead4" stroke="#0a1022" stroke-width="2">
+    <circle cx="980" cy="330" r="5"/>
+    <circle cx="1040" cy="330" r="5"/>
+    <circle cx="1100" cy="330" r="5"/>
+    <circle cx="1160" cy="330" r="5"/>
+  </g>
+
+  <!-- Output tiles -->
+  <g>
+    <!-- Output one: the main result, a permitted read returned and a path outside every grant refused -->
+    <rect class="card" x="580" y="390" width="296" height="210" rx="16"/>
+    <rect class="panel" x="588" y="398" width="280" height="152" rx="10"/>
+    <rect x="604" y="412" width="58" height="30" rx="15" fill="#4ade80" fill-opacity="0.18" stroke="#4ade80" stroke-width="1.5"/>
+    <text class="mini" x="633" y="434" fill="#bbf7d0" text-anchor="middle">ok</text>
+    <text class="miniMono" x="676" y="434" fill="#f8fafc">notes.md</text>
+    <rect class="bar" x="676" y="450" width="160" height="6" rx="3" fill-opacity="0.75"/>
+    <rect class="bar" x="676" y="462" width="120" height="6" rx="3" fill-opacity="0.75"/>
+    <line x1="604" y1="482" x2="852" y2="482" stroke="#ffffff" stroke-opacity="0.15"/>
+    <rect x="604" y="498" width="108" height="30" rx="15" fill="#f87171" fill-opacity="0.18" stroke="#f87171" stroke-width="1.5"/>
+    <text class="mini" x="658" y="520" fill="#fecaca" text-anchor="middle">refused</text>
+    <text class="miniMono" x="726" y="520" fill="#f8fafc">../keys</text>
+    <text class="label" x="728" y="585">Confined results</text>
+
+    <!-- Output two: the guarded tool list handed to the agent framework -->
+    <rect class="card" x="889" y="390" width="220" height="210" rx="16"/>
+    <rect class="panel" x="897" y="398" width="204" height="152" rx="10"/>
+    <rect x="911" y="410" width="176" height="36" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#a78bfa" stroke-opacity="0.7" stroke-width="1.5"/>
+    <text class="miniMono" x="999" y="435" fill="#e2e8f0" text-anchor="middle">file_list</text>
+    <rect x="911" y="456" width="176" height="36" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#a78bfa" stroke-opacity="0.7" stroke-width="1.5"/>
+    <text class="miniMono" x="999" y="481" fill="#e2e8f0" text-anchor="middle">todo_set</text>
+    <rect x="911" y="502" width="176" height="36" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#a78bfa" stroke-opacity="0.7" stroke-width="1.5"/>
+    <text class="miniMono" x="999" y="527" fill="#e2e8f0" text-anchor="middle">memory_file</text>
+    <text class="label" x="999" y="585">Guarded tools</text>
+
+    <!-- Output three: a session compacted into a verbatim tail and three tiers of consolidated records -->
+    <rect class="card" x="1122" y="390" width="220" height="210" rx="16"/>
+    <rect class="panel" x="1130" y="398" width="204" height="152" rx="10"/>
+    <text class="miniMono" x="1144" y="428" fill="#5eead4">tail</text>
+    <rect x="1210" y="412" width="110" height="20" rx="5" fill="#5eead4"/>
+    <text class="miniMono" x="1144" y="462" fill="#e2e8f0">T1</text>
+    <rect x="1210" y="446" width="22" height="20" rx="5" fill="#22d3ee"/>
+    <rect x="1239" y="446" width="22" height="20" rx="5" fill="#22d3ee"/>
+    <rect x="1268" y="446" width="22" height="20" rx="5" fill="#22d3ee"/>
+    <rect x="1297" y="446" width="22" height="20" rx="5" fill="#22d3ee"/>
+    <text class="miniMono" x="1144" y="496" fill="#e2e8f0">T2</text>
+    <rect x="1210" y="480" width="22" height="20" rx="5" fill="#a78bfa"/>
+    <rect x="1239" y="480" width="22" height="20" rx="5" fill="#a78bfa"/>
+    <rect x="1268" y="480" width="22" height="20" rx="5" fill="#a78bfa"/>
+    <text class="miniMono" x="1144" y="530" fill="#e2e8f0">T3</text>
+    <rect x="1210" y="514" width="22" height="20" rx="5" fill="#f472b6"/>
+    <rect x="1239" y="514" width="22" height="20" rx="5" fill="#f472b6"/>
+    <text class="label" x="1232" y="585">Tiered context</text>
+
+    <!-- Output four: agents on any provider -->
+    <rect class="card" x="1355" y="390" width="205" height="210" rx="16"/>
+    <rect class="panel" x="1363" y="398" width="189" height="152" rx="10"/>
+    <circle cx="1457" cy="430" r="22" fill="url(#brand)"/>
+    <path d="M1457 417 L1468 421 V429 C1468 436 1463 440 1457 443 C1451 440 1446 436 1446 429 V421 Z" fill="#ffffff"/>
+    <rect x="1374" y="462" width="166" height="34" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#5eead4" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text class="miniMono" x="1457" y="486" fill="#e2e8f0" text-anchor="middle">IChatClient</text>
+    <rect x="1374" y="504" width="166" height="34" rx="8" fill="#ffffff" fill-opacity="0.08" stroke="#5eead4" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text class="miniMono" x="1457" y="528" fill="#e2e8f0" text-anchor="middle">Copilot</text>
+    <text class="label" x="1457" y="585">Any provider</text>
+  </g>
+</svg>
