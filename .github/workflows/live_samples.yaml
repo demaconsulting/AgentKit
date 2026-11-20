@@ -14,6 +14,17 @@
 # When no credential is configured the workflow does not fail: it reports that it was skipped
 # and exits successfully, so a fork or a repository without the secret sees a clean result
 # rather than a red cross it can do nothing about.
+#
+# A second job runs the opt-in Copilot live suite (test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests),
+# which re-measures, against the real Copilot runtime, the properties the Copilot package's
+# confinement depends on: which tools a session exposes, which names the runtime reserves for its
+# built-ins, what the permission handler is asked, how large and image results are delivered, and
+# whether an agent's conversation streams and resumes. The suite is outside AgentKit.slnx and is
+# gated on AGENTKIT_COPILOT_LIVE_MODEL, so nothing else ever runs it.
+#
+# Both jobs build projects that reference Microsoft.Copilot.SDK directly, whose build targets
+# download the native Copilot runtime. The extracted runtime is cached per platform and project
+# set, and the SDK skips the download when it finds a complete cached copy.
 
 name: Live Model Samples
 
@@ -66,6 +77,13 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
+
+      - name: Cache the Copilot runtime
+        if: steps.credentials.outputs.available == 'true'
+        uses: actions/cache@v6
+        with:
+          path: samples/*/obj/Release/net10.0/copilot-cli
+          key: copilot-cli-samples-${{ runner.os }}-${{ hashFiles('samples/**/*.csproj') }}
 
       - name: Build samples
         if: steps.credentials.outputs.available == 'true'
@@ -183,4 +201,73 @@ jobs:
             ${{ runner.temp }}/research-transcript.txt
             ${{ runner.temp }}/research-notes/
             ${{ runner.temp }}/document-session/
+          if-no-files-found: warn
+
+  live-copilot-suite:
+    name: Live Copilot Suite
+    runs-on: ubuntu-latest
+
+    env:
+      # The same dedicated Copilot credential the samples job uses; the runtime reads it from the
+      # environment when the client authenticates as the logged-in user.
+      GH_TOKEN: ${{ secrets.COPILOT_GH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # === CREDENTIAL CHECK ===
+      # As in the samples job: an unconfigured repository gets a successful, explained no-op.
+
+      - name: Check for credentials
+        id: credentials
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No COPILOT_GH_TOKEN secret is configured; skipping the live Copilot suite."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup dotnet
+        if: steps.credentials.outputs.available == 'true'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Cache the Copilot runtime
+        if: steps.credentials.outputs.available == 'true'
+        uses: actions/cache@v6
+        with:
+          path: test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/obj/Release/net10.0/copilot-cli
+          key: copilot-cli-live-${{ runner.os }}-${{ hashFiles('test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/*.csproj') }}
+
+      # === LIVE SUITE ===
+      # Runs sequentially in one collection. AGENTKIT_COPILOT_LIVE_MODEL both opts the run in and
+      # names the model; a cheap one is the default because the scenarios assert on the runtime's
+      # events and metadata, not on the quality of the model's prose.
+
+      - name: Run the live Copilot suite
+        if: steps.credentials.outputs.available == 'true'
+        timeout-minutes: 30
+        env:
+          AGENTKIT_COPILOT_LIVE_MODEL: ${{ inputs.model || 'claude-haiku-5.5' }}
+          AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY: ${{ github.workspace }}/artifacts/live
+        run: >
+          dotnet test
+          --project test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests
+          --configuration Release
+          --report-trx
+          --results-directory artifacts/live
+
+      # === ARTIFACTS ===
+      # The TRX and the run's log are the verification evidence the live suite produces.
+
+      - name: Upload live suite results
+        if: always() && steps.credentials.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-copilot-suite
+          path: artifacts/live/
           if-no-files-found: warn

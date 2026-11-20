@@ -1,0 +1,86 @@
+---
+# Software Unit Requirements for CopilotClientStarter
+#
+# These requirements describe the design-level behavior of the CopilotClientStarter unit.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotClientStarter Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-StartsTheClient
+            title: >-
+              The starter shall start the host's Copilot client and complete without error when the
+              start succeeds.
+            justification: |
+              The starter is an optional replacement for starting the client directly, so a host that
+              adopts it must get exactly the start it would have had.
+            tests:
+              - CopilotClientStarter_Start_Succeeds_DoesNotThrow
+
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride
+            title: >-
+              The starter shall, when a start fails with an error that names the location the
+              runtime-path environment variable points to, report the runtime's error, the variable,
+              its value and the remedies, keeping the original failure as the cause.
+            justification: |
+              Every shell the Copilot CLI starts sets the variable to the CLI's own installation, which
+              does not ship the runtime library in-process hosting loads, so an application launched
+              from such a shell fails with an error about a missing library that names neither the
+              variable nor the remedy. The runtime's error names the location it searched, which is
+              beside the variable's value, so that is when the variable is shown to be the cause.
+              Naming the variable and the remedy turns an hour of diagnosis into a one-line fix.
+            tests:
+              - CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause
+              - CopilotClientStarter_NamesLocation_NullMessageInChain_SearchesTheRest
+              - CopilotClientStarter_NamesLocation_BareRelativeValue_MatchesTheFullPathTheSdkSearched
+              - CopilotClientStarter_NamesLocation_MatchOnlyInInnerException_ReturnsTrue
+
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride
+            title: >-
+              The starter shall, when a start fails while the runtime-path environment variable is
+              set but the error does not name the location it points to, report the runtime's error
+              and the variable's value without stating that the variable caused the failure, keeping
+              the original failure as the cause.
+            justification: |
+              Every Copilot CLI shell sets the variable, so most failed starts from such shells have
+              other causes. Asserting that the variable caused one would send the host after the wrong
+              fix; reporting the runtime's error and the variable's value leaves the host the facts.
+            tests:
+              - CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable
+              - CopilotClientStarter_Start_FailsWithNullMessage_ReportsWithoutThrowing
+              - CopilotClientStarter_NamesLocation_BareRelativeValue_DoesNotMatchTheBareValue
+              - CopilotClientStarter_NamesLocation_SiblingDirectory_DoesNotMatch
+              - CopilotClientStarter_NamesLocation_RootDirectory_IsNotMatched
+
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime
+            title: >-
+              The starter shall, when a start fails while the runtime-path environment variable is
+              not set, report the runtime's error and that, if the runtime library was not found, the
+              host application must reference the Copilot SDK directly so the runtime is provisioned,
+              keeping the original failure as the cause.
+            justification: |
+              The SDK provisions its runtime only into a project that references it directly, and the
+              AgentKit library deliberately ships none, so a host that relies on the library's
+              reference alone has no runtime to load. That is the other common cause of a failed start,
+              and it is just as opaque without an explanation.
+            tests:
+              - CopilotClientStarter_Start_FailsWithoutCliPath_ExplainsTheMissingRuntime
+
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-PassesCancellationThrough
+            title: >-
+              The starter shall propagate a canceled start unchanged.
+            justification: |
+              A cancellation is the caller's own decision, not a fault to explain; wrapping it would
+              defeat the caller's handling of cancellation.
+            tests:
+              - CopilotClientStarter_Start_Canceled_PropagatesUnchanged
+
+          - id: AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient
+            title: >-
+              The starter shall reject a missing client as a programming error.
+            justification: |
+              A start with no client is a defect in the composing application, surfaced where it was
+              written.
+            tests:
+              - CopilotClientStarter_Start_NullClient_Throws

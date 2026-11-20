@@ -70,8 +70,7 @@ guarantees this guide describes:
 
 ## Running Against Each Provider
 
-Run the sample from the repository root. To run against the GitHub Copilot runtime, which uses the
-logged-in Copilot CLI on the machine:
+Run the sample from the repository root. To run against the GitHub Copilot runtime:
 
 ```bash
 dotnet run --project samples/document-assistant -- \
@@ -79,6 +78,16 @@ dotnet run --project samples/document-assistant -- \
   --provider copilot \
   --prompt "List the files, read welcome.txt, then describe diagram.png"
 ```
+
+The Copilot provider needs nothing installed beyond the .NET SDK — installing the Copilot CLI is not
+required. The sample references `Microsoft.Copilot.SDK` directly, so its first build downloads the
+Copilot runtime (about 100 MB, adding about 356 MB to the sample's output), and it authenticates as
+the GitHub user signed in on the machine — through `gh auth login` or a Copilot sign-in — or with a
+token in `GH_TOKEN`. Run it from a shell where `COPILOT_CLI_PATH` is unset: every shell the Copilot
+CLI starts sets that variable, which makes in-process hosting look for the runtime beside the CLI
+instead, and the sample then stops with an error that says so. `Remove-Item Env:COPILOT_CLI_PATH`
+clears it in PowerShell, `unset COPILOT_CLI_PATH` in bash. The workspace is passed to the agent
+factory as the Copilot session's working directory.
 
 To run against an Ollama server, naming the host and a tool-and-vision capable model:
 

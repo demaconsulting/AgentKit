@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
@@ -32,7 +32,7 @@ internal sealed record CopilotUsageReading(long CurrentTokens, long TokenLimit, 
 ///     calls, the tool results, and — decisively — the session's occupancy and window arrive as
 ///     <c>session.usage_info</c>, <c>tool.execution_start</c> and <c>tool.execution_complete</c>
 ///     events. This class is where they are caught. It is handed to
-///     <c>SessionConfig.OnEvent</c> at configuration time, which the SDK registers on the session
+///     <c>SessionEventOptions.OnEvent</c> at configuration time, which the SDK registers on the session
 ///     <em>before</em> the create RPC is issued, so the very first turn is covered.
 ///     </para>
 ///     <para>
@@ -82,7 +82,7 @@ internal sealed class CopilotSessionObserver
     private bool _usageReportedThisTurn;
 
     /// <summary>
-    ///     Whether the runtime has compacted or truncated this session's history.
+    ///     Whether the runtime has compacted, truncated, cleared or rewound this session's history.
     /// </summary>
     private bool _providerRewroteHistory;
 
@@ -125,7 +125,7 @@ internal sealed class CopilotSessionObserver
     ///     Gets a value indicating whether the runtime has rewritten this session's history.
     /// </summary>
     /// <remarks>
-    ///     True once the runtime has compacted or truncated the conversation. AgentKit holds the
+    ///     True once the runtime has compacted, truncated, cleared or rewound the conversation. AgentKit holds the
     ///     runtime's compaction threshold clear of the engine's rotation point on every session its
     ///     engine drives, so this being true means the runtime rewrote history anyway — and that the
     ///     transcript the engine believes it owns no longer matches what the provider holds. Never
@@ -163,18 +163,21 @@ internal sealed class CopilotSessionObserver
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     The handler given to <c>SessionConfig.OnEvent</c>. Every event kind this adapter has a
+    ///     The handler given to <c>SessionEventOptions.OnEvent</c>. Every event kind this adapter has a
     ///     use for is matched; everything else is ignored rather than recorded, because a transcript
     ///     is a record of the conversation and the runtime emits a great deal that is not part of
     ///     one.
     ///     </para>
     ///     <para>
-    ///     <b>Events carrying a parent tool call are skipped.</b> A nested agent the runtime ran on
-    ///     this session's behalf has its own thread of tool traffic, tagged with the call that
-    ///     started it. Those messages were never part of this conversation and the model was never
-    ///     shown them as such, so recording them would seed a future session with a history the
-    ///     model does not recognize. The call that started the nested agent <em>is</em> recorded,
-    ///     because that one happened in this conversation.
+    ///     <b>Every event attributed to a sub-agent is skipped, before it is matched.</b> A nested
+    ///     agent the runtime ran on this session's behalf has its own thread of events, tagged on the
+    ///     event envelope with that agent's identity. Not only its tool traffic and messages but any
+    ///     usage reading, history rewrite or error it reports describe the nested agent's own context
+    ///     rather than this session's. Recording its messages would seed a future session with a
+    ///     history the model does not recognize, and taking its usage, rewrite or error would move
+    ///     this session's occupancy, end it over a rewrite it never underwent, or name the wrong cause.
+    ///     The call that started the nested agent <em>is</em> recorded, because that one happened in
+    ///     this conversation.
     ///     </para>
     ///     <para>
     ///     Never throws. It runs on the runtime's dispatch thread, where an exception would be
@@ -185,6 +188,15 @@ internal sealed class CopilotSessionObserver
     /// <param name="sessionEvent">The event the runtime dispatched.</param>
     internal void OnEvent(SessionEvent sessionEvent)
     {
+        // Attribution rides the event envelope: AgentId is absent for the root agent and for
+        // session-level events, and names the sub-agent otherwise. A sub-agent's events - its tool
+        // traffic and messages, and any usage, rewrite or error it reports - describe its own
+        // context rather than this conversation, so none of them may change this observer's state.
+        if (sessionEvent.AgentId is not null)
+        {
+            return;
+        }
+
         switch (sessionEvent)
         {
             case SessionUsageInfoEvent { Data: { } usage }:
@@ -203,26 +215,30 @@ internal sealed class CopilotSessionObserver
                 });
                 break;
 
-            case ToolExecutionStartEvent { Data: { ParentToolCallId: null, ToolCallId: { } callId } start }
+            case ToolExecutionStartEvent { Data: { ToolCallId: { } callId } start }
                 when !string.IsNullOrWhiteSpace(callId):
                 Record(() => _entries.Add(TranscriptEntry.ToolCall(callId, DescribeCall(start))));
                 break;
 
-            case ToolExecutionCompleteEvent
-            { Data: { ParentToolCallId: null, ToolCallId: { } resultId } complete }
+            case ToolExecutionCompleteEvent { Data: { ToolCallId: { } resultId } complete }
                 when !string.IsNullOrWhiteSpace(resultId):
                 Record(() => _entries.Add(TranscriptEntry.ToolResult(resultId, DescribeResult(complete))));
                 break;
 
-            case AssistantMessageEvent { Data: { ParentToolCallId: null, Content: { Length: > 0 } content } }:
+            case AssistantMessageEvent { Data: { Content: { Length: > 0 } content } }:
                 Record(() => _entries.Add(TranscriptEntry.Assistant(content)));
                 break;
 
-            // Any of the three means the runtime reshaped the conversation itself, on a session its
-            // own engine compacts and whose compaction threshold AgentKit raised to keep it out.
+            // Any of these means the runtime reshaped the conversation itself, on a session its
+            // own engine compacts and whose compaction threshold AgentKit raised to keep it out:
+            // compacting (started, summarized or completed), truncating, clearing the context
+            // window, or rewinding to a snapshot. Each discards history the engine believes it owns.
             case SessionCompactionStartEvent:
             case SessionCompactionCompleteEvent:
+            case SessionCompactionSummarizedEvent:
             case SessionTruncationEvent:
+            case SessionContextClearedEvent:
+            case SessionSnapshotRewindEvent:
                 Record(() => _providerRewroteHistory = true);
                 break;
 

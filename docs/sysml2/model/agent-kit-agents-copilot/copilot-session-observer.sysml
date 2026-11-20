@@ -2,7 +2,7 @@ package AgentKitAgentsCopilot {
     private import SoftwareItemMetadata::*;
 
     part def CopilotSessionObserver {
-        doc /* Watches one Copilot session's event stream, which is the only place a Copilot turn reveals what it did: holds the latest usage reading as cumulative session state rather than clearing it each turn, collects the current turn's tool calls, results and assistant messages in arrival order while skipping a nested agent's own traffic, remembers the runtime's last session error so a silent turn can name its cause, and records whether the runtime compacted or truncated the history AgentKit asked it not to. Guarded by one lock because events arrive on a background thread. */
+        doc /* Watches one Copilot session's event stream, which is the only place a Copilot turn reveals what it did: holds the latest usage reading as cumulative session state rather than clearing it each turn, collects the current turn's tool calls, results and assistant messages in arrival order while skipping every event a nested agent reports, remembers the runtime's last session error so a silent turn can name its cause, and records whether the runtime compacted, truncated, cleared or rewound the history AgentKit asked it not to. Guarded by one lock because events arrive on a background thread. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Agents.Copilot/CopilotSessionObserver.cs");

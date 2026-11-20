@@ -9,6 +9,15 @@ on:
       SONAR_TOKEN:
         required: true
 
+# The Copilot SDK downloads its native runtime (about 100 MB compressed, about 356 MB per output
+# directory) at build time into every project that references it directly - the samples among
+# them. Nothing in this workflow starts the runtime: every test is hermetic and drives a scripted
+# turn channel. MSBuild reads environment variables as properties and the SDK's targets test this
+# one, so setting it here keeps the merge gate from contacting GitHub releases and copying the
+# runtime into every build matrix output. live_samples.yaml builds without it.
+env:
+  CopilotSkipCliDownload: 'true'
+
 jobs:
   # Performs quick quality checks for project formatting consistency including
   # markdown linting, spell checking, and YAML validation.
@@ -214,6 +223,20 @@ jobs:
           --configuration Release
           --output packages
           --property:PackageVersion=${{ inputs.version }}
+
+      # The opt-in live Copilot suite is outside AgentKit.slnx, so the build above never compiles it,
+      # and it runs only in the credential-gated live_samples.yaml job. Compiling it here makes an
+      # internal change that breaks it fail the merge gate. It is a build only: no test runs and no
+      # runtime is contacted, and the workflow-level CopilotSkipCliDownload keeps the SDK's targets from
+      # downloading or copying the runtime. One platform is enough to catch a break, and running after
+      # packaging keeps this build away from the scanned and packaged outputs.
+      - name: Compile Live Copilot Suite
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          dotnet build
+          test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/DemaConsulting.AgentKit.Agents.Copilot.LiveTests.csproj
+          --configuration Release
+          --property:Version=${{ inputs.version }}
 
       # === UPLOAD ARTIFACTS ===
       # This section uploads all generated artifacts for use by downstream jobs.

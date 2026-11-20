@@ -24,7 +24,8 @@ no structure — it records which system delivers which capability and what each
 ## How Each Capability Is Delivered
 
 - **`AgentKit-Provider-GitHubCopilot`** — delivered by AgentKitAgentsCopilot over AgentKitCore's
-  session engine, resting on the `Microsoft.Agents.AI.GitHub.Copilot` SDK.
+  session engine, resting on the GitHub Copilot SDK, `Microsoft.Copilot.SDK`, and on the Agent
+  Framework's `Microsoft.Agents.AI.Abstractions` for the agent AgentKit carries over Copilot sessions.
 - **`AgentKit-Provider-ChatClient`** — delivered by AgentKitAgentsChatClient over the same session
   engine, resting on `Microsoft.Agents.AI`.
 - **`AgentKit-Provider-Ollama`** — delivered by AgentKitAgentsChatClient too, because Ollama reaches
@@ -34,7 +35,7 @@ no structure — it records which system delivers which capability and what each
 
 The two promises every capability shares come from two places. Confinement is the adapter's: on
 Copilot it is the
-derived allow-list and the default-safe permission handler that withhold the runtime's own tools; on
+derived allow-list and the default-deny permission handler that withhold the runtime's own tools; on
 an `IChatClient` there are no built-in tools to withhold, so confinement is simply the tool list the
 application supplied. Outliving the window is Core's compaction engine, reached through the
 `ProviderSession` contract each adapter implements; the adapter supplies the seeding, the occupancy
@@ -56,8 +57,9 @@ tool's binary results to the model itself — which is why the capabilities are 
 ## What the OTS Requirements Are Doing Here
 
 Each capability names among its children the off-the-shelf requirements it depends on — the Copilot
-SDK's session configuration, agent construction, permission RPC, session lifecycle and event stream
-for the first; the Agent Framework's `AIAgent` and `ChatClientAgent` for the second; OllamaSharp's
+SDK's session options, permission RPC, session lifecycle and event stream, and the Agent Framework's
+`AIAgent` base type, for the first; the Agent Framework's `AIAgent` and `ChatClientAgent` for the
+second; OllamaSharp's
 fetching of a server's loaded-model report, and its carriage of a context-length option onto the
 wire, for the third. Those links
 carry the OTS traceability that two deleted "built on" requirements used to hold. Which SDK a

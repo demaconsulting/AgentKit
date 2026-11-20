@@ -7,10 +7,16 @@ start of a conversation and again at every rotation.
 
 ### Purpose
 
-This is where a rotation becomes a Copilot session. It holds the client and, optionally, the model,
-so an application states both once — where it configures its provider — and a rotating session asks
-for neither again. Everything decided about a session is decided here, at creation, because that is
-the only moment at which Copilot accepts configuration.
+This is where a rotation becomes a Copilot session. It holds the client and, optionally, the model and
+the working directory, so an application states them once — where it configures its provider — and a
+rotating session asks for none of them again. Everything decided about a session is decided here, at
+creation, because that is the only moment at which Copilot accepts configuration.
+
+**The working directory is a parameter here because nowhere else can carry it.** In-process hosting
+has no client-level working directory; the runtime takes one per session, and only this package builds
+a session's options. A host that built a session by hand to reach the setting would forfeit the
+confinement. When none is supplied the runtime uses the host process's working directory. It grants
+nothing: what the conversation may read or write is decided by the tools' own path policy.
 
 **There is no required window parameter, unlike the stateless factory.** Copilot reports its own
 occupancy and its own limit, so the application is not asked for a figure the provider already knows.
@@ -35,11 +41,12 @@ its own.
 ### Seeding History Onto the First Message
 
 A rotation produces a `ProviderSessionSeed` carrying instructions, tools and a rewritten history.
-Copilot's session configuration has **no history or messages field of any kind** — every property of
-the configuration and its base was enumerated against the shipped assembly — so the history has to
-travel some other way.
+Copilot's session options have **no history or messages field of any kind** — every property of the
+create options and their shared base was enumerated against the shipped assembly — so the history has
+to travel some other way.
 
-The session's system message carries the seed's instructions and nothing else. The history is
+The session's system message carries the seed's instructions as its content and nothing else — the
+confinement's removal of the host environment context is a section override, not content. The history is
 rendered as a labeled record between a fixed opening and a fixed closing line, and handed to the
 session to carry ahead of the first message it sends:
 
@@ -99,15 +106,18 @@ mapping can drop part of a message without dropping the message.
   reference, and several carry a reason the runtime may have omitted them. There is no
   conversational attachment, and a channel the runtime may silently omit is precisely the one not
   to use.
-- **`ResumeSessionConfig` and session resumption.** Resumes *Copilot's own* stored history for
+- **`ResumeSessionOptions` and session resumption.** Resumes *Copilot's own* stored history for
   an existing session identifier. It cannot inject a rewritten history; it would resurrect the
-  history a rotation exists to discard.
+  history a rotation exists to discard. The agent path resumes sessions for exactly the opposite
+  reason — to continue a conversation unchanged — which is why resumption serves it and not a
+  rotation.
 - **The session RPC's message queue.** Carries prompts, display prompts, attachments and a
   required-tool hint — a queue of user prompts, not history bearing roles.
-- **`SystemMessageMode.Customize` with section overrides.** The sections are Copilot's *own*
-  prompt sections. Writing history into one replaces part of the runtime's system prompt, which is
-  more invasive than appending and forks the single configuration path the safety argument depends
-  on. It is doubly rejected now, since it is the system channel.
+- **A section of Copilot's own prompt, through the system message's section overrides.** It would
+  place the record in the system message, charged as overhead like any other system-message
+  placement, and would split the system message between the confinement, which owns its section
+  overrides — it removes the host environment context — and this unit. It is doubly rejected now,
+  since it is the system channel.
 
 **Two consequences, stated rather than hidden.** Charged to the conversation, the record counts
 toward the figure rotation is decided on, so a session rotates progressively *earlier* as records
@@ -124,27 +134,34 @@ rather than asserted.
   the choice to the runtime.
 - **`_maxWindowTokens`** (`int?`) — The ceiling each session accounts its window against, or null to
   account against whatever the runtime reports. Invariant: one or greater when stated.
+- **`_workingDirectory`** (`string?`) — The working directory every session this factory creates is
+  given, or null or blank to leave it to the runtime.
 - **`RecordOpening`**, **`RecordClosing`** (`const string`) — The fixed lines opening and closing a
   seeded record. Plain text rather than generated tokens, so the rendering is deterministic and a
   test can assert on it exactly.
 
 ### Key Methods
 
-#### The CopilotProviderSessionFactory Constructor (CopilotClient, string?, int?)
+#### The CopilotProviderSessionFactory Constructor (CopilotClient, string?, int?, string?)
 
 **Purpose:** Hold what every session this factory creates needs, and nothing else.
 
 **Algorithm:** Reject a null client and a ceiling below one. Build the production channel opener over
-the client — once, so the client reference is captured in exactly one place and every session a
-rotation creates demonstrably runs on the client the host started. Record the model name without
+the client — one that deletes each session when it is released, because a rotated session is finished
+with by definition — once, so the client reference is captured in exactly one place and every session
+a rotation creates demonstrably runs on the client the host started. Record the model name without
 checking it: only the runtime knows which models the signed-in user may use, so an unrecognized name
-is refused at session creation rather than here. Record the window ceiling as stated.
+is refused at session creation rather than here. Record the window ceiling as stated, and the working
+directory without checking it: the runtime resolves it when a session is created.
+
+**Parameter ordering.** The working directory is the trailing optional parameter, so every existing
+positional call keeps binding to the parameter it always bound to.
 
 **Preconditions:** `client` is not null and has been started; any stated ceiling is one or greater.
 
 **Postconditions:** A factory ready to create sessions, owning nothing disposable.
 
-#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?)
+#### The CopilotProviderSessionFactory Constructor (CopilotChannelOpener, string?, int?, string?)
 
 **Purpose:** The test seam.
 
@@ -162,11 +179,11 @@ exercised without a live runtime and credentials unless the opening of a session
 **Purpose:** Turn one seed into a live, seeded, confined Copilot session.
 
 **Algorithm:** Reject a null seed and a canceled token. Build the observer **first** and hand it to
-the configuration, so the SDK registers it on the session before the create request is issued and
-the very first turn's events are caught. Open the session — the only awaited allocation. Then, under
-a guard, check cancellation once more and construct the provider session, handing it the composed
-history preamble so the first message it sends carries the record; on any failure, release
-the session that was opened and rethrow.
+the session options, together with the model and the working directory, so the SDK registers it on
+the session before the create request is issued and the very first turn's events are caught. Open
+the session — the only awaited allocation. Then, under a guard, check cancellation once more and
+construct the provider session, handing it the composed history preamble so the first message it
+sends carries the record; on any failure, release the session that was opened and rethrow.
 
 **The order is what keeps nothing unowned.** Between the create request returning and the provider
 session taking ownership there is a window in which the runtime holds a session nothing references,
@@ -179,15 +196,17 @@ the same window `CompactingAgentSession` guards when it adopts a replacement, gu
 holding the seeded history ready to travel on its first message; or nothing, with no session left
 behind on the runtime.
 
-#### BuildProviderSessionConfig(ProviderSessionSeed seed, Action&lt;SessionEvent&gt; onEvent, string? model)
+#### BuildProviderSessionConfig(seed, Action&lt;SessionEvent&gt; onEvent, string? model, string? workingDirectory)
 
-**Purpose:** Build the configuration one seed produces.
+**Purpose:** Build the `CreateSessionOptions` one seed produces.
 
-**Algorithm:** Take the seed's instructions as the system message — unchanged, and alone — hand them
-with the seeded tools to `CopilotAgentFactory.BuildEngineSessionConfig` — which derives the
-allow-list, closes the runtime's injection channels, installs the default-safe permission handler and
+**Algorithm:** Take the seed's instructions as the system message's content — unchanged, and alone — hand them
+with the seeded tools, the model and the working directory to
+`CopilotAgentFactory.BuildEngineSessionConfig` — which refuses a tool named like a runtime built-in,
+derives the source-qualified allow-list, withholds the runtime's injection channels, pins the permission
+mode, installs the default-deny permission handler, applies the model and the working directory, and
 raises the runtime's own compaction threshold clear of the engine's rotation point — and then set the
-event handler.
+observer's handler as `Events.OnEvent`.
 
 The seeded history is deliberately **not** part of what this method builds. Passing the instructions
 through untouched is what makes a session the engine drives configured byte for byte as the agent
@@ -198,13 +217,14 @@ derivation is the drift this package exists to prevent, so there is not one; see
 Unit Design*.
 
 Exposed as a seam so a test can assert what a rotation actually configures — the derived allow-list,
-the raised runtime compaction threshold, the registered observer and the instructions-only system
-message — without a live client, for the same reason `BuildSessionConfig` is exposed.
+the raised runtime compaction threshold, the registered observer, the working directory and the
+instructions-only system-message content — without a live client, for the same reason `BuildSessionConfig` is
+exposed.
 
-**Preconditions:** `seed` is not null; its tools carry no duplicate names.
+**Preconditions:** `seed` is not null; its tools carry no duplicate names and no built-in tool's name.
 
-**Postconditions:** A configuration a Copilot session can be created from, carrying no part of the
-seeded history.
+**Postconditions:** Fresh session options a Copilot session can be created from, carrying no part of
+the seeded history.
 
 #### ComposeHistoryPreamble(ProviderSessionSeed seed)
 
@@ -234,6 +254,7 @@ asserts on it directly — the configuration no longer carries it.
 | Cancellation after opening | `OperationCanceledException`; session released |
 | Opener returned null | `InvalidOperationException` propagates |
 | Two seeded tools carry one name | `ArgumentException` propagates |
+| A seeded tool carries a built-in tool's name | `ArgumentException` propagates |
 
 ### Dependencies
 
@@ -245,8 +266,8 @@ asserts on it directly — the configuration no longer carries it.
   *CopilotSessionObserver Unit Design*.
 - **CopilotTurnChannel** — opens and owns each runtime session; see *CopilotTurnChannel Unit
   Design*.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `SessionConfig` and the session
-  event type; see *Microsoft.Agents.AI.GitHub.Copilot Design*.
+- **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions` and the session event
+  type; see *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 

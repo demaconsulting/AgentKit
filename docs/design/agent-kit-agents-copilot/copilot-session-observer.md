@@ -10,7 +10,7 @@ adapter above it cannot otherwise see.
 **A Copilot turn reveals itself through events, not through a return value.** The runtime's wait
 hands back the final assistant message and nothing else; the tool calls, the tool results, and —
 decisively — the session's occupancy and its window arrive as session events. This class is where
-they are caught. It is handed to the session configuration's event handler at creation time, which
+they are caught. It is handed to the session options as `Events.OnEvent` at creation time, which
 the SDK registers on the session *before* the create request is issued, so the very first turn is
 covered.
 
@@ -41,8 +41,9 @@ for it.
 - **`_usageReportedThisTurn`** (`bool`) — Whether a reading arrived during the turn now in flight.
   Invariant: set with `_latestUsage` in one action, so a reader never sees a turn that has reported
   while the reading is still absent; cleared when a turn begins.
-- **`_providerRewroteHistory`** (`bool`) — Whether the runtime has compacted or truncated the
-  session. Invariant: once true, never false again; a rewrite cannot be undone.
+- **`_providerRewroteHistory`** (`bool`) — Whether the runtime has reshaped the session's history
+  itself — compacted, truncated, cleared its context or rewound it to a snapshot. Invariant: once
+  true, never false again; a rewrite cannot be undone.
 - **`_lastErrorMessage`** (`string?`) — The message of the last session error seen. Invariant:
   cleared when a turn begins, so a refusal names this turn's cause and not an earlier one's.
 
@@ -68,19 +69,28 @@ keeps the wider currency so the narrowing happens in one visible place, in
 
 **Purpose:** Record one event from the session's stream.
 
-**Algorithm:** Match the event against the kinds this adapter has a use for and record the
+**Algorithm:** An event attributed to a sub-agent is skipped before matching. Otherwise, match the
+event against the kinds this adapter has a use for and record the
 corresponding state change under the lock. A usage event becomes the latest reading and marks the
 turn as having reported, both in one action so the two are never read out of step. A tool
 execution start becomes a tool-call entry rendered by name and arguments; its completion becomes a
 tool-result entry carrying the result's content, or the runtime's error message where the tool
 failed, or the empty string where it reported neither. An assistant message becomes an assistant
-entry. A compaction or truncation event marks the history rewritten. A session error is remembered.
-Everything else is ignored.
+entry. Any of the six events by which the runtime reports reshaping the conversation itself marks
+the history rewritten: a compaction starting, a compaction summarized, a compaction completed, a
+truncation, the context window cleared, and a rewind to a snapshot. Each discards or replaces history
+the engine believes it owns, so each is treated alike. A session error is remembered. Everything else
+is ignored.
 
-**Events carrying a parent tool call are skipped.** A nested agent the runtime ran on this session's
-behalf has its own thread of tool traffic and its own messages, tagged with the call that started
-it. Those were never part of this conversation and the model was never shown them as such, so
-recording them would seed a future session with a history it does not recognize. The call that
+**Every event attributed to a sub-agent is skipped, before it is matched.** A nested agent the
+runtime ran on this session's behalf has its own thread of tool traffic and its own messages, and the
+runtime attributes each such event on the event envelope: an event's `AgentId` is absent for the root
+agent and for session-level events, and names the sub-agent otherwise. Only events whose `AgentId` is
+absent change any state. The sub-agent's tool traffic and messages were never part of this
+conversation and the model was never shown them as such, so recording them would seed a future
+session with a history it does not recognize. Any usage reading, history rewrite or error a sub-agent
+reports describes its own context rather than this session's, so taking it would move this session's
+occupancy, end the session over a rewrite it never underwent, or name the wrong cause. The call that
 *started* the nested agent is recorded, because that one happened in this conversation. This is a
 judgment call, recorded rather than assumed.
 
@@ -162,7 +172,7 @@ forgets to take the lock.
 | Event kind this adapter has no use for | Ignored |
 | Tool event with no usable call identifier | Skipped; nothing recorded |
 | Assistant message with no text | Skipped; nothing recorded |
-| Event belonging to a nested agent | Skipped; nothing recorded |
+| Event belonging to a nested agent | Skipped before matching; no state changes |
 | Tool reported neither result nor error | Recorded as an empty result |
 
 Nothing here throws, by design. This class runs on the runtime's own dispatch thread, and an
@@ -174,10 +184,10 @@ is that the runtime's event loop is never destabilized by this library.
 ### Dependencies
 
 - **AgentKitCore** — supplies `TranscriptEntry`; see *SessionTranscript Unit Design*.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies the session event hierarchy and its payloads; see
-  *Microsoft.Agents.AI.GitHub.Copilot Design*.
+- **Microsoft.Copilot.SDK** — supplies the session event hierarchy, its envelope's agent attribution
+  and its payloads; see *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 
 `CopilotProviderSessionFactory` constructs one per session and registers its handler on the session
-configuration; `CopilotProviderSession` reads it on every turn. Nothing else uses it.
+options; `CopilotProviderSession` reads it on every turn. Nothing else uses it.

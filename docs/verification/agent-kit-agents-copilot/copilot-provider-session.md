@@ -18,8 +18,9 @@ occupancy at all.
 **The events driven through it are the SDK's own event objects.** Every session event type the
 adapter matches on has a public constructor taking no arguments and a settable payload, so the tests
 construct genuine `SessionUsageInfoEvent`, `ToolExecutionStartEvent`, `ToolExecutionCompleteEvent`,
-`AssistantMessageEvent`, `SessionTruncationEvent`, `SessionCompactionStartEvent` and
-`SessionErrorEvent` instances and dispatch them through the adapter's own matching code. Nothing
+`AssistantMessageEvent`, `SessionTruncationEvent`, `SessionCompactionStartEvent`,
+`SessionContextClearedEvent`, `SessionSnapshotRewindEvent` and `SessionErrorEvent` instances and
+dispatch them through the adapter's own matching code. Nothing
 about the event shapes is simulated, which is what makes an offline test of this adapter worth
 running.
 
@@ -34,13 +35,15 @@ are used as themselves rather than stubbed. They are the contract this class imp
 substituting them would verify the substitute.
 
 **What is out of automated scope, stated honestly.** A live run against the Copilot runtime is not
-automated: no assertion here needs a network, a credential or a model's non-determinism. Two
-behaviors follow from that and are stated rather than implied. **Whether a live conversation ever
+part of these tests: no assertion here needs a network, a credential or a model's non-determinism.
+Two behaviors follow from that and are stated rather than implied. **Whether a live conversation ever
 crosses the raised compaction threshold before the engine rotates it is unverified** — the threshold
 is a margin rather than a guarantee, and what is verified is that a session which sees the runtime
 compact or truncate refuses the next turn, naming the cause. And **whether a live runtime emits its
-usage event before the session goes idle is unverified** — what is verified is that a turn reporting
-no usage is refused rather than reported with a stale or invented figure. The argument checks in the
+usage event before the session goes idle is not established here** — what is verified is that a turn
+reporting no usage is refused rather than reported with a stale or invented figure. The opt-in live
+Copilot suite's rotation scenario shows it on the real runtime: every turn there was accepted, which
+a runtime reporting usage only after going idle would have made impossible. The argument checks in the
 internal constructor are not exercised directly either: an application reaches this class only
 through the factory, so they are a guard on an internal contract rather than behavior an application
 can trip.
@@ -59,7 +62,7 @@ Unit tests reside in `CopilotProviderSessionTests.cs`, with the scripted runtime
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Copilot CLI is started, **no credential is used**, and no network
+- **External services**: None. No Copilot runtime is started, **no credential is used**, and no network
   access is made
 - **Mocking**: A hand-written scripted turn channel replaying the SDK's own event types; no mocking
   framework
@@ -162,6 +165,7 @@ fixed.
 **Tests**:
 
 - `CopilotProviderSession_Send_ProviderCompactedOrTruncated_RefusesTheTurn`
+- `CopilotProviderSession_Send_ContextClearedOrRewound_RefusesNamingTheRewrite`
 - `CopilotProviderSession_Send_AfterARewrite_RefusesWithoutSendingTheTurn`
 
 Error path, and the one guarding a defect that is otherwise invisible. Scripts a turn during which
@@ -172,7 +176,15 @@ created with, because that is what an application would need to act on. Without 
 compactors acting on one conversation would produce no exception anywhere: the engine would simply
 start seeding replacements from a history the provider had discarded.
 
-The second proves the refusal is raised *before* the next turn is sent, by asserting the runtime
+The second scripts one session whose runtime clears the context window and one whose runtime rewinds
+to a snapshot, each then answering normally. It asserts both turns are refused and that each message
+names the rewrite that happened — cleared, or rewound — rather than only compaction and truncation,
+and that neither attributes a clear or a rewind to the conversation's growth: the explanation is
+generic across the four kinds, saying growth is the usual cause only of a compaction or truncation
+and that a clear or a rewind is an operation on the session itself, so the diagnostic does not send
+a host looking for the wrong cause.
+
+The third proves the refusal is raised *before* the next turn is sent, by asserting the runtime
 received no further prompt. That distinction is the whole value of the latch: detecting the first
 rewrite can only happen after the fact, but a later turn that reached the runtime would let the model
 run the application's tools, with their real side effects, against a conversation the engine no longer
@@ -275,6 +287,9 @@ believe it has room the provider will not give, and rotate too late, losing mate
 merely costing money. A single test of the first kind would pass against an implementation that
 assigned the ceiling unconditionally.
 
-Verified live as well as in the fake: a Copilot run with a 14,000-token ceiling against a runtime
-reporting 272,000 rotated on its fifth turn, and the sixth turn answered correctly from material the
-replacement session had never read.
+The lowering is also exercised on the real runtime, by the opt-in live Copilot suite's rotation
+scenario, `AgentKitAgentsCopilotLive_Usage_RotationOnTheRuntimesUsage_PreservesTheCodeword`: a
+compacting session given a 2,500-token ceiling, far below any window the runtime reports, rotated
+three times in the recorded run and still recalled a codeword stated before the rotations. That suite
+is supplementary evidence outside the trace matrix, described in *AgentKitAgentsCopilot System
+Verification Design*.

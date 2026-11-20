@@ -5,8 +5,8 @@ using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.Image;
 using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.TextFile;
-using GitHub.Copilot;
 using Microsoft.Agents.AI;
+using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -240,7 +240,7 @@ public static class AgentComposition
     ///     caller has to know it.
     ///     </para>
     ///     <para>
-    ///     The Copilot client's working directory is set to the workspace as defense in depth; the
+    ///     Each Copilot session's working directory is set to the workspace as defense in depth; the
     ///     tools are already confined by the policy regardless of where the runtime is rooted.
     ///     </para>
     /// </remarks>
@@ -286,9 +286,8 @@ public static class AgentComposition
     ///     Builds an agent on the GitHub Copilot runtime, which the host owns and disposes.
     /// </summary>
     /// <remarks>
-    ///     The client is started here but built into the agent with <c>ownsClient: false</c> by the
-    ///     factory, so this method returns the client as the cleanup handle: whoever created it
-    ///     disposes it. The Copilot adapter suppresses the runtime's built-in tools by deriving the
+    ///     The client is started here and never disposed by the agent the factory builds, so this
+    ///     method returns the client as the cleanup handle: whoever created it disposes it. The Copilot adapter suppresses the runtime's built-in tools by deriving the
     ///     session allow-list from exactly these tools.
     ///     <para>
     ///     The model is passed through the adapter rather than configured around it. Reaching the
@@ -297,7 +296,7 @@ public static class AgentComposition
     ///     configured but denies every tool call.
     ///     </para>
     /// </remarks>
-    /// <param name="workspaceRoot">The workspace set as the client's working directory.</param>
+    /// <param name="workspaceRoot">The workspace set as each session's working directory.</param>
     /// <param name="tools">The composed tool set; also the source of the suppression allow-list.</param>
     /// <param name="instructions">The system instructions built for this run.</param>
     /// <param name="model">
@@ -314,15 +313,27 @@ public static class AgentComposition
         CancellationToken cancellationToken)
     {
         // The host constructs, starts, and disposes the client; the factory takes no ownership.
+        // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
+        // runtime's own defaults off and its state in that directory, and AgentKit withholds the
+        // ambient channels - plugins, MCP servers, skills, custom instructions, host environment
+        // context - from the model on every session itself. A per-user application-data folder keeps
+        // that state out of the workspace.
         var client = new CopilotClient(new CopilotClientOptions
         {
-            WorkingDirectory = workspaceRoot,
-            UseLoggedInUser = true,
+            Mode = CopilotClientMode.Empty,
+            Runtime = RuntimeConnection.ForDefault(baseDirectory: Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AgentKit",
+                "document-assistant",
+                "copilot")),
+            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
         });
 
         try
         {
-            await client.StartAsync(cancellationToken);
+            // Started through the starter so a runtime that cannot load - most often because a
+            // Copilot CLI shell set COPILOT_CLI_PATH - fails with an error that says so.
+            await CopilotClientStarter.StartAsync(client, cancellationToken);
         }
         catch
         {
@@ -331,7 +342,13 @@ public static class AgentComposition
             throw;
         }
 
-        var agent = CopilotAgentFactory.Create(client, tools, instructions, name: AgentName, model: model);
+        var agent = CopilotAgentFactory.Create(
+            client,
+            tools,
+            instructions,
+            name: AgentName,
+            model: model,
+            workingDirectory: workspaceRoot);
         return new AgentSetup(agent, client);
     }
 

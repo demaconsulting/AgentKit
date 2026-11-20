@@ -21,24 +21,31 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
-    <!-- The Microsoft Agent Framework and GitHub Copilot SDK mark parts of their agent surface
-         with "evaluation only" diagnostics (MAAI001 for the Agent Framework, GHCP001 for the
+    <!-- The Microsoft Agent Framework and the Copilot SDK mark parts of their agent surface
+         with "evaluation only" diagnostics (MAAI001 for the Agent Framework, MCPSDK001 for the
          Copilot permission-decision RPC surface). This sample necessarily consumes that surface to
          build and run an agent, so both diagnostics are suppressed here — the same approach the
-         Copilot adapter project takes for GHCP001. -->
-    <NoWarn>$(NoWarn);GHCP001;MAAI001</NoWarn>
+         Copilot library project takes for MCPSDK001. -->
+    <NoWarn>$(NoWarn);MCPSDK001;MAAI001</NoWarn>
   </PropertyGroup>
 
   <!-- Project References: the sample composes the shipped Core + Tools packages and both agent
-       adapters. The GitHub Copilot SDK is NOT referenced directly; it flows in transitively at the
-       version pinned by Microsoft.Agents.AI.GitHub.Copilot (1.0.11), whose bundled runtime asset
-       is verified to launch and serve a turn. A direct reference would win over the transitive
-       one and let the SDK drift away from the version its parent was built and tested against. -->
+       adapters. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Core\DemaConsulting.AgentKit.Core.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Tools\DemaConsulting.AgentKit.Tools.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.ChatClient\DemaConsulting.AgentKit.Agents.ChatClient.csproj" />
     <ProjectReference Include="..\..\src\DemaConsulting.AgentKit.Agents.Copilot\DemaConsulting.AgentKit.Agents.Copilot.csproj" />
+  </ItemGroup>
+
+  <!-- Copilot Runtime Provisioning: this sample hosts the Copilot runtime, so it references
+       Microsoft.Copilot.SDK directly. The SDK's build targets download the native runtime for the
+       build machine's platform (verified against the release's published checksums) and copy it
+       into this project's output; they run only in a project that references the SDK directly,
+       and the AgentKit Copilot library deliberately ships no runtime. The version matches the
+       library's own reference, and dependabot updates both together. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
   </ItemGroup>
 
   <!-- Package References: OllamaSharp supplies the IChatClient implementation the sample points at

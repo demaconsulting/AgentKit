@@ -1,7 +1,7 @@
 using DemaConsulting.AgentKit.Agents.Copilot;
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot;
+using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -43,9 +43,9 @@ public class AgentKitAgentsCopilotTests
         // Assert: the allow-list is exactly the names of the published tools, in the same order,
         // and the published tool set is the same size — the two are derived from one collection
         var expectedNames = tools.Select(tool => tool.Name).ToList();
-        Assert.Equal(expectedNames, config.AvailableTools);
-        Assert.Equal(tools.Count, config.Tools!.Count);
-        Assert.Equal(expectedNames, config.Tools.Select(tool => tool.Name).ToList());
+        Assert.Equal(expectedNames.Select(name => $"custom:{name}"), config.Tools.AvailableTools);
+        Assert.Equal(tools.Count, config.Tools.Definitions!.Count);
+        Assert.Equal(expectedNames, config.Tools.Definitions.Select(tool => tool.Name).ToList());
     }
 
     /// <summary>
@@ -237,9 +237,228 @@ public class AgentKitAgentsCopilotTests
             runtime.Configs,
             config =>
             {
-                Assert.True(config.InfiniteSessions!.BackgroundCompactionThreshold > 0.90);
-                Assert.False(config.InfiniteSessions.Enabled);
+                Assert.True(config.State.InfiniteSessions!.BackgroundCompactionThreshold > 0.90);
+                Assert.False(config.State.InfiniteSessions.Enabled);
             });
+    }
+
+    /// <summary>
+    ///     Proves an agent built by the factory runs a conversation on the Copilot runtime end to end:
+    ///     the session it creates is confined to the supplied tools, the tool traffic and the answer
+    ///     stream back as they happen, and the session is released when the run ends.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime()
+    {
+        // Arrange: an agent over a scripted runtime whose turn calls a tool and streams its answer
+        var runtime = new FakeCopilotRuntime(_ =>
+        [
+            new ScriptedTurn(
+            [
+                CopilotEvents.ToolStart("call-1", "doc_read"),
+                CopilotEvents.ToolComplete("call-1", "CODEWORD: PERIWINKLE-42"),
+                CopilotEvents.Delta("The codeword is ", "m1"),
+                CopilotEvents.Delta("PERIWINKLE-42.", "m1"),
+                CopilotEvents.Assistant("The codeword is PERIWINKLE-42.", messageId: "m1"),
+            ]),
+        ]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")],
+            instructions: "be concise",
+            onPermissionRequest: null,
+            name: "document-assistant",
+            model: null,
+            workingDirectory: null,
+            runtime.Opener,
+            runtime.Resumer);
+
+        // Act
+        var updates = new List<Microsoft.Agents.AI.AgentResponseUpdate>();
+        await foreach (var update in agent.RunStreamingAsync("what is the codeword?", cancellationToken: TestContext.Current.CancellationToken))
+        {
+            updates.Add(update);
+        }
+
+        // Assert: confined, streamed in order, released
+        Assert.Equal(["custom:doc_read"], Assert.Single(runtime.Configs).Tools.AvailableTools);
+        var contents = updates.SelectMany(update => update.Contents).ToList();
+        Assert.IsType<FunctionCallContent>(contents[0]);
+        Assert.IsType<FunctionResultContent>(contents[1]);
+        Assert.Equal(
+            "The codeword is PERIWINKLE-42.",
+            string.Concat(contents.OfType<TextContent>().Select(text => text.Text)));
+        Assert.Equal(1, Assert.Single(runtime.Channels).DisposeCount);
+    }
+
+    /// <summary>
+    ///     Proves a conversation serialized from one agent resumes on another under the same
+    ///     confinement: the second agent reopens the same runtime session, with the allow-list and
+    ///     the default-deny handler re-applied rather than trusted to the runtime's memory.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Agent_SerializedSession_ResumesUnderTheSameConfinement()
+    {
+        // Arrange: a conversation that ran once on a first agent, then was serialized
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Assistant("noted")])]);
+        IList<AIFunction> tools = [MakeTool("doc_read")];
+        var first = CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var session = await first.CreateSessionAsync(TestContext.Current.CancellationToken);
+        await first.RunAsync("remember the codeword", session, cancellationToken: TestContext.Current.CancellationToken);
+        var serialized = await first.SerializeSessionAsync(session, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: a second agent restores the conversation and runs on it
+        var second = CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var restored = await second.DeserializeSessionAsync(serialized, cancellationToken: TestContext.Current.CancellationToken);
+        await second.RunAsync("what was it?", restored, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the same runtime session, resumed with the confinement re-applied
+        var (sessionId, config) = Assert.Single(runtime.Resumes);
+        Assert.Equal(runtime.Channels[0].SessionId, sessionId);
+        Assert.Equal(["custom:doc_read"], config.Tools.AvailableTools);
+        var decision = await config.Permissions.OnRequest!(new PermissionRequest { Kind = "shell" }, null!);
+        Assert.Equal(PermissionDecision.Reject("x").Kind, decision.Kind);
+    }
+
+    /// <summary>
+    ///     Proves an application that composes a tool under the name of one of the runtime's built-in
+    ///     tools is told so when it builds the agent, rather than when the runtime refuses the session
+    ///     on the first run.
+    /// </summary>
+    [Fact]
+    public void AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused()
+    {
+        // Arrange: a composed tool set in which one tool is named like the runtime's file viewer
+        var runtime = new FakeCopilotRuntime();
+        IList<AIFunction> tools = [MakeTool("doc_read"), MakeTool("view")];
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer));
+
+        // Assert: refused by name, and no session was ever requested
+        Assert.Contains("'view'", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(runtime.Configs);
+    }
+
+    /// <summary>
+    ///     Proves every session the package builds — an agent's, created and resumed, a compacting
+    ///     session's, and a consolidation's — switches off the runtime's diversion of a large tool
+    ///     result to a temporary file no confined tool could read.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_EverySession_DeliversToolResultsInline()
+    {
+        // Arrange: one runtime serving an agent, a compacting session and a consolidation
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Usage(100, 64_000), CopilotEvents.Assistant("ok")], CopilotEvents.Assistant("ok"))]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")], null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var conversation = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: an agent's first and second run, an engine session's creation, and a consolidation
+        await agent.RunAsync("first", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("second", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        var engineSession = await new CopilotProviderSessionFactory(runtime.Opener, model: null)
+            .CreateAsync(new ProviderSessionSeed(null, [MakeTool("doc_read")], []), TestContext.Current.CancellationToken);
+        await engineSession.DisposeAsync();
+
+        await new CopilotSummarizer(runtime.Opener, model: null).ConsolidateAsync(
+            new ConsolidationRequest(1, "USER: hello", ConsolidationPrompt.MediumInstruction),
+            TestContext.Current.CancellationToken);
+
+        // Assert: every configuration the runtime was handed keeps results inline
+        Assert.Equal(3, runtime.Configs.Count);
+        Assert.All(runtime.Configs, config => Assert.False(config.Tools.LargeOutput!.Enabled));
+        Assert.False(Assert.Single(runtime.Resumes).Config.Tools.LargeOutput!.Enabled);
+    }
+
+    /// <summary>
+    ///     Proves a host whose Copilot client cannot start because an ambient runtime path redirects
+    ///     it is told so, by name, with the original failure kept.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained()
+    {
+        // Arrange: a start that fails the way an in-process runtime does when redirected, naming
+        // the directory the variable points into
+        var cliPath = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
+        var directory = Path.GetDirectoryName(cliPath)!;
+        var cause = new InvalidOperationException(
+            $"FFI runtime library not found. Looked for '{Path.Combine(directory, "copilot_runtime.dll")}'.");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
+            _ => Task.FromException(cause),
+            name => name == "COPILOT_CLI_PATH" ? cliPath : null,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
+        Assert.Same(cause, failure.InnerException);
+    }
+
+    /// <summary>
+    ///     Proves every session the package opens on a real client — an engine session and an
+    ///     agent's — has every ambient MCP server withheld from the model: a server the runtime
+    ///     discovers, a non-GitHub one included, is disabled before the session is created; the
+    ///     session's installed plugins are cleared; and a session in which a server stays enabled is
+    ///     refused and abandoned rather than handed to the model.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed()
+    {
+        // Arrange: the configurations an engine session and an agent session are created from
+        SessionOptionsBase[] configs =
+        [
+            CopilotAgentFactory.BuildEngineSessionConfig([MakeTool("doc_read")], instructions: null, model: null),
+            CopilotAgentFactory.BuildSessionConfig([MakeTool("doc_read")], instructions: null, onPermissionRequest: null),
+        ];
+
+        foreach (var config in configs)
+        {
+            var steps = new List<string>();
+            List<string>? disabledAtOpen = null;
+
+            // Act: open through the production protocol, with a runtime that discovers a
+            // non-GitHub server and then keeps it enabled however often it is disabled
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSessionChannel.OpenConfinedAsync(
+                config,
+                _ => Task.FromResult<IEnumerable<string>>(["docs-search"]),
+                _ =>
+                {
+                    disabledAtOpen = [.. config.Mcp.DisabledServers!];
+                    return Task.FromResult("session-1");
+                },
+                (_, token) => CopilotSessionChannel.SealAsync(
+                    _ =>
+                    {
+                        steps.Add("clear-plugins");
+                        return Task.CompletedTask;
+                    },
+                    _ => Task.FromResult<IList<McpConfiguredServer>>(
+                        [new McpConfiguredServer { Name = "docs-search", Enabled = true }]),
+                    (name, _) =>
+                    {
+                        steps.Add($"disable:{name}");
+                        return Task.CompletedTask;
+                    },
+                    token),
+                _ =>
+                {
+                    steps.Add("abandon");
+                    return ValueTask.CompletedTask;
+                },
+                TestContext.Current.CancellationToken));
+
+            // Assert: named before creation, plugins cleared, disabled, and the session refused
+            Assert.Contains("docs-search", disabledAtOpen!);
+            Assert.Contains(CopilotAgentFactory.BuiltInGitHubMcpServer, disabledAtOpen!);
+            Assert.Equal(["clear-plugins", "disable:docs-search", "abandon"], steps);
+            Assert.Contains("'docs-search'", failure.Message, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
@@ -261,9 +480,9 @@ public class AgentKitAgentsCopilotTests
     /// <param name="config">The session whose handler to invoke.</param>
     /// <param name="request">The permission request to adjudicate.</param>
     /// <returns>The handler's decision.</returns>
-    private static Task<PermissionDecision> Decide(SessionConfig config, PermissionRequest request)
+    private static Task<PermissionDecision> Decide(CreateSessionOptions config, PermissionRequest request)
     {
-        var handler = config.OnPermissionRequest;
+        var handler = config.Permissions.OnRequest;
         Assert.NotNull(handler);
         return handler(request, null!);
     }

@@ -152,12 +152,23 @@ software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
-- **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
-  Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools, and carries an AgentKit session over the same runtime
-- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
-  default-safe permission handler, and builds the agent without taking ownership of the client; the
-  single place a Copilot session configuration is built
+- **AgentKitAgentsCopilot (System)** — Gives a GitHub Copilot `CopilotClient` an agent of AgentKit's
+  own — a Microsoft Agent Framework `AIAgent` over confined Copilot sessions, with the runtime's
+  built-in tools suppressed by deriving the session allow-list from the supplied tools — and carries
+  an AgentKit session over the same runtime
+- **CopilotAgentFactory (Unit)** — The static factory that refuses built-in tool names, derives the
+  source-qualified allow-list, withholds the runtime's injection channels, pins the permission mode,
+  installs a default-deny permission handler, and builds the agent without taking ownership of the
+  client; the single place a Copilot session's options are built, created or resumed
+- **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, with the public
+  `CopilotAgentSession` naming one conversation: creates a runtime session on the first run and
+  resumes it on every later one, streams the runtime's events as agent updates, sends inline data as
+  in-memory attachments, and releases a conversation's session without deleting it after every run
+  (a run made without a conversation deletes its session)
+- **CopilotClientStarter (Unit)** — Starts the host's Copilot client and explains a failed start
+  with the runtime's error and, where that error identifies it, the cause — an ambient
+  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
+  connection or the environment
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
@@ -170,7 +181,8 @@ software items, specifically:
 - **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
   out of the session being compacted
 - **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
-  what makes everything above it testable without a live Copilot runtime
+  what makes everything above it testable without a live Copilot runtime, and the production channel
+  that creates or resumes a session and on release deletes it or keeps it
 - **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
   the window the Ollama instance is actually using, by asking the server for a size and by reading
   back what a running instance reports
@@ -187,10 +199,13 @@ The following OTS items are also covered:
 - **CanvasNet** — the runtime raster imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
-- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
-  abstraction
-- **Microsoft.Agents.AI.GitHub.Copilot** — the GitHub Copilot SDK providing `CopilotClient`,
-  `SessionConfig`, the permission RPC, the session lifecycle and the session event stream
+- **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
+  `AIAgent` from an `IChatClient`
+- **Microsoft.Agents.AI.Abstractions** — the Agent Framework's abstractions library providing the
+  `AIAgent` and `AgentSession` base types and the `AgentResponseUpdate` a streamed run produces
+- **Microsoft.Copilot.SDK** — the GitHub Copilot SDK providing `CopilotClient`, the create and
+  resume session options, the permission RPC, the session lifecycle, the session event stream, and
+  the build-time provisioning of the native Copilot runtime
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
 - **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
@@ -304,11 +319,15 @@ depended upon by another capability package.
 
 `AgentKitAgentsChatClient` and `AgentKitAgentsCopilot` are the two provider-adapter systems. Each
 turns a provider into a Microsoft Agent Framework agent carrying a supplied tool set, and each is
-justified by a runtime dependency that must be kept out of Core: `AgentKitAgentsChatClient` carries
-`Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Agents.AI.GitHub.Copilot`.
-`AgentKitAgentsCopilot` carries six units: that factory, a provider session, its factory, a
-summarizer, the observer that reads occupancy from the runtime's event stream, and the internal turn
-channel that makes all of it testable without a live runtime. `AgentKitAgentsChatClient` holds five:
+justified by runtime dependencies that must be kept out of Core: `AgentKitAgentsChatClient` carries
+`Microsoft.Agents.AI`, and `AgentKitAgentsCopilot` carries `Microsoft.Copilot.SDK` and
+`Microsoft.Agents.AI.Abstractions`. `AgentKitAgentsChatClient` builds its agent through the Agent
+Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agent, so
+`AgentKitAgentsCopilot` carries an agent of its own over confined Copilot sessions.
+`AgentKitAgentsCopilot` carries eight units: that agent, its factory, a starter that explains a
+client that cannot load its runtime, a provider session, its factory, a summarizer, the observer that
+reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
+testable without a live runtime. `AgentKitAgentsChatClient` holds five:
 that factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy
 from the last request of a turn. Both are flat, and the two share no code and never reference each
 other.
@@ -444,13 +463,19 @@ src/DemaConsulting.AgentKit.Agents.ChatClient/
 └── ChatClientSummarizer.cs                — consolidates history through an IChatClient
 
 src/DemaConsulting.AgentKit.Agents.Copilot/
-├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session configuration
+├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
+├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
+├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
+├── CopilotClientStarter.cs           — starts the host's client, explaining a failed start
 ├── CopilotProviderSession.cs         — one Core session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
+
+`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit; every other
+file in the Copilot tree is one unit.
 
 `AgentKitAgentsOllama` is a two-file tree, one file per unit:
 
@@ -477,6 +502,22 @@ samples/
 
 Each sample folder is a self-contained console application; the samples share a common shape by
 convention but no code, so each can be read in isolation.
+
+The opt-in live suite for the Copilot system is a test project, and like every test project it is
+outside the scope of this document. Its location is recorded only because it differs from the other
+test projects: it is not part of the solution, so the ordinary build never builds it and the merge gate
+only compiles it, never running it; it runs only when invoked explicitly with a model named in the
+environment:
+
+```text
+test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/
+├── CopilotLiveFixture.cs   — one started client in Empty mode, and a sandbox of granted and denied files
+├── CopilotLiveTests.cs     — the scenarios, measured against the live Copilot runtime
+└── TestPng.cs              — generates the image the image-delivery scenarios read
+```
+
+Its scenarios are supplementary evidence for behaviors this design records as measured against the
+live runtime; see *AgentKitAgentsCopilot System Verification Design*.
 
 ## Document Conventions
 

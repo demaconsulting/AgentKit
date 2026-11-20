@@ -7,19 +7,20 @@ class.
 
 `CopilotProviderSessionFactory` decides everything about a Copilot session at the moment it is
 created, because that is the only moment Copilot accepts configuration — the confinement, the model,
-the raised runtime compaction threshold, the registered event handler and the instructions the
-session is governed by. All of it is therefore verified by asserting on the `SessionConfig` the
-factory produced, which is a plain constructable object requiring no client and no credential.
+the working directory, the raised runtime compaction threshold, the registered event handler and the
+instructions the session is governed by. All of it is therefore verified by asserting on the session
+options the factory produced, the SDK's own options object, which is a plain constructable object
+requiring no client and no credential.
 
-**The seeded conversation record is asserted separately, because it is no longer part of that
-configuration.** It is composed by `ComposeHistoryPreamble` for the session's first message to carry,
-so the tests assert on what that composes and, on the same configuration, that the system message
-holds the application's instructions and nothing else. Asserting both halves in one test is
+**The seeded conversation record is asserted separately, because it is not part of those options.**
+It is composed by `ComposeHistoryPreamble` for the session's first message to carry, so the tests
+assert on what that composes and, on the same options, that the system message holds the
+application's instructions and nothing else. Asserting both halves in one test is
 deliberate: the property under test is *where the record is charged*, and a test that only looked at
 the record would pass against an implementation that also left a copy in the system message.
 
 The assertions are made through `BuildProviderSessionConfig`, an internal seam exposed for exactly
-this reason — the same reason `CopilotAgentFactory.BuildSessionConfig` is exposed — and through
+this reason — the same reason `CopilotAgentFactory`'s option builders are exposed — and through
 `ComposeHistoryPreamble`, internal for the same purpose. The ownership and lifecycle behavior is
 verified instead through `CreateAsync` over a scripted channel opener that records every
 configuration it was handed and every channel it opened, and counts releases.
@@ -37,9 +38,12 @@ the caller's token is canceled, and that is the one window in which a session ex
 owns. Modeling the opener as refusing instead would make the window unreachable, and the guard
 untestable.
 
-**What is out of automated scope, stated honestly.** No live session is created, so nothing here
-proves the runtime accepts the configuration or applies the allow-list. How the runtime treats the
-infinite-session configuration is not left open, however: it was settled by manual measurement and is
+**What is out of automated scope, stated honestly.** No live session is created by these tests, so
+nothing here proves the runtime accepts the options or applies the allow-list; the opt-in live Copilot
+suite shows both on the real runtime, including a compacting session rotating on the runtime's own
+usage, and is supplementary evidence outside the trace matrix described in *AgentKitAgentsCopilot
+System Verification Design*. How the runtime treats the infinite-session configuration is not left
+open, however: it was settled by manual measurement and is
 recorded in *AgentKitAgentsCopilot System Verification Design*, which reports that the enablement flag
 is ignored and the background-compaction threshold is honored. That is why the scenario below asserts
 the threshold rather than the flag. What is proven here is that the configuration this factory hands
@@ -55,7 +59,7 @@ Unit tests reside in `CopilotProviderSessionFactoryTests.cs`, with the scripted 
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Copilot CLI is started, **no credential is used**, and no network
+- **External services**: None. No Copilot runtime is started, **no credential is used**, and no network
   access is made
 - **Mocking**: A hand-written scripted channel opener; no mocking framework
 - **File system**: None
@@ -64,10 +68,11 @@ Unit tests reside in `CopilotProviderSessionFactoryTests.cs`, with the scripted 
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any allow-list that diverges from the seeded tools, any session built with the
-runtime's skills enabled or its custom instructions admitted, any session built without the
-default-safe permission handler, any session built with the runtime's own compaction left at the
-runtime's default threshold, any part of a seeded record appearing in a session's system message,
+explicitly asserted. Any allow-list that diverges from the seeded tools or carries an unqualified
+entry, any session built with a channel of runtime-injected capability open, any session built without
+the default-safe permission handler, any session built with the runtime's own compaction left at the
+runtime's default threshold, any working directory not carried — or invented when the host named
+none — any part of a seeded record appearing in a session's system message,
 any seeded record rendered in the wrong order or with an entry lost, any record composed for an
 empty history, any session created without the event handler registered, any session opened for a
 creation that was already canceled, or any opened session left unreleased when the creation failed
@@ -82,24 +87,34 @@ constitutes a failure.
 - `CopilotProviderSessionFactory_BuildSessionConfig_AvailableToolsDerivedFromSeededTools`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SuppressesSkillsAndCustomInstructions`
 
-The safety-critical assertion, repeated on the session path. Builds the configuration a rotation
-produces and asserts the allow-list is exactly the names of the published tools, in the same order,
-and that the runtime's two other injection channels are closed. It is asserted here as well as on the
-agent path because the session path is reached by a different entry point and takes no host-supplied
-handler: a session that was confined only by inheriting the agent path's code, with no test saying
-so, would be confined by accident.
+The safety-critical assertion, repeated on the session path. Builds the options a rotation produces
+and asserts the allow-list is exactly the names of the published tools, each qualified as a custom
+tool, in the same order, and that the runtime's skills and custom instructions are withheld. The
+remaining channels of runtime-injected capability are withheld by the same confinement block on every
+path and are asserted in *CopilotAgentFactory Unit Verification Design*. It is asserted here as well
+as on the agent path because the session path is reached by a different entry point and takes no
+host-supplied handler: a session that was confined only by inheriting the agent path's code, with no
+test saying so, would be confined by accident.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-DefaultSafePermissions: Default-Safe on Every Rotation
 
-**Test**: `CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler`
+**Tests**:
+
+- `CopilotProviderSessionFactory_BuildSessionConfig_InstallsTheDefaultSafePermissionHandler`
+- `AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath`
 
 Invokes the handler the configuration carries with a request naming a seeded tool and with a built-in
 request, and asserts the first is approved and the second rejected. There is no host present to
-adjudicate a prompt on a session the engine drives, so the default must be safe without asking.
+adjudicate a prompt on a session the engine drives, so the default must be safe without asking. The
+second is the same assertion made at the system level, and is described in *AgentKitAgentsCopilot
+System Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-HoldsRuntimeCompactionClearOfRotation: A Quarter-Window Margin
 
-**Test**: `CopilotProviderSessionFactory_BuildSessionConfig_HoldsTheRuntimesOwnCompactionClearOfRotation`
+**Tests**:
+
+- `CopilotProviderSessionFactory_BuildSessionConfig_HoldsTheRuntimesOwnCompactionClearOfRotation`
+- `AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds`
 
 Asserts the configuration carries the infinite-session setting deliberately, with a
 background-compaction threshold above 0.90 rather than the runtime's default of 0.80 — where AgentKit
@@ -114,26 +129,27 @@ this configuration is at the system level.
 
 - `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
-- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
+- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent`
 - `CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord`
 - `CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord`
 
 The first seeds from the shape a rotation actually produces — a consolidated record, a user message
 and an answer — and asserts the **entire** composed preamble as one exact string: the fixed opening
 line, each entry rendered to its transcript line in order, and the fixed closing line. It also
-asserts the configuration's system message is **equal to** the application's instructions — not that
-it contains them — so no copy of the record is left behind in the channel the engine charges as
+asserts the configuration's system-message content is **equal to** the application's instructions —
+not that it contains them — so no copy of the record is left behind in the channel the engine charges as
 overhead. Equality is what makes that half meaningful: a containment check would pass against an
 implementation that appended the record after the instructions, which is precisely the design this
 one replaced.
 
 The next three are the boundaries. A seed with no history composes no record at all, so the first
 message of such a session is sent exactly as the caller wrote it and no record claims a conversation
-that never happened. A seed with neither instructions nor history carries no system message at all. A
+that never happened. A seed with neither instructions nor history carries no system-message content at
+all. A
 seed with history but no instructions still composes the record — an application that configures no
 instructions still rotates, and a rotation that dropped the history there would silently restart the
-conversation — while its configuration carries no system message, which is the same assertion from
-the other side.
+conversation — while its configuration carries no system-message content, which is the same
+assertion from the other side.
 
 The last is the scenario the rendering was chosen for. It seeds a tool call and its result and
 asserts both survive as labeled lines carrying their shared identifier. The defect it guards against
@@ -155,7 +171,19 @@ would pass for a registration made after creation, which is precisely the arrang
 first turn's events; asserting the reading is what makes the ordering observable.
 
 The second asserts a named model is carried and that naming none leaves the session's model at
-whatever a freshly constructed session carries — which is what makes the parameter purely additive.
+whatever freshly constructed session options carry — which is what makes the parameter purely
+additive.
+
+#### AgentKitAgentsCopilot-CopilotProviderSessionFactory-CarriesWorkingDirectory: The Host's Directory, Every Session
+
+**Test**: `CopilotProviderSessionFactory_BuildSessionConfig_WorkingDirectory_IsCarried`
+
+Creates a session through a factory given a working directory and asserts the options the scripted
+runtime was handed carry exactly that directory; then builds options with none named and asserts the
+working directory is left unset, so the runtime chooses. The directory is given once, when the host
+builds the factory, and must reach every session a rotation creates afterwards: a replacement that
+lost it would run the application's tools against a different directory from the session it
+replaced, with nothing in the conversation to say so.
 
 #### AgentKitAgentsCopilot-CopilotProviderSessionFactory-LeavesNothingUnowned: Nothing Opened Is Orphaned
 

@@ -29,9 +29,10 @@ sections:
           taking both of those back, and this is where that support is promised and shown to work
           end to end. Everything linked beneath it is how.
 
-          The offline scenarios linked here reach the adapter rather than the runtime, so the "on the
-          GitHub Copilot runtime" half of the promise is carried by a live run recorded with the
-          capability's verification scenarios — manual, and not re-run by the suite.
+          The offline scenarios linked here reach the library rather than the runtime, so the "on the
+          GitHub Copilot runtime" half of the promise is carried by the opt-in live suite recorded with
+          the capability's verification — run by hand and weekly, outside the merge gate and the trace
+          matrix.
         children:
           - AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
           - AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
@@ -40,15 +41,20 @@ sections:
           - AgentKitAgentsCopilot-SessionAdapter-OccupancyFromTheRuntime
           - AgentKitAgentsCopilot-SelfCompaction-HeldClearOfRotation
           - AgentKitAgentsCopilot-Consolidation-OutOfSession
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionConfig
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-AsAIAgent
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-PermissionRpc
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionLifecycle
-          - AgentKit-OTS-MicrosoftAgentsAIGitHubCopilot-SessionEvents
+          - AgentKitAgentsCopilot-Agent-RunsConversations
+          - AgentKitAgentsCopilot-ToolResults-DeliveredInline
+          - AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
+          - AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
+          - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
+          - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle
+          - AgentKit-OTS-MicrosoftCopilotSDK-SessionEvents
+          - AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl
+          - AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
           - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
           - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+          - AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime
 
       - id: AgentKit-Provider-ChatClient
         title: >-

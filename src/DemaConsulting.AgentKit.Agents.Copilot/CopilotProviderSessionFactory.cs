@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
@@ -9,8 +9,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// </summary>
 /// <remarks>
 ///     <para>
-///     Holds the client and, optionally, the model, so an application states both once — where it
-///     configures its provider — and a rotating session asks for neither again. The client is shared
+///     Holds the client and, optionally, the model and the working directory, so an application
+///     states them once — where it configures its provider — and a rotating session asks for none
+///     of them again. The client is shared
 ///     by every session this factory creates and is disposed by none of them: the host constructs,
 ///     starts and disposes it, exactly as <see cref="CopilotAgentFactory"/> records. Each session is
 ///     AgentKit's and is released when the engine finishes with it.
@@ -30,8 +31,8 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     composes an agent, where that choice is offered.
 ///     </para>
 ///     <para>
-///     Safe for concurrent use: creating a session reads the client reference and the model name and
-///     touches nothing else this factory owns, and each session gets an observer and a runtime
+///     Safe for concurrent use: creating a session reads the client reference, the model name and
+///     the working directory and touches nothing else this factory owns, and each session gets an observer and a runtime
 ///     session of its own.
 ///     </para>
 /// </remarks>
@@ -111,6 +112,12 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     private readonly int? _maxWindowTokens;
 
     /// <summary>
+    ///     The working directory every session this factory creates is given, or
+    ///     <see langword="null"/> to leave it to the runtime.
+    /// </summary>
+    private readonly string? _workingDirectory;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSessionFactory"/> class.
     /// </summary>
     /// <param name="client">
@@ -134,8 +141,19 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     answer quality across a long conversation, or to make rotation reachable at all against
     ///     a window larger than any test conversation; not to save money.
     /// </param>
+    /// <param name="workingDirectory">
+    ///     The working directory the runtime gives each session — typically the root of the
+    ///     workspace the tools are confined to. When <see langword="null"/>, empty, or whitespace,
+    ///     none is set and the runtime uses the host process's working directory. In-process hosting
+    ///     has no client-level working directory, so this is where a host sets one. It grants
+    ///     nothing: what the conversation may read or write is decided by the tools' own path policy.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxWindowTokens"/> is less than 1.</exception>
-    public CopilotProviderSessionFactory(CopilotClient client, string? model = null, int? maxWindowTokens = null)
+    public CopilotProviderSessionFactory(
+        CopilotClient client,
+        string? model = null,
+        int? maxWindowTokens = null,
+        string? workingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
@@ -143,6 +161,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         _opener = CopilotSessionChannel.Open(client);
         _model = model;
         _maxWindowTokens = maxWindowTokens;
+        _workingDirectory = workingDirectory;
     }
 
     /// <summary>
@@ -162,14 +181,20 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     account against whatever the runtime reports. Only ever lowers: a ceiling above the
     ///     runtime's own limit is ignored. Must be at least 1 when supplied.
     /// </param>
+    /// <param name="workingDirectory">The working directory to give each session, or <see langword="null"/> for the runtime's default.</param>
     /// <exception cref="ArgumentNullException"><paramref name="opener"/> is <see langword="null"/>.</exception>
-    internal CopilotProviderSessionFactory(CopilotChannelOpener opener, string? model, int? maxWindowTokens = null)
+    internal CopilotProviderSessionFactory(
+        CopilotChannelOpener opener,
+        string? model,
+        int? maxWindowTokens = null,
+        string? workingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(opener);
 
         _opener = opener;
         _model = model;
         _maxWindowTokens = maxWindowTokens;
+        _workingDirectory = workingDirectory;
     }
 
     /// <inheritdoc/>
@@ -192,7 +217,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         var observer = new CopilotSessionObserver();
-        var config = BuildProviderSessionConfig(seed, observer.OnEvent, _model);
+        var config = BuildProviderSessionConfig(seed, observer.OnEvent, _model, _workingDirectory);
 
         var channel = await _opener(config, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The Copilot channel opener returned null.");
@@ -248,11 +273,13 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     <b>What was rejected, and why.</b> <c>MessageOptions.Attachments</c> carries only file-like
     ///     and GitHub references, several of which the runtime may omit with a stated reason, and an
     ///     attachment the runtime may omit is precisely the silent-divergence channel this must not
-    ///     use. <c>ResumeSessionConfig</c> resumes <em>Copilot's own</em> stored history for an
+    ///     use. <c>ResumeSessionOptions</c> resumes <em>Copilot's own</em> stored history for an
     ///     existing session id, which would resurrect the history a rotation exists to discard. And
-    ///     <c>SystemMessageMode.Customize</c> writes into the runtime's own prompt sections, which
-    ///     replaces part of the runtime's system prompt and forks the single configuration path the
-    ///     safety argument depends on. A priming message sent on its own was rejected too, for
+    ///     carrying the record in a section of the runtime's own prompt, through the system message's
+    ///     section overrides, would place it in the system message, charged as overhead like any
+    ///     other system-message placement, and would split the system message between the
+    ///     confinement, which owns its section overrides, and this method. A priming message sent on
+    ///     its own was rejected too, for
     ///     costing a round trip and a billed answer per rotation — which is why the record is
     ///     prepended to a message the engine was already sending rather than sent by itself.
     ///     </para>
@@ -260,27 +287,30 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <param name="seed">What the new session must start from. Must not be <see langword="null"/>.</param>
     /// <param name="onEvent">The observer's handler, registered before the session is created.</param>
     /// <param name="model">The model to name, or <see langword="null"/> for the runtime's default.</param>
+    /// <param name="workingDirectory">The session's working directory, or <see langword="null"/> for the runtime's default.</param>
     /// <returns>The configuration the runtime session is created from.</returns>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="seed"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">Two seeded tools carry the same name.</exception>
-    internal static SessionConfig BuildProviderSessionConfig(
+    internal static CreateSessionOptions BuildProviderSessionConfig(
         ProviderSessionSeed seed,
         Action<SessionEvent> onEvent,
-        string? model)
+        string? model,
+        string? workingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(seed);
 
         var config = CopilotAgentFactory.BuildEngineSessionConfig(
             [.. seed.Tools],
             seed.Instructions,
-            model);
+            model,
+            workingDirectory);
 
         // Registered on the configuration rather than on the session, because the SDK installs this
         // handler before the session.create RPC is issued - which is what makes the first turn's
         // usage reading and tool traffic observable at all.
-        config.OnEvent = onEvent;
+        config.Events.OnEvent = onEvent;
 
         return config;
     }
@@ -335,6 +365,4 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 
         return $"{RecordOpening}{RecordNewLine}{record}{RecordNewLine}{RecordClosing}";
     }
-
-
 }

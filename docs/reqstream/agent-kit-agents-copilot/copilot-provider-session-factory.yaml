@@ -53,22 +53,22 @@ sections:
               a conversation happened when none had.
 
               Where the record does not go follows from this rule rather than standing as a promise of
-              its own: it is composed for the first message, so the system message carries the
+              its own: it is composed for the first message, so the system message's content is the
               application's instructions alone. That was once a separate requirement and was deleted
               deliberately — it stated internal placement rather than behavior an application can act
               on — and the tests listed here assert it by equality.
             tests:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
-              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
+              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent
               - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
               - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
             title: >-
               The factory shall derive each session's allow-list from the same collection it publishes
-              as the session's tools, and shall build every session with the runtime's skills disabled
-              and its custom instructions skipped.
+              as the session's tool definitions, qualifying every entry as a custom tool, and shall
+              build every session with every channel of runtime-injected capability withheld.
             justification: |
               A session the engine drives is exactly as exposed to the runtime's built-in tools,
               skills and discovered instructions as an agent is, so it receives exactly the same
@@ -105,7 +105,7 @@ sections:
               occupancy the engine reads afterwards would move for reasons it cannot see.
 
               The threshold is what decides this, because it is the setting the runtime honors.
-              Measured against SDK 1.0.11, a session created with the infinite-session flag set false
+              Measured against the live runtime, a session created with the infinite-session flag set false
               compacted as soon as its threshold was crossed, exactly as a session created with the
               flag true did; a session whose threshold was not crossed did not compact whatever the
               flag said. The flag is still set, because it states the intent and costs nothing if the
@@ -142,3 +142,15 @@ sections:
               - CopilotProviderSessionFactory_CreateAsync_NullSeed_Throws
               - CopilotProviderSessionFactory_CreateAsync_Canceled_OpensNothing
               - CopilotProviderSessionFactory_CreateAsync_CanceledWhileOpening_ReleasesTheOpenedSession
+
+          - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-CarriesWorkingDirectory
+            title: >-
+              The factory shall give every session it creates the working directory the host named
+              when it built the factory, and shall leave the working directory to the runtime when
+              the host named none.
+            justification: |
+              In-process hosting has no client-level working directory, so a compacting conversation
+              anchored where its host intends needs the setting here, stated once where the provider
+              is configured and carried onto every session a rotation creates.
+            tests:
+              - CopilotProviderSessionFactory_BuildSessionConfig_WorkingDirectory_IsCarried

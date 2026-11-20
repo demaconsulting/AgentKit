@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
@@ -88,8 +88,8 @@ public class CopilotProviderSessionTests
         // Arrange: a delegated run, whose child produces traffic of its own
         var runtime = Runtime(Turn(
             CopilotEvents.ToolStart("call-1", "agent_run"),
-            CopilotEvents.ToolStart("nested-1", "doc_read", parentToolCallId: "call-1"),
-            CopilotEvents.Assistant("nested answer", parentToolCallId: "call-1"),
+            CopilotEvents.ToolStart("nested-1", "doc_read", agentId: "call-1"),
+            CopilotEvents.Assistant("nested answer", agentId: "call-1"),
             CopilotEvents.ToolComplete("call-1", "the child reported back"),
             CopilotEvents.Usage(900, 8000),
             CopilotEvents.Assistant("Delegated and done.")));
@@ -287,6 +287,42 @@ public class CopilotProviderSessionTests
             () => session.SendAsync("a question", TestContext.Current.CancellationToken));
         Assert.Contains("truncated", error.Message, StringComparison.Ordinal);
         Assert.Contains("compaction threshold raised well above", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a cleared context and a snapshot rewind are refused like any other rewrite, with a
+    ///     message that names them rather than only compaction and truncation.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSession_Send_ContextClearedOrRewound_RefusesNamingTheRewrite()
+    {
+        // Arrange: one session whose runtime clears the context, one whose runtime rewinds it
+        var cleared = Runtime(Turn(
+            new SessionContextClearedEvent { Data = new SessionContextClearedData { MessagesCleared = 4 } },
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant("the answer")));
+        var rewound = Runtime(Turn(
+            new SessionSnapshotRewindEvent { Data = new SessionSnapshotRewindData { EventsRemoved = 3, UpToEventId = "event-1" } },
+            CopilotEvents.Usage(400, 8000),
+            CopilotEvents.Assistant("the answer")));
+        await using var clearedSession = await OpenAsync(cleared);
+        await using var rewoundSession = await OpenAsync(rewound);
+
+        // Act
+        var clearedError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => clearedSession.SendAsync("a question", TestContext.Current.CancellationToken));
+        var rewoundError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => rewoundSession.SendAsync("a question", TestContext.Current.CancellationToken));
+
+        // Assert: each refusal names the kinds of rewrite, including the one that happened
+        Assert.Contains("cleared", clearedError.Message, StringComparison.Ordinal);
+        Assert.Contains("rewound", rewoundError.Message, StringComparison.Ordinal);
+
+        // Assert: neither refusal attributes a clear or a rewind to the conversation's growth, which
+        // would send a host looking for the wrong cause
+        Assert.DoesNotContain("grew past", clearedError.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("grew past", rewoundError.Message, StringComparison.Ordinal);
+        Assert.Contains("rather than growth", clearedError.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -664,7 +700,7 @@ public class CopilotProviderSessionTests
     /// <returns>The scripted turn.</returns>
     private static ScriptedTurn Turn(params SessionEvent[] events) =>
         new(events, events.OfType<AssistantMessageEvent>().LastOrDefault(
-            message => message.Data?.ParentToolCallId is null));
+            message => message.AgentId is null));
 
     /// <summary>
     ///     Builds a fake runtime whose one session performs the given turns.

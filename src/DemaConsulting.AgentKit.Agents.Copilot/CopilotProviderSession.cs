@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
@@ -249,7 +249,7 @@ public sealed class CopilotProviderSession : IProviderSession
         try
         {
             var answer = await _channel
-                .SendAndWaitAsync(TakeMessageToSend(message), cancellationToken)
+                .SendAndWaitAsync(new MessageOptions { Prompt = TakeMessageToSend(message) }, cancellationToken)
                 .ConfigureAwait(false);
 
             return CompleteTurn(answer);
@@ -283,7 +283,8 @@ public sealed class CopilotProviderSession : IProviderSession
     {
         // Checked first, because it invalidates everything else. AgentKit raises the runtime's
         // compaction threshold clear of the engine's rotation point on a session its own engine
-        // drives; if it compacted or truncated anyway, the transcript the engine believes it owns
+        // drives; if it reshaped the history anyway - compacting, truncating, clearing or rewinding
+        // it - the transcript the engine believes it owns
         // no longer describes what the provider holds, and every figure below is about a
         // conversation that no longer exists.
         ThrowIfHistoryRewritten();
@@ -397,7 +398,9 @@ public sealed class CopilotProviderSession : IProviderSession
     ///     is the worse half of the problem: the first rewrite can only be detected after the fact,
     ///     but every send after it is avoidable.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The runtime compacted or truncated the session.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The runtime compacted, truncated, cleared or rewound the session's history.
+    /// </exception>
     private void ThrowIfHistoryRewritten()
     {
         if (!_observer.ProviderRewroteHistory)
@@ -406,13 +409,15 @@ public sealed class CopilotProviderSession : IProviderSession
         }
 
         throw new InvalidOperationException(
-            "The Copilot runtime compacted or truncated this session's history, which AgentKit's "
-            + "session engine believes it owns. The engine's transcript and the conversation the "
-            + "runtime holds have diverged, and this session cannot be used further. The session was "
-            + "created with the runtime's compaction threshold raised well above the point the engine "
-            + "rotates at, so reaching it means the conversation grew past the engine's own rotation "
-            + "without rotating - most likely one turn returning far more material than a turn "
-            + "usually does.");
+            "The Copilot runtime rewrote this session's history - it compacted, truncated, cleared or "
+            + "rewound it - and AgentKit's session engine believes it owns that history. The engine's "
+            + "transcript and the conversation the runtime holds have diverged, and this session cannot "
+            + "be used further. The session was created with the runtime's compaction threshold raised "
+            + "well above the point the engine rotates at, so the runtime is not expected to reshape the "
+            + "conversation on its own. A compaction or truncation most often means one turn returned far "
+            + "more material than usual and carried the conversation past the engine's rotation point in "
+            + "a single step; a cleared context or a rewound snapshot is an operation on the session "
+            + "itself rather than growth, so look for whatever acted on the session outside the engine.");
     }
 
     /// <summary>

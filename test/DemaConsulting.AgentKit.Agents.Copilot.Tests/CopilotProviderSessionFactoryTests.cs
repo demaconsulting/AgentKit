@@ -1,6 +1,6 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot;
+using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -13,7 +13,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 /// </summary>
 /// <remarks>
 ///     All of this is decided at session creation and is observable nowhere else, so the assertions
-///     are made against the <c>SessionConfig</c> the factory produced. No Copilot runtime is started
+///     are made against the <c>CreateSessionOptions</c> the factory produced. No Copilot runtime is started
 ///     and no credential is used.
 /// </remarks>
 public class CopilotProviderSessionFactoryTests
@@ -35,12 +35,12 @@ public class CopilotProviderSessionFactoryTests
 
         // Assert: the allow-list is exactly the published tool names, in the same order
         var expected = tools.Select(tool => tool.Name).ToList();
-        Assert.Equal(expected, config.AvailableTools);
-        Assert.Equal(expected, config.Tools!.Select(tool => tool.Name).ToList());
+        Assert.Equal(expected.Select(name => $"custom:{name}"), config.Tools.AvailableTools);
+        Assert.Equal(expected, config.Tools.Definitions!.Select(tool => tool.Name).ToList());
     }
 
     /// <summary>
-    ///     Proves the runtime's two other injection channels are closed on a session the engine
+    ///     Proves the runtime's two other injection channels are withheld on a session the engine
     ///     drives, exactly as they are on the agent path. Either reverting to the permissive value
     ///     would widen the session beyond what its host attached without changing anything the host
     ///     wrote.
@@ -52,8 +52,8 @@ public class CopilotProviderSessionFactoryTests
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.False(config.EnableSkills);
-        Assert.True(config.SkipCustomInstructions);
+        Assert.False(config.Skills.Enabled);
+        Assert.True(config.Instructions.SkipCustomInstructions);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public class CopilotProviderSessionFactoryTests
     {
         // Arrange
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
-        var handler = config.OnPermissionRequest;
+        var handler = config.Permissions.OnRequest;
         Assert.NotNull(handler);
 
         // Act
@@ -104,9 +104,9 @@ public class CopilotProviderSessionFactoryTests
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.NotNull(config.InfiniteSessions);
-        Assert.False(config.InfiniteSessions.Enabled);
-        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
+        Assert.NotNull(config.State.InfiniteSessions);
+        Assert.False(config.State.InfiniteSessions.Enabled);
+        Assert.True(config.State.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
     }
 
     /// <summary>
@@ -142,7 +142,7 @@ public class CopilotProviderSessionFactoryTests
         // Assert: the system message is the instructions and nothing else, byte for byte as the
         // agent path would configure them
         Assert.Equal("You are a research assistant.", config.SystemMessage!.Content);
-        Assert.Equal(SystemMessageMode.Append, config.SystemMessage.Mode!.Value);
+        Assert.Equal(SystemMessageMode.Customize, config.SystemMessage.Mode!.Value);
 
         // Assert: the record is fenced and carries every entry in order. The separator is a newline
         // rather than the platform's, so a rotation renders identically on every machine - which is
@@ -175,17 +175,18 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves a seed carrying neither instructions nor history leaves the session with no system
-    ///     message at all, as the runtime would default it.
+    ///     Proves a seed carrying neither instructions nor history leaves the session's system
+    ///     message with no content at all: the message carries only the confinement's removal of the
+    ///     runtime's host environment context.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage()
+    public void CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent()
     {
         // Arrange / Act
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.Null(config.SystemMessage);
+        Assert.Null(config.SystemMessage!.Content);
     }
 
     /// <summary>
@@ -200,9 +201,9 @@ public class CopilotProviderSessionFactoryTests
         var seed = new ProviderSessionSeed(null, [], [TranscriptEntry.User("what changed?")]);
         var config = Build(seed);
 
-        // Assert: no instructions means no system message at all, and the record still arrives
+        // Assert: no instructions means no system-message content at all, and the record still arrives
         var content = CopilotProviderSessionFactory.ComposeHistoryPreamble(seed)!;
-        Assert.Null(config.SystemMessage);
+        Assert.Null(config.SystemMessage!.Content);
         Assert.StartsWith(CopilotProviderSessionFactory.RecordOpening, content, StringComparison.Ordinal);
         Assert.Contains("USER: what changed?", content, StringComparison.Ordinal);
     }
@@ -234,6 +235,30 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
+    ///     Proves a working directory given to the factory is carried onto every session it builds,
+    ///     and that one built without it leaves the choice to the runtime.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSessionFactory_BuildSessionConfig_WorkingDirectory_IsCarried()
+    {
+        // Arrange: a factory over a scripted runtime, given a working directory
+        var workspace = Path.Combine(Path.GetTempPath(), "corpus");
+        var runtime = new FakeCopilotRuntime();
+        var factory = new CopilotProviderSessionFactory(runtime.Opener, model: null, workingDirectory: workspace);
+
+        // Act
+        await using var session = await factory.CreateAsync(
+            new ProviderSessionSeed(null, [MakeTool("doc_read")], []),
+            TestContext.Current.CancellationToken);
+        var unset = CopilotProviderSessionFactory.BuildProviderSessionConfig(
+            new ProviderSessionSeed(null, [MakeTool("doc_read")], []), _ => { }, model: null);
+
+        // Assert
+        Assert.Equal(workspace, Assert.Single(runtime.Configs).WorkingDirectory);
+        Assert.Null(unset.WorkingDirectory);
+    }
+
+    /// <summary>
     ///     Proves a named model is carried onto the session, and that naming none leaves the choice
     ///     to the runtime — so an application that says nothing about the model gets exactly the
     ///     behavior it had before the parameter existed.
@@ -243,7 +268,7 @@ public class CopilotProviderSessionFactoryTests
     {
         // Arrange
         var seed = new ProviderSessionSeed(null, [MakeTool("doc_read")], []);
-        var untouched = new SessionConfig();
+        var untouched = new CreateSessionOptions();
 
         // Act
         var named = CopilotProviderSessionFactory.BuildProviderSessionConfig(seed, _ => { }, "gpt-5.4-mini");
@@ -280,7 +305,7 @@ public class CopilotProviderSessionFactoryTests
         await session.SendAsync("first turn", TestContext.Current.CancellationToken);
 
         // Assert: a handler was on the configuration, and the first turn's reading reached the session
-        Assert.NotNull(runtime.Configs[0].OnEvent);
+        Assert.NotNull(runtime.Configs[0].Events.OnEvent);
         Assert.Equal(777, session.CurrentUsage.UsedTokens);
     }
 
@@ -366,7 +391,7 @@ public class CopilotProviderSessionFactoryTests
     /// </summary>
     /// <param name="seed">The seed to configure from.</param>
     /// <returns>The session configuration.</returns>
-    private static SessionConfig Build(ProviderSessionSeed seed) =>
+    private static CreateSessionOptions Build(ProviderSessionSeed seed) =>
         CopilotProviderSessionFactory.BuildProviderSessionConfig(seed, _ => { }, model: null);
 
     /// <summary>

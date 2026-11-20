@@ -152,11 +152,18 @@ constituent software items, specifically:
   across a tool-calling turn
 - **ChatClientSummarizer (Unit)** — Consolidates history through an `IChatClient` of the
   application's choosing, out of the session being compacted
-- **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent from a GitHub
-  Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools, and carries an AgentKit session over the same runtime
-- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, installs a
+- **AgentKitAgentsCopilot (System)** — Builds a Microsoft Agent Framework agent of its own from a
+  GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving a
+  source-qualified session allow-list from the supplied tools, and carries an AgentKit session over
+  the same runtime
+- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, withholds every
+  channel of runtime-injected capability, refuses a tool named like a runtime built-in, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
+- **CopilotAgent (Unit)** — The agent the factory builds, and its `CopilotAgentSession`: creates a
+  confined Copilot session on a conversation's first run and resumes it on every later run, streams
+  what the runtime produces, delivers inline data as attachments, and serializes the conversation
+- **CopilotClientStarter (Unit)** — Starts a host's Copilot client and explains a runtime that
+  cannot load, reporting the runtime's error and, where that error identifies it, the cause and remedy
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
@@ -168,8 +175,9 @@ constituent software items, specifically:
   turn's tool traffic, and any sign the runtime rewrote history itself
 - **CopilotSummarizer (Unit)** — Consolidates history on a short-lived, tool-free Copilot session,
   out of the session being compacted
-- **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, which is
-  what makes everything above it testable without a live Copilot runtime
+- **CopilotTurnChannel (Unit)** — The internal seam over the SDK's sealed session types, opening,
+  resuming and releasing a runtime session, which is what makes everything above it testable
+  without a live Copilot runtime
 - **AgentKitAgentsOllama (System)** — Makes the context window a compacting session accounts against
   the window the Ollama instance is actually using, by asking the server for a size and by reading
   back what a running instance reports
@@ -186,10 +194,13 @@ The following OTS items are also covered:
 - **CanvasNet** — the runtime raster imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
-- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
-  abstraction
-- **Microsoft.Agents.AI.GitHub.Copilot** — the GitHub Copilot SDK providing `CopilotClient`,
-  `SessionConfig`, and the permission RPC
+- **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
+  `AIAgent` from an `IChatClient`
+- **Microsoft.Agents.AI.Abstractions** — the runtime library providing the `AIAgent` base type and
+  the serializable `AgentSession` the Copilot agent is built on
+- **Microsoft.Copilot.SDK** — the GitHub Copilot SDK providing `CopilotClient`, the session options
+  shared by session creation and resumption, the session lifecycle and event stream, and the
+  permission RPC
 - **Microsoft.Extensions.AI.Abstractions** — the runtime library providing the
   `AIFunction`/`AIContent` tool currency
 - **OllamaSharp** — the Ollama client library providing the loaded-model report carrying a running
@@ -225,6 +236,16 @@ gate that keeps the samples working. It means only that no sample test is traced
 requirement and no sample appears in the traceability results reported here. See the Scope
 section of the design introduction for the full reasoning; it is a deliberate classification
 decision, not a coverage gap to be closed by adding sample requirements.
+
+One body of evidence is described here but lies outside the traceability results: the opt-in live
+Copilot suite under `test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/`. It runs the Copilot
+package against the real Copilot runtime and a real model, so it needs a credential and model quota
+and is deliberately kept out of the merge gate's test run: it is not part of `AgentKit.slnx` (the
+merge gate only compiles it), and every test in it skips itself unless `AGENTKIT_COPILOT_LIVE_MODEL`
+is set. Because it never runs in the pipeline
+that builds the trace matrix, none of its tests is linked to a requirement. It is supplementary
+verification evidence, and its scenarios, how it is run, where its results are kept and its recorded
+results are described in *AgentKitAgentsCopilot System Verification Design*.
 
 ## Companion Artifact Structure
 

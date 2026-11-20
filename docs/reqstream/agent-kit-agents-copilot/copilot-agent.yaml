@@ -1,0 +1,148 @@
+---
+# Software Unit Requirements for CopilotAgent
+#
+# These requirements describe the design-level behavior of the CopilotAgent unit: the
+# AgentKit-owned Microsoft Agent Framework agent over confined Copilot sessions, and the
+# CopilotAgentSession conversation it serializes.
+
+sections:
+  - title: AgentKitAgentsCopilot Requirements
+    sections:
+      - title: CopilotAgent Requirements
+        requirements:
+          - id: AgentKitAgentsCopilot-CopilotAgent-OpensOrResumesPerRun
+            title: >-
+              The agent shall create a confined Copilot session on a conversation's first run and
+              record that session's identity on the conversation, and shall resume the recorded
+              session, confined identically, on every later run.
+            justification: |
+              The Copilot runtime holds the conversation, so a later run must continue the session an
+              earlier run created rather than start a new one, or the agent forgets everything it was
+              told. Recording the identity on the conversation is what lets a later run — on the same
+              agent or on another one given the serialized conversation — find the session again.
+              The resumed session is confined afresh, because the runtime applies the resumption's
+              configuration to the session it reopens.
+            tests:
+              - CopilotAgent_Run_FirstRun_CreatesAConfinedSessionAndRecordsItsId
+              - CopilotAgent_Run_LaterRun_ResumesTheRecordedSessionWithTheSameConfinement
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-ReleasesAfterEveryRun
+            title: >-
+              The agent shall release the runtime session it opened after every run — successful,
+              failed or canceled — without disposing the client, keeping a conversation's session and
+              deleting the session of a run made without a conversation.
+            justification: |
+              Agent sessions are not disposable, so a runtime session held between runs would leak
+              until the host stopped the client. Releasing it after each run bounds every handle to
+              the run that opened it; keeping the session, rather than deleting it, keeps the
+              conversation resumable. A run made without a conversation has nothing that could ever
+              resume its session, so keeping that one would only accumulate persisted state under the
+              client's data directory; it is deleted instead. A failed or canceled run still leaves a
+              session on the runtime, so release happens on those paths too.
+            tests:
+              - CopilotAgent_Run_AfterEveryRun_ReleasesTheSessionAndKeepsItResumable
+              - CopilotAgent_Run_WithoutASession_UsesASessionDeletedAfterTheRun
+              - CopilotAgent_Run_OnFailure_ReleasesTheSession
+              - CopilotAgent_Run_OnCancellation_ReleasesTheSession
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-StreamsUpdates
+            title: >-
+              The agent shall stream the root agent's text as it arrives, its tool calls and tool
+              results under the runtime's call identifiers, and the runtime's per-request usage,
+              shall deliver a final message's text once, and shall stream nothing a sub-agent
+              produced.
+            justification: |
+              A caller of a streaming run reads the agent's work as it happens: the text, the tools it
+              called and what they returned, and what each request cost. The final assistant message
+              repeats text the deltas already carried, so it is delivered as text only when no delta
+              carried it. A sub-agent's traffic was never part of this conversation, so it is not
+              presented as if it were.
+            tests:
+              - CopilotAgent_RunStreaming_TextDeltas_AreStreamedAsTextContent
+              - CopilotAgent_RunStreaming_MessageWithoutDeltas_IsDeliveredAsText
+              - CopilotAgent_RunStreaming_ToolCallAndResult_AreStreamedWithTheRuntimesCallId
+              - CopilotAgent_RunStreaming_ToolFailure_StreamsTheErrorAsTheResult
+              - CopilotAgent_RunStreaming_NestedAgentEvents_AreNotStreamed
+              - CopilotAgent_RunStreaming_AssistantUsage_IsStreamedAsUsageContent
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-ReturnsTheStreamAsOneResponse
+            title: >-
+              The agent's non-streaming run shall return exactly the content its streaming run
+              produces, gathered into one response.
+            justification: |
+              A caller that does not stream must get the same answer as one that does; deriving the
+              response from the stream makes the two run methods unable to disagree.
+            tests:
+              - CopilotAgent_Run_ReturnsTheStreamedContentAsOneResponse
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-DeliversDataContentAsAttachments
+            title: >-
+              The agent shall send the text of every input message as one prompt and every piece of
+              inline data in the input as an in-memory attachment carrying the data, its media type
+              and a name.
+            justification: |
+              An application hands an agent an image or a document as inline data on a message, and
+              the model must receive it. Sending it in memory, rather than writing it to a temporary
+              file for the runtime to read, needs no file-read permission the confinement would
+              refuse and leaves nothing on disk.
+            tests:
+              - CopilotAgent_Run_DataContent_IsSentAsABlobAttachment
+              - CopilotAgent_Run_PromptJoinsTheInputMessagesText
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-SerializesTheSession
+            title: >-
+              The agent shall serialize a conversation as its runtime session identity and its state
+              bag, shall restore a conversation from that form so a later run resumes the same
+              runtime session, shall serialize without waiting for a run in progress on the
+              conversation, and shall refuse a serialized form that is not a JSON object or whose
+              `sessionId` or `stateBag` has the wrong kind.
+            justification: |
+              A conversation that must outlive the process — a host restarting, a request served by
+              another instance — is persisted and restored through the Agent Framework's session
+              serialization. The shape is the one the earlier Agent Framework Copilot adapter wrote,
+              so a conversation it serialized remains readable. A run holds the conversation's gate
+              across its whole streamed enumeration, so serialization that waited on it would
+              deadlock a host serializing from inside its own streaming loop; serialization is a
+              snapshot, as it is for the Agent Framework's own chat-client agent and the earlier
+              adapter. Restoring a present but malformed state bag as an empty one would let the
+              next run continue with wrong session metadata, and the earlier adapter refused it too.
+            tests:
+              - CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag
+              - CopilotAgent_DeserializeSession_NonObject_Throws
+              - CopilotAgent_DeserializeSession_NonObjectStateBag_Throws
+              - CopilotAgent_SerializeSession_DuringARun_ReturnsWithoutWaitingForTheRun
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-SerializesRunsOnASession
+            title: >-
+              The agent shall run concurrent runs on one conversation one after another, so a
+              conversation is never forked into two runtime sessions.
+            justification: |
+              Two concurrent first runs on one conversation would otherwise each create a runtime
+              session, and the conversation would silently fork: each later run would continue only
+              one of them.
+            tests:
+              - CopilotAgent_Run_ConcurrentRunsOnOneSession_AreSerialized
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
+            title: >-
+              The agent shall fail a run whose root agent the runtime reports a session error for,
+              naming the error.
+            justification: |
+              A run that ended because the runtime failed must not look like a run that succeeded
+              with nothing to say; naming the runtime's error is what lets a host act on it.
+            tests:
+              - CopilotAgent_RunStreaming_SessionError_FailsTheRunNamingTheError
+
+          - id: AgentKitAgentsCopilot-CopilotAgent-RejectsForeignSessions
+            title: >-
+              The agent shall refuse to run on, or serialize, a conversation another kind of agent
+              created, before touching the runtime, and shall report a default name and description
+              when the host names none.
+            justification: |
+              A conversation from another agent carries no Copilot session identity, so running on it
+              would silently start a fresh conversation the caller believes is a continuation. A
+              default name keeps an unnamed agent identifiable in logs and multi-agent hosts.
+            tests:
+              - CopilotAgent_Run_ForeignSession_Throws
+              - CopilotAgent_SerializeSession_ForeignSession_Throws
+              - CopilotAgent_Name_DefaultsWhenNoneSupplied

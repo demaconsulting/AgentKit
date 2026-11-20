@@ -8,8 +8,8 @@ using DemaConsulting.AgentKit.Tools.Markdown;
 using DemaConsulting.AgentKit.Tools.Memory;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Todo;
-using GitHub.Copilot;
 using Microsoft.Agents.AI;
+using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -779,7 +779,7 @@ public static class AgentComposition
     ///     </para>
     /// </remarks>
     /// <param name="options">The options carrying the model and any token.</param>
-    /// <param name="corpusRoot">The working directory for the runtime process.</param>
+    /// <param name="corpusRoot">The working directory given to every session.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
     /// <returns>The Copilot agent factory, session planner, and the client as its cleanup handle.</returns>
     private static async Task<ProviderBackend> CreateCopilotBackendAsync(
@@ -789,14 +789,23 @@ public static class AgentComposition
     {
         var token = options.ResolveGitHubToken();
 
+        // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
+        // runtime's own defaults off and its state in that directory, and AgentKit withholds the
+        // ambient channels - plugins, MCP servers, skills, custom instructions, host environment
+        // context - from the model on every session itself. A per-user application-data folder keeps
+        // that state out of the workspace.
         var client = new CopilotClient(new CopilotClientOptions
         {
-            WorkingDirectory = corpusRoot,
+            Mode = CopilotClientMode.Empty,
+            Runtime = RuntimeConnection.ForDefault(baseDirectory: Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AgentKit",
+                "research-assistant",
+                "copilot")),
 
             // An explicit token wins; with none, fall back to the logged-in user, which is what an
             // interactive developer run uses.
-            GitHubToken = token,
-            UseLoggedInUser = token is null,
+            GitHub = new ClientGitHubOptions { Token = token, UseLoggedInUser = token is null },
         });
 
         // Built before the first awaited call, so a failure starting the runtime releases through the
@@ -806,17 +815,26 @@ public static class AgentComposition
 
         try
         {
-            await client.StartAsync(cancellationToken);
+            // Started through the starter so a runtime that cannot load - most often because a
+            // Copilot CLI shell set COPILOT_CLI_PATH - fails with an error that says so.
+            await CopilotClientStarter.StartAsync(client, cancellationToken);
 
             var providerSessions = new CopilotProviderSessionFactory(
                 client,
                 options.Model,
-                options.ContextWindow);
+                options.ContextWindow,
+                workingDirectory: corpusRoot);
             var summarizer = new CopilotSummarizer(client, options.SummaryModel);
 
             return new ProviderBackend(
                 (tools, instructions, name) =>
-                    CopilotAgentFactory.Create(client, tools, instructions, name: name, model: options.Model),
+                    CopilotAgentFactory.Create(
+                        client,
+                        tools,
+                        instructions,
+                        name: name,
+                        model: options.Model,
+                        workingDirectory: corpusRoot),
                 cleanup,
                 (tools, instructions) => new CompactingSessionPlan(
                     new AgentSessionOptions(summarizer, instructions, [.. tools]),

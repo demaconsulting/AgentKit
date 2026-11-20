@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
@@ -106,6 +106,62 @@ public class CopilotSessionObserverTests
 
         // Assert
         Assert.True(observer.ProviderRewroteHistory);
+    }
+
+    /// <summary>
+    ///     Proves the two further ways SDK v2 lets the runtime discard history — clearing the context
+    ///     window and rewinding to a snapshot — are seen as rewrites too.
+    /// </summary>
+    [Fact]
+    public void CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten()
+    {
+        // Arrange
+        var cleared = new CopilotSessionObserver();
+        var rewound = new CopilotSessionObserver();
+
+        // Act
+        cleared.OnEvent(new SessionContextClearedEvent { Data = new SessionContextClearedData { MessagesCleared = 4 } });
+        rewound.OnEvent(new SessionSnapshotRewindEvent { Data = new SessionSnapshotRewindData { EventsRemoved = 3, UpToEventId = "event-1" } });
+
+        // Assert
+        Assert.True(cleared.ProviderRewroteHistory);
+        Assert.True(rewound.ProviderRewroteHistory);
+    }
+
+    /// <summary>
+    ///     Proves a usage reading, history rewrite or error attributed to a sub-agent changes nothing.
+    ///     Those describe the nested agent's own context, so taking them would replace this session's
+    ///     occupancy, end the session over a rewrite it never underwent, or name the wrong cause.
+    /// </summary>
+    [Fact]
+    public void CopilotSessionObserver_OnEvent_SubAgentSessionEvents_ChangeNothing()
+    {
+        // Arrange: a turn in flight, and session-level events a sub-agent reported
+        var observer = new CopilotSessionObserver();
+        observer.BeginTurn();
+        SessionEvent[] nested =
+        [
+            CopilotEvents.Usage(currentTokens: 1200, tokenLimit: 8000),
+            CopilotEvents.CompactionStart(),
+            CopilotEvents.Truncation(),
+            new SessionContextClearedEvent { Data = new SessionContextClearedData { MessagesCleared = 4 } },
+            new SessionSnapshotRewindEvent { Data = new SessionSnapshotRewindData { EventsRemoved = 3, UpToEventId = "event-1" } },
+            CopilotEvents.Error("sub-agent failed"),
+        ];
+
+        // Act: each attributed on the envelope to the sub-agent
+        foreach (var sessionEvent in nested)
+        {
+            sessionEvent.AgentId = "sub-agent-1";
+            observer.OnEvent(sessionEvent);
+        }
+
+        // Assert: no reading, no per-turn report, no rewrite, no error, no entries
+        Assert.Null(observer.LatestUsage);
+        Assert.False(observer.UsageReportedThisTurn);
+        Assert.False(observer.ProviderRewroteHistory);
+        Assert.Null(observer.LastErrorMessage);
+        Assert.Empty(observer.DrainEntries());
     }
 
     /// <summary>
@@ -292,9 +348,9 @@ public class CopilotSessionObserverTests
 
         // Act
         observer.OnEvent(CopilotEvents.ToolStart("call-1", "agent_run"));
-        observer.OnEvent(CopilotEvents.ToolStart("nested-1", "doc_read", parentToolCallId: "call-1"));
-        observer.OnEvent(CopilotEvents.ToolComplete("nested-1", "nested result", parentToolCallId: "call-1"));
-        observer.OnEvent(CopilotEvents.Assistant("nested answer", parentToolCallId: "call-1"));
+        observer.OnEvent(CopilotEvents.ToolStart("nested-1", "doc_read", agentId: "call-1"));
+        observer.OnEvent(CopilotEvents.ToolComplete("nested-1", "nested result", agentId: "call-1"));
+        observer.OnEvent(CopilotEvents.Assistant("nested answer", agentId: "call-1"));
         observer.OnEvent(CopilotEvents.ToolComplete("call-1", "the child reported back"));
 
         // Assert: only this conversation's call and its result, not the child's three events

@@ -103,9 +103,15 @@ provider session. Today that means any `IChatClient`, through
   engine's provider side for that whole family: a provider session over any `IChatClient`, the
   factory that produces one at every rotation, and a summarizer that consolidates through a client
   of the application's choosing.
-- **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent from a
-  GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving the session
-  allow-list from the supplied tools. It also carries the session engine's provider side for the
+- **`DemaConsulting.AgentKit.Agents.Copilot`** — builds a Microsoft Agent Framework agent on the
+  GitHub Copilot runtime through `Microsoft.Copilot.SDK`. The agent is an `AIAgent` AgentKit owns —
+  the SDK ships none — and every session it opens suppresses the runtime's built-in tools through a
+  source-qualified allow-list derived from the supplied tools, approves only those tools by default,
+  and refuses a supplied tool that carries a built-in's name. Its conversations stream, accept image
+  and other data attachments, and serialize so a later process can resume them. The application that
+  hosts the runtime references `Microsoft.Copilot.SDK` itself; see
+  [Hosting the GitHub Copilot Runtime](#hosting-the-github-copilot-runtime). The package also
+  carries the session engine's provider side for the
   Copilot runtime: a provider session over one Copilot session, the factory that produces one at
   every rotation, and a summarizer that consolidates on a separate tool-free session. Copilot
   reports its own occupancy and its own context window, so unlike every other adapter this one is
@@ -154,7 +160,7 @@ Add the adapter for the provider you target:
 
 ```bash
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
-dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot SDK
+dotnet add package DemaConsulting.AgentKit.Agents.Copilot      # the GitHub Copilot runtime (see below)
 ```
 
 On Ollama, add one more so the session is told the window the instance is actually running rather
@@ -163,6 +169,119 @@ than a guess:
 ```bash
 dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # asks for and reads Ollama's window
 ```
+
+### Hosting the GitHub Copilot Runtime
+
+An application that runs agents on the GitHub Copilot runtime also references the Copilot SDK
+itself:
+
+```bash
+dotnet add package Microsoft.Copilot.SDK --version 2.0.1
+```
+
+`DemaConsulting.AgentKit.Agents.Copilot` deliberately ships no runtime. `Microsoft.Copilot.SDK`
+downloads its native runtime at build time — about 100 MB from the
+[Copilot CLI releases](https://github.com/github/copilot-cli/releases), verified against the
+release's published checksums — but only into a project that references the package directly, so
+the host application must. No separate Copilot CLI installation is needed. Plan for the size: the
+runtime adds about 356 MB to every output directory of the host application. A build that cannot
+reach GitHub uses the SDK's own MSBuild properties: `CopilotCliReleaseBaseUrl` (or the
+`COPILOT_CLI_DOWNLOAD_BASE_URL` environment variable) to download from a mirror,
+`CopilotCliBinaryPath` to use a runtime already downloaded, `CopilotCliDownloadTimeout` to give a
+slow link longer than the default 600 seconds, and `CopilotSkipCliDownload` to skip the download in
+a project that never starts a runtime, such as a unit-test project.
+
+The host owns the client: it constructs, starts and disposes it. AgentKit builds every session on
+it:
+
+```csharp
+using DemaConsulting.AgentKit.Agents.Copilot;
+using Microsoft.Copilot;
+
+// Where the runtime keeps its session state. Empty mode requires one of the host's choosing.
+var dataDirectory = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MyApp", "copilot");
+
+await using var client = new CopilotClient(new CopilotClientOptions
+{
+    // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the runtime's
+    // own defaults off and its state in that directory, and AgentKit withholds the ambient channels -
+    // plugins, MCP servers, skills, custom instructions, host environment context - from the model on
+    // every session.
+    Mode = CopilotClientMode.Empty,
+    Runtime = RuntimeConnection.ForInProcess(baseDirectory: dataDirectory),
+
+    // The signed-in GitHub user; COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN are honored too.
+    // Set Token instead to supply a credential directly.
+    GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
+});
+
+// Starting through the starter turns a runtime that cannot load into an error that says why.
+await CopilotClientStarter.StartAsync(client);
+
+var agent = CopilotAgentFactory.Create(
+    client,
+    [.. tools],
+    instructions: "You are a document assistant. Use the tools provided.",
+    workingDirectory: "/workspace");
+```
+
+AgentKit requires Empty mode on a data directory the host owns, and cannot detect it: the SDK offers
+no way to read a client's mode back. So it relies on the mode for nothing that reaches the model. It
+withholds the runtime's ambient channels from the model on every session itself — including every
+MCP server the session lists and the session's installed plugins — and refuses a session in which an
+MCP server stays enabled. Servers the runtime's MCP discovery returns are named in the session's disabled
+servers before the session exists, so the runtime does not start or authenticate them. The SDK
+documents that discovery as covering the user, workspace, plugin and builtin sources. A server from
+a source it cannot enumerate before creation, such as a managed catalog or a signed-in account, may
+start, and authenticate with the host environment, while the session is created. AgentKit disables
+any such server before any turn runs, and the session is refused if one stays enabled. This
+guarantees that the model cannot reach an ambient MCP server; it does not prevent one from running.
+A host that must also keep such servers from running supplies a `CopilotClientMode.Empty` client on
+a clean data directory it owns. That removes the sources the directory holds, namely its MCP
+configuration and installed plugins. SDK 2.0.1 does not document that Empty mode or a clean data
+directory keeps a managed-catalog or account server from starting; an account server follows the
+signed-in account and its organization's policy. The client therefore narrows those sources rather
+than guaranteeing that none starts. A client in another mode, or on a shared data directory, can
+still bring host-side behavior no session option reaches, such as user-level hooks or keychain
+credential storage.
+
+In-process hosting has no client-level working directory, so the session working directory is
+passed to `CopilotAgentFactory.Create`, or to `CopilotProviderSessionFactory` for a compacting
+session. It grants nothing: what the agent may read or write is decided by the tools' path policy.
+
+> **`COPILOT_CLI_PATH`.** When this environment variable is set, in-process hosting loads the
+> runtime library from beside that path instead of from the application's output. Every shell the
+> Copilot CLI starts sets it to the CLI's own installation, which does not ship that library, so a
+> host launched from such a shell fails to start. Unset it first — `Remove-Item Env:COPILOT_CLI_PATH`
+> in PowerShell, `unset COPILOT_CLI_PATH` in bash. `CopilotClientStarter.StartAsync` includes the
+> runtime's own error in the error it raises, and names this cause when that error points at the
+> variable's location, or a missing direct reference to `Microsoft.Copilot.SDK` when the variable is
+> unset.
+
+### Breaking Changes in the Copilot Adapter
+
+`DemaConsulting.AgentKit.Agents.Copilot` now builds on `Microsoft.Copilot.SDK` 2.0.1 instead of the
+Agent Framework's `Microsoft.Agents.AI.GitHub.Copilot` adapter and `GitHub.Copilot.SDK` 1.0.x. A host
+upgrading from an earlier release changes the following:
+
+- **Namespace.** `GitHub.Copilot` becomes `Microsoft.Copilot`; RPC types such as
+  `PermissionDecision` live in `Microsoft.Copilot.Rpc`.
+- **Client options.** `CopilotClientOptions` takes `Mode`, a `Runtime` connection carrying a data
+  directory, and `GitHub = new ClientGitHubOptions { … }` for authentication. It has no working
+  directory any more; pass `workingDirectory:` to the AgentKit factories instead.
+- **Runtime provisioning.** The host project references `Microsoft.Copilot.SDK` directly, or no
+  runtime is provisioned.
+- **Diagnostic.** The SDK's evaluation-only diagnostic, raised by code that references the
+  permission-handler types, is `MCPSDK001` rather than `GHCP001`. Update any suppression.
+- **Built-in tool names.** A supplied tool named like a runtime built-in — `view`, `powershell`,
+  `bash`, `task` and the like, compared case-insensitively — is refused with an `ArgumentException`.
+  Rename the tool.
+- **Permission mode.** Every session's permission mode is pinned to `Manual`, so the permission
+  handler is the only authority over what runs.
+- **Session type.** `GitHubCopilotAgent` and `GitHubCopilotAgentSession` are gone; `Create` still
+  returns an `AIAgent`, and its sessions are `CopilotAgentSession`. A session serialized by the
+  earlier adapter remains readable.
 
 ## API Documentation
 

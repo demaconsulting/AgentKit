@@ -84,6 +84,8 @@ input-files:
   - docs/design/agent-kit-agents-chat-client/chat-client-summarizer.md
   - docs/design/agent-kit-agents-copilot.md
   - docs/design/agent-kit-agents-copilot/copilot-agent-factory.md
+  - docs/design/agent-kit-agents-copilot/copilot-agent.md
+  - docs/design/agent-kit-agents-copilot/copilot-client-starter.md
   - docs/design/agent-kit-agents-copilot/copilot-provider-session.md
   - docs/design/agent-kit-agents-copilot/copilot-provider-session-factory.md
   - docs/design/agent-kit-agents-copilot/copilot-session-observer.md
@@ -98,7 +100,8 @@ input-files:
   - docs/design/ots/canvasnet.md
   - docs/design/ots/fileassert.md
   - docs/design/ots/microsoft-agents-ai.md
-  - docs/design/ots/microsoft-agents-ai-github-copilot.md
+  - docs/design/ots/microsoft-agents-ai-abstractions.md
+  - docs/design/ots/microsoft-copilot-sdk.md
   - docs/design/ots/microsoft-extensions-ai-abstractions.md
   - docs/design/ots/ollamasharp.md
   - docs/design/ots/pandoc.md

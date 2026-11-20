@@ -2,10 +2,10 @@
 
 ![AgentKit Copilot Agents Structure](AgentKitAgentsCopilotView.svg)
 
-The AgentKitAgentsCopilot system builds a Microsoft Agent Framework agent from a GitHub Copilot
-`CopilotClient` and a supplied tool list, suppressing the built-in tools the Copilot runtime would
-otherwise inject, and carries an AgentKit Core session — with its tiered context compaction — over
-the same runtime.
+The AgentKitAgentsCopilot system gives a GitHub Copilot `CopilotClient` an agent of AgentKit's own —
+a Microsoft Agent Framework `AIAgent` confined to a supplied tool list, with the built-in tools the
+Copilot runtime would otherwise inject suppressed — and carries an AgentKit Core session, with its
+tiered context compaction, over the same runtime.
 
 ## Purpose
 
@@ -18,9 +18,17 @@ tools, so the published tool set and the allow-list cannot drift apart. That der
 safety-critical behavior of the whole increment.
 
 The system also wires a permission handler that is safe by default — approving exactly the supplied
-tools and rejecting every other request — while letting a host supply its own. And it fixes the
-ownership contract: the host constructs, starts, and disposes the `CopilotClient`; the adapter takes
-no ownership of it.
+tools and rejecting every other request — while letting a host supply its own; see *Permission
+Handling Is Default-Deny*. And it fixes the ownership contract: the host constructs, starts, and
+disposes the `CopilotClient`; nothing in this system takes ownership of it.
+
+**The agent is AgentKit's own.** The Copilot SDK ships no Agent Framework agent, and the adapter
+package that once supplied one does not support the current SDK. So the system carries its own
+`AIAgent` over Copilot sessions — `CopilotAgent` — and every session that agent opens, whether
+created or resumed, is configured by the same confinement path as every other session in the
+package. The agent adds lifecycle, streaming and serialization around that confinement and changes
+none of it. Owning the agent also removes a seam the confinement used to cross: nothing third-party
+stands between the configuration AgentKit builds and the session the runtime creates from it.
 
 **The system carries a second job: an AgentKit provider session.** Core's compaction engine is what
 lets a long-running agent behave the same way on every provider, and it reaches a provider through
@@ -30,19 +38,20 @@ That mattered more than the count suggests: Copilot is the provider this project
 integration can reach, so the engine's behavior against a runnable provider had never been
 exercised. `CopilotProviderSession`, its factory and `CopilotSummarizer` close that gap natively.
 
-The system implements no agent runtime and no compaction engine of its own; it adapts the GitHub
-Copilot SDK into the Microsoft Agent Framework `AIAgent` abstraction and into Core's session
-contracts. It shares no code with, and takes no reference on, the ChatClient adapter.
+The system implements no agent runtime and no compaction engine of its own: the Copilot runtime runs
+the conversation, and Core runs the compaction. It presents Copilot sessions through the Agent
+Framework's `AIAgent` abstraction and through Core's session contracts. It shares no code with, and
+takes no reference on, the ChatClient adapter.
 
 ## Seeding History Onto the First Message
 
 A rotation produces a seed carrying instructions, tools and a rewritten history, and the adapter has
-to get that history into a fresh Copilot session. **Copilot's session configuration has no history
-or messages field of any kind** — every property of the configuration and its base was enumerated
-against the shipped assembly. So the history is rendered as a labeled record and carried on the
-session's **first user message**, prepended to the message the engine was already about to send. The
-session's system message carries the application's instructions and nothing else, byte for byte as
-the plain agent path configures them.
+to get that history into a fresh Copilot session. **Copilot's session options have no history or
+messages field of any kind** — every property of the create options and their shared base was
+enumerated against the shipped assembly. So the history is rendered as a labeled record and carried
+on the session's **first user message**, prepended to the message the engine was already about to
+send. The session's system message carries the application's instructions and nothing else, byte for
+byte as the plain agent path configures them.
 
 **Why the first user message, and not the system message — the engine's accounting.** The engine
 reasons about the window as overhead — the system message and the tool declarations — against the
@@ -70,7 +79,10 @@ provider's role mapping can drop part of a message without dropping the message.
 
 Conversational attachments, session resumption, the session RPC's message queue, the runtime's own
 prompt-section overrides, and a priming message sent on its own were each considered and rejected,
-with the evidence against each recorded in *CopilotProviderSessionFactory Unit Design*.
+with the evidence against each recorded in *CopilotProviderSessionFactory Unit Design*. Session
+resumption is rejected *for seeding* only: the agent path resumes a session to continue the same
+conversation, which is exactly what resumption is for, while a rotation must discard the history a
+resume would bring back.
 
 Two consequences are stated rather than hidden. The record now lives in Copilot's **conversation**,
 where the runtime's own truncation could in principle drop it — which was the decisive objection to
@@ -119,21 +131,23 @@ threshold raised to 0.95, a quarter of the window clear of the engine's rotation
 **A future maintainer must not lower it back toward the engine's own threshold.**
 
 **Asking the runtime to stop does not work, and nothing here depends on it.** The session
-configuration also carries the infinite-session enablement flag set false, which states the intent
-and costs nothing, but the runtime ignores it. Measured against the live runtime, a session created
-with the flag false compacted as soon as its threshold was crossed, exactly as a session created with
-the flag true did; a session whose threshold was not crossed did not compact whatever the flag said.
-The threshold is the honored setting, so the threshold is the one relied on. The measurement itself
-is recorded in *AgentKitAgentsCopilot System Verification Design*.
+options also carry the infinite-session enablement flag set false, which states the intent and
+costs nothing, but the runtime ignores it: the flag only suppresses the session's workspace.
+Measured against the live runtime, a session created with the flag false compacted as soon as its
+threshold was crossed, exactly as a session created with the flag true did; a session whose threshold
+was not crossed did not compact whatever the flag said. The threshold is the honored setting, so the
+threshold is the one relied on. The measurement itself is recorded in *AgentKitAgentsCopilot System
+Verification Design*.
 
 **The threshold is deliberately not raised to 1.0.** The runtime's last-resort behavior is worth
 keeping for the case where something extraordinary happens, so a rewrite remains possible rather than
-impossible. The session observer watches for the runtime's own compaction and truncation events, and
-the provider session refuses the next turn if one arrives — before a turn is sent as well as after
-one returns — naming the cause. That converts a silent divergence into a diagnosable failure, which
-is the convention this library already follows wherever it cannot know something it needs. It is also
-what makes it safe to carry a rotation's record on the conversation channel; see *A Session the Engine
-Cannot Account For Is Finished* below.
+impossible. The session observer watches for every event by which the runtime reports reshaping a
+conversation itself — a compaction starting, summarizing or completing, a truncation, a cleared
+context window, and a rewind to a snapshot — and the provider session refuses the next turn if one
+arrives — before a turn is sent as well as after one returns — naming the cause. That converts a
+silent divergence into a diagnosable failure, which is the convention this library already follows
+wherever it cannot know something it needs. It is also what makes it safe to carry a rotation's
+record on the conversation channel; see *A Session the Engine Cannot Account For Is Finished* above.
 
 **The agent path is deliberately asymmetric.** A plain Copilot agent has no AgentKit compactor behind
 it, so changing the runtime's compaction there would remove protection rather than prevent a
@@ -158,6 +172,146 @@ Before the runtime has reported anything — which includes the moment the engin
 adopted session — the session reports nothing occupied out of a placeholder window that cannot
 trigger a rotation and cannot be mistaken for a measurement.
 
+## Confinement Is Applied to Every Session, on One Path
+
+Every Copilot session this system opens — an agent's first run, every later run that resumes it, a
+compacting conversation's session at every rotation, and every consolidation — is configured by one
+private block in `CopilotAgentFactory`. That block targets the options base a created and a resumed
+session share, which is where every confinement-relevant option group lives, so a resumed
+conversation is confined afresh rather than trusted to remember. A resume built without the
+confinement would hand an existing conversation the runtime's defaults — every built-in tool, and
+permission requests no handler answers.
+
+The block does four things, each set explicitly on every session so the confinement does not depend
+on the client's mode, which AgentKit cannot read:
+
+- **Derives the allow-list.** The tool definitions and the available-tools allow-list are assigned
+  from one collection in two adjacent statements. Each allow-list entry is **source-qualified** as
+  `custom:<name>`: measured against the live runtime, and re-verified by the opt-in live suite, a
+  bare-name allow-list also admits a built-in tool whose name matches, so the qualifier is what makes
+  the list name only the tools this package registered. The runtime classifies a tool by where it was
+  registered rather than by parsing its name, so a colliding name cannot spoof the qualifier.
+- **Withholds every other channel of injected capability.** Skills and the built-in skills, discovered
+  custom instructions and on-demand instruction discovery, repository hooks, host git operations and
+  commit co-author trailers,
+  the cross-session store and memory, the built-in sub-agents and discovered agent definitions (with
+  the delegation tool outside the allow-list),
+  extensions, configuration discovery, tool search, schedule management, image generation,
+  experimental features, embedding retrieval, and the runtime's diversion of large tool results to a
+  file are all switched off. The runtime's host environment context — the working directory, the
+  operating system, the git root, a directory listing and the available tools — is removed from the
+  system prompt through the system message's section overrides, the same shape Empty mode sends. The
+  runtime's built-in GitHub MCP server is disabled by name: measured against the live runtime, it is
+  started and authenticated with the user's GitHub identity on every session even in the client's
+  Empty mode, and while the allow-list already keeps its tools out of reach, a server holding the
+  user's identity is disabled rather than merely filtered. The full list, with the reason for each,
+  is in *CopilotAgentFactory Unit Design*.
+- **Pins the permission mode to manual.** In the runtime's allow-all mode tool, path and URL requests
+  are approved without asking the handler, and in its assisted mode a client may approve them
+  itself; either would bypass the handler without anything in this package changing. Pinning the
+  manual mode keeps the handler the only authority, whatever mode ambient configuration would choose.
+- **Installs the permission handler** — the host's, or the default-deny one; see below.
+
+**The runtime half of the confinement is applied by the turn channel.** Some channels can be withheld
+only with the live client and session, which the options builders deliberately do not have, so the
+production turn channel applies them on the one path every opener and resumer shares:
+
+- **Every ambient MCP server is withheld from the model.** The runtime starts MCP servers from ambient
+  configuration — the data directory, the workspace, installed plugins, its built-in servers, a
+  managed catalog, and a signed-in account — and Empty mode does not stop them. Before a session is
+  created or resumed, the channel asks the runtime to discover its MCP servers for the session and
+  names every one in the session's disabled servers, so none of those is started at creation or cold
+  resumption. The allow-list already keeps an MCP server's tools from the model; disabling a
+  discovered server before creation also keeps it from running a process with the user's environment
+  and from contributing instructions; a server discovery cannot name is handled by the seal below.
+- **The session is sealed.** Once the session exists, its installed plugins — which can contribute
+  servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
+  sends; every MCP server the session still reports enabled, including one from a source discovery
+  does not cover, is disabled for that session only; and the configuration is listed again. Servers
+  the runtime's MCP discovery returns are named in the session's disabled servers before the session
+  exists, so the runtime does not start or authenticate them. The SDK documents that discovery as
+  covering the user, workspace, plugin and builtin sources. A server from a source it cannot
+  enumerate before creation, such as a managed catalog or a signed-in account, may start, and
+  authenticate with the host environment, while the session is created. The seal disables any such
+  server before any turn runs, and the session is refused if one stays enabled. This guarantees that
+  the model cannot reach an ambient MCP server; it does not prevent one from running.
+- **It refuses rather than continuing.** A server the runtime keeps enabled refuses the session with an
+  `InvalidOperationException` naming it, so the run fails rather than continuing with the server
+  available. A created session nothing has recorded is released and deleted; a resumed session is
+  only released, because refusing to continue a conversation must not destroy it. A discovery that
+  fails opens nothing.
+
+The client's RPC surface exists only once it has started, so the channel starts the client first,
+through `CopilotClientStarter` — idempotent on a started client, and a runtime that cannot load is
+explained exactly as it would be for a host that started the client itself.
+
+**Options are built fresh for every session and every run.** The SDK mutates the options object it
+is handed when it applies its mode defaults, and its clone is shallow — it shares the infinite-session
+configuration, the hooks and the delegates — so two sessions created from one object, or from a clone
+of it, would share state the SDK has changed. No options object is ever reused or cloned: the agent
+holds builder delegates and calls them on every run.
+
+The host's own preferences — the model, the working directory and the instructions as the content of
+the system message the confinement configured, which the runtime appends — are applied beside the
+confinement, each only when the host supplied a value, so a
+host that says nothing gets the runtime's own default for each.
+
+## Permission Handling Is Default-Deny
+
+When the host supplies no handler, every session carries one that:
+
+- approves a request **once** — for this call only — when it is a custom-tool request naming one of
+  the supplied tools, compared ordinally;
+- rejects every other request with a message naming the tool or the request kind: every built-in
+  shell, read, write, URL, MCP, memory, hook and extension request, and every custom tool the host
+  did not supply.
+
+Measured against the live runtime, and re-verified by the opt-in live suite, every call to a custom
+tool raises a custom-tool permission request, so the handler is on the hot path of every tool call and
+approving the host's own tools is its intended outcome. Those tools are safe by construction — they
+enforce their own path policy — and the runtime's permission layer is a second, independent gate that
+refuses everything else. A grant is approve-once rather than approve-for-session, so every call is
+adjudicated individually and no grant outlives the call. A handler is always installed, because a
+request no handler answers stays pending forever.
+
+**A host handler replaces the default; it is not composed with it.** A host that supplies a handler
+of its own forfeits default-deny unless that handler reproduces it: the factory installs the host's
+delegate unchanged, and nothing of the default runs before or after it. The permission mode is
+pinned to manual either way, so the host's handler is likewise the only authority on its sessions.
+The engine and consolidation paths take no host handler at all — a session the engine drives has no
+host present to adjudicate a request — so they always carry the default.
+
+## Built-In Tool Names Are Refused
+
+The runtime refuses to create a session that registers a custom tool under a built-in tool's name,
+unless the tool is marked as overriding the built-in — and AgentKit never marks it so, because an
+override would silently replace the runtime's tool with the application's under a name the model
+already associates with other behavior. Left to the runtime, the collision surfaces on the first run,
+as a remote error. So `CopilotAgentFactory` refuses such a name itself, with an `ArgumentException`
+naming the tool, on every path — the agent at composition time, the engine at every rotation, and a
+resume — before any session exists.
+
+The reserved set is a conservative **union across platforms**, matched case-insensitively: the
+built-ins the runtime lists on Windows, the shell family it uses on Linux and macOS, a few model- or
+feature-gated built-ins, and the SDK's own published set of isolated built-in names. The built-in set
+depends on the platform, so reserving the union means an application composed on one platform does
+not fail later on another. Over-reserving costs a rename; under-reserving still fails safe, because
+the runtime refuses at session creation. Drift is caught by the opt-in live suite, which lists the
+runtime's built-ins on the platform it runs on and fails if any is missing from the reserved set.
+
+## Tool Results Are Delivered Inline
+
+The runtime can divert a tool result larger than about twenty kilobytes to a temporary file and hand
+the model the file's path instead of the content. Every session this system opens switches that off.
+A confined agent has no tool that can read a file outside its granted locations — and the runtime's
+own read tool is suppressed — so a diverted result is a result the model can never see; measured
+against the live runtime, a model handed such a path failed the task. AgentKit's tools bound their
+own output through Core's tool limits, so a result that reaches the runtime is already a size the
+application chose to deliver, and it is delivered whole. AgentKit offers no provider-neutral
+equivalent of spilling a large result to a file: bounding a result is the tool's responsibility on
+every provider, and on this one the bound is honored rather than second-guessed. The opt-in live suite
+re-verifies that a result well past the runtime's diversion size arrives inline.
+
 ## Why a Turn-Channel Seam Exists
 
 `CopilotSession` is sealed, its constructor is not public, and none of its methods is virtual;
@@ -165,101 +319,254 @@ trigger a rotation and cannot be mistaken for a measurement.
 exercising a turn otherwise needs a live runtime and credentials, which CI does not have and which
 this repository deliberately does not require.
 
-Without a seam, the whole session adapter — the seeding, the usage arithmetic, the refusals, the
-ownership discipline — would ship with no automated evidence at all, on the one provider the project
-can otherwise reach. `ICopilotTurnChannel` is therefore one interface with one method, and the
-production implementation behind it forwards two calls and owns one disposal. Every decision worth
-testing lives above that line; what lies below it is stated plainly as untested in *CopilotTurnChannel
-Unit Verification Design* rather than implied to be covered.
+Without a seam, the whole of the system above the SDK — the seeding, the usage arithmetic, the
+refusals, the agent's streaming and resumption, the ownership discipline — would ship with no
+automated evidence at all, on the one provider the project can otherwise reach. `ICopilotTurnChannel`
+is therefore one small interface — the session's identity and one turn — opened through one of two
+delegates, create and resume, and the production implementation behind it forwards one turn, owns
+one release and opens every session through one confining protocol. Every decision worth testing
+lives above that line or is factored out of it — the release policy and the opening protocol are
+tested with the runtime's steps supplied as delegates; what remains below it is stated plainly as
+untested in *CopilotTurnChannel Unit Verification Design* rather than implied to be covered.
 
 Every session *event* type, by contrast, is trivially constructable, so the tests drive the SDK's own
-event objects through the adapter's own matching code. The seam is narrow, and what crosses it is
+event objects through the system's own matching code. The seam is narrow, and what crosses it is
 real.
 
 ## No Image-Promoting Decorator
 
 Unlike the ChatClient adapter, this system deliberately does **not** install Core's
 `ImagePromotingChatClient`. The Copilot runtime already delivers an image a tool returns to the
-model — its runtime converts a binary tool result into content the model sees — as verified in the
-spike that preceded this work, and corroborated by the SDK's tool-completion result carrying binary
-results for the model explicitly. Installing the decorator here would carry the image a second time
-onto a user message, duplicating content the model already received. This absence is intentional,
-applies to the session path as much as to the agent path, and is recorded here and in both units so
-a future maintainer does not "helpfully" add it.
+model — its runtime converts a binary tool result into content the model sees — as measured against
+the live runtime and re-verified by the opt-in live suite, and corroborated by the SDK's
+tool-completion result carrying binary results for the model explicitly. Installing the decorator
+here would carry the image a second time onto a user message, duplicating content the model already
+received. This absence is intentional, applies to the session path as much as to the agent path, and
+is recorded here and in the units so a future maintainer does not "helpfully" add it.
 
-## Deployment Consequence: RID-Specific Native Runtime
+## Deployment: The Host Application Provisions the Runtime
 
-`Microsoft.Agents.AI.GitHub.Copilot` carries a **RID-specific native runtime** through its SDK
-dependency: the package brings a native component that is selected per runtime identifier rather
-than a single managed assembly that runs anywhere. Consumers should be aware of the deployment
-consequence — a self-contained or RID-targeted publish resolves and ships the native component for
-the target runtime identifier, and a portable publish defers that resolution to the target machine.
-This is a property of the off-the-shelf SDK, not of AgentKit's code, and it is the reason this
-dependency is isolated in its own package rather than admitted anywhere broader. It is recorded here
-and in the *Microsoft.Agents.AI.GitHub.Copilot Design*.
+The Copilot runtime is a native component, specific to a runtime identifier, and `Microsoft.Copilot.SDK`
+does not carry it inside its package. The SDK's build targets download the runtime archive from the
+Copilot CLI's GitHub releases at build time, verify it against the release's published SHA-256
+checksums, extract it under the project's intermediate folder — about 270 MB per target framework —
+and copy it into the output directory, about 356 MB per output in some hundred files under
+`runtimes/<rid>/native`. The runtime version is pinned by the SDK version, so the two cannot be
+mismatched.
+
+**Only a project that references the SDK directly provisions the runtime.** The SDK's targets ship in
+the package's `build` folder rather than its `buildTransitive` folder, so they run only in a project
+holding a direct reference to `Microsoft.Copilot.SDK`. An application that reaches the SDK
+transitively, through this package, provisions nothing, and its client then fails to start. **A host
+application must therefore add its own direct reference to `Microsoft.Copilot.SDK`**, at the version
+this package depends on or a later compatible one. `CopilotClientStarter` names this as the likely
+cause when a start fails with `COPILOT_CLI_PATH` unset; see *External Interfaces*.
+
+**This package ships no runtime.** Its project sets `CopilotSkipCliDownload`, which the SDK's targets
+honor by skipping the download, the copy to the output and the content registration alike. That
+keeps the runtime out of this library's outputs, out of every project that references it — including
+its own unit tests, which drive a scripted turn channel and never start a runtime — and out of the
+package. The SDK reference is deliberately **not** made to flow its build assets to consumers: that
+would make every project in a consumer's graph, test projects included, download and copy the
+runtime, which is exactly the duplication the host-provisions rule avoids.
+
+**The merge gate is hermetic.** The continuous-integration build workflow sets `CopilotSkipCliDownload`
+for the whole workflow as an environment variable, which MSBuild reads as a property, so the build
+matrix, the code analysis, the documentation build and the compile-only build of the opt-in live
+suite never contact GitHub releases and never copy the runtime; no test there needs it. The
+live-samples workflow builds without the property, so the
+samples and the opt-in live suite get the runtime, and caches the extracted bundle between runs. A
+local build downloads the runtime once per hosting project and keeps it in that project's
+intermediate folder, so each hosting project's output carries its own copy.
+
+**Mirrors and offline builds** use the SDK's own controls: `CopilotCliReleaseBaseUrl`, or the
+`COPILOT_CLI_DOWNLOAD_BASE_URL` environment variable, redirects the download to a mirror;
+`CopilotCliBinaryPath` supplies a runtime already on disk; `CopilotCliDownloadTimeout` bounds the
+download; and `CopilotSkipCliDownload` turns provisioning off entirely.
+
+**Runtime identifiers.** The runtime is published for `win-x64`, `win-arm64`, `linux-x64`,
+`linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64` and `osx-arm64`. A build with an
+explicit runtime identifier provisions the runtime for that identifier; a build without one
+provisions the runtime for the build machine's own platform, so a portable build deployed to a
+different platform does not carry the runtime that platform needs.
+
+These are properties of the off-the-shelf SDK rather than of AgentKit's code, and they are why the
+dependency is isolated in its own package. They are recorded again in *Microsoft.Copilot.SDK Design*.
 
 ## Dependency Isolation
 
-This system carries `Microsoft.Agents.AI.GitHub.Copilot` (and, transitively, the Microsoft Agent
-Framework runtime and the native Copilot SDK). Core admits none of that weight: it takes exactly
-one runtime dependency, as recorded in *AgentKitCore System Design*.
-Isolating it in its own package is exactly what the dependency justifies: an application that never
-builds a Copilot agent never takes the dependency or its native runtime. The system references Core
-and `Microsoft.Agents.AI.GitHub.Copilot` and nothing else.
+This system carries `Microsoft.Copilot.SDK` — and, through the host's own reference, its native
+runtime — and `Microsoft.Agents.AI.Abstractions`, the Agent Framework's abstractions package, for the
+`AIAgent` base type the agent derives from. Core admits none of that weight: it takes exactly one
+runtime dependency, as recorded in *AgentKitCore System Design*. Isolating them in their own package
+is exactly what the dependencies justify: an application that never builds a Copilot agent never
+takes the SDK, its native runtime, or the agent abstractions. The system references Core,
+`Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions`, and nothing else at run time.
 
 ## Architecture
 
-The system holds six units: the agent factory that ships today, and the five that carry a Core
-session over the runtime.
+The system holds eight units: the agent, its factory and the starter that a host composing a Copilot
+agent uses, and the five that carry a Core session over the runtime.
 
-- **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, derives the
-  allow-list from the supplied tools, installs a default-safe permission handler, and builds the
-  agent without taking ownership of the client. It is also the **single** place a Copilot session
-  configuration is built, for the agent path and for both session-engine paths.
+- **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, refuses a tool
+  named like a built-in, derives the allow-list from the supplied tools, withholds the runtime's
+  injection channels, pins the permission mode, installs a default-deny permission handler, and
+  builds the agent without taking ownership of the client. It is also the **single** place a Copilot
+  session's options are built, for an agent's created and resumed sessions and for both
+  session-engine paths.
+- **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, and the public
+  `CopilotAgentSession` that names one conversation: creates a runtime session on a conversation's first run and resumes
+  it on every later one, streams the runtime's events as agent updates, sends inline data as in-memory attachments,
+  releases a conversation's runtime session without deleting it after every run (deleting only the session of a run made
+  without a conversation), serializes a conversation so it can outlive the process, and serializes runs on one
+  conversation.
+- **CopilotClientStarter (Unit)** — a host-facing helper that starts the host's client and, when the
+  start fails, reports the runtime's error and, where that error identifies it, the cause — an ambient
+  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
+  connection or the environment.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
   carries the seeded record ahead of the first message it sends, refuses a turn that reported no
   usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
   it could not record, records tool traffic as identified pairs, reports the runtime's occupancy, and
   owns and releases its session.
 - **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: configures the session's
-  system message with the application's instructions alone, composes the seeded history into a
-  labeled record for the first message to carry, reuses the one confinement path, holds the runtime's
-  compaction clear of the engine's rotation point, registers the observer before the session is
-  created, and guards the ownership window.
+  system message with the application's instructions alone as its content, composes the seeded history into a
+  labeled record for the first message to carry, reuses the one confinement path, carries the host's
+  working directory, holds the runtime's compaction clear of the engine's rotation point, registers
+  the observer before the session is created, and guards the ownership window.
 - **CopilotSessionObserver (Unit)** — watches the runtime's event stream and holds the latest usage
   reading, the current turn's entries, and whether the runtime rewrote history.
 - **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using
   Core's consolidation prompt and releasing its session on every path.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
-  production implementation that owns one runtime session.
+  production implementation that opens every session through one confining protocol — every
+  discovered MCP server disabled before creation, installed plugins cleared and every MCP server
+  disabled and verified afterwards, the session refused if one stays enabled — and owns one runtime
+  session handle and releases it — deleting the session for the engine, the summarizer and an
+  agent's run made without a conversation, keeping it for an agent's conversation.
+
+The agent and the engine paths share the factory's confinement and the turn channel, and nothing
+else: the agent streams its own events and keeps its conversations' sessions, while the engine path
+reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is three types, each taking a `CopilotClient` the host constructed, started
-and will dispose. Everything else in the package is internal.
+The system's public API is five types. Four take a `CopilotClient` the host constructed, started and
+will dispose; the fifth, `CopilotAgentSession`, is what the agent hands back for a conversation.
+Everything else in the package is internal.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
-| `CopilotAgentFactory.Create` | Inbound | Client, tools, model | Tools non-empty, uniquely named |
+| `CopilotAgentFactory.Create` | Inbound | Client, tools, settings | Tools non-empty, unique, not built-in |
+| `CopilotAgentSession` | Outbound | Agent session, JSON | Runtime session kept until deleted |
 | `CopilotProviderSessionFactory` | Outbound | Core session factory | One session per rotation |
 | `CopilotSummarizer` | Outbound | Core summarizer | Separate tool-free session |
+| `CopilotClientStarter.StartAsync` | Inbound | Host's client | Explains a failed start |
 | `CopilotClient` | Inbound/Outbound | Copilot SDK | Host-owned; never disposed here |
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
+
+`Create` takes the client, the tools, and optionally the instructions, a permission handler, the
+agent's name, the model and the working directory. `CopilotAgentSession` serializes as a JSON object
+carrying `sessionId` and `stateBag`, and its runtime session is kept until the host deletes it.
+`CopilotClientStarter` changes neither the connection nor the environment.
 
 The application supplies no context window: occupancy and limit come from the runtime's own event
 stream, as recorded in *Occupancy Comes From the Runtime*.
 
+### Host Client Construction
+
+The host constructs the client, and three of its choices bear on this system:
+
+- **Mode: Empty, on a data directory the host owns, is a precondition.** The integration requires
+  it, and AgentKit cannot detect it: the SDK offers no way to read a client's mode back. AgentKit
+  therefore does not rely on the mode for anything that reaches the model. On any client it applies,
+  per session, the custom allow-list and the pinned default-deny permission handling; every runtime
+  option channel withheld, including host git operations and commit co-author trailers; the host
+  environment context removed; experimental features off and
+  embedding retrieval skipped; the installed plugins cleared; and every MCP server the session lists
+  disabled and verified, with the session refused if one stays enabled — though a server from a
+  source discovery does not cover may start, and authenticate, before the seal disables it, as *The
+  session is sealed* above records. A host that must also keep such servers from running supplies a
+  `CopilotClientMode.Empty` client on a clean data directory it owns. That removes the sources the
+  directory holds, namely its MCP configuration and installed plugins. SDK 2.0.1 does not document
+  that Empty mode or a clean data directory keeps a managed-catalog or account server from starting;
+  an account server follows the signed-in account and its organization's policy. The client
+  therefore narrows those sources rather than guaranteeing that none starts. What a client that
+  violates the
+  precondition can still add is host-side behavior no session option reaches: settings in a shared
+  data directory such as user-level hooks, credential storage in the system keychain rather than the
+  data directory, telemetry and runtime file logging, and anything the host attaches at client level,
+  such as plugin directories or extensions.
+- **Runtime connection.** In-process hosting through `RuntimeConnection.ForInProcess` is the usual
+  choice. Empty mode requires a base directory — the runtime's data directory, under which a kept
+  session's state is preserved — and the host chooses it. A spawned-process connection is the
+  alternative where the in-process runtime cannot be used; see the `COPILOT_CLI_PATH` pitfall below.
+- **Identity.** `ClientGitHubOptions` names the GitHub identity the runtime uses: the logged-in user,
+  in which case the runtime also honors the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`
+  environment variables, or an explicit token.
+
+**There is no client-level working directory.** The runtime takes a working directory per session,
+and only this system builds a session's options, so the working directory is a parameter of
+`CopilotAgentFactory.Create` and of the `CopilotProviderSessionFactory` constructor, applied only when
+supplied — otherwise the runtime uses the host process's working directory. A host that built a
+session by hand to reach the setting would forfeit the confinement. The working directory grants
+nothing: what an agent may read or write is decided by its tools' own path policy. `CopilotSummarizer`
+takes none, because a consolidation session offers no tools.
+
+### The `COPILOT_CLI_PATH` Pitfall
+
+In-process hosting loads the runtime library from the application's output, where the SDK provisioned
+it — unless the `COPILOT_CLI_PATH` environment variable is set, in which case it loads the library
+from beside that path instead. There is no per-client override: the variable is read from the
+process environment. Every shell the Copilot CLI starts sets it to the CLI's own installation, which
+does not ship the in-process runtime library, so an application launched from such a shell fails to
+start with an error about a missing library that names neither the variable nor the remedy. A
+spawned-process connection reads the variable from the replacement environment when one is supplied,
+so an environment that omits it avoids the problem.
+
+`CopilotClientStarter.StartAsync` starts the client and, on a failure, throws an
+`InvalidOperationException` carrying the original failure and the runtime's error, and naming the
+variable, its value and the three remedies — unset it, point it at a runtime that ships the
+in-process library, or connect through a spawned process with an environment that omits it — when
+that error names the location the variable points to. Otherwise it reports the variable's value
+without blaming it, or, when the variable is not set, names the host's missing direct reference to
+the SDK as the likely cause of a runtime-not-found error. The helper never changes the
+connection or the environment: pointing the variable at a valid runtime is a supported configuration,
+and changing the process environment from a library is a global side effect. Cancellation propagates
+unchanged. The helper is optional; a host that starts the client itself loses only the diagnosis.
+
 ## Data Flow
+
+The agent path:
+
+```text
+Application
+        │  messages (text, DataContent)
+        ▼
+CopilotAgent ──► CopilotAgentFactory.BuildSessionConfig / BuildResumeSessionConfig
+        │                    (allow-list, channels withheld, Manual mode, handler, streaming on)
+        │  fresh CreateSessionOptions or ResumeSessionOptions (+ run's mapper as Events.OnEvent)
+        ▼
+CopilotTurnChannel (MCP disabled before any turn, plugins cleared; kept on release) ──► CopilotSession (runtime)
+        │  MessageOptions (prompt, blob attachments)            │  events
+        ▼                                                       ▼
+CopilotAgent ◄──────────────────────────────────── text deltas, tool calls, results, usage
+        │  AgentResponseUpdate stream; CopilotAgentSession.SessionId recorded
+        ▼
+Application
+```
+
+The session-engine path:
 
 ```text
 CompactingAgentSession
         │  seed (instructions, tools, history)
         ▼
 CopilotProviderSessionFactory ──► CopilotAgentFactory.BuildEngineSessionConfig
-        │                                   (allow-list, skills off, handler, compaction held clear)
-        │  SessionConfig (+ observer as OnEvent)
+        │                                   (same confinement, compaction held clear)
+        │  CreateSessionOptions (+ observer as Events.OnEvent)
         ▼
-CopilotTurnChannel ──► CopilotSession (runtime)
+CopilotTurnChannel (MCP disabled before any turn, plugins cleared; deleted on release) ──► CopilotSession (runtime)
         │  turn                              │  events
         ▼                                    ▼
 CopilotProviderSession ◄──────────── CopilotSessionObserver
@@ -272,7 +579,10 @@ CompactingAgentSession ──► CopilotSummarizer ──► a separate, tool-fr
 
 ```text
 src/DemaConsulting.AgentKit.Agents.Copilot/
-├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session configuration
+├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
+├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
+├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
+├── CopilotClientStarter.cs           — starts the host's client, explaining a failed start
 ├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
@@ -280,49 +590,90 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
+`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit.
+
 ## Dependencies
 
 - **AgentKitCore** — supplies the family-prefix tool convention and the `AIFunction` currency the
-  supplied tools are built from, and the session contracts the adapter implements —
+  supplied tools are built from, and the session contracts the system implements —
   `IProviderSession`, `IProviderSessionFactory`, `ISummarizer`, `ProviderSessionSeed`,
   `ProviderTurn`, `TranscriptEntry`, `ContextUsage` and `ConsolidationPrompt`; see *AgentKitCore
   System Design*.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `CopilotSession`,
-  `SessionConfig`, the session-config agent-construction path, the permission RPC, and the session
-  event stream; see *Microsoft.Agents.AI.GitHub.Copilot Design*. Carries a RID-specific native
-  runtime, as noted above.
+- **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CopilotSession`, the create and resume
+  session options and their shared base, the message options and blob attachments, the permission
+  RPC, the published set of isolated built-in tool names, the MCP discovery and configuration RPC
+  and the session-options patch, and the session event stream; see
+  *Microsoft.Copilot.SDK Design*. Its native runtime is provisioned by the host application, as
+  recorded above.
+- **Microsoft.Agents.AI.Abstractions** — supplies the `AIAgent` base type, `AgentSession` with its
+  state bag, and the response and update types the agent produces; see
+  *Microsoft.Agents.AI.Abstractions Design*.
+- **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, the content types the agent maps
+  events onto and reads input from, and `UsageDetails`; reached transitively; see
+  *Microsoft.Extensions.AI.Abstractions Design*.
 
 ## Risk Control Measures
 
 Copilot arrives able to act on the machine it runs on, so this system's risk controls are the ones
-that take that capability back. All three are applied in one place — `CopilotAgentFactory`'s single
-confinement block — for every session the package builds, so no path can acquire capability another
-path withholds.
+that take that capability back. They are applied on one path for every session the package builds,
+created or resumed — `CopilotAgentFactory`'s single confinement block for everything a session's
+options carry, and `CopilotTurnChannel`'s single opening protocol for what needs the live session —
+so no path can acquire capability another path withholds.
 
-- **The derived allow-list.** The session's available-tools allow-list is assigned from the same
-  collection published as the session's tools, so the two cannot drift apart and no built-in tool is
-  ever admitted. This is the segregation the package exists for; see *Purpose*.
-- **The default-safe permission handler.** With no host handler supplied, a request is approved only
-  when it names one of the supplied tools; everything else — including every built-in request — is
-  rejected without asking a user who could not adjudicate it.
-- **The closed injection channels.** The runtime's skills and its discovered custom instructions are
-  both closed on every session, because each would attach capability or direction the composing
-  application never granted.
+- **The source-qualified, derived allow-list.** The session's available-tools allow-list is assigned
+  from the same collection published as the session's tools, so the two cannot drift apart, and each
+  entry is qualified as a custom tool, so no built-in tool is admitted even under a matching name. This
+  is the segregation the package exists for; see *Purpose*.
+- **The default-deny permission handler, under a pinned manual mode.** With no host handler supplied,
+  a request is approved, once, only when it names one of the supplied tools; everything else —
+  including every built-in request — is rejected without asking a user who could not adjudicate it.
+  The manual mode ensures every request reaches the handler. A host handler replaces this default
+  outright; see *Permission Handling Is Default-Deny*.
+- **The withheld injection channels.** Skills, discovered instructions, hooks, git operations and
+  commit co-author trailers, memory
+  and the cross-session store, sub-agents, extensions, configuration discovery, tool search, schedule
+  management, image generation, experimental features and embedding retrieval are disabled on every
+  session, the host environment context is removed from the system prompt, the built-in GitHub MCP
+  server is disabled, every other MCP server the session lists is disabled and verified, and
+  the session's installed plugins are cleared, because each would attach capability, direction or
+  identity the composing application never granted. AgentKit keeps every ambient MCP server from the
+  model. Discovered servers are disabled before the session exists, any other before the first turn,
+  and the session is refused if one stays enabled. A server the SDK cannot enumerate before
+  creation, such as a managed catalog's or a signed-in account's, may still start during session
+  creation.
+- **A documented client precondition.** Empty mode on a host-owned data directory is required and
+  cannot be detected; what a client violating it could still add is host-side behavior no session
+  option reaches, listed under *Host Client Construction*.
+- **The refused built-in names.** A supplied tool cannot carry a built-in tool's name, and AgentKit
+  never marks a tool as overriding a built-in, so no supplied tool can stand in for one the model
+  associates with other behavior.
+- **Inline tool results.** The runtime's diversion of large results to a file is off, so no result
+  is turned into a path the confined agent cannot read; see *Tool Results Are Delivered Inline*.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
-threshold is held clear of the engine's rotation point, and a session whose conversation the engine
-can no longer account for is ended rather than reused. Both are argued above.
+threshold is held clear of the engine's rotation point, with every runtime rewrite of the
+conversation detected and refused, and a session whose conversation the engine can no longer account
+for is ended rather than reused. Both are argued above.
 
 ## Design Constraints
 
 - **No ownership of the client**: the host constructs, starts and disposes the `CopilotClient`; this
-  system disposes only the sessions it creates
-- **One confinement path**: every session — agent, engine and consolidation — is built through one
-  derivation of the allow-list; a second builder would be the drift this package prevents
+  system releases only the session handles it opens, and deletes only the sessions the engine and
+  the summarizer are finished with
+- **One confinement path**: every session — agent created, agent resumed, engine and consolidation —
+  is built through one derivation of the allow-list and one confinement block, and opened through one
+  confining protocol; a second builder would be the drift this package prevents
+- **Refuse rather than continue**: a session the runtime will not confine — an MCP server it keeps enabled, a
+  discovery or seal it refuses — is never handed to the model
+- **Fresh options per session**: no session options object is reused or cloned, because the SDK
+  mutates the options it is handed and its clone is shallow
 - **No window from the application**: occupancy and limit come from the runtime, which is what makes
   the session engine's accounting the runtime's own
-- **Isolated dependency**: `Microsoft.Agents.AI.GitHub.Copilot` and its RID-specific native runtime
-  reach an application only through this package
+- **No change to the host's environment or connection**: the system diagnoses a runtime that cannot
+  load, and never sets or clears an environment variable or selects a connection on the host's behalf
+- **Isolated dependency**: `Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions` reach an
+  application only through this package; the SDK's native runtime reaches it only through the host
+  application's own direct reference to the SDK
 - **Compliance**: all functionality must be traceable to requirements
 - **Quality**: zero warnings, full test coverage, complete documentation
 - **Portability**: compatible across supported .NET platforms, within the target frameworks and

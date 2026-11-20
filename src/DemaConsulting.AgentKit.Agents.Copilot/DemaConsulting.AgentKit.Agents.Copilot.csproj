@@ -11,7 +11,7 @@
     <Version>0.0.0</Version>
     <Authors>DEMA Consulting</Authors>
     <Company>DEMA Consulting</Company>
-    <Description>Builds a Microsoft Agent Framework agent from a GitHub Copilot CopilotClient, suppressing the runtime's built-in tools by deriving the session allow-list from the supplied tools, and carries an AgentKit compacting session over the same runtime</Description>
+    <Description>An AgentKit-owned Microsoft Agent Framework AIAgent on Microsoft.Copilot.SDK that suppresses the Copilot runtime's built-in tools through a source-qualified allow-list derived from the supplied tools, plus an AgentKit compacting session over the same runtime</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>
@@ -36,11 +36,23 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
-    <!-- The GitHub Copilot SDK marks its permission-decision RPC surface with the GHCP001
-         "evaluation purposes only" diagnostic. This adapter necessarily references that surface to
-         wire a permission handler, so the diagnostic is suppressed for this project. Consumers that
-         reference the permission-handler parameter will see the same diagnostic from their own build. -->
-    <NoWarn>$(NoWarn);GHCP001</NoWarn>
+    <!-- The Copilot SDK marks its permission-decision RPC surface, and the MCP discovery, MCP
+         configuration and session-options RPC surface, with the MCPSDK001 "evaluation purposes only"
+         diagnostic. This package necessarily references that surface to wire a permission handler and
+         to disable the runtime's ambient MCP servers and clear installed plugins on every session, so the
+         diagnostic is suppressed for this project. Consumers that reference the permission-handler
+         parameter will see the same diagnostic from their own build. -->
+    <NoWarn>$(NoWarn);MCPSDK001</NoWarn>
+
+    <!-- Copilot Runtime Provisioning -->
+    <!-- Microsoft.Copilot.SDK downloads its native runtime (about 270 MB per target framework in obj,
+         about 356 MB per output directory) at build time, through targets that run only in a project
+         that references the SDK directly. This library ships no runtime: its unit tests drive a
+         scripted turn channel and never start one, and the application that hosts the runtime
+         provisions it by referencing Microsoft.Copilot.SDK itself. Skipping the download here keeps
+         the runtime out of this library's outputs, out of every project that references this one,
+         and out of the package. -->
+    <CopilotSkipCliDownload>true</CopilotSkipCliDownload>
 
     <!-- Polyfill Configuration -->
     <PolyArgumentExceptions>true</PolyArgumentExceptions>
@@ -78,7 +90,8 @@
 
   <!-- Build Tool Dependencies -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.28.0" />
+    <PackageReference Include="Microsoft.Copilot.SDK" Version="2.0.1" />
+    <PackageReference Include="Microsoft.Agents.AI.Abstractions" Version="1.28.0" />
     <!-- Build-time only: PrivateAssets="All" keeps the documentation generator out of any
          consuming project's dependency graph. -->
     <PackageReference Include="DemaConsulting.ApiMark.MSBuild" Version="0.5.12" PrivateAssets="All" />
@@ -106,6 +119,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DemaConsulting.AgentKit.Agents.Copilot.Tests" />
+    <!-- The opt-in live suite builds sessions through the same internal configuration builders the
+         unit tests assert on, so what it measures against the real runtime is exactly what ships. -->
+    <InternalsVisibleTo Include="DemaConsulting.AgentKit.Agents.Copilot.LiveTests" />
   </ItemGroup>
 
   <ItemGroup>

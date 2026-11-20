@@ -84,6 +84,8 @@ input-files:
   - docs/verification/agent-kit-agents-chat-client/chat-client-summarizer.md
   - docs/verification/agent-kit-agents-copilot.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
+  - docs/verification/agent-kit-agents-copilot/copilot-agent.md
+  - docs/verification/agent-kit-agents-copilot/copilot-client-starter.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md
   - docs/verification/agent-kit-agents-copilot/copilot-session-observer.md
@@ -98,7 +100,8 @@ input-files:
   - docs/verification/ots/canvasnet.md
   - docs/verification/ots/fileassert.md
   - docs/verification/ots/microsoft-agents-ai.md
-  - docs/verification/ots/microsoft-agents-ai-github-copilot.md
+  - docs/verification/ots/microsoft-agents-ai-abstractions.md
+  - docs/verification/ots/microsoft-copilot-sdk.md
   - docs/verification/ots/microsoft-extensions-ai-abstractions.md
   - docs/verification/ots/ollamasharp.md
   - docs/verification/ots/pandoc.md
