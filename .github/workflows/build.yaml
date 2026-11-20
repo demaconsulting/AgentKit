@@ -50,7 +50,7 @@ jobs:
           echo "Capturing tool versions..."
           dotnet versionmark --capture --job-id "quality" \
             --output "artifacts/versionmark-quality.json" -- \
-            dotnet git versionmark
+            dotnet git versionmark textlint lintmark reqstream reviewmark sysml2tools
           echo "✓ Tool versions captured"
 
       # === CAPTURE OTS SELF-VALIDATION RESULTS ===
