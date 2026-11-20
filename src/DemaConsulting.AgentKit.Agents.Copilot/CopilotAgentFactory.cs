@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Microsoft.Agents.AI;
 using Microsoft.Copilot;
 using Microsoft.Copilot.Rpc;
@@ -50,7 +51,16 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     rejects every other request — every built-in shell, read, write and fetch request, and
 ///     every custom tool the host did not supply. A host may supply its own handler, which then
 ///     replaces the default outright; it is not composed with it, so a host that does so forfeits
-///     default-deny unless its own handler reproduces it.
+///     default-deny unless its own handler reproduces it. Either way, each session's permission
+///     mode is pinned to <c>PermissionMode.Manual</c>, so every request reaches the handler: the
+///     runtime's other modes would approve requests without asking it.
+///     </para>
+///     <para>
+///     <b>Built-in tool names are refused.</b> A supplied tool that carries the name of one of the
+///     runtime's built-in tools — <c>view</c>, <c>powershell</c>, <c>bash</c> and the like — is
+///     refused with an <see cref="ArgumentException"/> before any session exists, because the
+///     runtime would refuse the session itself, later and less legibly. AgentKit never marks a tool
+///     as overriding a built-in. See <see cref="ReservedBuiltInToolNames"/>.
 ///     </para>
 ///     <para>
 ///     <b>Ownership contract.</b> The host constructs, starts, and disposes the
@@ -108,6 +118,49 @@ public static class CopilotAgentFactory
     internal const string BuiltInGitHubMcpServer = "github-mcp-server";
 
     /// <summary>
+    ///     The names of the Copilot runtime's built-in tools, which no supplied tool may carry.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>Why the names are refused here.</b> The runtime refuses to create a session that
+    ///     registers a custom tool under a built-in's name unless the tool is marked as overriding
+    ///     the built-in — and AgentKit never marks it so, because an override would silently replace
+    ///     the runtime's tool with the application's under a name the model already associates with
+    ///     other behavior. Left to the runtime, the collision surfaces only when a session is
+    ///     created, on the first run, as a remote error. Refused here, it surfaces at composition
+    ///     time as an <see cref="ArgumentException"/> naming the tool.
+    ///     </para>
+    ///     <para>
+    ///     <b>A conservative union across platforms, matched case-insensitively.</b> The built-in
+    ///     set depends on the platform — the shell family is <c>powershell</c> on Windows and
+    ///     <c>bash</c> elsewhere — so the union is reserved, and an application composed on one
+    ///     platform does not fail later on another. It holds the names the runtime lists on Windows,
+    ///     the SDK's own isolated built-in set, the shell family the runtime uses off Windows, and a
+    ///     few model- or feature-gated built-ins. Over-reserving costs only a rename;
+    ///     under-reserving still fails safe, because the runtime itself refuses at session creation.
+    ///     The opt-in live suite lists the runtime's built-ins on the platform it runs on and fails
+    ///     if any is missing here, so a runtime that adds one is caught by the weekly run rather than
+    ///     by an application.
+    ///     </para>
+    /// </remarks>
+    internal static readonly FrozenSet<string> ReservedBuiltInToolNames = new[]
+    {
+        // Listed by the runtime on Windows.
+        "create", "edit", "glob", "grep", "list_agents", "list_powershell", "powershell",
+        "read_agent", "read_powershell", "skill", "stop_powershell", "task", "view", "web_fetch",
+        "write_agent", "write_powershell",
+
+        // The shell family the runtime uses on Linux and macOS.
+        "bash", "read_bash", "write_bash", "stop_bash", "list_bash",
+
+        // Model- or feature-gated built-ins.
+        "apply_patch", "str_replace_editor", "report_intent", "update_todo", "web_search",
+        "image_generation",
+    }
+    .Concat(BuiltInTools.Isolated)
+    .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     ///     Builds an agent from a Copilot client and a supplied tool list, with the runtime's
     ///     built-in tools suppressed.
     /// </summary>
@@ -131,10 +184,15 @@ public static class CopilotAgentFactory
     /// </param>
     /// <param name="instructions">The system instructions for the agent, if any.</param>
     /// <param name="onPermissionRequest">
-    ///     The permission handler. When <see langword="null"/>, a safe default is installed that
-    ///     approves exactly the supplied tools by name and rejects everything else.
+    ///     The permission handler. When <see langword="null"/>, a default-deny handler is installed
+    ///     that approves exactly the supplied tools by name, one call at a time, and rejects
+    ///     everything else. A supplied handler replaces that default rather than being composed with
+    ///     it, so it must reproduce default-deny itself if the host wants it.
     /// </param>
-    /// <param name="name">The name of the agent, if any.</param>
+    /// <param name="name">
+    ///     The name of the agent, if any. When <see langword="null"/> or blank the agent reports
+    ///     <c>GitHub Copilot Agent</c>.
+    /// </param>
     /// <param name="model">
     ///     The Copilot model to back the session — for example <c>gpt-5.4-mini</c>. When
     ///     <see langword="null"/>, empty, or whitespace, no model is set and the Copilot runtime
@@ -157,7 +215,9 @@ public static class CopilotAgentFactory
     ///     tool in <paramref name="tools"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     <paramref name="tools"/> is empty, or two tools carry the same name.
+    ///     <paramref name="tools"/> is empty, two tools carry the same name, or a tool carries the
+    ///     name of one of the Copilot runtime's built-in tools — <c>view</c>, <c>powershell</c>,
+    ///     <c>bash</c> and the like, compared case-insensitively. Rename such a tool.
     /// </exception>
     /// <example>
     ///     <para>
@@ -199,7 +259,8 @@ public static class CopilotAgentFactory
     ///             GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
     ///         });
     ///
-    ///         await client.StartAsync(cancellationToken);
+    ///         // Started through the starter so a runtime that cannot load says why.
+    ///         await CopilotClientStarter.StartAsync(client, cancellationToken);
     ///
     ///         return CopilotAgentFactory.Create(
     ///             client,
@@ -633,12 +694,21 @@ public static class CopilotAgentFactory
         config.Extensions.Enabled = false;
         config.EnableConfigDiscovery = false;
 
+        // Image generation is a further capability the runtime can offer a session, and is
+        // switched off for the same reason: a confined agent receives only what its host attached.
+        config.Tools.ImageGeneration = new ImageGenerationConfig { Enabled = false };
+
         // Measured against the live runtime: even in Empty mode it starts its built-in GitHub MCP
         // server for every session. The custom: allow-list keeps that server's tools out of reach,
         // but the server is still started and authenticated with the user's GitHub identity, so it
         // is disabled outright rather than merely filtered.
         config.Mcp.DisabledServers = [BuiltInGitHubMcpServer];
 
+        // Every request goes to the handler. In the runtime's AllowAll mode tool, path and URL
+        // requests are approved without asking it, and in Assisted mode a client may approve them
+        // itself - either would bypass default-deny without anything here changing. Pinning Manual
+        // keeps the handler the only authority, whatever mode ambient configuration would choose.
+        config.Permissions.Mode = PermissionMode.Manual;
         config.Permissions.OnRequest = onPermissionRequest ?? CreateDefaultPermissionHandler(tools);
     }
 
@@ -727,14 +797,18 @@ public static class CopilotAgentFactory
     ///     Split out from <see cref="ValidateTools"/> because emptiness is the one rule the two
     ///     paths disagree about: an agent publishing no tools is a defect in its host, while a
     ///     session the engine drives for a consolidation must offer none. Everything else — a
-    ///     missing list, a null entry, a duplicated name — is a defect on either path and is refused
-    ///     here for both.
+    ///     missing list, a null entry, a duplicated name, a name the runtime reserves for a built-in
+    ///     tool — is a defect on either path and is refused here for both, before any session
+    ///     exists.
     /// </remarks>
     /// <param name="tools">The tool list to validate.</param>
     /// <exception cref="ArgumentNullException">
     ///     <paramref name="tools"/> is <see langword="null"/>, or contains a <see langword="null"/> entry.
     /// </exception>
-    /// <exception cref="ArgumentException">Two tools carry the same name.</exception>
+    /// <exception cref="ArgumentException">
+    ///     Two tools carry the same name, or a tool carries the name of one of the runtime's built-in
+    ///     tools (see <see cref="ReservedBuiltInToolNames"/>).
+    /// </exception>
     internal static void ValidateToolNames(IList<AIFunction> tools)
     {
         ArgumentNullException.ThrowIfNull(tools);
@@ -751,6 +825,15 @@ public static class CopilotAgentFactory
             {
                 throw new ArgumentException(
                     $"Two tools carry the name '{tool.Name}'; tool names must be unique.",
+                    nameof(tools));
+            }
+
+            if (ReservedBuiltInToolNames.Contains(tool.Name))
+            {
+                throw new ArgumentException(
+                    $"The tool name '{tool.Name}' is the name of a built-in tool of the Copilot runtime; "
+                    + "the runtime refuses to create a session that registers a custom tool under a "
+                    + "built-in's name. Rename the tool.",
                     nameof(tools));
             }
         }

@@ -322,6 +322,27 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves an application that composes a tool under the name of one of the runtime's built-in
+    ///     tools is told so when it builds the agent, rather than when the runtime refuses the session
+    ///     on the first run.
+    /// </summary>
+    [Fact]
+    public void AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused()
+    {
+        // Arrange: a composed tool set in which one tool is named like the runtime's file viewer
+        var runtime = new FakeCopilotRuntime();
+        IList<AIFunction> tools = [MakeTool("doc_read"), MakeTool("view")];
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer));
+
+        // Assert: refused by name, and no session was ever requested
+        Assert.Contains("'view'", failure.Message, StringComparison.Ordinal);
+        Assert.Empty(runtime.Configs);
+    }
+
+    /// <summary>
     ///     Builds a scripted turn that answers and reports the runtime's occupancy.
     /// </summary>
     /// <param name="answer">The answer the turn produces.</param>

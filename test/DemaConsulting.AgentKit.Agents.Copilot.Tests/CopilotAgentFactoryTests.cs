@@ -296,13 +296,13 @@ public class CopilotAgentFactoryTests
     public void CopilotAgentFactory_BuildSessionConfig_AllowListIsSourceQualified()
     {
         // Arrange
-        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("view") };
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool("doc_view") };
 
         // Act
         var config = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
 
-        // Assert: every entry carries the custom qualifier, including one named like a built-in
-        Assert.Equal(["custom:doc_read", "custom:view"], config.Tools.AvailableTools);
+        // Assert: every entry carries the custom qualifier
+        Assert.Equal(["custom:doc_read", "custom:doc_view"], config.Tools.AvailableTools);
     }
 
     /// <summary>
@@ -426,6 +426,87 @@ public class CopilotAgentFactoryTests
         Assert.True(created.Events.Streaming);
         Assert.True(resumed.Events.Streaming);
         Assert.NotEqual(true, engine.Events.Streaming);
+    }
+
+    /// <summary>
+    ///     Proves a tool carrying the name of one of the runtime's built-in tools is refused before
+    ///     any session exists, on every platform's built-in names and regardless of case.
+    /// </summary>
+    /// <param name="name">A built-in tool's name, as a supplied tool might carry it.</param>
+    [Theory]
+    [InlineData("view")]
+    [InlineData("bash")]
+    [InlineData("powershell")]
+    [InlineData("View")]
+    [InlineData("task_complete")]
+    public void CopilotAgentFactory_BuildSessionConfig_BuiltInToolName_Throws(string name)
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read"), MakeTool(name) };
+
+        // Act
+        var failure = Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null));
+
+        // Assert: the refusal names the tool and the parameter, and tells the host what to do
+        Assert.Equal("tools", failure.ParamName);
+        Assert.Contains($"'{name}'", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Rename the tool", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the built-in name refusal holds on the engine path and on resumption too, so no
+    ///     session this package builds can collide with a built-in.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildEngineSessionConfig_BuiltInToolName_Throws()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("grep") };
+
+        // Act / Assert
+        Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null));
+        Assert.Throws<ArgumentException>(
+            () => CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null));
+    }
+
+    /// <summary>
+    ///     Proves every session's permission mode is pinned to Manual, so every request reaches the
+    ///     permission handler instead of being approved by the runtime without asking it.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_PermissionMode_IsPinnedToManual()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var created = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var resumed = CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null);
+        var engine = CopilotAgentFactory.BuildEngineSessionConfig([], instructions: null, model: null);
+
+        // Assert
+        Assert.Equal(PermissionMode.Manual, created.Permissions.Mode);
+        Assert.Equal(PermissionMode.Manual, resumed.Permissions.Mode);
+        Assert.Equal(PermissionMode.Manual, engine.Permissions.Mode);
+    }
+
+    /// <summary>
+    ///     Proves the runtime's image generation capability is switched off: a confined agent receives
+    ///     only what its host attached.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
+
+        // Assert
+        Assert.False(config.Tools.ImageGeneration!.Enabled);
     }
 
     /// <summary>

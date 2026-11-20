@@ -197,7 +197,9 @@ public static class AgentComposition
 
         try
         {
-            await client.StartAsync(cancellationToken);
+            // Started through the starter so a runtime that cannot load - most often because a
+            // Copilot CLI shell set COPILOT_CLI_PATH - fails with an error that says so.
+            await CopilotClientStarter.StartAsync(client, cancellationToken);
         }
         catch
         {
