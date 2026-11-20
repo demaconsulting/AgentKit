@@ -478,6 +478,15 @@ public static class AgentComposition
     ///     whose required capability is not declared is never asked for its tools, so withholding
     ///     the declaration alone would suffice — omitting the pack as well makes the intent obvious.
     ///     </para>
+    ///     <para>
+    ///     Large tool outputs are retained rather than refused, for the root agent and for every
+    ///     child. A broad search or a full listing of a large corpus is exactly the result that
+    ///     outgrows the result ceiling, and a delegated reader's report can too; retaining it gives
+    ///     the model a preview and a reference it pages with <c>tool_output_read</c> or searches
+    ///     with <c>tool_output_search</c>, instead of a refusal it can only answer by guessing how
+    ///     to narrow the request. The recall turn's composition is left without it, because memory
+    ///     results are small and that turn must have no way to read anything else.
+    ///     </para>
     /// </remarks>
     /// <param name="corpusRoot">The absolute corpus path: the anchor, granted read-only.</param>
     /// <param name="notesRoot">The absolute notes path, granted read-write.</param>
@@ -515,7 +524,10 @@ public static class AgentComposition
             .Add(new FilePack())
             .Add(new MarkdownPack())
             .Add(new TodoPack())
-            .Add(new MemoryPack(embeddingGenerator, MemoryOptions.Default, memoryStore));
+            .Add(new MemoryPack(embeddingGenerator, MemoryOptions.Default, memoryStore))
+            // A listing, search or report too large for one result is retained and previewed rather
+            // than refused, and tool_output_read / tool_output_search are offered to page it.
+            .WithToolOutputSpill();
 
         // Delegation is a host capability: the application, and only the application, can start a
         // second agent. Declaring it is what makes the family available at all.
@@ -529,7 +541,10 @@ public static class AgentComposition
                     CreateChildPacks(),
                     // A child is given no capability of its own: none of these profiles admits
                     // agent_run, so a child cannot delegate further.
-                    HostCapabilities.None));
+                    HostCapabilities.None,
+                    // A reader child retains its own large results too, so a long search of the
+                    // corpus is paged rather than refused; the tool-less summarizer stays tool-less.
+                    childToolOutput: ToolOutputOptions.Default));
         }
 
         return [.. builder.Build()];

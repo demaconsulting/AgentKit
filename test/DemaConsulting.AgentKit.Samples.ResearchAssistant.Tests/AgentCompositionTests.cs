@@ -278,6 +278,74 @@ public class AgentCompositionTests
     }
 
     /// <summary>
+    ///     Proves the composed tool set retains large tool outputs, offering the two readers that
+    ///     page and search them.
+    /// </summary>
+    [Fact]
+    public void AgentComposition_BuildTools_AnyRun_OffersTheToolOutputReaders()
+    {
+        // Arrange: the collaborators an application supplies
+        using var embeddings = new LexicalEmbeddingGenerator();
+        var store = new InMemoryMemoryStore();
+
+        // Act: compose the tool set for a run without delegation
+        var names = AgentComposition.BuildTools(
+                CorpusPath,
+                NotesPath,
+                embeddings,
+                store,
+                false,
+                (_, _) => Task.FromResult<string?>(null))
+            .Select(tool => tool.Name)
+            .ToList();
+
+        // Assert: both readers are offered, after every family's tools
+        Assert.Equal(
+            [ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            names.TakeLast(2));
+    }
+
+    /// <summary>
+    ///     Proves a delegated reader is composed with retention of its own, while the tool-less
+    ///     summarizer stays tool-less.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentComposition_BuildTools_DelegationEnabled_ReaderChildRetainsAndSummarizerStaysToolless()
+    {
+        // Arrange: a delegating composition whose runner records each child it is asked to start
+        using var embeddings = new LexicalEmbeddingGenerator();
+        var store = new InMemoryMemoryStore();
+        var children = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var tools = AgentComposition.BuildTools(
+            CorpusPath,
+            NotesPath,
+            embeddings,
+            store,
+            true,
+            (request, _) =>
+            {
+                children[request.ProfileName] = [.. request.Tools.Select(tool => tool.Name)];
+                return Task.FromResult<string?>("the child's report");
+            });
+        var run = tools.Single(tool => tool.Name == AgentRunTool.ToolName);
+
+        // Act: delegate once to each profile
+        foreach (var profile in new[] { AgentComposition.ReaderProfileName, AgentComposition.SummarizerProfileName })
+        {
+            await run.InvokeAsync(
+                new AIFunctionArguments { ["profile"] = profile, ["task"] = "Do the work." },
+                TestContext.Current.CancellationToken);
+        }
+
+        // Assert: the reader holds the readers after its own tools; the summarizer holds nothing
+        Assert.Equal(
+            [ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            children[AgentComposition.ReaderProfileName].TakeLast(2));
+        Assert.Empty(children[AgentComposition.SummarizerProfileName]);
+    }
+
+    /// <summary>
     ///     Proves the instructions require conclusions to be written into the notes folder.
     /// </summary>
     /// <remarks>
@@ -353,6 +421,7 @@ public class AgentCompositionTests
             () => Assert.DoesNotContain(MarkdownOutlineTool.ToolName, names),
             () => Assert.DoesNotContain(FileListTool.ToolName, names),
             () => Assert.DoesNotContain(TodoSetTool.ToolName, names),
+            () => Assert.DoesNotContain(ToolOutputReadTool.ToolName, names),
             () => Assert.DoesNotContain(AgentRunTool.ToolName, names));
     }
 
