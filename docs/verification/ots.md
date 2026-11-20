@@ -5,13 +5,13 @@ This document describes the overall Off-The-Shelf (OTS) verification strategy fo
 ## Overview
 
 The OTS items this repository depends on fall into two groups, each verified in the way that suits
-it. `Microsoft.Extensions.AI.Abstractions`, `Microsoft.Agents.AI`,
-`Microsoft.Agents.AI.GitHub.Copilot` and `OllamaSharp` are runtime libraries with no self-validation
-CLI; per
+it. `Microsoft.Extensions.AI.Abstractions`, `Microsoft.Agents.AI`, `Microsoft.Agents.AI.Abstractions`,
+`Microsoft.Copilot.SDK` and `OllamaSharp` are runtime libraries with no self-validation CLI; per
 `software-items.md` each is verified through AgentKit's own integration tests, which build and invoke
-real agents, session configurations, permission handlers and provider reports and observe that the
-required
-functionality behaves as required. Every other OTS item is a build-and-verify pipeline tool,
+real agents, session options, permission handlers, scripted runtime sessions and provider reports
+and observe that the required functionality behaves as required. `Microsoft.Copilot.SDK` is also
+exercised against the real Copilot runtime by the opt-in live Copilot suite, which is supplementary
+evidence outside the trace matrix. Every other OTS item is a build-and-verify pipeline tool,
 verified through a combination of self-validation CLI flags (where the tool provides a `--validate`
 or equivalent self-test mode) and pipeline-evidence-based verification (where a passing CI pipeline
 run, having produced and validated the expected output at each stage, constitutes proof that the
@@ -27,7 +27,8 @@ tool executed correctly). Each item's individual verification document
 | CanvasNet | AgentKit tests: images built in-test, read, cropped and compared |
 | FileAssert | Self-validation CLI suite plus transitive evidence from document assertions |
 | Microsoft.Agents.AI | AgentKit integration tests building an agent from an IChatClient |
-| Microsoft.Agents.AI.GitHub.Copilot | AgentKit integration tests building the session config and handler |
+| Microsoft.Agents.AI.Abstractions | AgentKit tests running, streaming and serializing the Copilot agent |
+| Microsoft.Copilot.SDK | AgentKit tests over the session seam; opt-in live suite as supplementary evidence |
 | Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools |
 | OllamaSharp | AgentKit tests: real client on loopback; reports read, num_ctx on the wire |
 | Pandoc | Pipeline evidence: FileAssert assertions on each generated HTML document |

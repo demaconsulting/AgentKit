@@ -18,7 +18,7 @@ capability's own scenario, cited here rather than re-demonstrated; what is speci
 making the accounted window the one the instance is actually running, and that is what its
 remaining scenarios show.
 
-All three capabilities are verified without a provider. No credential is used, no Copilot CLI is
+All three capabilities are verified without a provider. No credential is used, no Copilot runtime is
 started and no Ollama server is contacted; the Copilot runtime is reached through the package's own
 internal turn-channel seam and the `IChatClient` family through a recording chat client. The Ollama
 scenarios are the closest of the three to a live provider: two of them go over HTTP through the real
@@ -34,7 +34,7 @@ principally that a live end-to-end run against either provider is not automated 
 *AgentKitAgentsCopilot System Verification Design* and *AgentKitAgentsChatClient System Verification
 Design* and are not restated here. The one exception is the Copilot capability's own promise to run
 **on the GitHub Copilot runtime**, which no offline scenario can demonstrate; the live evidence for it
-is recorded below in the same form as the other manual measurements this project relies on.
+comes from the opt-in live Copilot suite and is summarized below.
 
 ## Capability Scenarios
 
@@ -47,14 +47,18 @@ is recorded below in the same form as the other manual measurements this project
 - `AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement` — a real
   compacting session crosses the runtime's reported occupancy, consolidates, and continues on a
   replacement seeded from the record. This is the conversation outliving the window.
+- `AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime` — an agent the package builds runs a
+  turn confined to the supplied tools, streams the tool traffic and the answer as they happen, and
+  releases its runtime session. This is the guarded agent the capability promises.
 
-**That the capability holds on the live runtime is verified by manual measurement, not by the
-suite.** Run against the live runtime with `gpt-5.4-mini` and an 11,000-token window ceiling. A
-four-turn conversation rotated three times, escalating compaction Low → Medium → High under sustained
-pressure. A fact stated only in conversation and never written to disk — a tracking reference — was
-recalled correctly after a rotation with no tool calls, so the answer could only have come from the
-seeded record. This measurement is not automated and is not re-run by the suite; it is recorded here
-because the offline scenarios above reach the adapter, not the runtime the capability names.
+**That the capability holds on the live runtime is shown by the opt-in live Copilot suite, not by the
+traced scenarios.** On the real runtime, a session the package confines exposes exactly the supplied
+tools; an AgentKit tool reads inside its path policy and is denied outside it; and a compacting
+session with a 2,500-token window ceiling rotates on the runtime's own usage figures and still
+recalls a codeword stated only before the rotation. The suite, its gating and its recorded results
+are described in *AgentKitAgentsCopilot System Verification Design*. It is supplementary evidence:
+it never runs in the pipeline that builds the trace matrix, so none of its tests is linked to this
+capability.
 
 ### AgentKit-Provider-ChatClient
 

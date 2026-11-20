@@ -68,6 +68,9 @@ words:
   - FileAssert
   - fileassert
   - GHCP
+  - MCPSDK
+  - agentkit
+  - AGENTKIT
   - xunit
   - mklink
   - Pandoc

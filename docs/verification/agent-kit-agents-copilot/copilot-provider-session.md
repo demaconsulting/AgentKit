@@ -34,13 +34,15 @@ are used as themselves rather than stubbed. They are the contract this class imp
 substituting them would verify the substitute.
 
 **What is out of automated scope, stated honestly.** A live run against the Copilot runtime is not
-automated: no assertion here needs a network, a credential or a model's non-determinism. Two
-behaviors follow from that and are stated rather than implied. **Whether a live conversation ever
+part of these tests: no assertion here needs a network, a credential or a model's non-determinism.
+Two behaviors follow from that and are stated rather than implied. **Whether a live conversation ever
 crosses the raised compaction threshold before the engine rotates it is unverified** — the threshold
 is a margin rather than a guarantee, and what is verified is that a session which sees the runtime
 compact or truncate refuses the next turn, naming the cause. And **whether a live runtime emits its
-usage event before the session goes idle is unverified** — what is verified is that a turn reporting
-no usage is refused rather than reported with a stale or invented figure. The argument checks in the
+usage event before the session goes idle is not established here** — what is verified is that a turn
+reporting no usage is refused rather than reported with a stale or invented figure. The opt-in live
+Copilot suite's rotation scenario shows it on the real runtime: every turn there was accepted, which
+a runtime reporting usage only after going idle would have made impossible. The argument checks in the
 internal constructor are not exercised directly either: an application reaches this class only
 through the factory, so they are a guard on an internal contract rather than behavior an application
 can trip.
@@ -59,7 +61,7 @@ Unit tests reside in `CopilotProviderSessionTests.cs`, with the scripted runtime
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Copilot CLI is started, **no credential is used**, and no network
+- **External services**: None. No Copilot runtime is started, **no credential is used**, and no network
   access is made
 - **Mocking**: A hand-written scripted turn channel replaying the SDK's own event types; no mocking
   framework
@@ -275,6 +277,9 @@ believe it has room the provider will not give, and rotate too late, losing mate
 merely costing money. A single test of the first kind would pass against an implementation that
 assigned the ceiling unconditionally.
 
-Verified live as well as in the fake: a Copilot run with a 14,000-token ceiling against a runtime
-reporting 272,000 rotated on its fifth turn, and the sixth turn answered correctly from material the
-replacement session had never read.
+The lowering is also exercised on the real runtime, by the opt-in live Copilot suite's rotation
+scenario, `AgentKitAgentsCopilotLive_Usage_RotationOnTheRuntimesUsage_PreservesTheCodeword`: a
+compacting session given a 2,500-token ceiling, far below any window the runtime reports, rotated
+three times in the recorded run and still recalled a codeword stated before the rotations. That suite
+is supplementary evidence outside the trace matrix, described in *AgentKitAgentsCopilot System
+Verification Design*.

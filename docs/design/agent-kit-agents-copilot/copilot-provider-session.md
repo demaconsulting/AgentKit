@@ -17,11 +17,11 @@ stateless provider is resent the whole conversation each turn, so its adapter ke
 and can count what it sent. Copilot keeps the conversation server-side: a turn sends one prompt, and
 what the session holds afterwards is the runtime's business. So this class keeps no running history.
 The one exception is the seeded record a rotation produced, which it holds only until the first
-message carries it — Copilot's configuration has no history channel of any kind, and a record
+message carries it — Copilot's session options have no history channel of any kind, and a record
 configured as part of the system message would be charged to the engine's overhead rather than to the
 conversation it describes. Composing that record is
-`CopilotProviderSessionFactory`'s work; carrying it is this class's. Releasing is disposing the
-runtime's session.
+`CopilotProviderSessionFactory`'s work; carrying it is this class's. Releasing is releasing the
+runtime's session handle and deleting the session.
 
 **There is no window parameter in the sense the stateless adapter has one.** That adapter has to be
 told its window because an `IChatClient` publishes none. Copilot reports both figures — occupancy and
@@ -130,20 +130,21 @@ exactly what it is. Reading it contacts nothing and cannot fail.
 **Algorithm:** Reject a null message, a released session, a session already found unusable, and a
 canceled token. Tell the observer a turn is starting, which discards anything the last one left
 behind. Then, under one guard: take the text to send — the caller's message, preceded by the seeded
-record where one is still pending — send it through the channel, wait for the session to become
-idle, and hand what came back to `CompleteTurn`, which in order refuses three conditions and, only
-if none holds, builds the turn from the runtime's answer and the entries the observer collected. Any
-failure out of that guard — the send's own, or `CompleteTurn`'s — is recorded as the reason this
-session may no longer be used, and then rethrown.
+record where one is still pending — send it through the channel as the prompt of a `MessageOptions`
+carrying no attachments, wait for the session to become idle, and hand what came back to
+`CompleteTurn`, which in order refuses three conditions and, only if none holds, builds the turn from
+the runtime's answer and the entries the observer collected. Any failure out of that guard — the
+send's own, or `CompleteTurn`'s — is recorded as the reason this session may no longer be used, and
+then rethrown.
 
 The three refusals are ordered because the first invalidates the others:
 
 1. **The runtime rewrote this session's history.** Every session the engine drives is created with the
    runtime's own compaction threshold raised clear of the engine's rotation point, which is a margin
-   rather than a guarantee; if it compacted or truncated anyway, the engine's transcript describes a
-   conversation the provider no longer holds, and every figure below is about that vanished
-   conversation. See *The Runtime's Own Compaction Is Held Clear of Rotation* in
-   *AgentKitAgentsCopilot System Design*.
+   rather than a guarantee; if it reshaped the history anyway — compacting, truncating, clearing the
+   context or rewinding to a snapshot — the engine's transcript describes a conversation the provider
+   no longer holds, and every figure below is about that vanished conversation. See *The Runtime's
+   Own Compaction Is Held Clear of Rotation* in *AgentKitAgentsCopilot System Design*.
 2. **The session went idle without producing an assistant message.** The runtime's wait returns
    nothing in that case, which means the turn failed rather than that the model had nothing to say.
    The message names the runtime's own error where one was reported, because a refusal an
@@ -230,11 +231,11 @@ transcript, which is the state known to be good.
 
 **Purpose:** Release the runtime session without releasing the application's client.
 
-**Algorithm:** Mark the session released and release the channel, which disposes and deletes the
-runtime's session. The `CopilotClient` is deliberately not disposed: it was constructed and started
-by the host, is shared by every session a rotation creates, and outlives all of them. Repeated
-disposal is permitted, because a rotation and an application's own release may both reach the same
-session.
+**Algorithm:** Mark the session released and release the channel, which releases the session handle
+and deletes the runtime's session. The `CopilotClient` is deliberately not disposed: it was
+constructed and started by the host, is shared by every session a rotation creates, and outlives all
+of them. Repeated disposal is permitted, because a rotation and an application's own release may both
+reach the same session.
 
 **Preconditions:** None.
 
@@ -261,7 +262,7 @@ sight that it is a clamp.
 | Null `message` | `ArgumentNullException` propagates |
 | Turn on a released session | `ObjectDisposedException` propagates |
 | Cancellation before the turn | `OperationCanceledException` propagates |
-| Runtime compacted or truncated the history | `InvalidOperationException` propagates |
+| Runtime rewrote the history | `InvalidOperationException` propagates |
 | Session idle with no assistant message | `InvalidOperationException` propagates |
 | No usage reported for the turn | `InvalidOperationException` propagates |
 | Turn on a session finished by an earlier one | `InvalidOperationException` naming that failure |
@@ -289,8 +290,8 @@ must be refused as clearly as the turn that failed.
   *CopilotSessionObserver Unit Design*.
 - **CopilotTurnChannel** — carries the turn and owns the runtime session; see *CopilotTurnChannel
   Unit Design*.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies the assistant-message event a turn returns; see
-  *Microsoft.Agents.AI.GitHub.Copilot Design*.
+- **Microsoft.Copilot.SDK** — supplies `MessageOptions` and the assistant-message event a turn
+  returns; see *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 

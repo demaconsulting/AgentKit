@@ -1,0 +1,29 @@
+---
+# Microsoft.Agents.AI.Abstractions OTS Software Requirements
+#
+# Requirements for the Microsoft.Agents.AI.Abstractions functionality the AgentKit Copilot package
+# builds its own agent on.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: Microsoft.Agents.AI.Abstractions Requirements
+        requirements:
+          - id: AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent
+            title: >-
+              Microsoft.Agents.AI.Abstractions shall provide the AIAgent base type, whose session
+              creation, session serialization and deserialization, run and streaming-run extension
+              points an agent overrides, and the AgentSession type with its serializable state bag.
+            justification: |
+              The Copilot package returns an agent of its own, built on these abstractions, so a host
+              runs a Copilot agent exactly as it runs any Microsoft Agent Framework agent. The
+              package overrides the extension points the base type defines, gathers a streamed run into
+              a response with the abstractions' own helper, and serializes a conversation's state bag
+              through the session type. AgentKit's tests that run an agent, gather its stream into a
+              response and round-trip a serialized conversation prove the abstractions behave as
+              required.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime
+              - CopilotAgent_Run_ReturnsTheStreamedContentAsOneResponse
+              - CopilotAgent_SerializeSession_RoundTripsTheSessionIdAndStateBag

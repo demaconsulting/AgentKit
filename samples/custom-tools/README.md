@@ -78,7 +78,8 @@ streamed tool display — is provider-neutral.
 From the repository root. The workspace folder shipped with the sample already contains a
 `sample.md` file.
 
-Against GitHub Copilot (uses your logged-in Copilot CLI; no host or model flags needed):
+Against GitHub Copilot (no host or model flags needed; see [Requirements](#requirements) for signing
+in and the one-time runtime download):
 
 ```pwsh
 dotnet run --project samples/custom-tools -- `
@@ -130,5 +131,14 @@ end-of-input to leave.
 ## Requirements
 
 - The .NET SDK matching the repository's `global.json`.
-- For `--provider copilot`: a logged-in GitHub Copilot CLI on the machine.
+- For `--provider copilot`:
+  - A signed-in GitHub user with Copilot access — through `gh auth login` or a Copilot sign-in — or
+    a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
+  - Network access on the first build: the sample references `Microsoft.Copilot.SDK` directly, so
+    that build downloads the Copilot runtime (about 100 MB, adding about 356 MB to the sample's
+    output) and later builds reuse it.
+  - `COPILOT_CLI_PATH` unset in the shell you run from. Every shell the Copilot CLI starts sets it,
+    and in-process hosting then looks for the runtime beside the CLI instead and fails to start; the
+    sample's error says so. Clear it with `Remove-Item Env:COPILOT_CLI_PATH` (PowerShell) or
+    `unset COPILOT_CLI_PATH` (bash).
 - For `--provider ollama`: a reachable Ollama server hosting a model with tool-calling.

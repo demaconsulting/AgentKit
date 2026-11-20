@@ -39,7 +39,7 @@ Unit tests reside in `CopilotSummarizerTests.cs`, with the scripted runtime in
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Copilot CLI is started, **no credential is used**, and no network
+- **External services**: None. No Copilot runtime is started, **no credential is used**, and no network
   access is made
 - **Mocking**: A hand-written scripted channel opener; no mocking framework
 - **File system**: None

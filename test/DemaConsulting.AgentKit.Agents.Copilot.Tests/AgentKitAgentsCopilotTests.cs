@@ -343,6 +343,58 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves every session the package builds — an agent's, created and resumed, a compacting
+    ///     session's, and a consolidation's — switches off the runtime's diversion of a large tool
+    ///     result to a temporary file no confined tool could read.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_EverySession_DeliversToolResultsInline()
+    {
+        // Arrange: one runtime serving an agent, a compacting session and a consolidation
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Usage(100, 64_000), CopilotEvents.Assistant("ok")], CopilotEvents.Assistant("ok"))]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            [MakeTool("doc_read")], null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var conversation = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: an agent's first and second run, an engine session's creation, and a consolidation
+        await agent.RunAsync("first", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("second", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        var engineSession = await new CopilotProviderSessionFactory(runtime.Opener, model: null)
+            .CreateAsync(new ProviderSessionSeed(null, [MakeTool("doc_read")], []), TestContext.Current.CancellationToken);
+        await engineSession.DisposeAsync();
+
+        await new CopilotSummarizer(runtime.Opener, model: null).ConsolidateAsync(
+            new ConsolidationRequest(1, "USER: hello", ConsolidationPrompt.MediumInstruction),
+            TestContext.Current.CancellationToken);
+
+        // Assert: every configuration the runtime was handed keeps results inline
+        Assert.Equal(3, runtime.Configs.Count);
+        Assert.All(runtime.Configs, config => Assert.False(config.Tools.LargeOutput!.Enabled));
+        Assert.False(Assert.Single(runtime.Resumes).Config.Tools.LargeOutput!.Enabled);
+    }
+
+    /// <summary>
+    ///     Proves a host whose Copilot client cannot start because an ambient runtime path redirects
+    ///     it is told so, by name, with the original failure kept.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained()
+    {
+        // Arrange: a start that fails the way an in-process runtime does when redirected
+        var cause = new InvalidOperationException("FFI runtime library not found.");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
+            _ => Task.FromException(cause),
+            name => name == "COPILOT_CLI_PATH" ? "/opt/copilot/copilot" : null,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
+        Assert.Same(cause, failure.InnerException);
+    }
+
+    /// <summary>
     ///     Builds a scripted turn that answers and reports the runtime's occupancy.
     /// </summary>
     /// <param name="answer">The answer the turn produces.</param>

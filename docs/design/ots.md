@@ -9,11 +9,12 @@ AgentKit Core carries exactly one runtime NuGet dependency,
 safe-managed-code raster imaging library the image family reads dimensions and extracts regions
 with; it is a runtime dependency rather than a build-time one, so it is referenced without
 `PrivateAssets` and reaches a consuming application transitively. The three provider-specific
-packages each carry one runtime
-dependency of their own, deliberately kept out of Core: `AgentKitAgentsChatClient` carries
-`Microsoft.Agents.AI` (the Microsoft Agent Framework runtime), `AgentKitAgentsCopilot` carries
-`Microsoft.Agents.AI.GitHub.Copilot` (the GitHub Copilot SDK, which additionally brings a
-RID-specific native runtime through its own SDK dependency), and `AgentKitAgentsOllama` carries
+packages each carry runtime dependencies of their own, deliberately kept out of Core:
+`AgentKitAgentsChatClient` carries `Microsoft.Agents.AI` (the Microsoft Agent Framework runtime),
+`AgentKitAgentsCopilot` carries `Microsoft.Copilot.SDK` (the GitHub Copilot SDK, whose native runtime
+the hosting application provisions by referencing the SDK directly) and
+`Microsoft.Agents.AI.Abstractions` (the Agent Framework's agent and session base types, for the agent
+AgentKit carries over Copilot sessions), and `AgentKitAgentsOllama` carries
 `OllamaSharp` (the Ollama client library) — which is precisely what keeps that provider-specific
 dependency out of the chat-client adapter serving every `IChatClient` provider alike. Each is a
 third-party published library
@@ -38,7 +39,8 @@ inside the package.
 | CanvasNet | Raster imaging: header inspection, decoding, cropping, encoding |
 | FileAssert | Validates generated documents (HTML/PDF) against acceptance criteria |
 | Microsoft.Agents.AI | Runtime library defining `AIAgent` and `ChatClientAgent` |
-| Microsoft.Agents.AI.GitHub.Copilot | GitHub Copilot SDK: `CopilotClient`, `SessionConfig`, permission RPC |
+| Microsoft.Agents.AI.Abstractions | Agent Framework base types: `AIAgent`, `AgentSession`, `AgentResponseUpdate` |
+| Microsoft.Copilot.SDK | GitHub Copilot SDK: `CopilotClient`, session options, permission RPC, events |
 | Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency |
 | OllamaSharp | Ollama client library: loaded-model report, context-length option |
 | Pandoc | Converts Markdown documentation to HTML |

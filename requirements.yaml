@@ -91,7 +91,9 @@ includes:
   - docs/reqstream/agent-kit-agents-chat-client/chat-client-summarizer.yaml
   - docs/reqstream/agent-kit-agents-chat-client/platform-requirements.yaml
   - docs/reqstream/agent-kit-agents-copilot.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-agent.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-agent-factory.yaml
+  - docs/reqstream/agent-kit-agents-copilot/copilot-client-starter.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-provider-session-factory.yaml
   - docs/reqstream/agent-kit-agents-copilot/copilot-session-observer.yaml
@@ -117,5 +119,6 @@ includes:
   - docs/reqstream/ots/canvasnet.yaml
   - docs/reqstream/ots/microsoft-extensions-ai-abstractions.yaml
   - docs/reqstream/ots/microsoft-agents-ai.yaml
-  - docs/reqstream/ots/microsoft-agents-ai-github-copilot.yaml
+  - docs/reqstream/ots/microsoft-agents-ai-abstractions.yaml
+  - docs/reqstream/ots/microsoft-copilot-sdk.yaml
   - docs/reqstream/ots/ollamasharp.yaml

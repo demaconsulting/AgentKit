@@ -240,7 +240,7 @@ public static class AgentComposition
     ///     caller has to know it.
     ///     </para>
     ///     <para>
-    ///     The Copilot client's working directory is set to the workspace as defense in depth; the
+    ///     Each Copilot session's working directory is set to the workspace as defense in depth; the
     ///     tools are already confined by the policy regardless of where the runtime is rooted.
     ///     </para>
     /// </remarks>

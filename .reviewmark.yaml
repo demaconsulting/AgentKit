@@ -1309,6 +1309,7 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot.md"                     # system verification
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs"  # integration tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/**/*.cs"      # opt-in live integration suite
 
   # AgentKitAgentsCopilot-Design Review (one per system)
   - id: AgentKitAgentsCopilot-Design
@@ -1342,6 +1343,26 @@ reviews:
     paths:
       - "docs/reqstream/agent-kit-agents-copilot/**/*.yaml"                 # all Copilot requirements files
 
+  # AgentKitAgentsCopilot-CopilotAgent Review (one per unit)
+  #
+  # The agent and its public conversation type, CopilotAgentSession, are one unit: the session
+  # carries only the identity and serialization the agent's lifecycle needs. The scripted turn
+  # channel is claimed here for the same reason the session adapter's units claim it.
+  - id: AgentKitAgentsCopilot-CopilotAgent
+    title: Review that AgentKitAgentsCopilot CopilotAgent Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/agent-kit-agents-copilot/copilot-agent-factory.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-agent.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-agent.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-agent.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgent.cs"    # unit source
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentSession.cs"  # unit source (conversation type)
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentTests.cs"  # unit tests
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
+
   # AgentKitAgentsCopilot-CopilotAgentFactory Review (one per unit)
   - id: AgentKitAgentsCopilot-CopilotAgentFactory
     title: Review that AgentKitAgentsCopilot CopilotAgentFactory Implementation is Correct
@@ -1354,6 +1375,20 @@ reviews:
       - "docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotAgentFactory.cs"     # unit source
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotAgentFactoryTests.cs"  # unit tests
+
+  # AgentKitAgentsCopilot-CopilotClientStarter Review (one per unit)
+  - id: AgentKitAgentsCopilot-CopilotClientStarter
+    title: Review that AgentKitAgentsCopilot CopilotClientStarter Implementation is Correct
+    context:
+      - "docs/design/agent-kit-agents-copilot.md"
+      - "docs/reqstream/agent-kit-agents-copilot.yaml"
+      - "docs/design/ots/microsoft-copilot-sdk.md"
+    paths:
+      - "docs/reqstream/agent-kit-agents-copilot/copilot-client-starter.yaml"   # unit requirements
+      - "docs/design/agent-kit-agents-copilot/copilot-client-starter.md"        # unit design
+      - "docs/verification/agent-kit-agents-copilot/copilot-client-starter.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotClientStarter.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotClientStarterTests.cs"  # unit tests
 
   # AgentKitAgentsCopilot-CopilotProviderSession Review (one per unit)
   #
@@ -1429,22 +1464,23 @@ reviews:
   # AgentKitAgentsCopilot-CopilotTurnChannel Review (one per unit)
   #
   # This unit is the seam the rest of the package is tested through, and its production
-  # implementation is the one piece of the package no automated test reaches - the SDK's session
-  # and client types are sealed and non-constructable. Its verification chapter states that
-  # plainly rather than implying coverage, so the scripted fake that stands in for it is claimed
-  # here as the unit's own test file: it is the evidence, and a reviewer cannot judge the seam
-  # without it.
+  # implementation's forwarding is the one piece of the package no automated test reaches - the
+  # SDK's session and client types are sealed and non-constructable. Its verification chapter
+  # states that plainly rather than implying coverage, so the scripted fake that stands in for it
+  # is claimed here as the unit's own test file: it is the evidence, and a reviewer cannot judge
+  # the seam without it. The release policy is factored out and tested directly.
   - id: AgentKitAgentsCopilot-CopilotTurnChannel
     title: Review that AgentKitAgentsCopilot CopilotTurnChannel Implementation is Correct
     context:
       - "docs/design/agent-kit-agents-copilot.md"
       - "docs/reqstream/agent-kit-agents-copilot.yaml"
-      - "docs/design/ots/microsoft-agents-ai-github-copilot.md"
+      - "docs/design/ots/microsoft-copilot-sdk.md"
     paths:
       - "docs/reqstream/agent-kit-agents-copilot/copilot-turn-channel.yaml"   # unit requirements
       - "docs/design/agent-kit-agents-copilot/copilot-turn-channel.md"        # unit design
       - "docs/verification/agent-kit-agents-copilot/copilot-turn-channel.md"  # unit verification
       - "src/DemaConsulting.AgentKit.Agents.Copilot/CopilotTurnChannel.cs"     # unit source
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/CopilotTurnChannelTests.cs"  # release-policy tests
       - "test/DemaConsulting.AgentKit.Agents.Copilot.Tests/FakeCopilotTurnChannel.cs"  # scripted runtime fake
 
   # AgentKitAgentsOllama-Architecture Review (one per system)
@@ -1580,13 +1616,25 @@ reviews:
       - "docs/design/ots/microsoft-agents-ai.md"                            # OTS integration design
       - "docs/verification/ots/microsoft-agents-ai.md"                      # OTS verification
 
-  # OTS-MicrosoftAgentsAIGitHubCopilot Review (one per OTS item)
-  - id: OTS-MicrosoftAgentsAIGitHubCopilot
-    title: Review that Microsoft.Agents.AI.GitHub.Copilot Provides Required Functionality
+  # OTS-MicrosoftAgentsAIAbstractions Review (one per OTS item)
+  - id: OTS-MicrosoftAgentsAIAbstractions
+    title: Review that Microsoft.Agents.AI.Abstractions Provides Required Functionality
     paths:
-      - "docs/reqstream/ots/microsoft-agents-ai-github-copilot.yaml"         # OTS requirements
-      - "docs/design/ots/microsoft-agents-ai-github-copilot.md"             # OTS integration design
-      - "docs/verification/ots/microsoft-agents-ai-github-copilot.md"       # OTS verification
+      - "docs/reqstream/ots/microsoft-agents-ai-abstractions.yaml"           # OTS requirements
+      - "docs/design/ots/microsoft-agents-ai-abstractions.md"               # OTS integration design
+      - "docs/verification/ots/microsoft-agents-ai-abstractions.md"         # OTS verification
+
+  # OTS-MicrosoftCopilotSDK Review (one per OTS item)
+  #
+  # The opt-in live suite is claimed here as well as by the system's architecture review: it is
+  # the only evidence that the runtime behind the SDK honors what the package configures.
+  - id: OTS-MicrosoftCopilotSDK
+    title: Review that Microsoft.Copilot.SDK Provides Required Functionality
+    paths:
+      - "docs/reqstream/ots/microsoft-copilot-sdk.yaml"                      # OTS requirements
+      - "docs/design/ots/microsoft-copilot-sdk.md"                          # OTS integration design
+      - "docs/verification/ots/microsoft-copilot-sdk.md"                    # OTS verification
+      - "test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/**/*.cs"      # opt-in live integration suite
 
   # OTS-MicrosoftExtensionsAIAbstractions Review (one per OTS item)
   - id: OTS-MicrosoftExtensionsAIAbstractions

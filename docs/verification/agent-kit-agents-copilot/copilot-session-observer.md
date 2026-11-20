@@ -41,7 +41,7 @@ Unit tests reside in `CopilotSessionObserverTests.cs`, with the event builders i
 
 - **Framework**: xUnit v3 running under the .NET SDK
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
-- **External services**: None. No Copilot CLI is started, **no credential is used**, and no network
+- **External services**: None. No Copilot runtime is started, **no credential is used**, and no network
   access is made
 - **Mocking**: None; the SDK's own event types are constructed directly
 - **File system**: None
@@ -54,8 +54,8 @@ explicitly asserted. Any usage figure not held as reported, any reading cleared 
 any entry recorded out of arrival order, any entry recorded twice, any previous turn's work carried
 into the next, any nested agent's traffic recorded, any unidentified tool call recorded, any empty
 assistant message recorded, any failed tool recorded without its error, any reported error surviving
-a turn boundary, any compaction or truncation that fails to mark the history rewritten, or any
-exception escaping the handler constitutes a failure.
+a turn boundary, any compaction, truncation, context clearing or snapshot rewind that fails to mark
+the history rewritten, or any exception escaping the handler constitutes a failure.
 
 ### Test Scenarios
 
@@ -123,25 +123,30 @@ The third asserts an empty assistant message is not recorded: the runtime emits 
 phases, and an empty one is not something the model said.
 
 The fourth is the judgment call, asserted so it is a decision rather than an accident. A delegated run
-is scripted: this conversation's call, the child's own call, result and message under it, and then
-this conversation's result. The test asserts exactly two entries — the outer call and its result — so
-the child's three events are demonstrably excluded while the call that started the child is
-demonstrably kept.
+is scripted: this conversation's call, the child's own call, result and message, each attributed by
+the SDK's agent identity to the child rather than to the root agent, and then this conversation's
+result. The test asserts exactly two entries — the outer call and its result — so the child's three
+events are demonstrably excluded while the call that started the child is demonstrably kept.
 
-#### AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory: Both Ways the Runtime Rewrites
+#### AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory: Every Way the Runtime Rewrites
 
 **Tests**:
 
 - `CopilotSessionObserver_OnEvent_TruncationEvent_MarksHistoryRewritten`
 - `CopilotSessionObserver_OnEvent_CompactionEvent_MarksHistoryRewritten`
+- `CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten`
 - `CopilotSessionObserver_OnEvent_UnrelatedEvent_IsIgnored`
 
-Compaction and truncation are different runtime behaviors with the same consequence for AgentKit —
-the transcript the engine holds stops describing the conversation the provider does — so both are
-asserted, and the negative case asserts the flag is not set by anything else. This is the only
-evidence available offline that a runtime which ignores the request to stop compacting can be
-detected at all; whether a live runtime ever emits these events while AgentKit is driving it is
-stated as unverified in *AgentKitAgentsCopilot System Verification Design*.
+Compaction, truncation, clearing the context window and rewinding to a snapshot are different runtime
+behaviors with the same consequence for AgentKit — the transcript the engine holds stops describing
+the conversation the provider does — so each is asserted. The third dispatches the SDK's own
+context-cleared event and its snapshot-rewind event to an observer each and asserts both mark the
+history rewritten; those two are the further ways the current SDK lets the runtime discard history,
+and an observer that matched only on compaction and truncation would let either pass unnoticed. The
+negative case asserts the flag is not set by anything else. This is the only evidence available
+offline that a runtime which ignores the request to stop compacting can be detected at all; whether a
+live runtime ever emits these events while AgentKit is driving it is stated as unverified in
+*AgentKitAgentsCopilot System Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage: This Turn, Not the Session
 

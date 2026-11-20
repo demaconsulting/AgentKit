@@ -15,9 +15,11 @@ sections:
       - id: AgentKitAgentsCopilot-ToolSuppression-AllowListDerived
         title: >-
           The library shall withhold the capability the Copilot runtime injects, suppressing the
-          runtime's tools by deriving the session allow-list from the same tool collection it
-          publishes to the session, so the published tools and the allow-list cannot diverge, and
-          closing the runtime's skill and custom-instruction channels on every session it builds.
+          runtime's tools by deriving a source-qualified session allow-list from the same tool
+          collection it publishes to the session, so the published tools and the allow-list cannot
+          diverge, refusing a supplied tool named like a built-in, and closing every other channel of
+          injected capability — including the runtime's built-in GitHub MCP server — on every session
+          it builds.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -27,36 +29,46 @@ sections:
           available-tools list is an allow-list, so the library derives it from the same collection
           it assigns as the session's tools. Deriving both from one collection makes the published
           tool set and the allow-list impossible to drift apart, which is the safety property of the
-          whole package. Deriving the allow-list also requires the session-config construction path,
-          which is the only one that carries an allow-list at all. Tools are not the only channel:
-          the runtime's skills and its discovered custom instructions would attach capability and
-          direction the composing application never granted, so those channels are closed on every
-          session for the same reason the built-in tools are suppressed.
+          whole package. Each allow-list entry is qualified as a custom tool because, measured against
+          the live runtime, a bare name also admits a built-in tool that carries the same name; for the
+          same reason a supplied tool may not carry a built-in's name at all. Tools are not the only
+          channel: the runtime's skills, discovered instructions, hooks, memory, sub-agents,
+          extensions and its own GitHub MCP server would attach capability and direction the composing
+          application never granted, so those channels are closed on every session for the same
+          reason the built-in tools are suppressed.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
           - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
           - AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesBuiltInToolNames
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
           - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
+          - AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused
 
       - id: AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
         title: >-
           The library shall install, when the host supplies none, a permission handler that
-          approves exactly the supplied tools by name and rejects every other request, and shall
-          install a host-supplied handler verbatim when one is given.
+          approves exactly the supplied tools by name and rejects every other request, shall
+          install a host-supplied handler verbatim when one is given, and shall put every
+          permission request to the installed handler.
         tags: [security]
         justification: |
           The target user is not qualified to adjudicate a security prompt, so the default must be
           safe without asking: it approves a request only when it names one of the supplied tools
           and rejects everything else, including every built-in tool, none of which is one of the
           supplied custom tools. A host that has its own policy may supply a handler, which the
-          library installs unchanged. Default-safe with host override keeps the untrained-user case
-          correct while leaving a capable host in control.
+          library installs unchanged — replacing the default rather than composing with it, so a host
+          that supplies one takes on default-deny itself. Default-safe with host override keeps the
+          untrained-user case correct while leaving a capable host in control. The runtime has modes
+          that approve requests without asking any handler, so every session is pinned to the mode
+          that asks; otherwise ambient configuration could bypass the handler without anything the
+          library configured changing.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
           - AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride
+          - AgentKitAgentsCopilot-CopilotAgentFactory-PinsManualPermissionMode
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DefaultSafePermissions
         tests:
           - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
@@ -66,9 +78,9 @@ sections:
       - id: AgentKitAgentsCopilot-AgentConstruction-Validated
         title: >-
           The library shall build a Microsoft Agent Framework agent from a Copilot client and a
-          supplied tool list without taking ownership of the client, rejecting a missing client, a
-          malformed tool list, and carrying the supplied instructions and the supplied choice of
-          model.
+          supplied tool list without taking ownership of the client, rejecting a missing client and a
+          malformed tool list — including one naming a tool like a runtime built-in — and carrying the
+          supplied instructions, the supplied choice of model and the supplied working directory.
         justification: |
           The host constructs, starts, and disposes the Copilot client, so the library takes no
           ownership of it and builds the agent with client ownership left to the host — whoever
@@ -80,14 +92,20 @@ sections:
           choice through the library rather than around it — going around it means building a
           session by hand and losing the suppression and the default-safe permission handler. A host
           that expresses no choice gets the runtime's own default, so the capability adds nothing an
-          existing application must account for.
+          existing application must account for. In-process hosting has no client-level working
+          directory, so the working directory is offered here for the same reason as the model: a
+          host must not have to go around the library to set it.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesBuiltInToolNames
           - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
           - AgentKitAgentsCopilot-CopilotAgentFactory-SelectsModel
+          - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesWorkingDirectory
+          - AgentKitAgentsCopilot-CopilotProviderSessionFactory-CarriesWorkingDirectory
         tests:
           - CopilotAgentFactory_Create_NullClient_Throws
+          - AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused
 
       - id: AgentKitAgentsCopilot-SessionAdapter-CarriesACoreSession
         title: >-
@@ -167,7 +185,7 @@ sections:
           The library shall create every Copilot session its own session engine drives with the
           runtime's compaction threshold raised clear of the engine's rotation point, shall leave the
           runtime's compaction untouched on the plain agent path, and shall refuse further turns on a
-          session the runtime compacted or truncated anyway.
+          session the runtime compacted, truncated, cleared or rewound anyway.
         justification: |
           The Copilot runtime compacts its own sessions by default, at a threshold of the same order
           as AgentKit's rotation threshold and against the same occupancy signal. Two compactors
@@ -176,7 +194,7 @@ sections:
           engine reads afterwards would move for reasons it cannot see — so the engine would seed a
           replacement from a history the provider no longer holds.
 
-          Asking the runtime to stop does not work. Measured against SDK 1.0.11, a session created
+          Asking the runtime to stop does not work. Measured against the live runtime, a session created
           with the infinite-session flag set false compacted as soon as its threshold was crossed,
           identically to one created with the flag true; a session whose threshold was not crossed
           did not compact whatever the flag said. The threshold is the honored setting, so it is the
@@ -224,3 +242,72 @@ sections:
           - AgentKitAgentsCopilot-CopilotSummarizer-ReleasesItsSession
         tests:
           - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsCopilot-Agent-RunsConversations
+        title: >-
+          The library's agent shall run a conversation on the Copilot runtime that continues across
+          runs and across agent instances given the serialized conversation, confined identically on
+          every run, streaming what the runtime produces, delivering inline data the caller attaches,
+          and releasing every runtime session it opens without disposing the client.
+        justification: |
+          The Copilot SDK ships no Agent Framework agent, and the adapter that once supplied one does
+          not support the current SDK, so the library supplies the agent itself. An application that
+          hands a user an agent expects a conversation, not a sequence of unrelated questions: a
+          later run must remember an earlier one, a conversation must survive a restart through the
+          Agent Framework's own session serialization, and every run must be confined exactly as the
+          first was, because the runtime applies each resumption's configuration afresh. A caller
+          reading a run as it happens needs the text, the tool traffic and the usage streamed. Agent
+          sessions are not disposable, so the runtime session a run opens is released when the run
+          ends — kept rather than deleted, so the conversation stays resumable.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgent-OpensOrResumesPerRun
+          - AgentKitAgentsCopilot-CopilotAgent-ReleasesAfterEveryRun
+          - AgentKitAgentsCopilot-CopilotAgent-StreamsUpdates
+          - AgentKitAgentsCopilot-CopilotAgent-ReturnsTheStreamAsOneResponse
+          - AgentKitAgentsCopilot-CopilotAgent-DeliversDataContentAsAttachments
+          - AgentKitAgentsCopilot-CopilotAgent-SerializesTheSession
+          - AgentKitAgentsCopilot-CopilotAgent-SerializesRunsOnASession
+          - AgentKitAgentsCopilot-CopilotAgent-ReportsRuntimeErrors
+          - AgentKitAgentsCopilot-CopilotAgent-RejectsForeignSessions
+          - AgentKitAgentsCopilot-CopilotTurnChannel-RetainsAgentSessions
+          - AgentKitAgentsCopilot-CopilotTurnChannel-ResumesARecordedSession
+          - AgentKitAgentsCopilot-CopilotAgentFactory-ConfinesResumedSessions
+          - AgentKitAgentsCopilot-CopilotAgentFactory-EnablesStreamingOnTheAgentPath
+        tests:
+          - AgentKitAgentsCopilot_Agent_RunsAndStreamsOnTheRuntime
+          - AgentKitAgentsCopilot_Agent_SerializedSession_ResumesUnderTheSameConfinement
+
+      - id: AgentKitAgentsCopilot-ToolResults-DeliveredInline
+        title: >-
+          The library shall deliver a tool's result to the model inline on every Copilot session it
+          builds, however large the result is.
+        justification: |
+          Left at its default, the Copilot runtime replaces a large tool result with the path of a
+          temporary file it saved the result to. A confined agent has no tool that can read that file,
+          so the result would be lost exactly when it is largest — measured against the live runtime,
+          the model asked for the built-in viewer, was refused, and failed its task. AgentKit's tools
+          bound their own output, so the diversion protects nothing they need.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DisablesLargeOutputDiversion
+        tests:
+          - AgentKitAgentsCopilot_EverySession_DeliversToolResultsInline
+
+      - id: AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
+        title: >-
+          The library shall let a host start its Copilot client so that a runtime that cannot load
+          is reported with its likely cause and remedy.
+        justification: |
+          The Copilot runtime is loaded in-process from the application's output — unless an ambient
+          environment variable, set by every Copilot CLI shell, redirects it to an installation that
+          does not ship the in-process runtime, or the host never referenced the SDK that provisions
+          it. Either way the runtime's own error names a missing library and neither the cause nor the
+          remedy, so a host author can lose hours to it. The library cannot change the host's
+          environment or connection without global side effects, but it can explain the failure.
+        children:
+          - AgentKitAgentsCopilot-CopilotClientStarter-StartsTheClient
+          - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride
+          - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime
+          - AgentKitAgentsCopilot-CopilotClientStarter-PassesCancellationThrough
+          - AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient
+        tests:
+          - AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained

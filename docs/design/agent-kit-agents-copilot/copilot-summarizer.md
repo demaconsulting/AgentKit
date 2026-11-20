@@ -31,11 +31,15 @@ one.
 **The runtime's own compaction is held clear of the rotation point on this session too.** A
 consolidation is one prompt and one answer; there is nothing to compact, and a runtime that reshaped
 the material mid-consolidation would produce a record of something other than what it was given. The
-configuration comes whole from `CopilotAgentFactory.BuildEngineSessionConfig`, so a consolidation
+session options come whole from `CopilotAgentFactory.BuildEngineSessionConfig`, so a consolidation
 session is configured exactly as a conversation session is.
 
+**There is no working directory.** Unlike `CopilotProviderSessionFactory`, the summarizer takes none:
+a consolidation session offers no tools, so there is nothing a working directory could locate, and the
+runtime's default is left in place.
+
 **Ownership.** The `CopilotClient` is the host's and is disposed by the host; every session this
-summarizer creates is its own and is released by it.
+summarizer creates is its own and is released and deleted by it.
 
 Safe for concurrent use: each call creates a session of its own and shares nothing but the client
 reference and the model name.
@@ -53,9 +57,10 @@ reference and the model name.
 
 **Purpose:** Hold what every consolidation needs, and nothing else.
 
-**Algorithm:** Reject a null client and build the production channel opener over it. Record the
-model name without checking it, for the same reason the session factory does: only the runtime knows
-which models the signed-in user may use.
+**Algorithm:** Reject a null client and build the production channel opener over it — one that
+deletes each session when it is released, because a consolidation session is finished with once it
+has answered. Record the model name without checking it, for the same reason the session factory
+does: only the runtime knows which models the signed-in user may use.
 
 The model is named separately from the conversation's because consolidation is summarization rather
 than reasoning, so a smaller and cheaper model is usually the right choice — and because it is a
@@ -79,9 +84,10 @@ different *conversation*, so changing it alters nothing the agent can observe.
 
 **Purpose:** Produce the record that consolidates one span of history.
 
-**Algorithm:** Reject a null request and a canceled token. Build a tool-free engine session
-configuration, open a session from it, send the composed consolidation prompt as that session's only
-message, and return the answer. Release the session in a `finally`, so a consolidation that failed,
+**Algorithm:** Reject a null request and a canceled token. Build fresh, tool-free engine session
+options, open a session from them, send the composed consolidation prompt as the only message —
+a `MessageOptions` carrying the prompt and nothing else — and return the answer. Release the session
+in a `finally`, so a consolidation that failed,
 timed out or was canceled leaves nothing behind on the runtime — which matters because a long
 conversation performs one of these per rotation, and a session leaked here would accumulate for
 exactly as long as the conversation this exists to prolong.
@@ -113,12 +119,12 @@ for.
 
 - **AgentKitCore** — supplies `ISummarizer`, `ConsolidationRequest` and `ConsolidationPrompt`; see
   *Summarizer Unit Design*.
-- **CopilotAgentFactory** — supplies the tool-free engine session configuration; see
+- **CopilotAgentFactory** — supplies the tool-free engine session options; see
   *CopilotAgentFactory Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
   Unit Design*.
-- **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`; see
-  *Microsoft.Agents.AI.GitHub.Copilot Design*.
+- **Microsoft.Copilot.SDK** — supplies `CopilotClient` and `MessageOptions`; see
+  *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 

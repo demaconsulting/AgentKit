@@ -47,7 +47,7 @@ public static class CopilotClientStarter
     /// <exception cref="InvalidOperationException">
     ///     The client failed to start. The message names the likely cause and its remedies, and the
     ///     original failure is the <see cref="Exception.InnerException"/>. The host should report the
-    ///     message; the client is left unstarted, and the host still disposes it.
+    ///     message; the client is left not started, and the host still disposes it.
     /// </exception>
     /// <exception cref="OperationCanceledException">
     ///     The start was canceled. It propagates unchanged, because a cancellation is not a fault to

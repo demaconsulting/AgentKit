@@ -1,0 +1,98 @@
+---
+# Microsoft.Copilot.SDK OTS Software Requirements
+#
+# Requirements for the Microsoft.Copilot.SDK functionality the AgentKit Copilot package depends on.
+
+sections:
+  - title: OTS Software Requirements
+    sections:
+      - title: Microsoft.Copilot.SDK Requirements
+        requirements:
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
+            title: >-
+              Microsoft.Copilot.SDK shall provide session options, shared by session creation and
+              resumption, carrying the session's tool definitions, a source-qualified available-tools
+              allow-list, a switch for every channel of runtime-injected capability, the permission
+              mode and handler, the event handler and streaming switch, the model, the working
+              directory and the system message.
+            justification: |
+              Every guarantee the Copilot package makes is expressed in these options: the published
+              tools and the allow-list that suppresses the runtime's built-ins, the closed channels of
+              injected capability, the permission mode that puts every request to the handler, and the
+              handler itself. They live on the options a created and a resumed session share, which is
+              what lets the package confine a resumed agent session exactly as it confined the created
+              one. AgentKit's tests that build these options and assert each setting prove the SDK
+              carries them; the opt-in live suite shows the runtime honors them.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
+              - CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld
+              - CopilotAgentFactory_BuildSessionConfig_PermissionMode_IsPinnedToManual
+              - CopilotAgentFactory_BuildResumeSessionConfig_DerivesTheSameConfinement
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
+            title: >-
+              Microsoft.Copilot.SDK shall provide the permission-request and permission-decision types
+              a permission handler is expressed in.
+            justification: |
+              The SDK defines the permission-request hierarchy — including the custom-tool request
+              carrying a tool name — and the permission-decision type with its approve-once and reject
+              results. The package's default handler adjudicates a request by constructing a decision
+              from these types. AgentKit's tests that build permission requests and assert the default
+              handler approves a supplied tool while rejecting an unlisted or built-in request prove the
+              types behave as required.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected
+              - AgentKitAgentsCopilot_DefaultPermissionHandler_BuiltInTool_IsRejected
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle
+            title: >-
+              Microsoft.Copilot.SDK shall provide a session lifecycle that creates a session from
+              options, resumes a session by its identifier under new options, sends one message with
+              optional in-memory attachments and waits for the session to become idle under a
+              caller-supplied deadline, releases a session handle while preserving its state, and
+              deletes a session.
+            justification: |
+              The Copilot provider session is one AgentKit session over one runtime session, created
+              per rotation and deleted on release; the agent creates a session on a conversation's first
+              run, resumes it on every later run, and releases it without deleting it. The deadline
+              matters as much as the operations: the SDK applies a sixty-second default when told none,
+              so the package states an infinite one and governs a turn with the caller's cancellation
+              token. The lifecycle calls reach the runtime, so AgentKit reaches them through one
+              internal seam; the tests above that seam prove AgentKit uses the lifecycle correctly, and
+              the opt-in live suite shows the runtime implements it — including a resumption on a new
+              agent instance after the session was released, and an in-memory image attachment
+              reaching the model.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+              - AgentKitAgentsCopilot_Session_RotatesOnTheRuntimesUsage_AndSeedsTheReplacement
+              - AgentKitAgentsCopilot_Agent_SerializedSession_ResumesUnderTheSameConfinement
+              - CopilotAgent_Run_DataContent_IsSentAsABlobAttachment
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-SessionEvents
+            title: >-
+              Microsoft.Copilot.SDK shall dispatch session events — token usage against a limit, tool
+              executions and their outcomes, assistant messages and their streamed deltas, per-request
+              usage, session errors, and the runtime's own compaction, truncation, context clearing and
+              snapshot rewind — attributed to the agent that produced them, to a handler registered on
+              the session options before the session is created.
+            justification: |
+              A Copilot turn reveals what it did through events rather than through a return value, so
+              this is where the package's occupancy figure, its tool-traffic record, the agent's stream
+              and its detection of the runtime rewriting history all come from. Registering the handler
+              on the options rather than on the session afterwards is what covers the very first turn.
+              Every one of these event types is constructable, so AgentKit's tests drive the SDK's own
+              event objects through the package's own matching, offline. What a live run settled is that
+              the runtime ignores the infinite-session enablement flag and honors only the
+              background-compaction threshold, so AgentKit relies on the threshold and on these
+              announcements, not on the flag.
+            tags: [ots]
+            tests:
+              - AgentKitAgentsCopilot_Session_AnswersAndReportsTheRuntimesOccupancy
+              - AgentKitAgentsCopilot_Session_RuntimeCompactionIsHeldClearOfRotationOnEverySessionItBuilds
+              - CopilotAgent_RunStreaming_TextDeltas_AreStreamedAsTextContent
+              - CopilotAgent_RunStreaming_AssistantUsage_IsStreamedAsUsageContent
+              - CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten

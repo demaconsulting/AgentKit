@@ -53,7 +53,7 @@ sections:
             title: >-
               The observer shall record a failed tool's error as that call's result, shall skip an
               event carrying no usable call identifier and an assistant message carrying no text, and
-              shall skip every event belonging to a nested agent the runtime ran on the session's
+              shall skip every event the runtime attributes to a sub-agent it ran on the session's
               behalf.
             justification: |
               A tool that failed is part of the conversation the model reasoned from, so its error is
@@ -73,8 +73,8 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotSessionObserver-DetectsRewrittenHistory
             title: >-
               The observer shall record that the runtime rewrote the session's history when the
-              runtime dispatches a compaction or a truncation event, and shall not report it rewritten
-              otherwise.
+              runtime dispatches an event announcing that it compacted, summarized, truncated, cleared
+              or rewound the conversation, and shall not report it rewritten otherwise.
             justification: |
               AgentKit holds the runtime's compaction threshold clear of the rotation point on every
               session its own engine drives, which is a margin rather than a guarantee: the runtime's
@@ -86,6 +86,7 @@ sections:
             tests:
               - CopilotSessionObserver_OnEvent_TruncationEvent_MarksHistoryRewritten
               - CopilotSessionObserver_OnEvent_CompactionEvent_MarksHistoryRewritten
+              - CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten
               - CopilotSessionObserver_OnEvent_UnrelatedEvent_IsIgnored
 
           - id: AgentKitAgentsCopilot-CopilotSessionObserver-AnswersWhetherThisTurnReportedUsage

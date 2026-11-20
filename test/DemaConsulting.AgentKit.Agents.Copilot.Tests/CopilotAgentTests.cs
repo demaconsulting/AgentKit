@@ -209,7 +209,7 @@ public class CopilotAgentTests
     ///     a runtime that sent no deltas loses nothing.
     /// </summary>
     [Fact]
-    public async Task CopilotAgent_RunStreaming_UnstreamedMessage_IsDeliveredAsText()
+    public async Task CopilotAgent_RunStreaming_MessageWithoutDeltas_IsDeliveredAsText()
     {
         // Arrange
         var runtime = new FakeCopilotRuntime(_ => [Answered("whole answer")]);
