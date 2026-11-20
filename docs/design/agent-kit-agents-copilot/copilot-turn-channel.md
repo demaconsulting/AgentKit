@@ -29,10 +29,11 @@ configuration path, which is the drift this package exists to prevent.
 
 **Release means one of two things, chosen when the channel is opened.** A session the engine or the
 summarizer opened is finished with when it is released — a rotated conversation, a completed
-consolidation — so it is released and then **deleted**. An agent's session is a conversation that
-continues on the next run, possibly on another agent instance given the serialized session, so it is
-released and **kept**: the runtime preserves its state under the client's data directory until the
-host deletes it.
+consolidation — so it is released and then **deleted**. So is the session of an agent's run made
+without a conversation, which nothing could resume. An agent's *conversation* continues on the next
+run, possibly on another agent instance given the serialized session, so its session is released and
+**kept**: the runtime preserves its state under the client's data directory until the host deletes
+it.
 
 The unit is internal throughout: it is an implementation detail of this package, and an application
 has no use for it.
@@ -69,7 +70,8 @@ that the confinement was re-applied.
 
 #### Open(CopilotClient client)
 
-**Purpose:** Produce the opener the session engine and the summarizer create their sessions through.
+**Purpose:** Produce the opener the session engine, the summarizer and an agent's run made without a
+conversation create their sessions through.
 
 **Algorithm:** Return a delegate that creates a session from the options on `client` and wraps it in
 a channel that **deletes** the session on release. Produced once per factory rather than per session,
@@ -192,5 +194,5 @@ discards an error — everywhere the system cannot know something it needs, it r
 `CopilotProviderSessionFactory` and `CopilotSummarizer` each hold an opener from `Open` and open one
 session per rotation or per consolidation; `CopilotProviderSession` holds a channel and sends turns
 through it. `CopilotAgentFactory.Create` hands `CopilotAgent` an opener from `OpenRetained` and a
-resumer from `Resume`, and the agent opens or resumes one channel per run. Nothing outside this
-package sees any of it.
+resumer from `Resume` for its conversations, and an opener from `Open` for a run made without one,
+and the agent opens or resumes one channel per run. Nothing outside this package sees any of it.

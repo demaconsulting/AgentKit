@@ -163,7 +163,8 @@ software items, specifically:
 - **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, with the public
   `CopilotAgentSession` naming one conversation: creates a runtime session on the first run and
   resumes it on every later one, streams the runtime's events as agent updates, sends inline data as
-  in-memory attachments, and releases the session without deleting it after every run
+  in-memory attachments, and releases a conversation's session without deleting it after every run
+  (a run made without a conversation deletes its session)
 - **CopilotClientStarter (Unit)** — Starts the host's Copilot client and explains a failed start —
   an ambient `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without
   changing the connection or the environment
@@ -197,8 +198,8 @@ The following OTS items are also covered:
 - **CanvasNet** — the runtime raster imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
-- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
-  abstraction
+- **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
+  `AIAgent` from an `IChatClient`
 - **Microsoft.Agents.AI.Abstractions** — the Agent Framework's abstractions library providing the
   `AIAgent` and `AgentSession` base types and the `AgentResponseUpdate` a streamed run produces
 - **Microsoft.Copilot.SDK** — the GitHub Copilot SDK providing `CopilotClient`, the create and
@@ -503,8 +504,9 @@ convention but no code, so each can be read in isolation.
 
 The opt-in live suite for the Copilot system is a test project, and like every test project it is
 outside the scope of this document. Its location is recorded only because it differs from the other
-test projects: it is not part of the solution, so the ordinary build and the merge gate never build or
-run it, and it runs only when invoked explicitly with a model named in the environment:
+test projects: it is not part of the solution, so the ordinary build never builds it and the merge gate
+only compiles it, never running it; it runs only when invoked explicitly with a model named in the
+environment:
 
 ```text
 test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/

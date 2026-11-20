@@ -4,8 +4,9 @@
 
        It runs AgentKit's confinement, agent and session engine against the REAL Copilot runtime
        with a real model, which the hermetic unit tests deliberately cannot. It is therefore:
-       - NOT part of AgentKit.slnx, so build.ps1, 'dotnet test' at the repository root and the
-         build.yaml merge gate never build or run it;
+       - NOT part of AgentKit.slnx, so build.ps1 and 'dotnet test' at the repository root never
+         build or run it; the build.yaml merge gate compiles it (Ubuntu, no runtime download) but
+         never runs it;
        - gated a second time inside every test on the AGENTKIT_COPILOT_LIVE_MODEL environment
          variable, which also names the (cheap) model to use, so an accidental run costs nothing;
        - run by the live-copilot-suite job in live_samples.yaml, and by hand as described in the

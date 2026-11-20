@@ -7,9 +7,10 @@ package AgentKitAgentsCopilot {
      * Copilot client and a supplied tool list, suppressing the runtime's built-in tools by
      * deriving a source-qualified session allow-list from the same collection it publishes as the
      * session's tools, and running a conversation that streams, resumes across runs and agent
-     * instances, and is confined identically on every run. It also carries an AgentKit Core session over the same runtime, natively: the
-     * Copilot SDK exposes no IChatClient, so the compaction engine could not otherwise run on
-     * the one provider this project's continuous integration can reach. The session adapter
+     * instances, and is confined identically on every run. It also carries an AgentKit Core
+     * session over the same runtime, natively: the Copilot SDK exposes no IChatClient, so the
+     * compaction engine could not otherwise run on the one provider this project's continuous
+     * integration can reach. The session adapter
      * carries a rotation's history on the first message of the session it seeds, because Copilot
      * offers no history channel of any kind and a record charged to the engine's overhead rather
      * than to the conversation would make its accounting drift; takes its occupancy and its window

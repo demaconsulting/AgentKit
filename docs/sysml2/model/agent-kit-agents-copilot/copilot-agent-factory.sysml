@@ -16,4 +16,8 @@ package AgentKitAgentsCopilot {
     // The factory constructs the agent and hands it the per-run configuration builders and the
     // channel openers over the host's client; it never reaches the agent's runtime sessions itself.
     dependency CopilotAgentFactory to CopilotAgent;
+
+    // Create hands the agent the production channels over the host's client: the keeping opener
+    // and the resumer for a conversation, and the deleting opener for a run made without one.
+    dependency CopilotAgentFactory to CopilotTurnChannel;
 }

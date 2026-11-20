@@ -19,8 +19,8 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 ///     </para>
 ///     <para>
 ///     Every scenario skips unless <c>AGENTKIT_COPILOT_LIVE_MODEL</c> names the model to use. The
-///     suite is outside the solution and the merge gate, and is not linked to the requirements
-///     trace, because it never runs in the pipeline that builds it.
+///     suite is outside the solution and the merge gate's test run, and is not linked to the
+///     requirements trace, because it never runs in the pipeline that builds the trace matrix.
 ///     </para>
 /// </remarks>
 [Collection(CopilotLiveCollection.Name)]

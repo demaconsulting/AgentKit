@@ -81,16 +81,17 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotTurnChannel-RetainsAgentSessions
             title: >-
-              The turn channel shall release an agent's session without deleting it, so the
-              conversation stays resumable, while still deleting the sessions the session engine and
-              the summarizer release.
+              The turn channel shall release an agent conversation's session without deleting it, so
+              the conversation stays resumable, while still deleting the sessions the session engine
+              and the summarizer release.
             justification: |
               An agent's conversation continues on its next run, possibly on another agent instance
               given the serialized session, so deleting its runtime session on release would discard
               the conversation the caller still holds. A rotated or consolidation session is finished
               with by definition, and keeping it would leave one preserved session behind per
-              rotation. The two outcomes are therefore chosen when a channel is opened, and the
-              agent's is the one that keeps.
+              rotation. An agent run made without a conversation is finished with in the same way,
+              so it uses the deleting channel too. The two outcomes are therefore chosen when a
+              channel is opened, and an agent conversation's is the one that keeps.
             tests:
               - CopilotSessionChannel_Release_RetainedChannel_DetachesWithoutDeleting
               - CopilotSessionChannel_Release_DeletingChannel_DetachesThenDeletes

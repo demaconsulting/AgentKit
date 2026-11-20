@@ -21,8 +21,9 @@ what happens around a turn:
 - **Open or resume per run, release after it.** The first run on a `CopilotAgentSession` creates a
   runtime session and records its identifier; every later run resumes that session with freshly
   built, identically confined options. After every run — successful, failed or canceled — the
-  runtime session handle is released **without** deleting the session, so its state stays resumable
-  under the client's data directory and no handle outlives a run. The client is never disposed.
+  runtime session handle is released. A conversation's session is **kept**, not deleted, so it stays
+  resumable under the client's data directory. A run made without a conversation deletes its
+  session, because nothing could resume it. No handle outlives a run. The client is never disposed.
 - **Stream the run.** The runtime's events for the root agent become `AgentResponseUpdate` items as
   they arrive.
 - **Carry the input.** The text of the input messages becomes one prompt, and inline data becomes
@@ -45,8 +46,8 @@ public, because a host needs its `SessionId` to delete a finished conversation.
   creates its runtime session from. Supplied by `CopilotAgentFactory`; called once per run.
 - **`_resumeOptions`** (`Func<ResumeSessionOptions>`) — Builds the identically confined options a
   later run resumes its runtime session with. Supplied by `CopilotAgentFactory`; called once per run.
-- **`_opener`** (`CopilotChannelOpener`) — Creates a runtime session and presents it as a turn
-  channel. In production it keeps the session on release.
+- **`_opener`** (`CopilotChannelOpener`) — Creates a conversation's runtime session on its first run
+  and presents it as a turn channel. In production it keeps the session on release.
 - **`_ephemeralOpener`** (`CopilotChannelOpener`) — Creates the runtime session for a run made
   without a conversation. In production it deletes the session on release, because nothing could
   resume it.
@@ -142,7 +143,8 @@ resumes the named runtime session on its next run.
    one when none is supplied — and compose the message (see `ComposeMessage`). Both happen before the
    iterator starts, so a foreign session or a malformed input fails at the call, without touching the
    runtime.
-3. Return the turn's update stream (see `RunTurnAsync`).
+3. Return the turn's update stream (see `RunTurnAsync`), marked ephemeral when no session was
+   supplied.
 
 `options` is ignored, as it was by the earlier adapter.
 
@@ -155,29 +157,34 @@ resumes the named runtime session on its next run.
 **Algorithm:** Gather the streamed run into one `AgentResponse` with the Agent Framework's
 `ToAgentResponseAsync`, so the two run methods cannot disagree.
 
-#### RunTurnAsync(CopilotAgentSession conversation, MessageOptions message, CancellationToken)
+#### RunTurnAsync(CopilotAgentSession conversation, bool ephemeral, MessageOptions message, CancellationToken)
 
 **Purpose:** Run one turn on a conversation, holding its gate, and release the runtime session after
 it on every path.
+
+`ephemeral` is true when the caller supplied no session.
 
 **Algorithm:**
 
 1. Wait for the conversation's gate under the caller's token.
 2. Create a run-scoped cancellation linked to the caller's token, an unbounded single-reader update
    stream, and an `UpdateMapper` over it.
-3. Open the runtime session (see `OpenAsync`), registering the mapper as the event handler.
+3. Open the runtime session (see `OpenAsync`), passing `ephemeral`, registering the mapper as the
+   event handler.
 4. Start the turn (see `SendAsync`) and yield every update from the stream until it completes; then
    await the turn.
-5. In a `finally`: bring the turn to rest (see `FinishAsync`), then release the channel — which
-   releases the session handle and keeps the session.
+5. In a `finally`: bring the turn to rest (see `FinishAsync`), then release the channel, which
+   releases the session handle and keeps a conversation's session or deletes the session of a run
+   made without one.
 6. In an outer `finally`: release the gate.
 
 The release cannot throw, so it cannot mask a run's own failure; see *CopilotTurnChannel Unit Design*.
 
 **Postconditions:** The run's updates have been yielded or its failure propagated; the runtime session
-handle is released and the session kept; the gate is free.
+handle is released, the session kept for a conversation and deleted for a run made without one; the
+gate is free.
 
-#### OpenAsync(CopilotAgentSession conversation, Action&lt;SessionEvent&gt; onEvent, CancellationToken)
+#### OpenAsync(CopilotAgentSession conversation, bool ephemeral, Action&lt;SessionEvent&gt; onEvent, CancellationToken)
 
 **Purpose:** Open the runtime session a run takes its turn on: created on the first run, resumed
 after.
@@ -185,8 +192,8 @@ after.
 **Algorithm:** When the conversation has a `SessionId`, build fresh resume options, set the run's
 handler as `Events.OnEvent`, and resume the session through the resumer. Otherwise build fresh create
 options, set the handler the same way, create the session through the opener, and record the new
-channel's `SessionId` on the conversation at once. A run made without a conversation creates its
-session through the ephemeral opener instead, whose sessions are deleted when released: nothing could
+channel's `SessionId` on the conversation at once. When `ephemeral`, the session is created through
+the ephemeral opener instead, whose sessions are deleted when released: nothing could
 ever resume that session, so keeping it would only accumulate persisted state under the client's data
 directory. A null channel from either delegate is refused.
 
@@ -348,20 +355,21 @@ Each is deliberate and recorded so it is not mistaken for an omission:
 | Opener or resumer returned null | `InvalidOperationException` propagates |
 | Creating or resuming the runtime session fails | Propagates; nothing to release; gate released |
 | Root-agent session error during the turn | Run fails with `InvalidOperationException` |
-| The turn fails | Propagates through the stream; session handle released and kept |
-| Caller cancels, or stops reading early | Turn canceled and awaited; session handle released and kept |
+| The turn fails | Propagates through the stream; session handle released (see below) |
+| Caller cancels, or stops reading early | Turn canceled and awaited; session handle released (see below) |
 | Releasing the session handle fails | Swallowed by the channel; the run's own outcome stands |
 
-A failed or canceled run leaves the conversation resumable: its identifier was recorded before the
-turn, and a conversation's session is never deleted.
+On both of those paths the session is kept for a conversation and deleted for a run made without
+one. A failed or canceled run on a conversation leaves it resumable: its identifier was recorded
+before the turn, and a conversation's session is never deleted.
 
 ### Dependencies
 
 - **CopilotAgentFactory** — supplies the builder delegates for the create and resume options, so
   every session this agent opens is confined; see *CopilotAgentFactory Unit Design*.
 - **CopilotTurnChannel** — supplies `ICopilotTurnChannel`, `CopilotChannelOpener` and
-  `CopilotChannelResumer`, and in production the channels that keep a session on release; see
-  *CopilotTurnChannel Unit Design*.
+  `CopilotChannelResumer`, and in production the channels that keep a conversation's session on
+  release and delete the session of a run made without one; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Agents.AI.Abstractions** — supplies `AIAgent`, `AgentSession` and its state bag,
   `AgentResponse`, `AgentResponseUpdate` and the gathering of a stream into a response; see
   *Microsoft.Agents.AI.Abstractions Design*.

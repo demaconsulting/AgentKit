@@ -114,9 +114,11 @@ The single public entry point for an agent.
 
 1. Reject a null `client`.
 2. Hand the arguments to `CreateAgent` with the production channels over the client: an opener that
-   creates a session and **keeps** it on release, and a resumer that resumes a recorded session and
-   keeps it too. An agent's conversation continues on the next run, so its sessions are never deleted
-   by AgentKit; see *CopilotTurnChannel Unit Design*.
+   creates a session and **keeps** it on release, a resumer that resumes a recorded session and keeps
+   it too, and an opener for a run made without a conversation that **deletes** the session on
+   release. A conversation continues on its next run, so its sessions are never deleted by AgentKit.
+   A run made without a conversation has nothing that could resume it, so its session is deleted;
+   see *CopilotTurnChannel Unit Design*.
 3. Return the agent as an `AIAgent`.
 
 **Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
@@ -136,7 +138,7 @@ hand, which would forfeit the confinement. It is not validated here: the runtime
 session is created. It grants nothing: what the agent may read or write is decided by the tools' own
 path policy.
 
-#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer)
+#### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener)
 
 Internal seam behind `Create`: production passes channels over the host's client, a test passes a
 scripted runtime, and everything else is shared.
@@ -149,7 +151,8 @@ scripted runtime, and everything else is shared.
    the agent opens afterwards: every run is confined to the tools validated here.
 3. Construct a `CopilotAgent` with two builder delegates — one calling `BuildSessionConfig`, one
    calling `BuildResumeSessionConfig`, both over the snapshot and the host's settings — together with
-   the opener, the resumer and the name.
+   the opener, the ephemeral opener (the opener itself when none is supplied, as a test may), the
+   resumer and the name.
 
 The agent calls a builder on every run, so each run receives a **fresh** options object. The SDK
 mutates the options it is handed when it applies its mode defaults, and its clone is shallow, so an
@@ -335,7 +338,8 @@ Verification Design*.
 `CopilotClient` and therefore disposes it. Nothing the factory builds ever disposes it, and the
 factory creates nothing disposable of its own, so the rule is unambiguous: *whoever created the client
 disposes it.* The agent it returns releases each runtime session handle after the run that opened it
-and never deletes the session; deleting a finished conversation is the host's decision, through
+and keeps a conversation's session, deleting only the session of a run made without a conversation,
+which nothing could resume. Deleting a finished conversation is the host's decision, through
 `CopilotAgentSession.SessionId`. This is why the public entry point returns a bare `AIAgent` rather
 than an agent paired with an ownership handle.
 
@@ -386,8 +390,8 @@ incentive to bypass it.
 ### Dependencies
 
 - **CopilotAgent** — the agent `CreateAgent` constructs; see *CopilotAgent Unit Design*.
-- **CopilotTurnChannel** — supplies the retaining opener and the resumer `Create` hands the agent; see
-  *CopilotTurnChannel Unit Design*.
+- **CopilotTurnChannel** — supplies the keeping opener, the resumer and the deleting opener (for a run
+  made without a conversation) that `Create` hands the agent; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions`, `ResumeSessionOptions`
   and `SessionOptionsBase` with their option groups, the permission RPC types, and the published set of
   isolated built-in tool names; see *Microsoft.Copilot.SDK Design*.

@@ -10,8 +10,9 @@ application uses — create a session, run, run streaming, serialize and deseria
 Copilot runtime that contacts nothing.
 
 **The agent under test is built through `CopilotAgentFactory.CreateAgent`, the internal seam behind
-the public `Create`.** That seam takes the channel opener and the channel resumer as parameters in
-place of a live client, so the agent is constructed exactly as an application's would be, with the
+the public `Create`.** That seam takes the channel openers (one keeping a conversation's session,
+one deleting the session of a run made without a conversation) and the channel resumer as parameters
+in place of a live client, so the agent is constructed exactly as an application's would be, with the
 factory's real configuration builders. Its creation and resumption options are therefore the
 production ones, and the confinement assertions below test what an application actually gets rather
 than a configuration a test assembled itself.

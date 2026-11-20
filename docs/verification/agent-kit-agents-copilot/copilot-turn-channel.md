@@ -22,9 +22,9 @@ session it releases is a decision, and the decision is factored out of the chann
 `CopilotSessionChannel.ReleaseAsync`, which takes the detach step and the optional delete step as
 delegates. The tests supply recording delegates and assert the order of the steps, that a retained
 channel has no delete step, and that neither step's failure escapes. The factories that choose
-between a deleting and a retaining channel — `Open` for the session engine and the summarizer,
-`OpenRetained` and `Resume` for the agent — are one-line compositions over the SDK and are reviewed
-rather than tested.
+between a deleting and a retaining channel — `Open` for the session engine, the summarizer and an
+agent's run made without a conversation; `OpenRetained` and `Resume` for an agent's conversation —
+are one-line compositions over the SDK and are reviewed rather than tested.
 
 **What is verified through the units above, and what that is worth.** The *contract* this unit
 publishes — that a channel names its session, takes a turn carrying a prompt and any attachments, and
@@ -81,11 +81,12 @@ tests reside in `CopilotTurnChannelTests.cs` in the same project.
 
 A test run passes when every scenario below passes without error or exception beyond those explicitly
 asserted. Any session opened and not released, any release that also disposes the client, any
-release that throws, any engine or summarizer channel released without deleting its session, any
-agent channel that deletes its session, any session shared between rotations or consolidations, any
-later run that does not resume the recorded session, or any turn taken after a caller's cancellation
-constitutes a failure. **No acceptance criterion here covers the production implementation's own
-calls into the SDK**; see the verification approach above.
+release that throws, any engine, summarizer or conversation-less agent channel released without
+deleting its session, any agent conversation channel that deletes its session, any session shared
+between rotations or consolidations, any later run that does not resume the recorded session, or
+any turn taken after a caller's cancellation constitutes a failure. **No acceptance criterion here
+covers the production implementation's own calls into the SDK**; see the verification approach
+above.
 
 ### Test Scenarios
 
@@ -129,7 +130,7 @@ was still attempted after the detach failed. Release runs on disposal paths wher
 acted on, and a runtime that declined to delete a session is housekeeping left undone, not a fault in
 the conversation.
 
-#### AgentKitAgentsCopilot-CopilotTurnChannel-RetainsAgentSessions: An Agent's Session Survives Its Release
+#### AgentKitAgentsCopilot-CopilotTurnChannel-RetainsAgentSessions: An Agent Conversation's Session Survives Its Release
 
 **Tests**:
 
@@ -137,10 +138,11 @@ the conversation.
 - `CopilotSessionChannel_Release_DeletingChannel_DetachesThenDeletes`
 - `CopilotAgent_Run_AfterEveryRun_ReleasesTheSessionAndKeepsItResumable`
 
-The first asserts a retained channel — the kind the agent opens and resumes — detaches its session
-handle and takes no deletion step at all, so the conversation stays resumable on the runtime. The
-second is the other side of the same rule: the channels the session engine and the summarizer open
-still delete what they release, because a rotated or consolidated session is never resumed. The third
+The first asserts a retained channel — the kind the agent opens and resumes for a conversation —
+detaches its session handle and takes no deletion step at all, so the conversation stays resumable on
+the runtime. The second is the other side of the same rule: the channels the session engine, the
+summarizer and a conversation-less agent run open still delete what they release, because such a
+session is never resumed. The third
 asserts, through the agent, that every run's channel is released once and that the conversation still
 names the session its first run created, so the next run resumes it rather than replacing it.
 

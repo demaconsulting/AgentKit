@@ -38,7 +38,7 @@ inside the package.
 | BuildMark | Generates build-notes documentation from GitHub Actions metadata |
 | CanvasNet | Raster imaging: header inspection, decoding, cropping, encoding |
 | FileAssert | Validates generated documents (HTML/PDF) against acceptance criteria |
-| Microsoft.Agents.AI | Runtime library defining `AIAgent` and `ChatClientAgent` |
+| Microsoft.Agents.AI | Runtime library providing `ChatClientAgent`, which builds an `AIAgent` from an `IChatClient` |
 | Microsoft.Agents.AI.Abstractions | Agent Framework base types: `AIAgent`, `AgentSession`, `AgentResponseUpdate` |
 | Microsoft.Copilot.SDK | GitHub Copilot SDK: `CopilotClient`, session options, permission RPC, events |
 | Microsoft.Extensions.AI.Abstractions | Runtime library defining the `AIFunction`/`AIContent` tool currency |

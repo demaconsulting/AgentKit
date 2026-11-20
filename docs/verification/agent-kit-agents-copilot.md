@@ -322,8 +322,9 @@ that what those tests assert about the options is what the runtime honors.
 - **Project**: `test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/`, an xUnit v3 project targeting
   .NET 10 that references the Copilot package, AgentKit's core and tools packages, and
   `Microsoft.Copilot.SDK` directly, so the native runtime is provisioned beside it. It is **not** part
-  of `AgentKit.slnx`, so `build.ps1`, a `dotnet test` of the solution and the merge gate never build
-  or run it.
+  of `AgentKit.slnx`, so `build.ps1` and a `dotnet test` of the solution never build or run it. The
+  merge gate compiles it, so an internal change that breaks it fails the pull request, but never runs
+  it.
 - **Gate**: every test calls `Assert.SkipUnless` on the environment variable
   `AGENTKIT_COPILOT_LIVE_MODEL`, which also names the model every scenario uses. Unset, the fixture
   starts no client and every test reports itself skipped, naming the variable, so an accidental run

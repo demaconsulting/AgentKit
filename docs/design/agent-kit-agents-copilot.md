@@ -331,8 +331,9 @@ runtime, which is exactly the duplication the host-provisions rule avoids.
 
 **The merge gate is hermetic.** The continuous-integration build workflow sets `CopilotSkipCliDownload`
 for the whole workflow as an environment variable, which MSBuild reads as a property, so the build
-matrix, the code analysis and the documentation build never contact GitHub releases and never copy
-the runtime; no test there needs it. The live-samples workflow builds without the property, so the
+matrix, the code analysis, the documentation build and the compile-only build of the opt-in live
+suite never contact GitHub releases and never copy the runtime; no test there needs it. The
+live-samples workflow builds without the property, so the
 samples and the opt-in live suite get the runtime, and caches the extracted bundle between runs. A
 local build downloads the runtime once per hosting project and keeps it in that project's
 intermediate folder, so each hosting project's output carries its own copy.
@@ -397,11 +398,12 @@ agent uses, and the five that carry a Core session over the runtime.
   Core's consolidation prompt and releasing its session on every path.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
   production implementation that owns one runtime session handle and releases it — deleting the
-  session for the engine and the summarizer, keeping it for the agent.
+  session for the engine, the summarizer and an agent's run made without a conversation, keeping it
+  for an agent's conversation.
 
 The agent and the engine paths share the factory's confinement and the turn channel, and nothing
-else: the agent streams its own events and keeps its sessions, while the engine path reads occupancy
-through the observer and deletes each rotated session.
+else: the agent streams its own events and keeps its conversations' sessions, while the engine path
+reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 

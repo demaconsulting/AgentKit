@@ -194,8 +194,8 @@ The following OTS items are also covered:
 - **CanvasNet** — the runtime raster imaging library providing image header inspection including
   decode feasibility, PNG and JPEG decoding, rectangular region extraction and PNG encoding
 - **FileAssert** — document assertion tool
-- **Microsoft.Agents.AI** — the runtime library providing the `AIAgent`/`ChatClientAgent`
-  abstraction
+- **Microsoft.Agents.AI** — the runtime library providing `ChatClientAgent`, which builds an
+  `AIAgent` from an `IChatClient`
 - **Microsoft.Agents.AI.Abstractions** — the runtime library providing the `AIAgent` base type and
   the serializable `AgentSession` the Copilot agent is built on
 - **Microsoft.Copilot.SDK** — the GitHub Copilot SDK providing `CopilotClient`, the session options
@@ -240,8 +240,9 @@ decision, not a coverage gap to be closed by adding sample requirements.
 One body of evidence is described here but lies outside the traceability results: the opt-in live
 Copilot suite under `test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/`. It runs the Copilot
 package against the real Copilot runtime and a real model, so it needs a credential and model quota
-and is deliberately kept out of the merge gate: it is not part of `AgentKit.slnx`, and every test in
-it skips itself unless `AGENTKIT_COPILOT_LIVE_MODEL` is set. Because it never runs in the pipeline
+and is deliberately kept out of the merge gate's test run: it is not part of `AgentKit.slnx` (the
+merge gate only compiles it), and every test in it skips itself unless `AGENTKIT_COPILOT_LIVE_MODEL`
+is set. Because it never runs in the pipeline
 that builds the trace matrix, none of its tests is linked to a requirement. It is supplementary
 verification evidence, and its scenarios, how it is run, where its results are kept and its recorded
 results are described in *AgentKitAgentsCopilot System Verification Design*.

@@ -115,10 +115,11 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 ///     <b>Release means one of two things, chosen when the channel is opened.</b> A session the
 ///     engine or the summarizer opened is finished with when it is released — a rotated
 ///     conversation, a completed consolidation — so it is released and then deleted
-///     (<see cref="Open"/>). An agent's session is a conversation that continues on the next run,
-///     possibly on another agent instance given the serialized session, so it is released and
-///     <em>kept</em> (<see cref="OpenRetained"/> and <see cref="Resume"/>): the runtime preserves its
-///     state under the client's data directory until the host deletes it.
+///     (<see cref="Open"/>). So is the session of an agent's run made without a conversation,
+///     which nothing could resume. An agent's <em>conversation</em> continues on the next run,
+///     possibly on another agent instance given the serialized session, so its session is released
+///     and <em>kept</em> (<see cref="OpenRetained"/> and <see cref="Resume"/>): the runtime preserves
+///     its state under the client's data directory until the host deletes it.
 ///     </para>
 ///     <para>
 ///     Deliberately a pass-through of one forwarded call and one guarded release. It is the one
@@ -165,10 +166,10 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     Returns an opener that creates sessions on one client and deletes each when it is released.
     /// </summary>
     /// <remarks>
-    ///     For the session engine and the summarizer, whose sessions are finished with by definition
-    ///     when released. Produced once per factory rather than per session, so the client reference
-    ///     is captured in exactly one place and every session a rotation creates demonstrably runs on
-    ///     the same client the host started.
+    ///     For the session engine, the summarizer and an agent's run made without a conversation,
+    ///     whose sessions are finished with when released. Produced once per factory rather than per
+    ///     session, so the client reference is captured in exactly one place and every session a
+    ///     rotation creates demonstrably runs on the same client the host started.
     /// </remarks>
     /// <param name="client">The client to create sessions on. Must not be <see langword="null"/>.</param>
     /// <returns>An opener over <paramref name="client"/>.</returns>
@@ -183,7 +184,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     Returns an opener that creates sessions on one client and keeps each when it is released.
     /// </summary>
     /// <remarks>
-    ///     For the agent, whose conversation continues on the next run. The session's state stays
+    ///     For an agent's conversation, which continues on the next run. The session's state stays
     ///     under the client's data directory, resumable by <see cref="Resume"/>, until the host
     ///     deletes it.
     /// </remarks>
