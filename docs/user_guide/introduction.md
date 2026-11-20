@@ -31,9 +31,13 @@ compliance evidence is generated automatically on every CI run.
 - **Requirements Traceability**: Every requirement is linked to passing tests, and a trace matrix is
   auto-generated on each release
 - **Linting Enforcement**: LintMark, TextLint, and yamllint are enforced before any build proceeds
-- **Automated Audit Documentation**: Each release ships with generated requirements, justifications,
-  trace matrix, and quality reports
+- **Automated Audit Documentation**: Each release ships with generated build notes, this user guide,
+  requirements, justifications, trace matrix, and quality reports
 - **CodeQL and SonarCloud**: Security and quality analysis runs on every build
+- **Multi-Platform and Multi-Runtime**: The libraries build and run on Windows, Linux, and macOS,
+  and target .NET 8, 9, and 10
+- **Automated Testing**: xUnit v3 tests run on every platform and runtime in the GitHub Actions
+  workflows that gate every change
 
 # Installation
 
@@ -66,6 +70,10 @@ respect, but it is the one that will tell you the context window it will enforce
 dotnet add package DemaConsulting.AgentKit.Agents.Ollama       # reads Ollama's context window
 ```
 
+The Ollama package is optional: add it only if you target Ollama. It carries the `OllamaSharp`
+dependency that the `IChatClient` adapter deliberately does not, so an application on any other
+provider never takes it on.
+
 ## API Documentation
 
 Detailed API documentation for all public types and members is distributed in the `api/` folder
@@ -77,9 +85,17 @@ cannot drift from the code it describes — and is organized for gradual disclos
 a page per namespace, type, and member. That shape is deliberate, because the intended reader is
 often a coding agent assembling an application against AgentKit, which works far better from one
 small targeted page than from a single large document. The build fails on any public member that
-lacks a documentation summary, so the reference is complete by construction.
+lacks a documentation summary, so the reference is complete by construction, and it compiles every
+`<example>` the reference contains against the real API, so a documented example cannot describe an
+API the code does not have.
 
 # What the Library Provides Today
+
+AgentKit does not provide an agent runtime or a provider abstraction: Microsoft Agent Framework
+supplies those, and AgentKit's tools work with it, with the GitHub Copilot SDK, and with any
+`IChatClient` alike. What AgentKit provides is the part those runtimes leave to the application:
+tools that are safe by construction, and a session that manages its own context window so a
+long-running agent behaves the same way on every provider.
 
 AgentKit Core is the contract package, and it carries two things. It defines the safety model that
 every AgentKit tool, and every tool an application writes for itself, is built against. It also
@@ -91,7 +107,8 @@ one package for that reason.
 Ready-made guarded tool families ship in
 `DemaConsulting.AgentKit.Tools` — the text file, file, markdown, image, todo, memory and
 agent families described under *Tool Families* below — so a consumer can attach shipped tools
-directly, or write its own tools against this contract.
+directly, or write its own tools against this contract. Capability packs that adapt other
+libraries, such as document extraction and speech, into guarded agent tools are planned.
 
 ## Path Policy
 
@@ -144,6 +161,20 @@ refused. Symbolic links and other reparse points are not followed and not detect
 deliberate exception: `file_delete_directory` and `file_move_directory` refuse a path they are
 asked to reach *through* a link that leaves the permitted location, because there the content at
 stake is a whole tree rather than a single entry.
+
+**The policy is a guardrail, not a sandbox.** A tool cannot express an operation the policy
+forbids, but AgentKit does not replace operating-system isolation for untrusted code, and because
+path resolution is lexical, a link is not a general protection boundary. The link refusal of the
+two destructive directory tools is a **pre-flight check over paths**: the path a caller names is
+classified, and the recursive delete additionally refuses any link its walk discovers, both before
+anything is touched. It is not a race-resistant control. A process able to write inside a granted
+location can replace a component after the check, and no path-based API can close that window,
+though no removal these tools issue follows a link, so what a race costs is bounded by a single
+entry rather than a tree.
+
+**A directory request is judged at every level it would create.** `file_create_directory` asks the
+write decision about every missing directory it would create, not only the one named, so a request
+whose missing parents would reach above every grant is refused with nothing created.
 
 **Denied patterns reach the whole tree a directory operation touches.** A grant's denied patterns
 exclude names inside a permitted location, and a recursive removal or a directory move reaches
@@ -907,7 +938,9 @@ can run on an AgentKit compacting session exactly as an `IChatClient` one does �
 `CopilotProviderSessionFactory` and `CopilotSummarizer`, and *Sessions* below. Every session they
 create is confined exactly as an agent's is. `CopilotProviderSessionFactory` accepts the same
 optional `workingDirectory`; `CopilotSummarizer` takes none, because a consolidation session is
-tool-free.
+tool-free. Because Copilot compacts its own sessions by default, at a threshold barely above the one
+AgentKit rotates at, every session AgentKit drives is created with the runtime's compaction threshold
+raised clear of that rotation point, so the two compactors never act on one conversation.
 
 Copilot differs from the `IChatClient` family in two ways worth knowing. It reports **both** its
 occupancy and its context window with every turn, so you never state a window; and because its
