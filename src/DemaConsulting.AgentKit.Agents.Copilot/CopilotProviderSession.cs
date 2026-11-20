@@ -413,9 +413,11 @@ public sealed class CopilotProviderSession : IProviderSession
             + "rewound it - and AgentKit's session engine believes it owns that history. The engine's "
             + "transcript and the conversation the runtime holds have diverged, and this session cannot "
             + "be used further. The session was created with the runtime's compaction threshold raised "
-            + "well above the point the engine rotates at, so a compaction or truncation means the "
-            + "conversation grew past the engine's own rotation without rotating - most likely one turn "
-            + "returning far more material than a turn usually does.");
+            + "well above the point the engine rotates at, so the runtime is not expected to reshape the "
+            + "conversation on its own. A compaction or truncation most often means one turn returned far "
+            + "more material than usual and carried the conversation past the engine's rotation point in "
+            + "a single step; a cleared context or a rewound snapshot is an operation on the session "
+            + "itself rather than growth, so look for whatever acted on the session outside the engine.");
     }
 
     /// <summary>

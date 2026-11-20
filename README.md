@@ -204,8 +204,9 @@ var dataDirectory = Path.Combine(
 
 await using var client = new CopilotClient(new CopilotClientOptions
 {
-    // Empty mode opts out of every ambient runtime feature: plugins, skills, custom instructions
-    // and host environment context.
+    // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the runtime's
+    // own defaults off and its state in that directory, and AgentKit closes the ambient channels -
+    // plugins, MCP servers, skills, custom instructions, host environment context - on every session.
     Mode = CopilotClientMode.Empty,
     Runtime = RuntimeConnection.ForInProcess(baseDirectory: dataDirectory),
 
@@ -223,6 +224,14 @@ var agent = CopilotAgentFactory.Create(
     instructions: "You are a document assistant. Use the tools provided.",
     workingDirectory: "/workspace");
 ```
+
+AgentKit requires Empty mode on a data directory the host owns, and cannot detect it: the SDK offers
+no way to read a client's mode back. So it relies on the mode for nothing that reaches the model. It
+closes the runtime's ambient channels on every session itself — including every MCP server the
+runtime would start and the session's installed plugins — and refuses a session in which an MCP
+server cannot be closed. A client in another mode, or on a shared data directory, can still bring
+host-side behavior no session option reaches, such as user-level hooks or keychain credential
+storage.
 
 In-process hosting has no client-level working directory, so the session working directory is
 passed to `CopilotAgentFactory.Create`, or to `CopilotProviderSessionFactory` for a compacting

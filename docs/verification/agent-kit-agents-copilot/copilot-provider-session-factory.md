@@ -129,26 +129,27 @@ this configuration is at the system level.
 
 - `CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage`
 - `CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly`
-- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage`
+- `CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent`
 - `CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord`
 - `CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord`
 
 The first seeds from the shape a rotation actually produces — a consolidated record, a user message
 and an answer — and asserts the **entire** composed preamble as one exact string: the fixed opening
 line, each entry rendered to its transcript line in order, and the fixed closing line. It also
-asserts the configuration's system message is **equal to** the application's instructions — not that
-it contains them — so no copy of the record is left behind in the channel the engine charges as
+asserts the configuration's system-message content is **equal to** the application's instructions —
+not that it contains them — so no copy of the record is left behind in the channel the engine charges as
 overhead. Equality is what makes that half meaningful: a containment check would pass against an
 implementation that appended the record after the instructions, which is precisely the design this
 one replaced.
 
 The next three are the boundaries. A seed with no history composes no record at all, so the first
 message of such a session is sent exactly as the caller wrote it and no record claims a conversation
-that never happened. A seed with neither instructions nor history carries no system message at all. A
+that never happened. A seed with neither instructions nor history carries no system-message content at
+all. A
 seed with history but no instructions still composes the record — an application that configures no
 instructions still rotates, and a rotation that dropped the history there would silently restart the
-conversation — while its configuration carries no system message, which is the same assertion from
-the other side.
+conversation — while its configuration carries no system-message content, which is the same
+assertion from the other side.
 
 The last is the scenario the rendering was chosen for. It seeds a tool call and its result and
 asserts both survive as labeled lines carrying their shared identifier. The defect it guards against

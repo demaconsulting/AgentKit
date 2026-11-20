@@ -48,6 +48,7 @@ sections:
           - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionEvents
+          - AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl
           - AgentKit-OTS-MicrosoftAgentsAIAbstractions-AIAgent
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools

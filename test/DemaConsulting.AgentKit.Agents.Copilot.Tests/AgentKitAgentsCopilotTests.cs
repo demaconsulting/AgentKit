@@ -395,6 +395,67 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves every session the package opens on a real client — an engine session and an
+    ///     agent's — has every ambient MCP server closed: a server the runtime discovers, a
+    ///     non-GitHub one included, is disabled before the session is created; the session's
+    ///     installed plugins are cleared; and a session in which a server stays enabled is refused
+    ///     and abandoned rather than handed to the model.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed()
+    {
+        // Arrange: the configurations an engine session and an agent session are created from
+        SessionOptionsBase[] configs =
+        [
+            CopilotAgentFactory.BuildEngineSessionConfig([MakeTool("doc_read")], instructions: null, model: null),
+            CopilotAgentFactory.BuildSessionConfig([MakeTool("doc_read")], instructions: null, onPermissionRequest: null),
+        ];
+
+        foreach (var config in configs)
+        {
+            var steps = new List<string>();
+            List<string>? disabledAtOpen = null;
+
+            // Act: open through the production protocol, with a runtime that discovers a
+            // non-GitHub server and then keeps it enabled however often it is disabled
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotSessionChannel.OpenConfinedAsync(
+                config,
+                _ => Task.FromResult<IEnumerable<string>>(["docs-search"]),
+                _ =>
+                {
+                    disabledAtOpen = [.. config.Mcp.DisabledServers!];
+                    return Task.FromResult("session-1");
+                },
+                (_, token) => CopilotSessionChannel.SealAsync(
+                    _ =>
+                    {
+                        steps.Add("clear-plugins");
+                        return Task.CompletedTask;
+                    },
+                    _ => Task.FromResult<IList<McpConfiguredServer>>(
+                        [new McpConfiguredServer { Name = "docs-search", Enabled = true }]),
+                    (name, _) =>
+                    {
+                        steps.Add($"disable:{name}");
+                        return Task.CompletedTask;
+                    },
+                    token),
+                _ =>
+                {
+                    steps.Add("abandon");
+                    return ValueTask.CompletedTask;
+                },
+                TestContext.Current.CancellationToken));
+
+            // Assert: named before creation, plugins cleared, disabled, and the session refused
+            Assert.Contains("docs-search", disabledAtOpen!);
+            Assert.Contains(CopilotAgentFactory.BuiltInGitHubMcpServer, disabledAtOpen!);
+            Assert.Equal(["clear-plugins", "disable:docs-search", "abandon"], steps);
+            Assert.Contains("'docs-search'", failure.Message, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     ///     Builds a scripted turn that answers and reports the runtime's occupancy.
     /// </summary>
     /// <param name="answer">The answer the turn produces.</param>

@@ -53,14 +53,14 @@ sections:
               a conversation happened when none had.
 
               Where the record does not go follows from this rule rather than standing as a promise of
-              its own: it is composed for the first message, so the system message carries the
+              its own: it is composed for the first message, so the system message's content is the
               application's instructions alone. That was once a separate requirement and was deleted
               deliberately — it stated internal placement rather than behavior an application can act
               on — and the tests listed here assert it by equality.
             tests:
               - CopilotProviderSessionFactory_Seed_CarriesHistoryOnTheFirstMessageNotTheSystemMessage
               - CopilotProviderSessionFactory_BuildSessionConfig_SeedWithoutHistory_CarriesInstructionsOnly
-              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage
+              - CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent
               - CopilotProviderSessionFactory_Preamble_HistoryWithoutInstructions_CarriesTheRecord
               - CopilotProviderSessionFactory_Preamble_SeededToolResult_IsRenderedAsALabeledRecord
 

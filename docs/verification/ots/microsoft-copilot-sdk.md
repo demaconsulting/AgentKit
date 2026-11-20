@@ -9,7 +9,7 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
 - the session options shared by session creation and resumption, which carry the session's tool
   definitions, the source-qualified available-tools allow-list, a switch for every channel of
   runtime-injected capability, the permission mode and handler, the event handler and the streaming
-  switch, the model, the working directory and the system message;
+  switch, the model, the working directory and the system message with its section overrides;
 - the permission RPC, the permission-request hierarchy and the permission-decision type in which the
   default permission handler is expressed;
 - the session lifecycle: create a session from options, resume a session by its identifier under new
@@ -19,7 +19,11 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
 - the session event stream, which carries token usage against a limit, tool executions and their
   outcomes, assistant messages and their streamed deltas, per-request usage, session errors, and the
   runtime's own compaction, truncation, context clearing and snapshot rewind, each attributed to the
-  agent that produced it.
+  agent that produced it;
+- MCP and plugin control: discovery of the MCP servers a runtime would start, per-session disabling of
+  named servers at creation and on a live session, a listing of a session's effective MCP
+  configuration with each server's enablement, and a session-options patch replacing the session's
+  installed plugins.
 
 ### Verification Approach
 
@@ -43,7 +47,8 @@ credential.
 AgentKit relies on.** It drives the real SDK against the real Copilot runtime and a real model:
 the tools a confined session exposes, the names the runtime reserves for its built-ins, the
 permission requests the handler is asked, inline delivery of large and image tool results, a
-rotation on the runtime's own usage, and an agent's streaming, resumption and attachments. It never
+rotation on the runtime's own usage, an agent's streaming, resumption and attachments, and the
+closing of an ambient MCP server on a client in CodingAgent mode. It never
 runs in the pipeline that builds the trace matrix, so none of its tests is linked to a requirement
 below. Its scenarios, gating, evidence location and recorded results are described in
 *AgentKitAgentsCopilot System Verification Design*.
@@ -93,6 +98,16 @@ model and working directory.
 **Expected**: The resumption options carry the same allow-list, tool definitions, withheld channels,
 model, working directory and system message, and a default-deny handler that rejects a built-in
 request. This shows the shared options base carries every setting AgentKit needs on both paths.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`.
+
+#### CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved
+
+**Scenario**: Options are built for a created agent session, a resumed agent session and an engine
+session, each with and without instructions.
+
+**Expected**: Each carries a system message in customize mode whose section overrides remove the host
+environment context section, with the instructions, or nothing, as its content.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`.
 
@@ -199,19 +214,59 @@ observer each.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-SessionEvents`.
 
+#### CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
+
+**Scenario**: The SDK's configured-server type reports a non-GitHub server enabled on a session's
+first listing and disabled on the second.
+
+**Expected**: Only that server is disabled, the configuration is listed again, and the session is
+accepted. This shows the SDK's listing type carries the name and enablement the seal acts on.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`.
+
+#### CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
+
+**Scenario**: The SDK's configured-server type keeps reporting a server enabled after it was disabled.
+
+**Expected**: The session is refused with an error naming the server.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`.
+
+#### CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne
+
+**Scenario**: The plugin patch the seal sends is built.
+
+**Expected**: The SDK's plugin-options type carries an empty installed list rather than none, which
+would be omitted from the patch.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`.
+
+#### AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed
+
+**Scenario**: The factory's engine and agent options are opened through the package's confining
+protocol with a discovery reporting a non-GitHub server and a listing that keeps it enabled.
+
+**Expected**: The server is on the options' disabled servers when the session is opened, the
+installed plugins are cleared, the server is disabled, and the session is refused and abandoned.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`.
+
 ### Requirements Coverage
 
 The lifecycle entries are qualified, and the qualification is part of the evidence rather than a
 footnote to it: the SDK's session and client types cannot be constructed in a test, so those
 scenarios exercise the lifecycle only through AgentKit's own seam. They show AgentKit uses these SDK
 features correctly; that the SDK and its runtime implement them is shown by the live Copilot suite,
-which is supplementary evidence and is not traced.
+which is supplementary evidence and is not traced. The MCP and plugin control entries are qualified
+the same way: the calls reach the runtime, so the offline tests drive AgentKit's policy over the
+SDK's own result and patch types, and the live suite shows the runtime honors the calls.
 
 - **`AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`**:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools,
   CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld,
   CopilotAgentFactory_BuildSessionConfig_PermissionMode_IsPinnedToManual,
-  CopilotAgentFactory_BuildResumeSessionConfig_DerivesTheSameConfinement
+  CopilotAgentFactory_BuildResumeSessionConfig_DerivesTheSameConfinement,
+  CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved
 - **`AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc`**:
   AgentKitAgentsCopilot_DefaultPermissionHandler_SuppliedTool_IsApproved,
   AgentKitAgentsCopilot_DefaultPermissionHandler_UnlistedCustomTool_IsRejected,
@@ -227,6 +282,11 @@ which is supplementary evidence and is not traced.
   CopilotAgent_RunStreaming_TextDeltas_AreStreamedAsTextContent,
   CopilotAgent_RunStreaming_AssistantUsage_IsStreamedAsUsageContent,
   CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten
+- **`AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`** _(evidence above the runtime only)_:
+  CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified,
+  CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt,
+  CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne,
+  AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed
 
 The live suite's supplementary evidence for the same functionality, by scenario:
 
@@ -243,3 +303,5 @@ The live suite's supplementary evidence for the same functionality, by scenario:
 - **Session events**: `AgentKitAgentsCopilotLive_Agent_Streams_TextDeltas`,
   `AgentKitAgentsCopilotLive_ImageDelivery_ImageReadResult_ReachesTheModel`,
   `AgentKitAgentsCopilotLive_Usage_RotationOnTheRuntimesUsage_PreservesTheCodeword`
+- **MCP and plugin control**: `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled`,
+  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled`

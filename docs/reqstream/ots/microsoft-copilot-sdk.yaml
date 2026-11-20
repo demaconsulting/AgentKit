@@ -14,7 +14,7 @@ sections:
               resumption, carrying the session's tool definitions, a source-qualified available-tools
               allow-list, a switch for every channel of runtime-injected capability, the permission
               mode and handler, the event handler and streaming switch, the model, the working
-              directory and the system message.
+              directory and the system message with its section overrides.
             justification: |
               Every guarantee the Copilot package makes is expressed in these options: the published
               tools and the allow-list that suppresses the runtime's built-ins, the closed channels of
@@ -29,6 +29,7 @@ sections:
               - CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld
               - CopilotAgentFactory_BuildSessionConfig_PermissionMode_IsPinnedToManual
               - CopilotAgentFactory_BuildResumeSessionConfig_DerivesTheSameConfinement
+              - CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved
 
           - id: AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
             title: >-
@@ -96,3 +97,28 @@ sections:
               - CopilotAgent_RunStreaming_TextDeltas_AreStreamedAsTextContent
               - CopilotAgent_RunStreaming_AssistantUsage_IsStreamedAsUsageContent
               - CopilotSessionObserver_OnEvent_ContextClearedOrRewound_MarksHistoryRewritten
+
+          - id: AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl
+            title: >-
+              Microsoft.Copilot.SDK shall provide discovery of the MCP servers a runtime would start,
+              per-session disabling of named servers at creation and on a live session, a listing of a
+              session's effective MCP configuration with each server's enablement, and a
+              session-options patch replacing the session's installed plugins.
+            justification: |
+              The package closes every ambient MCP server and the session's installed plugins on
+              every session, whatever the client's mode, and these are the only public calls that
+              reach them: discovery supplies the exact names the session options require, the
+              disabled-server option keeps a named server from starting, the live listing reports
+              every source including those discovery does not cover, the session-scoped disable
+              closes a server without touching the user's persistent configuration, and the options
+              patch is the call the SDK's own Empty mode makes to clear installed plugins. They are
+              marked for evaluation by the SDK, so a change to them is caught by the opt-in live
+              suite, whose ambient-server scenario configures a non-GitHub server on a CodingAgent
+              client and shows the runtime honors these calls. AgentKit's tests construct the SDK's
+              configured-server and plugin-patch types and drive the package's own policy over them.
+            tags: [ots]
+            tests:
+              - CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
+              - CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
+              - CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne
+              - AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed

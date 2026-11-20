@@ -31,9 +31,12 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <see cref="CopilotProviderSessionFactory"/> and <see cref="CopilotSummarizer"/> — go through
 ///     <see cref="BuildEngineSessionConfig"/>. All of them end in <see cref="ApplyConfinement"/>, which is
 ///     the single site where the allow-list is derived, every channel of runtime-injected
-///     capability is closed, and the default-safe permission handler is installed. A second builder
-///     with its own derivation is precisely the drift this arrangement exists to prevent, so there
-///     is not one.
+///     capability a session's options can reach is closed, and the default-safe permission
+///     handler is installed. A second builder with its own derivation is precisely the drift this
+///     arrangement exists to prevent, so there is not one. The half of the confinement that needs
+///     the live client and session — closing every ambient MCP server and clearing the session's
+///     installed plugins — is applied by <see cref="CopilotSessionChannel"/>, on the one path
+///     every production opener and resumer shares.
 ///     </para>
 ///     <para>
 ///     <b>The two paths differ in exactly one respect, deliberately.</b>
@@ -68,12 +71,20 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     ever disposes it. The rule is unambiguous: <em>whoever created the client disposes it</em>.
 ///     </para>
 ///     <para>
-///     <b>The host chooses the client's mode; <c>CopilotClientMode.Empty</c> is recommended.</b>
-///     AgentKit cannot read the mode back from a client, so every opt-out this package depends on
-///     is set explicitly on each session rather than inherited from the mode. Empty mode adds
-///     protections that exist only at the client level — no installed plugins, and no host
-///     environment context in the system prompt — so a host that wants the narrowest agent chooses
-///     it.
+///     <b>Client precondition: <c>CopilotClientMode.Empty</c> on a data directory the host
+///     owns.</b> The integration requires it, and AgentKit cannot enforce it: the SDK exposes no
+///     way to read a client's mode back. AgentKit therefore does not rely on the mode for anything
+///     that reaches the model. On every session, whatever the client's mode, it closes every
+///     channel a session can reach: the custom allow-list and the pinned default-deny permission
+///     handling; every runtime option channel — skills, custom instructions, hooks, memory,
+///     sub-agents, git operations, extensions, the cross-session store; the host environment
+///     context in the system prompt; experimental features; embedding retrieval; the session's
+///     installed plugins; and every MCP server, disabled and then verified, with the session
+///     refused if one stays enabled. What a client that violates the precondition can still add
+///     is host-side behavior no session option reaches: settings in a shared data directory such
+///     as user-level hooks, credential storage in the system keychain rather than the data
+///     directory, telemetry and runtime file logging, and anything the host attaches at client
+///     level, such as plugin directories or extensions. Those are the host's to control.
 ///     </para>
 ///     <para>
 ///     <b>No image-promoting decorator.</b> Unlike the <c>IChatClient</c> adapter, this factory
@@ -171,11 +182,18 @@ public static class CopilotAgentFactory
     ///     earlier would shift <paramref name="onPermissionRequest"/> and <paramref name="name"/>
     ///     and break source compatibility for a released public API; a slightly awkward position is
     ///     the cheaper price.
+    ///     <para>
+    ///     A run of the agent fails with an <see cref="InvalidOperationException"/> naming the server
+    ///     when the runtime keeps an MCP server enabled for the run's session after AgentKit disabled
+    ///     it: the session is refused rather than handed to the model with that server available.
+    ///     </para>
     /// </remarks>
     /// <param name="client">
     ///     The Copilot client the agent runs on. Must not be <see langword="null"/>. The host owns
     ///     the client: it constructs, starts, and disposes it, and nothing this factory builds ever
-    ///     disposes it.
+    ///     disposes it. Must be in <c>CopilotClientMode.Empty</c> on a data directory the host
+    ///     owns — a precondition AgentKit cannot detect; see the remarks on this class. A client not yet
+    ///     started is started by the agent's first run, through <see cref="CopilotClientStarter"/>.
     /// </param>
     /// <param name="tools">
     ///     The tools the agent may call. Must not be <see langword="null"/> or empty, must contain
@@ -250,8 +268,9 @@ public static class CopilotAgentFactory
     ///                 .Build()
     ///         ];
     ///
-    ///         // The host owns the client: it constructs, starts, and disposes it. Empty mode opts out
-    ///         // of every ambient runtime feature and requires a data directory of the host's choosing.
+    ///         // The host owns the client: it constructs, starts, and disposes it. The integration
+    ///         // requires Empty mode on a data directory the host owns; AgentKit closes the runtime's
+    ///         // ambient channels on every session itself.
     ///         var client = new CopilotClient(new CopilotClientOptions
     ///         {
     ///             Mode = CopilotClientMode.Empty,
@@ -599,7 +618,11 @@ public static class CopilotAgentFactory
     ///     rather than the package's safety guarantees, and kept in one place so every session this
     ///     package builds carries them identically. Each is assigned only when the host supplied a
     ///     value: leaving a property untouched is what preserves the runtime's own default for every
-    ///     caller that says nothing, so each parameter is purely additive.
+    ///     caller that says nothing, so each parameter is purely additive. The instructions are the
+    ///     content of the system message the confinement already configured, which the runtime
+    ///     appends to its own prompt; this method never replaces that message, so the confinement's
+    ///     removal of the host environment context survives every combination of settings. It must
+    ///     therefore run after <see cref="ApplyConfinement"/>.
     /// </remarks>
     /// <param name="config">The session being configured.</param>
     /// <param name="instructions">The system instructions, if any.</param>
@@ -623,11 +646,9 @@ public static class CopilotAgentFactory
 
         if (!string.IsNullOrWhiteSpace(instructions))
         {
-            config.SystemMessage = new SystemMessageConfig
-            {
-                Mode = SystemMessageMode.Append,
-                Content = instructions,
-            };
+            // The confinement already configured the system message to remove the runtime's host
+            // environment context; the instructions are its content, which the runtime appends.
+            config.SystemMessage!.Content = instructions;
         }
     }
 
@@ -679,8 +700,8 @@ public static class CopilotAgentFactory
         // The runtime's skills, instructions, hooks, memory, sub-agents, git context, MCP servers
         // and cross-session store are further channels of injected capability an untrained user
         // could not adjudicate; a confined agent receives only what its host attached. Set
-        // explicitly rather than relying on CopilotClientMode.Empty's defaults, because the host
-        // chooses the client's mode and AgentKit cannot read it back.
+        // explicitly on every session, so the confinement does not depend on the client's mode,
+        // which AgentKit cannot read.
         config.Skills.Enabled = false;
         config.Skills.IncludedBuiltinSkills = [];
         config.Instructions.SkipCustomInstructions = true;
@@ -694,6 +715,27 @@ public static class CopilotAgentFactory
         config.Extensions.Enabled = false;
         config.EnableConfigDiscovery = false;
 
+        // The runtime's environment context - working directory, OS, git root, a directory listing
+        // and the tool list - is removed from the system prompt. Empty mode removes it client-side;
+        // it is removed here so no session carries host environment detail whatever mode the host's
+        // client is in. For an Empty-mode client the wire payload is unchanged: the SDK promotes an
+        // appended message to exactly this shape. The host's instructions, if any, become this
+        // message's content in ApplySessionSettings, which the runtime appends in this mode too.
+        config.SystemMessage = new SystemMessageConfig
+        {
+            Mode = SystemMessageMode.Customize,
+            Sections = new Dictionary<SystemMessageSection, SectionOverride>
+            {
+                [SystemMessageSection.EnvironmentContext] = new SectionOverride { Action = SectionOverrideAction.Remove },
+            },
+        };
+
+        // Experimental features and embedding retrieval are further runtime channels: the first can
+        // add behavior the host never chose, the second retrieves context from a cache shared across
+        // sessions. Both are Empty-mode defaults, set here so they hold in any mode.
+        config.Experiments.EnableExperimentalMode = false;
+        config.State.SkipEmbeddingRetrieval = true;
+
         // Image generation is a further capability the runtime can offer a session, and is
         // switched off for the same reason: a confined agent receives only what its host attached.
         config.Tools.ImageGeneration = new ImageGenerationConfig { Enabled = false };
@@ -701,7 +743,14 @@ public static class CopilotAgentFactory
         // Measured against the live runtime: even in Empty mode it starts its built-in GitHub MCP
         // server for every session. The custom: allow-list keeps that server's tools out of reach,
         // but the server is still started and authenticated with the user's GitHub identity, so it
-        // is disabled outright rather than merely filtered.
+        // is disabled outright rather than merely filtered. Every other MCP server - from the data
+        // directory's configuration, the workspace, a plugin, the account or a managed catalog - is
+        // closed by the production channel, which needs the live client and session this builder
+        // does not have: it adds every server the runtime discovers to this list before the session
+        // is created, so none of those is started; then clears the session's installed plugins,
+        // disables any server still enabled (a source discovery does not report, such as the
+        // account's, can start before it is disabled), and refuses the session if one remains. See
+        // CopilotSessionChannel.
         config.Mcp.DisabledServers = [BuiltInGitHubMcpServer];
 
         // Every request goes to the handler. In the runtime's AllowAll mode tool, path and URL

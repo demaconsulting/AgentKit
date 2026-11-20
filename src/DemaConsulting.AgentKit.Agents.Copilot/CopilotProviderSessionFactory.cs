@@ -275,9 +275,11 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     attachment the runtime may omit is precisely the silent-divergence channel this must not
     ///     use. <c>ResumeSessionOptions</c> resumes <em>Copilot's own</em> stored history for an
     ///     existing session id, which would resurrect the history a rotation exists to discard. And
-    ///     <c>SystemMessageMode.Customize</c> writes into the runtime's own prompt sections, which
-    ///     replaces part of the runtime's system prompt and forks the single configuration path the
-    ///     safety argument depends on. A priming message sent on its own was rejected too, for
+    ///     carrying the record in a section of the runtime's own prompt, through the system message's
+    ///     section overrides, would place it in the system message, charged as overhead like any
+    ///     other system-message placement, and would split the system message between the
+    ///     confinement, which owns its section overrides, and this method. A priming message sent on
+    ///     its own was rejected too, for
     ///     costing a round trip and a billed answer per rotation — which is why the record is
     ///     prepended to a message the engine was already sending rather than sent by itself.
     ///     </para>

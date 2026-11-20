@@ -30,8 +30,11 @@ rejected for the same reason: switching the host to a spawned-process connection
 override the host's choice, and wrapping session-creation failures inside AgentKit would catch only a
 client started implicitly and would misattribute failures that have nothing to do with starting.
 
-**It is optional.** A host that starts the client itself loses only the diagnosis. The samples and
-the opt-in live suite start their clients through it.
+**It is optional.** A host that starts the client itself loses only the diagnosis of that start. A host
+that hands AgentKit a client it has not started gets the diagnosis anyway, because the production turn
+channel starts the client through this class before the first session; only the start is wrapped,
+never a session's creation, so no other failure is misattributed. The samples and the opt-in live suite
+start their clients through it.
 
 The class is static, holds no state, and is safe for concurrent use. It reads one environment
 variable, and only once a start has already failed.
@@ -114,4 +117,9 @@ is lost. The class handles nothing locally: every failure propagates, explained 
 
 A host application calls `CopilotClientStarter.StartAsync` once, after constructing its client and
 before handing it to `CopilotAgentFactory`, `CopilotProviderSessionFactory` or `CopilotSummarizer`.
-Nothing within this system calls it: the client is the host's to start.
+Within this system, the production turn channel calls it before every session it opens or resumes,
+because the client's RPC surface, which the channel uses to discover MCP servers, exists only once
+the client has started. On a started client the start returns at once; on one the host has not
+started, it starts the client exactly as a host would, so a runtime that cannot load is explained
+rather than surfacing as a bare runtime error. The client is still the host's to start, to own and
+to dispose; see *CopilotTurnChannel Unit Design*.

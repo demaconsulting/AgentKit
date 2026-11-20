@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Agents.AI;
 using Microsoft.Copilot;
@@ -26,6 +27,11 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 [Collection(CopilotLiveCollection.Name)]
 public sealed class CopilotLiveTests
 {
+    /// <summary>
+    ///     The name of the non-GitHub MCP server L12 configures in a client's data directory.
+    /// </summary>
+    private const string AmbientMcpProbe = "agentkit-ambient-probe";
+
     /// <summary>
     ///     How long one turn may take before the scenario gives up.
     /// </summary>
@@ -416,6 +422,73 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     L12a: an MCP server configured in the data directory of a client in CodingAgent mode — the
+    ///     mode the integration's precondition excludes, and in which the SDK supplies none of its
+    ///     Empty-mode defaults — is disabled on a session opened through the production channel, and
+    ///     the session exposes exactly the supplied tools.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled()
+    {
+        // Arrange: a CodingAgent client whose data directory configures a non-GitHub MCP server
+        _live.RequireOptIn();
+        await using var client = await StartAmbientMcpClientAsync("ambient-home-a");
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
+
+        // Act: open the session exactly as production opens one
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(client, config, TestContext.Current.CancellationToken);
+        try
+        {
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L12a configured: [{Describe(configured.Servers)}] disabled at creation: [{string.Join(", ", config.Mcp.DisabledServers ?? [])}]");
+            var metadata = await session.Rpc.Tools.GetCurrentMetadataAsync(TestContext.Current.CancellationToken);
+            var names = (metadata.Tools ?? []).Select(tool => tool.Name).ToList();
+            _live.Log($"L12a tools: [{string.Join(", ", names)}]");
+
+            // Assert: the probe was named before creation, no server is enabled, and the tool set is
+            // exactly the supplied tools
+            Assert.Contains(AmbientMcpProbe, config.Mcp.DisabledServers ?? []);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+            Assert.Equal(_live.ReadTools.Select(tool => tool.Name).Order(), names.Order());
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L12b: a control showing the channel's MCP closure is load-bearing — the same configuration
+    ///     handed to the runtime directly, bypassing the production channel, leaves the ambient
+    ///     server enabled.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled()
+    {
+        // Arrange
+        _live.RequireOptIn();
+        await using var client = await StartAmbientMcpClientAsync("ambient-home-b");
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
+
+        // Act: create the session on the client directly
+        var session = await client.CreateSessionAsync(config, TestContext.Current.CancellationToken);
+        try
+        {
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L12b configured: [{Describe(configured.Servers)}]");
+
+            // Assert: without the channel, the ambient server is enabled for the session
+            Assert.Contains(configured.Servers, server => server.Name == AmbientMcpProbe && server.Enabled);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
     ///     Builds an agent over the run's client, confined to the read tools and the sandbox.
     /// </summary>
     /// <returns>The agent.</returns>
@@ -427,6 +500,68 @@ public sealed class CopilotLiveTests
             name: "live-agent",
             model: _live.Model,
             workingDirectory: _live.Sandbox);
+
+    /// <summary>
+    ///     Starts a second client, in CodingAgent mode, whose data directory under the run's root
+    ///     configures one MCP server that is not GitHub's, and confirms the runtime discovers it.
+    /// </summary>
+    /// <remarks>
+    ///     The data directory is created under the run's root and never the user's own Copilot home,
+    ///     and the server's command names a file that does not exist, so nothing runs even if the
+    ///     runtime starts it. The client is spawned out of process rather than hosted in-process
+    ///     beside the run's own client. Discovery finding the server is the control that keeps L12a
+    ///     from passing vacuously on a fixture the runtime ignores.
+    /// </remarks>
+    /// <param name="name">The data directory's folder name under the run's root.</param>
+    /// <returns>The started client. The caller disposes it.</returns>
+    private async Task<CopilotClient> StartAmbientMcpClientAsync(string name)
+    {
+        var home = Path.Combine(_live.Root, name);
+        Assert.StartsWith(_live.Root, home, StringComparison.Ordinal);
+        Directory.CreateDirectory(home);
+        var server = new Dictionary<string, object>
+        {
+            ["type"] = "local",
+            ["command"] = Path.Combine(_live.Root, "no-such-server", "server.exe"),
+            ["args"] = Array.Empty<string>(),
+            ["tools"] = new[] { "*" },
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "mcp-config.json"),
+            JsonSerializer.Serialize(new Dictionary<string, object>
+            {
+                ["mcpServers"] = new Dictionary<string, object> { [AmbientMcpProbe] = server },
+            }),
+            TestContext.Current.CancellationToken);
+
+        var client = new CopilotClient(new CopilotClientOptions
+        {
+            Mode = CopilotClientMode.CodingAgent,
+            Runtime = RuntimeConnection.ForSpawnedStdio(baseDirectory: home),
+            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
+        });
+        try
+        {
+            await CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken);
+            var discovered = await client.Rpc.Mcp.DiscoverAsync(_live.Sandbox, cancellationToken: TestContext.Current.CancellationToken);
+            _live.Log($"L12 discovered on {name}: [{string.Join(", ", discovered.Servers.Select(server => $"{server.Name}({server.Source},enabled={server.Enabled})"))}]");
+            Assert.Contains(discovered.Servers, server => server.Name == AmbientMcpProbe);
+            return client;
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Describes a session's effective MCP configuration for the log.
+    /// </summary>
+    /// <param name="servers">The configured servers.</param>
+    /// <returns>One entry per server: its name, source and enablement.</returns>
+    private static string Describe(IEnumerable<McpConfiguredServer> servers) =>
+        string.Join(", ", servers.Select(server => $"{server.Name}({server.Source},enabled={server.Enabled})"));
 
     /// <summary>
     ///     Deletes an agent conversation's persisted runtime session, as a host that is finished with

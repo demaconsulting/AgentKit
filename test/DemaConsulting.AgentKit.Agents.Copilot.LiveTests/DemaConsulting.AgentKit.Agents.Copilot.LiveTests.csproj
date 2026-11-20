@@ -32,9 +32,9 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
-    <!-- The Copilot SDK marks its permission-decision RPC surface with the MCPSDK001
-         "evaluation purposes only" diagnostic. These tests exercise that surface directly, so the
-         diagnostic is suppressed for this test project. -->
+    <!-- The Copilot SDK marks its permission-decision RPC surface, and its MCP discovery and
+         configuration RPC surface, with the MCPSDK001 "evaluation purposes only" diagnostic. These
+         tests exercise that surface directly, so the diagnostic is suppressed for this test project. -->
     <NoWarn>$(NoWarn);MCPSDK001</NoWarn>
   </PropertyGroup>
 

@@ -317,6 +317,12 @@ public class CopilotProviderSessionTests
         // Assert: each refusal names the kinds of rewrite, including the one that happened
         Assert.Contains("cleared", clearedError.Message, StringComparison.Ordinal);
         Assert.Contains("rewound", rewoundError.Message, StringComparison.Ordinal);
+
+        // Assert: neither refusal attributes a clear or a rewind to the conversation's growth, which
+        // would send a host looking for the wrong cause
+        Assert.DoesNotContain("grew past", clearedError.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("grew past", rewoundError.Message, StringComparison.Ordinal);
+        Assert.Contains("rather than growth", clearedError.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

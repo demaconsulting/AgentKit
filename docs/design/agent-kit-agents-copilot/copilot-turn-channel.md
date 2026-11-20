@@ -4,7 +4,8 @@
 
 The `CopilotTurnChannel` unit is the seam over the GitHub Copilot SDK's sealed session types: an
 interface, the two delegates that open one — by creating a session or by resuming a recorded one —
-and the production implementation that wraps a real session.
+and the production implementation that wraps a real session and opens every session through the
+runtime half of the confinement.
 
 ### Purpose
 
@@ -17,9 +18,38 @@ refusals, the agent's streaming and resumption, the ownership discipline — wou
 automated evidence at all, on the one provider the project can otherwise reach.
 
 **It is one small interface, on purpose.** Everything worth testing lives *above* this line;
-everything below it is `CopilotSessionChannel`, a pass-through that forwards one call and owns one
-release. That is the smallest surface that makes the rest reachable, and it is the same reasoning that
-made `CopilotAgentFactory.BuildSessionConfig` internal.
+everything below it is `CopilotSessionChannel`, which forwards one turn, owns one release and opens
+each session through one confining protocol, with the decisions of the last two factored into
+methods the tests reach through delegates. That is the smallest surface that makes the rest
+reachable, and it is the same reasoning that made `CopilotAgentFactory.BuildSessionConfig` internal.
+
+**Every production session is opened through one confining protocol.** `CopilotAgentFactory` closes
+every channel a session's options can reach; some channels can be closed only with the live client
+and session, so the production channel closes them, on the one path `Open`, `OpenRetained` and
+`Resume` share:
+
+1. **Discover and disable.** The runtime is asked which MCP servers it would start for the session's
+   working directory — from the data directory's configuration, the workspace, installed plugins and
+   its built-in servers — and every name is added to the session's disabled servers. The SDK
+   documents a server named there as not started or authenticated on creation or cold resumption, so
+   none of them starts. The session options take exact names only, which is why the names come from
+   the runtime.
+2. **Open.** The session is created or resumed from the updated options.
+3. **Seal.** The session's installed plugins — which can contribute MCP servers, hooks, skills and
+   agents — are replaced with none, the call Empty mode itself makes after every create and resume,
+   made here so it holds in any mode. The session's effective MCP configuration, which covers every
+   source including the account and managed sources discovery does not document, is listed; every
+   server still enabled is disabled for this session only, never in the user's persistent
+   configuration; and the configuration is listed again.
+4. **Fail closed.** A server the runtime keeps enabled refuses the session with an
+   `InvalidOperationException` naming it. A session that cannot be sealed for any reason is
+   abandoned before the failure propagates: a created session, which nothing has recorded, is
+   released and deleted; a resumed session is only released, because refusing to continue a
+   conversation must not destroy it.
+
+A server from a source discovery does not report may start before step 3 disables it. The allow-list
+already keeps its tools from the model, no turn runs before the seal, and a server that cannot be
+closed refuses the session.
 
 **What it deliberately does not do.** It exposes no event subscription and no configuration. A
 session's event handler and every other setting are reached through the session options at creation
@@ -78,9 +108,11 @@ a channel that **deletes** the session on release. Produced once per factory rat
 so the client reference is captured in exactly one place and every session a rotation creates
 demonstrably runs on the same client the host started.
 
-**Preconditions:** `client` is not null and has been started.
+**Preconditions:** `client` is not null. A client not yet started is started on the first creation,
+through `CopilotClientStarter`.
 
-**Postconditions:** An opener over that client.
+**Postconditions:** An opener over that client; every session it creates went through
+`CreateConfinedSessionAsync`.
 
 #### OpenRetained(CopilotClient client)
 
@@ -89,20 +121,99 @@ demonstrably runs on the same client the host started.
 **Algorithm:** As `Open`, but the channel **keeps** the session on release, so the conversation can be
 resumed by `Resume` until the host deletes it.
 
-**Preconditions:** `client` is not null and has been started.
+**Preconditions:** `client` is not null. A client not yet started is started on the first creation.
 
-**Postconditions:** An opener over that client.
+**Postconditions:** An opener over that client; every session it creates went through
+`CreateConfinedSessionAsync`.
 
 #### Resume(CopilotClient client)
 
 **Purpose:** Produce the resumer an agent reopens a recorded session through on every later run.
 
 **Algorithm:** Return a delegate that resumes the session with the given identifier and options on
-`client` and wraps it in a channel that **keeps** the session on release.
+`client` through `ResumeConfinedSessionAsync` and wraps it in a channel that **keeps** the session on
+release.
 
-**Preconditions:** `client` is not null and has been started; the runtime still holds the session.
+**Preconditions:** `client` is not null; the runtime still holds the session. A client not yet started is
+started on the first resumption.
 
-**Postconditions:** A resumer over that client.
+**Postconditions:** A resumer over that client; a session it could not seal is released and kept,
+never deleted.
+
+#### CreateConfinedSessionAsync(CopilotClient client, CreateSessionOptions config, CancellationToken cancellationToken)
+
+**Purpose:** Create a session through the confining protocol: the one path every production opener
+shares, and the path the opt-in live suite uses to inspect a session opened exactly as production
+opens one.
+
+**Algorithm:** `OpenConfinedAsync` with discovery on `client` for the options' working directory, the
+client's session creation, the live seal, and, as the abandon step, `ReleaseAsync` with the handle's
+release and the client's deletion of the session.
+
+**Preconditions:** `client` and `config` are not null.
+
+**Postconditions:** A sealed session the caller owns, or an exception with no session left behind.
+
+#### ResumeConfinedSessionAsync(CopilotClient client, string sessionId, ResumeSessionOptions config, CancellationToken cancellationToken)
+
+**Purpose:** Resume a session through the confining protocol.
+
+**Algorithm:** As `CreateConfinedSessionAsync`, resuming rather than creating, with `ReleaseAsync` of
+the handle alone as the abandon step.
+
+**Preconditions:** `client`, `sessionId` and `config` are not null.
+
+**Postconditions:** A sealed session the caller owns, or an exception with the conversation kept.
+
+#### OpenConfinedAsync&lt;TSession&gt;(SessionOptionsBase config, discover, open, seal, abandon, CancellationToken cancellationToken)
+
+**Purpose:** The opening protocol's order and failure handling, factored out with the runtime's steps
+as delegates so it can be tested without a live session.
+
+**Algorithm:** Await `discover` and pass its names to `DisableMcpServers` on `config`; await `open`;
+await `seal` on the opened session. If `seal` throws, await `abandon` on the session and rethrow.
+Return the session.
+
+**Preconditions:** All arguments are not null; `abandon` does not throw.
+
+**Postconditions:** A sealed session; or, when discovery failed, nothing opened; or, when the seal
+failed, the session abandoned and the seal's exception propagated.
+
+#### SealAsync(clearInstalledPlugins, listConfigured, disable, CancellationToken cancellationToken)
+
+**Purpose:** The sealing policy, with the session's RPC calls supplied as delegates.
+
+**Algorithm:** Await `clearInstalledPlugins`. List the configured servers and await `disable` for each
+one reported enabled. List again; if any server is still enabled, throw an
+`InvalidOperationException` naming each one and the remedy.
+
+**Preconditions:** All arguments are not null.
+
+**Postconditions:** No configured MCP server is reported enabled, or an exception naming those that
+are.
+
+#### DisableMcpServers(SessionOptionsBase config, IEnumerable&lt;string&gt; names)
+
+**Purpose:** Add discovered server names to a session's disabled servers.
+
+**Algorithm:** Replace `config.Mcp.DisabledServers` with its existing entries followed by every
+non-blank name, without duplicates under an ordinal comparison, so the factory's entry for the
+built-in GitHub server is kept once.
+
+**Preconditions:** `config` and `names` are not null.
+
+**Postconditions:** Every non-blank name is disabled on `config`.
+
+#### CreateNoInstalledPluginsPatch()
+
+**Purpose:** Build the session-options patch that replaces a session's installed plugins with none.
+
+**Algorithm:** Return a plugin patch whose installed list is empty — not null, because an unset list
+is omitted from the patch, which the runtime reads as no change.
+
+**Preconditions:** None.
+
+**Postconditions:** A patch carrying an empty installed-plugin list.
 
 #### SendAndWaitAsync(MessageOptions message, CancellationToken cancellationToken)
 
@@ -173,9 +284,17 @@ recoverable disk state.
 | --- | --- |
 | Turn canceled by the caller | `OperationCanceledException` propagates |
 | Runtime failure during a turn | Propagates to the provider session, summarizer or agent |
+| Starting the client fails while opening | Explained by `CopilotClientStarter`; nothing opened |
+| MCP discovery fails | Propagates from the opener or resumer; nothing opened |
 | Creating or resuming a session fails | Propagates from the opener or resumer; nothing to release |
+| The seal fails | Session abandoned (see below); the failure propagates |
+| An MCP server stays enabled after it was disabled | `InvalidOperationException` naming it; abandoned |
 | Session release fails in transit | Swallowed; the handle is abandoned either way |
 | Session deletion fails on release | Swallowed; the handle is already released |
+
+A seal fails when the runtime refuses the plugins patch, the listing or a disable, or when a server
+stays enabled. The session is then abandoned before the failure propagates: a created session is
+released and deleted, a resumed one only released, so a conversation is never destroyed.
 
 Both swallowed failures are discarded for the reason `CompactingAgentSession` discards a failed
 release during a rotation: by that point the operation the caller asked for has already succeeded,
@@ -186,8 +305,12 @@ discards an error — everywhere the system cannot know something it needs, it r
 ### Dependencies
 
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CopilotSession`, `CreateSessionOptions`,
-  `ResumeSessionOptions`, `MessageOptions` and the assistant-message event; see
+  `ResumeSessionOptions`, `MessageOptions` and the assistant-message event, and the RPC surfaces the
+  opening protocol uses: the client's MCP discovery, the session's options patch with its plugin
+  options, and the session's MCP configuration listing and disable; see
   *Microsoft.Copilot.SDK Design*.
+- **CopilotClientStarter** — starts the client before discovery, so a runtime that cannot load is
+  explained; see *CopilotClientStarter*.
 
 ### Callers
 

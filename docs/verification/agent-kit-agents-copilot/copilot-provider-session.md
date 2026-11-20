@@ -179,7 +179,10 @@ start seeding replacements from a history the provider had discarded.
 The second scripts one session whose runtime clears the context window and one whose runtime rewinds
 to a snapshot, each then answering normally. It asserts both turns are refused and that each message
 names the rewrite that happened — cleared, or rewound — rather than only compaction and truncation,
-so the diagnostic states the actual cause.
+and that neither attributes a clear or a rewind to the conversation's growth: the explanation is
+generic across the four kinds, saying growth is the usual cause only of a compaction or truncation
+and that a clear or a rewind is an operation on the session itself, so the diagnostic does not send
+a host looking for the wrong cause.
 
 The third proves the refusal is raised *before* the next turn is sent, by asserting the runtime
 received no further prompt. That distinction is the whole value of the latch: detecting the first

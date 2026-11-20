@@ -20,12 +20,14 @@ sections:
               test. Without an injectable seam the whole adapter — the seeding, the usage arithmetic,
               the refusals and the ownership discipline — would ship with no automated evidence at
               all, on the one provider this repository's CI can reach but cannot authenticate. The
-              seam is one small interface and a production implementation that forwards a call and
-              owns one release, which is the smallest surface that makes everything above it reachable. Its
-              correctness is established by the units built on it, which are exercised against a
-              channel that replays the runtime's own event types. The tests listed below are
-              therefore tests of those units: they show the seam is sufficient and is used correctly,
-              and nothing reaches the production channel itself.
+              seam is one small interface and a production implementation that forwards a turn, owns
+              one release and opens each session through one confining protocol, which is the smallest
+              surface that makes everything above it reachable. Its correctness is established by the
+              units built on it, which are exercised against a channel that replays the runtime's own
+              event types. The tests listed below are therefore tests of those units: they show the
+              seam is sufficient and is used correctly, and nothing reaches the production channel
+              itself beyond its release policy and its opening protocol, which are tested with the
+              runtime's steps supplied as delegates.
             tests:
               - CopilotProviderSession_Send_Answer_IsReturnedAndRecordedOnce
               - CopilotProviderSessionFactory_CreateAsync_RegistersTheObserverBeforeCreation
@@ -108,3 +110,38 @@ sections:
               agent's resumption can be exercised without a live runtime.
             tests:
               - CopilotAgent_Run_LaterRun_ResumesTheRecordedSessionWithTheSameConfinement
+
+          - id: AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins
+            title: >-
+              The production channel shall, before creating or resuming a session, disable every MCP
+              server the runtime discovers; after creating or resuming it, shall clear the session's
+              installed plugins and disable every MCP server still enabled; and shall refuse and
+              release the session, deleting a created one and keeping a resumed one, if any MCP server
+              remains enabled.
+            tags: [security]
+            justification: |
+              The runtime starts MCP servers from ambient configuration — the data directory's
+              configuration, the workspace, installed plugins, the built-in servers, and sources the
+              signed-in account or a managed catalog provide — and Empty mode does not stop them. The
+              custom allow-list keeps their tools from the model, but a started server still runs a
+              process with the user's environment and identity and can contribute instructions to the
+              system prompt, so each is closed rather than filtered. The session options take only
+              exact server names, so the names come from the runtime's own discovery, and naming them
+              before creation is what keeps them from starting at all. Discovery does not cover every
+              source, and installed plugins — which can contribute servers, hooks, skills and agents —
+              can be cleared only once the session exists, so the session is sealed afterwards: its
+              plugins are cleared, every server it still reports enabled is disabled for that session,
+              and the result is verified. A server the runtime keeps enabled refuses the session
+              rather than letting a run continue with a channel open; a created session nothing has
+              recorded is deleted, while a resumed session is only detached, because refusing to
+              continue a conversation must not destroy it. These steps need the live client and
+              session, which the configuration builders do not have, so they live on the one path
+              every production opener and resumer shares.
+            tests:
+              - CopilotSessionChannel_Open_AmbientMcpServers_AreDisabledBeforeTheSessionIsCreated
+              - CopilotSessionChannel_Open_DiscoveryFails_OpensNothing
+              - CopilotSessionChannel_Open_SealFails_AbandonsTheSessionAndRethrows
+              - CopilotSessionChannel_Seal_ClearsInstalledPluginsFirst
+              - CopilotSessionChannel_Seal_ServerStillEnabledAfterCreation_IsDisabledThenVerified
+              - CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt
+              - CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne

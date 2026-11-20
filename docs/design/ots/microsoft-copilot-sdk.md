@@ -21,16 +21,18 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
   definitions and the available-tools allow-list, with its source-qualified `custom:` entries; the
   large-output, tool-search, schedule-management and image-generation tool settings; skills,
   instructions, hooks, git, state and memory, agents, MCP servers, extensions and configuration
-  discovery; the permission mode and handler; the event handler and streaming; the model, the working
-  directory and the system message. That is what lets AgentKit confine a resumed session exactly as a
-  created one
+  discovery, experimental features and embedding retrieval; the permission mode and handler; the event
+  handler and streaming; the model, the working directory and the system message. That is what lets
+  AgentKit confine a resumed session exactly as a created one
 - `BuiltInTools.Isolated` — the SDK's published set of isolated built-in tool names, folded into
   AgentKit's reserved-name set at type initialization rather than copied
 - **The permission RPC** — the permission-request hierarchy, including the custom-tool request
   carrying a tool name, the permission mode, and the permission-decision type with its approve-once
   and reject results, in which the default permission handler is expressed
-- `SystemMessageConfig` — carries the supplied instructions onto the session in append mode, and
-  nothing else: the seeded conversation record a rotation produces is deliberately kept out of it,
+- `SystemMessageConfig` — in customize mode, removes the runtime's host environment context section
+  on every session, the shape Empty mode itself sends, and carries the supplied instructions as its
+  content, which the runtime appends in this mode as in append mode. Nothing else: the seeded
+  conversation record a rotation produces is deliberately kept out of it,
   because the SDK offers no history or messages field of any kind and a record charged as overhead
   rather than as conversation makes the engine's accounting drift. It travels on the session's first
   message instead
@@ -51,6 +53,14 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
 - **The infinite-session configuration** — its background-compaction threshold raised clear of
   AgentKit's rotation point on every session AgentKit's own engine drives, so the runtime's compactor
   and AgentKit's do not act on one conversation
+- **MCP and plugin control** — the client's MCP discovery (`mcp.discover`), which names the servers
+  the runtime would start from user, workspace, plugin and built-in sources; the session's
+  disabled-servers option, which keeps a named server from starting on creation or cold resumption;
+  the session's effective MCP configuration listing (`session.mcp.listConfigured`), which reports
+  each server's enablement after configuration and policy filtering across every source; the
+  session-scoped disable (`session.mcp.disable`); and the session-options patch whose plugin options
+  replace the session's installed plugins (`plugins.installed`). AgentKit uses them to close every
+  ambient MCP server and clear installed plugins on every session, whatever the client's mode
 
 ### Integration Pattern
 
@@ -62,10 +72,18 @@ resume call. The host owns the client's lifetime. Each session handle AgentKit o
 is released after use; sessions the engine and the summarizer open are also deleted, while an agent's
 are kept until the host deletes them.
 
-**Client construction is the host's.** `CopilotClientMode.Empty` is recommended: it adds the
-protections that exist only at client level — no installed plugins, and no host environment context
-in the system prompt — though AgentKit sets every opt-out it depends on per session regardless of the
-mode, because it cannot read the mode back. Empty mode requires a base directory, supplied through the
+**Client construction is the host's; Empty mode on a host-owned data directory is a precondition.**
+The integration requires it, and AgentKit cannot enforce it: `CopilotClient` exposes no way to read
+its mode back. AgentKit therefore relies on the mode for nothing that reaches the model. Every
+capability or context default Empty mode supplies per session is set by AgentKit on each session —
+the host environment context removed through the same section override, experimental features off,
+embedding retrieval skipped, every other option channel closed — and the installed plugins are
+cleared with the same options patch Empty mode sends after every create and resume. Every MCP server
+is closed and verified too, which Empty mode does not do. What a client that violates the
+precondition can still add is host-side behavior no session option reaches: settings in a shared
+data directory such as user-level hooks, credential storage in the system keychain rather than the
+data directory, telemetry and runtime file logging, and anything the host attaches at client level
+through plugin directories or extensions. Empty mode requires a base directory, supplied through the
 `RuntimeConnection` — `ForInProcess(baseDirectory: …)` for in-process hosting, or a spawned-process
 connection — and that directory is where the runtime preserves a kept session's state.
 `ClientGitHubOptions` names the identity: the logged-in user, for which the runtime also honors the
@@ -91,6 +109,17 @@ the opt-in live suite where noted:**
 - **The built-in GitHub MCP server runs in Empty mode.** The runtime starts it, authenticated with the
   user's GitHub identity, for every session even in Empty mode, so AgentKit disables it by name on
   every session.
+- **Empty mode does not stop ambient MCP servers.** Its only MCP default is in-memory token storage.
+  The runtime starts servers configured in the data directory's `mcp-config.json`, in the workspace,
+  by installed plugins, and by the account or a managed catalog; Empty mode's base-directory
+  requirement keeps the data directory's configuration out only when the directory is the host's own,
+  and reaches neither the workspace nor the account or managed sources. AgentKit
+  therefore discovers and disables every server before creating or resuming a session, then lists the
+  session's effective MCP configuration, disables any server still enabled for that session, and
+  refuses the session if one stays enabled. The live suite configures a non-GitHub server in a
+  CodingAgent client's data directory and shows it is enabled on a session created directly and
+  disabled on one opened through AgentKit's channel, with the tool set still exactly the supplied tools
+  (re-verified by the live suite).
 - **The infinite-session enablement flag is ignored.** A session created with it false still
   compacted as soon as its threshold was crossed; the flag only suppresses the session's workspace.
   The background-compaction threshold **is** honored, so AgentKit relies on the threshold and on
@@ -109,10 +138,13 @@ seam — `ICopilotTurnChannel` — so everything above it can be exercised witho
 *CopilotTurnChannel Unit Design*. The SDK's event types, by contrast, are all constructable, so the
 tests drive the genuine event shapes through AgentKit's own matching code.
 
-The SDK's permission-decision RPC surface is marked with the `MCPSDK001` "evaluation purposes only"
-diagnostic. AgentKit necessarily references it to wire a permission handler, so that diagnostic is
-suppressed in the package and in its tests, and a consumer that references the permission-handler
-parameter will see the same diagnostic from its own build.
+The SDK's permission-decision RPC surface, and the MCP discovery, MCP configuration and
+session-options RPC surface, are marked with the `MCPSDK001` "evaluation purposes only" diagnostic.
+AgentKit necessarily references them to wire a permission handler and to close ambient MCP servers
+and installed plugins, so that diagnostic is suppressed in the package and in its tests, and a
+consumer that references the permission-handler parameter will see the same diagnostic from its own
+build. A change to the MCP and plugin calls fails safe — a failing call refuses the session — and is
+caught by the opt-in live suite.
 
 **The `COPILOT_CLI_PATH` environment variable redirects in-process hosting.** When it is set,
 in-process hosting loads the runtime library from beside that path instead of from the application's

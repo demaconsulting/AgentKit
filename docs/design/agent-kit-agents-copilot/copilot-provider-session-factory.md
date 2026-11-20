@@ -45,7 +45,8 @@ Copilot's session options have **no history or messages field of any kind** — 
 create options and their shared base was enumerated against the shipped assembly — so the history has
 to travel some other way.
 
-The session's system message carries the seed's instructions and nothing else. The history is
+The session's system message carries the seed's instructions as its content and nothing else — the
+confinement's removal of the host environment context is a section override, not content. The history is
 rendered as a labeled record between a fixed opening and a fixed closing line, and handed to the
 session to carry ahead of the first message it sends:
 
@@ -112,10 +113,11 @@ mapping can drop part of a message without dropping the message.
   rotation.
 - **The session RPC's message queue.** Carries prompts, display prompts, attachments and a
   required-tool hint — a queue of user prompts, not history bearing roles.
-- **`SystemMessageMode.Customize` with section overrides.** The sections are Copilot's *own*
-  prompt sections. Writing history into one replaces part of the runtime's system prompt, which is
-  more invasive than appending and forks the single configuration path the safety argument depends
-  on. It is doubly rejected now, since it is the system channel.
+- **A section of Copilot's own prompt, through the system message's section overrides.** It would
+  place the record in the system message, charged as overhead like any other system-message
+  placement, and would split the system message between the confinement, which owns its section
+  overrides — it removes the host environment context — and this unit. It is doubly rejected now,
+  since it is the system channel.
 
 **Two consequences, stated rather than hidden.** Charged to the conversation, the record counts
 toward the figure rotation is decided on, so a session rotates progressively *earlier* as records
@@ -198,7 +200,7 @@ behind on the runtime.
 
 **Purpose:** Build the `CreateSessionOptions` one seed produces.
 
-**Algorithm:** Take the seed's instructions as the system message — unchanged, and alone — hand them
+**Algorithm:** Take the seed's instructions as the system message's content — unchanged, and alone — hand them
 with the seeded tools, the model and the working directory to
 `CopilotAgentFactory.BuildEngineSessionConfig` — which refuses a tool named like a runtime built-in,
 derives the source-qualified allow-list, closes the runtime's injection channels, pins the permission
@@ -216,7 +218,7 @@ Unit Design*.
 
 Exposed as a seam so a test can assert what a rotation actually configures — the derived allow-list,
 the raised runtime compaction threshold, the registered observer, the working directory and the
-instructions-only system message — without a live client, for the same reason `BuildSessionConfig` is
+instructions-only system-message content — without a live client, for the same reason `BuildSessionConfig` is
 exposed.
 
 **Preconditions:** `seed` is not null; its tools carry no duplicate names and no built-in tool's name.

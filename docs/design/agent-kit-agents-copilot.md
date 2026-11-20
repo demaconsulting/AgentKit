@@ -182,8 +182,8 @@ conversation is confined afresh rather than trusted to remember. A resume built 
 confinement would hand an existing conversation the runtime's defaults — every built-in tool, and
 permission requests no handler answers.
 
-The block does four things, each set explicitly on every session rather than inherited from the
-client's mode, because the host chooses the mode and AgentKit cannot read it back:
+The block does four things, each set explicitly on every session so the confinement does not depend
+on the client's mode, which AgentKit cannot read:
 
 - **Derives the allow-list.** The tool definitions and the available-tools allow-list are assigned
   from one collection in two adjacent statements. Each allow-list entry is **source-qualified** as
@@ -194,18 +194,46 @@ client's mode, because the host chooses the mode and AgentKit cannot read it bac
 - **Closes every other channel of injected capability.** Skills and the built-in skills, discovered
   custom instructions and on-demand instruction discovery, repository hooks, host git operations,
   the cross-session store and memory, the built-in sub-agents and non-local agent discovery,
-  extensions, configuration discovery, tool search, schedule management, image generation, and the
-  runtime's diversion of large tool results to a file are all switched off. The runtime's built-in
-  GitHub MCP server is disabled by name: measured against the live runtime, it is started and
-  authenticated with the user's GitHub identity on every session even in the client's Empty mode,
-  and while the allow-list already keeps its tools out of reach, a server holding the user's
-  identity is disabled rather than merely filtered. The full list, with the reason for each, is in
-  *CopilotAgentFactory Unit Design*.
+  extensions, configuration discovery, tool search, schedule management, image generation,
+  experimental features, embedding retrieval, and the runtime's diversion of large tool results to a
+  file are all switched off. The runtime's host environment context — the working directory, the
+  operating system, the git root, a directory listing and the available tools — is removed from the
+  system prompt through the system message's section overrides, the same shape Empty mode sends. The
+  runtime's built-in GitHub MCP server is disabled by name: measured against the live runtime, it is
+  started and authenticated with the user's GitHub identity on every session even in the client's
+  Empty mode, and while the allow-list already keeps its tools out of reach, a server holding the
+  user's identity is disabled rather than merely filtered. The full list, with the reason for each,
+  is in *CopilotAgentFactory Unit Design*.
 - **Pins the permission mode to manual.** In the runtime's allow-all mode tool, path and URL requests
   are approved without asking the handler, and in its assisted mode a client may approve them
   itself; either would bypass the handler without anything in this package changing. Pinning the
   manual mode keeps the handler the only authority, whatever mode ambient configuration would choose.
 - **Installs the permission handler** — the host's, or the default-deny one; see below.
+
+**The runtime half of the confinement is applied by the turn channel.** Some channels can be closed
+only with the live client and session, which the options builders deliberately do not have, so the
+production turn channel applies them on the one path every opener and resumer shares:
+
+- **Every ambient MCP server is closed.** The runtime starts MCP servers from ambient configuration —
+  the data directory, the workspace, installed plugins, its built-in servers, and sources the
+  signed-in account or a managed catalog provide — and Empty mode does not stop them. Before a session
+  is created or resumed, the channel asks the runtime to discover the servers it would start and
+  names every one in the session's disabled servers, so none of them starts. The allow-list already
+  keeps an MCP server's tools from the model; closing the server also keeps it from running a process
+  with the user's environment and from contributing instructions.
+- **The session is sealed.** Once the session exists, its installed plugins — which can contribute
+  servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
+  sends; every MCP server the session still reports enabled, including one from a source discovery
+  does not cover, is disabled for that session only; and the configuration is listed again.
+- **It fails closed.** A server the runtime keeps enabled refuses the session with an
+  `InvalidOperationException` naming it, so the run fails rather than continuing with the server
+  available. A created session nothing has recorded is released and deleted; a resumed session is
+  only released, because refusing to continue a conversation must not destroy it. A discovery that
+  fails opens nothing.
+
+The client's RPC surface exists only once it has started, so the channel starts the client first,
+through `CopilotClientStarter` — idempotent on a started client, and a runtime that cannot load is
+explained exactly as it would be for a host that started the client itself.
 
 **Options are built fresh for every session and every run.** The SDK mutates the options object it
 is handed when it applies its mode defaults, and its clone is shallow — it shares the infinite-session
@@ -213,8 +241,9 @@ configuration, the hooks and the delegates — so two sessions created from one 
 of it, would share state the SDK has changed. No options object is ever reused or cloned: the agent
 holds builder delegates and calls them on every run.
 
-The host's own preferences — the model, the working directory and the instructions as an appended
-system message — are applied beside the confinement, each only when the host supplied a value, so a
+The host's own preferences — the model, the working directory and the instructions as the content of
+the system message the confinement configured, which the runtime appends — are applied beside the
+confinement, each only when the host supplied a value, so a
 host that says nothing gets the runtime's own default for each.
 
 ## Permission Handling Is Default-Deny
@@ -284,9 +313,11 @@ Without a seam, the whole of the system above the SDK — the seeding, the usage
 refusals, the agent's streaming and resumption, the ownership discipline — would ship with no
 automated evidence at all, on the one provider the project can otherwise reach. `ICopilotTurnChannel`
 is therefore one small interface — the session's identity and one turn — opened through one of two
-delegates, create and resume, and the production implementation behind it forwards one call and owns
-one release. Every decision worth testing lives above that line; what lies below it is stated plainly
-as untested in *CopilotTurnChannel Unit Verification Design* rather than implied to be covered.
+delegates, create and resume, and the production implementation behind it forwards one turn, owns
+one release and opens every session through one confining protocol. Every decision worth testing
+lives above that line or is factored out of it — the release policy and the opening protocol are
+tested with the runtime's steps supplied as delegates; what remains below it is stated plainly as
+untested in *CopilotTurnChannel Unit Verification Design* rather than implied to be covered.
 
 Every session *event* type, by contrast, is trivially constructable, so the tests drive the SDK's own
 event objects through the system's own matching code. The seam is narrow, and what crosses it is
@@ -388,7 +419,7 @@ agent uses, and the five that carry a Core session over the runtime.
   it could not record, records tool traffic as identified pairs, reports the runtime's occupancy, and
   owns and releases its session.
 - **CopilotProviderSessionFactory (Unit)** — an `IProviderSessionFactory`: configures the session's
-  system message with the application's instructions alone, composes the seeded history into a
+  system message with the application's instructions alone as its content, composes the seeded history into a
   labeled record for the first message to carry, reuses the one confinement path, carries the host's
   working directory, holds the runtime's compaction clear of the engine's rotation point, registers
   the observer before the session is created, and guards the ownership window.
@@ -397,9 +428,11 @@ agent uses, and the five that carry a Core session over the runtime.
 - **CopilotSummarizer (Unit)** — an `ISummarizer` on a short-lived, tool-free Copilot session, using
   Core's consolidation prompt and releasing its session on every path.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
-  production implementation that owns one runtime session handle and releases it — deleting the
-  session for the engine, the summarizer and an agent's run made without a conversation, keeping it
-  for an agent's conversation.
+  production implementation that opens every session through one confining protocol — every
+  discovered MCP server disabled before creation, installed plugins cleared and every MCP server
+  closed and verified afterwards, the session refused if one stays enabled — and owns one runtime
+  session handle and releases it — deleting the session for the engine, the summarizer and an
+  agent's run made without a conversation, keeping it for an agent's conversation.
 
 The agent and the engine paths share the factory's confinement and the turn channel, and nothing
 else: the agent streams its own events and keeps its conversations' sessions, while the engine path
@@ -433,10 +466,17 @@ stream, as recorded in *Occupancy Comes From the Runtime*.
 
 The host constructs the client, and three of its choices bear on this system:
 
-- **Mode.** `CopilotClientMode.Empty` is recommended. Every opt-out this system depends on is set on
-  each session regardless of the mode, so no mode weakens the confinement; Empty mode adds the
-  protections that exist only at client level — no installed plugins, and no host environment
-  context in the system prompt.
+- **Mode: Empty, on a data directory the host owns, is a precondition.** The integration requires
+  it, and AgentKit cannot detect it: the SDK offers no way to read a client's mode back. AgentKit
+  therefore does not rely on the mode for anything that reaches the model. On any client it applies,
+  per session, the custom allow-list and the pinned default-deny permission handling; every runtime
+  option channel closed; the host environment context removed; experimental features off and
+  embedding retrieval skipped; the installed plugins cleared; and every MCP server disabled and
+  verified, with the session refused if one stays enabled. What a client that violates the
+  precondition can still add is host-side behavior no session option reaches: settings in a shared
+  data directory such as user-level hooks, credential storage in the system keychain rather than the
+  data directory, telemetry and runtime file logging, and anything the host attaches at client level,
+  such as plugin directories or extensions.
 - **Runtime connection.** In-process hosting through `RuntimeConnection.ForInProcess` is the usual
   choice. Empty mode requires a base directory — the runtime's data directory, under which a kept
   session's state is preserved — and the host chooses it. A spawned-process connection is the
@@ -485,7 +525,7 @@ CopilotAgent ──► CopilotAgentFactory.BuildSessionConfig / BuildResumeSessi
         │                    (allow-list, channels closed, Manual mode, handler, streaming on)
         │  fresh CreateSessionOptions or ResumeSessionOptions (+ run's mapper as Events.OnEvent)
         ▼
-CopilotTurnChannel (create or resume; kept on release) ──► CopilotSession (runtime)
+CopilotTurnChannel (MCP closed, plugins cleared; kept on release) ──► CopilotSession (runtime)
         │  MessageOptions (prompt, blob attachments)            │  events
         ▼                                                       ▼
 CopilotAgent ◄──────────────────────────────────── text deltas, tool calls, results, usage
@@ -504,7 +544,7 @@ CopilotProviderSessionFactory ──► CopilotAgentFactory.BuildEngineSessionCo
         │                                   (same confinement, compaction held clear)
         │  CreateSessionOptions (+ observer as Events.OnEvent)
         ▼
-CopilotTurnChannel (deleted on release) ──► CopilotSession (runtime)
+CopilotTurnChannel (MCP closed, plugins cleared; deleted on release) ──► CopilotSession (runtime)
         │  turn                              │  events
         ▼                                    ▼
 CopilotProviderSession ◄──────────── CopilotSessionObserver
@@ -539,7 +579,8 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
   System Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CopilotSession`, the create and resume
   session options and their shared base, the message options and blob attachments, the permission
-  RPC, the published set of isolated built-in tool names, and the session event stream; see
+  RPC, the published set of isolated built-in tool names, the MCP discovery and configuration RPC
+  and the session-options patch, and the session event stream; see
   *Microsoft.Copilot.SDK Design*. Its native runtime is provisioned by the host application, as
   recorded above.
 - **Microsoft.Agents.AI.Abstractions** — supplies the `AIAgent` base type, `AgentSession` with its
@@ -552,9 +593,10 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ## Risk Control Measures
 
 Copilot arrives able to act on the machine it runs on, so this system's risk controls are the ones
-that take that capability back. All of them are applied in one place — `CopilotAgentFactory`'s
-single confinement block — for every session the package builds, created or resumed, so no path can
-acquire capability another path withholds.
+that take that capability back. They are applied on one path for every session the package builds,
+created or resumed — `CopilotAgentFactory`'s single confinement block for everything a session's
+options carry, and `CopilotTurnChannel`'s single opening protocol for what needs the live session —
+so no path can acquire capability another path withholds.
 
 - **The source-qualified, derived allow-list.** The session's available-tools allow-list is assigned
   from the same collection published as the session's tools, so the two cannot drift apart, and each
@@ -567,9 +609,15 @@ acquire capability another path withholds.
   outright; see *Permission Handling Is Default-Deny*.
 - **The closed injection channels.** Skills, discovered instructions, hooks, git operations, memory
   and the cross-session store, sub-agents, extensions, configuration discovery, tool search, schedule
-  management and image generation are closed on every session, and the built-in GitHub MCP server is
-  disabled, because each would attach capability, direction or identity the composing application
-  never granted.
+  management, image generation, experimental features and embedding retrieval are closed on every
+  session, the host environment context is removed from the system prompt, the built-in GitHub MCP
+  server is disabled, every other MCP server the runtime would start is disabled and verified, and
+  the session's installed plugins are cleared, because each would attach capability, direction or
+  identity the composing application never granted. A session in which an MCP server stays enabled
+  is refused rather than used.
+- **A documented client precondition.** Empty mode on a host-owned data directory is required and
+  cannot be detected; what a client violating it could still add is host-side behavior no session
+  option reaches, listed under *Host Client Construction*.
 - **The refused built-in names.** A supplied tool cannot carry a built-in tool's name, and AgentKit
   never marks a tool as overriding a built-in, so no supplied tool can stand in for one the model
   associates with other behavior.
@@ -587,8 +635,10 @@ for is ended rather than reused. Both are argued above.
   system releases only the session handles it opens, and deletes only the sessions the engine and
   the summarizer are finished with
 - **One confinement path**: every session — agent created, agent resumed, engine and consolidation —
-  is built through one derivation of the allow-list and one confinement block; a second builder would
-  be the drift this package prevents
+  is built through one derivation of the allow-list and one confinement block, and opened through one
+  confining protocol; a second builder would be the drift this package prevents
+- **Fail closed**: a session the runtime will not confine — an MCP server it keeps enabled, a
+  discovery or seal it refuses — is never handed to the model
 - **Fresh options per session**: no session options object is reused or cloned, because the SDK
   mutates the options it is handed and its clone is shallow
 - **No window from the application**: occupancy and limit come from the runtime, which is what makes

@@ -789,10 +789,10 @@ public static class AgentComposition
     {
         var token = options.ResolveGitHubToken();
 
-        // Empty mode opts out of every ambient runtime feature - skills, plugins, custom
-        // instructions, host environment context - so the agent receives only what this host attaches.
-        // It requires a data directory of the host's choosing, where the runtime keeps its session
-        // state; a per-user application-data folder keeps that state out of the workspace.
+        // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
+        // runtime's own defaults off and its state in that directory, and AgentKit closes the ambient
+        // channels - plugins, MCP servers, skills, custom instructions, host environment context - on
+        // every session itself. A per-user application-data folder keeps that state out of the workspace.
         var client = new CopilotClient(new CopilotClientOptions
         {
             Mode = CopilotClientMode.Empty,

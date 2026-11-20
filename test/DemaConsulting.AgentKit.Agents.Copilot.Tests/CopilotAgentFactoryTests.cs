@@ -86,8 +86,8 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
-    ///     Proves supplied instructions are carried onto the session's system message, and that a
-    ///     session built without instructions carries none.
+    ///     Proves supplied instructions are carried as the content of the session's system message,
+    ///     and that a session built without instructions carries no system-message content.
     /// </summary>
     [Fact]
     public void CopilotAgentFactory_BuildSessionConfig_Instructions_CarriedOnSystemMessage()
@@ -101,7 +101,75 @@ public class CopilotAgentFactoryTests
 
         Assert.NotNull(withInstructions.SystemMessage);
         Assert.Equal("be concise", withInstructions.SystemMessage.Content);
-        Assert.Null(withoutInstructions.SystemMessage);
+        Assert.Null(withoutInstructions.SystemMessage!.Content);
+    }
+
+    /// <summary>
+    ///     Proves every session the factory builds — an agent's created and resumed sessions and an
+    ///     engine-driven session, with and without instructions — removes the runtime's host
+    ///     environment context from the system prompt, and carries the instructions, if any, as the
+    ///     message's content.
+    /// </summary>
+    /// <remarks>
+    ///     The environment context names the working directory, the operating system, the git root,
+    ///     a directory listing and the available tools. Empty mode removes it client-side; AgentKit
+    ///     cannot read the client's mode, so it removes it on every session itself.
+    /// </remarks>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        foreach (var instructions in new[] { "be concise", null })
+        {
+            // Act: every builder, with and without instructions
+            SessionOptionsBase[] configs =
+            [
+                CopilotAgentFactory.BuildSessionConfig(tools, instructions, onPermissionRequest: null),
+                CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions, onPermissionRequest: null),
+                CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions, model: null),
+            ];
+
+            // Assert
+            foreach (var config in configs)
+            {
+                var message = config.SystemMessage;
+                Assert.NotNull(message);
+                Assert.Equal<SystemMessageMode?>(SystemMessageMode.Customize, message.Mode);
+                Assert.NotNull(message.Sections);
+                Assert.Equal<SectionOverrideAction?>(
+                    SectionOverrideAction.Remove,
+                    message.Sections[SystemMessageSection.EnvironmentContext].Action);
+                Assert.Equal(instructions, message.Content);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Proves every session the factory builds switches the runtime's experimental features off
+    ///     and skips embedding retrieval, a context channel shared across sessions.
+    /// </summary>
+    [Fact]
+    public void CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff()
+    {
+        // Arrange
+        var tools = new List<AIFunction> { MakeTool("doc_read") };
+
+        // Act
+        SessionOptionsBase[] configs =
+        [
+            CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null),
+        ];
+
+        // Assert
+        Assert.All(configs, config =>
+        {
+            Assert.False(config.Experiments.EnableExperimentalMode);
+            Assert.True(config.State.SkipEmbeddingRetrieval);
+        });
     }
 
     /// <summary>

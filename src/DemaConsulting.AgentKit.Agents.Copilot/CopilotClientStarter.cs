@@ -55,7 +55,7 @@ public static class CopilotClientStarter
     /// </exception>
     /// <example>
     ///     <para>
-    ///     Starting a client the host owns, in the recommended Empty mode.
+    ///     Starting a client the host owns, in Empty mode, which the integration requires.
     ///     </para>
     ///     <code>
     ///     public async Task&lt;CopilotClient&gt; StartClientAsync(string dataDirectory, CancellationToken cancellationToken)

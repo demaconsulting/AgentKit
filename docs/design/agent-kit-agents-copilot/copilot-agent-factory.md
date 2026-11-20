@@ -20,7 +20,9 @@ That "one place" has four callers: an agent's first run, which creates a session
 that agent, which resumes it; `CopilotProviderSessionFactory`, for a compacting session; and
 `CopilotSummarizer`, for a consolidation. All four end in the same confinement block. A second
 builder with its own derivation is precisely the drift this design exists to prevent, so there is
-not one.
+not one. The half of the confinement that needs the live client and session — closing every ambient
+MCP server and clearing the session's installed plugins — is applied by the production turn channel
+on the one path every opener and resumer shares; see *CopilotTurnChannel Unit Design*.
 
 The class is static and holds no state.
 
@@ -41,9 +43,8 @@ the refresh of custom instructions — are create-only, and AgentKit sets none o
 | `Permissions.Mode` | `PermissionMode.Manual` | every request reaches the handler |
 | `Permissions.OnRequest` | the host handler, or the default-deny one | adjudicates each permission request |
 
-**Every other channel of injected capability is closed.** Each is set explicitly on every session
-rather than inherited from the client's mode, because the host chooses the mode and the factory
-cannot read it back:
+**Every other channel of injected capability is closed.** Each is set explicitly on every session,
+so the confinement does not depend on the client's mode, which the factory cannot read:
 
 | Member | Value | Reason |
 | --- | --- | --- |
@@ -62,12 +63,26 @@ cannot read it back:
 | `Agents.LocalDiscoveryOnly` | `true` | no agent definitions are discovered beyond the local set |
 | `Extensions.Enabled` | `false` | withholds runtime extensions |
 | `EnableConfigDiscovery` | `false` | withholds configuration discovered on disk |
-| `Mcp.DisabledServers` | the built-in GitHub MCP server | not started with the user's identity |
+| `SystemMessage` | `Customize`; `EnvironmentContext` removed | no host environment detail in the prompt |
+| `Experiments.EnableExperimentalMode` | `false` | withholds behavior the host never chose |
+| `State.SkipEmbeddingRetrieval` | `true` | no context retrieved from a cache shared across sessions |
+| `Mcp.DisabledServers` | the built-in GitHub MCP server | the production channel adds every discovered server |
+
+**The host environment context is removed from the system prompt.** The runtime's environment
+context names the working directory, the operating system, the git root, a directory listing and the
+available tools. Empty mode removes it client-side; the factory removes it on every session through
+the system message's section overrides, the same shape Empty mode sends, so it is removed whatever
+the client's mode. For an Empty-mode client the wire payload is unchanged. The host's instructions,
+if any, are this message's content, which the runtime appends in this mode just as it does in append mode.
 
 **The built-in GitHub MCP server is disabled by name.** Measured against the live runtime, it is
 started and authenticated with the user's GitHub identity on every session, even in the client's
 Empty mode. The source-qualified allow-list already keeps its tools out of reach, but a server
-holding the user's identity is disabled outright rather than merely filtered.
+holding the user's identity is disabled outright rather than merely filtered. Every other MCP server
+— from the data directory's configuration, the workspace, a plugin, the account or a managed catalog
+— is closed by the production turn channel, which adds every server the runtime discovers to this
+list before the session is created, then disables and verifies whatever is still enabled once the
+session exists. That needs the live client and session, which this builder does not have.
 
 **Large-output diversion stays disabled.** The runtime would divert a result larger than about twenty
 kilobytes to a temporary file and hand the model its path. A confined agent cannot read that file —
@@ -84,7 +99,7 @@ it unset preserves the runtime's own default:
 | --- | --- | --- |
 | `Model` | the supplied model name | backs the session with the chosen model |
 | `WorkingDirectory` | the supplied working directory | the directory the runtime gives the session |
-| `SystemMessage` | the supplied instructions, appended | governs a confined agent as the host intended |
+| `SystemMessage.Content` | the supplied instructions | governs a confined agent as the host intended |
 
 **Per-path settings:**
 
@@ -227,7 +242,8 @@ and a resumed session share.
 1. Assign `Tools.Definitions` and `Tools.AvailableTools` from the same collection in two adjacent
    statements, qualifying each allow-list entry as `custom:<name>`, so no reachable state has a
    published tool that is not allowed or an allowed name that is not published.
-2. Close every channel in the *Data Model* table above, including the built-in GitHub MCP server.
+2. Close every channel in the *Data Model* table above, including the built-in GitHub MCP server, and
+   configure the system message to remove the host environment context.
 3. Pin `Permissions.Mode` to `PermissionMode.Manual`.
 4. Install the supplied handler, or the default-deny one from `CreateDefaultPermissionHandler`.
 
@@ -246,7 +262,10 @@ authority, whatever mode ambient configuration would choose.
 
 Private helper applying the host's own preferences — kept apart from `ApplyConfinement` because they
 are preferences rather than safety guarantees. Each is assigned only when non-blank: the model; the
-working directory; and the instructions as a system message in append mode. Leaving a member untouched
+working directory; and the instructions as the content of the system message `ApplyConfinement`
+configured, which the runtime appends, never replacing that message, so the removal of the host
+environment context survives every combination of settings. It runs after `ApplyConfinement`. Leaving
+a member untouched
 is what preserves the runtime's default for every caller that says nothing, so each parameter is
 purely additive. The model name is not validated: only the runtime knows which models the signed-in
 user may use.
@@ -363,10 +382,15 @@ installs the default-deny handler. When one is supplied it is installed unchange
 default: it is not composed with it, so a host that supplies a handler forfeits default-deny unless
 its handler reproduces it. The pinned manual mode applies either way.
 
-**The client's mode is the host's; Empty mode is recommended.** The factory cannot read the mode back
-from a client, so every opt-out is set on each session rather than inherited from the mode. Empty mode
-adds the protections that exist only at client level — no installed plugins, and no host environment
-context in the system prompt — so a host that wants the narrowest agent chooses it.
+**Client precondition: Empty mode on a data directory the host owns.** The integration requires it
+and cannot enforce it: the SDK offers no way to read a client's mode back. The factory therefore
+relies on the mode for nothing that reaches the model: every capability or context default Empty
+mode supplies is set on each session here, and the turn channel clears the installed plugins and
+closes every MCP server. What a client that violates the precondition can still add is host-side
+behavior no session option reaches: settings in a shared data directory such as user-level hooks,
+credential storage in the system keychain rather than the data directory, telemetry and runtime
+file logging, and anything the host attaches at client level, such as plugin directories or
+extensions. The `client` parameter's documentation states the precondition.
 
 **Model and working directory are reachable through the factory, not around it.** Which Copilot model
 backs a session materially changes how reliably a confined agent uses its tools and how accurately it
@@ -386,6 +410,7 @@ incentive to bypass it.
 | Two tools sharing a name | `ArgumentException` propagates |
 | A tool named like a runtime built-in | `ArgumentException` naming the tool propagates |
 | A request the default handler does not approve | Rejected with a message naming the tool or kind |
+| An MCP server stays enabled on a run's session | `InvalidOperationException` from the turn channel |
 
 ### Dependencies
 

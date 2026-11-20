@@ -161,9 +161,11 @@ default-deny policy it replaces.
 
 **Test**: `CopilotAgentFactory_BuildSessionConfig_Instructions_CarriedOnSystemMessage`
 
-Verifies that supplied instructions are carried onto the session's system message, and that a session
-built without instructions carries no system message, so a confined agent is governed as the host
-intended and the factory adds nothing of its own when the host supplies nothing.
+Verifies that supplied instructions are carried as the content of the session's system message, and
+that a session built without instructions carries no system-message content, so a confined agent is
+governed as the host intended and the factory adds nothing of its own when the host supplies nothing.
+The message itself always exists, because it also carries the removal of the host environment
+context; that is asserted under the injected-capability scenario below.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-SelectsModel: A Named Model Backs the Session
 
@@ -193,7 +195,9 @@ that does not exist rather than leaving the choice to it.
 
 **Tests**: `CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld`,
 `CopilotAgentFactory_BuildSessionConfig_GitHubMcpServer_IsDisabled`,
-`CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled`
+`CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled`,
+`CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved`,
+`CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff`
 
 The first asserts, on the options the factory builds, that the runtime's skills are disabled, its
 custom instructions skipped, tool search and memory disabled, the cross-session store and repository
@@ -202,9 +206,15 @@ agent receives only the capability and direction its host attached. The second a
 built-in GitHub MCP server is disabled outright on a created agent session, a resumed one and an
 engine session; the runtime starts and authenticates that server for every session even in Empty
 mode, so filtering it through the allow-list alone would leave it running. The third asserts image
-generation is switched off. Every value is read from the built options rather than inferred, so any
-one reverting to the permissive value — which would widen the agent without changing anything the
-host wrote — fails its scenario.
+generation is switched off. The fourth asserts, on a created agent session, a resumed one and an
+engine session, each with and without instructions, that the system message is in customize mode
+with the host environment context section removed and the instructions, or nothing, as its content:
+the confinement does not depend on the client's mode, so the context Empty mode would remove is
+removed here in any mode. The fifth asserts, on all three, that experimental features are off and
+embedding retrieval is skipped. Every value is read from the built options rather than inferred, so
+any one reverting to the permissive value — which would widen the agent without changing anything
+the host wrote — fails its scenario. Closing every other MCP server and clearing the installed
+plugins need the live session and are verified in *CopilotTurnChannel Unit Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-DisablesLargeOutputDiversion: Results Stay Inline
 

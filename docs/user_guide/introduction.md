@@ -555,10 +555,14 @@ that cannot reach GitHub sets the SDK's own MSBuild properties:
 ### Creating the Agent
 
 The host owns the `CopilotClient`: it constructs, starts and disposes it, and nothing AgentKit
-builds ever disposes it. `CopilotClientMode.Empty` is the recommended mode, because it opts out of
-every ambient runtime feature — installed plugins, skills, custom instructions and host environment
-context — so the agent receives only what the host attaches. Empty mode requires a data directory of
-the host's choosing, where the runtime keeps its session state:
+builds ever disposes it. **The client must be in `CopilotClientMode.Empty` on a data directory the
+host owns**, where the runtime keeps its session state. That is a precondition AgentKit cannot
+detect — the SDK offers no way to read a client's mode back — so AgentKit relies on the mode for
+nothing that reaches the model and closes the runtime's ambient channels on every session itself. A
+client that violates the precondition can still bring host-side behavior no session option reaches:
+settings in a shared data directory such as user-level hooks, credential storage in the system
+keychain rather than the data directory, telemetry and runtime file logging, and anything attached
+at client level through plugin directories or extensions:
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.Copilot;
@@ -598,7 +602,13 @@ The factory suppresses them by deriving the session allow-list from the same too
 a confined agent is offered only the tools you gave it. Every entry is source-qualified as a custom
 tool: a bare name would also admit a built-in tool of the same name. The factory also closes the
 runtime's other channels of injected capability on every session — skills, custom instructions,
-repository hooks, extensions, built-in sub-agents, memory and the built-in GitHub MCP server. It does
+repository hooks, extensions, built-in sub-agents, memory, experimental features, embedding
+retrieval, and the host environment context the runtime would write into the system prompt. When a
+session is opened, every MCP server the runtime would start — the built-in GitHub server, servers
+configured in the data directory or the workspace, and servers plugins bring — is discovered and
+disabled before the session starts; once it exists, its installed plugins are cleared and any MCP
+server still enabled, such as one the signed-in account provides, is disabled and verified. A
+session in which a server stays enabled is refused rather than used. It does
 **not** install the image-promoting decorator, because the Copilot runtime already delivers a
 tool-returned image to the model.
 
@@ -779,6 +789,12 @@ for answer quality across a long conversation, not to save money.
   that diagnostic. Suppress it around the handler, as above, or add it to the project's `NoWarn`.
 - **`ArgumentException` naming a tool.** One of your tools carries the name of a runtime built-in;
   see *Tool Names the Runtime Reserves* above.
+- **`InvalidOperationException`: the runtime "kept the MCP server(s) … enabled".** AgentKit disabled
+  an MCP server for the session and the runtime still reported it enabled, so the session was refused
+  rather than handed to the model with the server available. Run the client in
+  `CopilotClientMode.Empty` on a data directory of the application's own that configures no MCP
+  servers, and check for MCP servers the signed-in account or its organization provides. A resumed
+  conversation that is refused this way is kept, not deleted.
 - **A rejected permission request in the runtime's log.** The model asked for something other than
   one of your tools — a built-in shell or file read, say — and default-deny refused it. That is the
   intended outcome.

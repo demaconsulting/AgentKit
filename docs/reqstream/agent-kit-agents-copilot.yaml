@@ -18,8 +18,9 @@ sections:
           runtime's tools by deriving a source-qualified session allow-list from the same tool
           collection it publishes to the session, so the published tools and the allow-list cannot
           diverge, refusing a supplied tool named like a built-in, and closing every other channel of
-          injected capability — including the runtime's built-in GitHub MCP server — on every session
-          it builds.
+          injected capability — including every MCP server the runtime would start, the session's
+          installed plugins and the host environment context — on every session it builds, whatever
+          the client's mode.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -33,19 +34,26 @@ sections:
           the live runtime, a bare name also admits a built-in tool that carries the same name; for the
           same reason a supplied tool may not carry a built-in's name at all. Tools are not the only
           channel: the runtime's skills, discovered instructions, hooks, memory, sub-agents,
-          extensions and its own GitHub MCP server would attach capability and direction the composing
-          application never granted, so those channels are closed on every session for the same
-          reason the built-in tools are suppressed.
+          extensions, installed plugins, MCP servers and the host environment context it writes into
+          the system prompt would attach capability and direction the composing application never
+          granted, so those channels are closed on every session for the same reason the built-in
+          tools are suppressed. They are closed per session because the SDK offers no way to read a
+          client's mode back, so the confinement cannot depend on it; and MCP servers are closed
+          rather than merely filtered out of the allow-list, because Empty mode does not itself stop
+          ambient MCP servers, and a server that is started runs a process with the user's
+          environment and can contribute instructions even when none of its tools is allowed.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
           - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
           - AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
           - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesBuiltInToolNames
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
+          - AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
           - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
           - AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused
+          - AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed
 
       - id: AgentKitAgentsCopilot-PermissionHandler-DefaultSafe
         title: >-

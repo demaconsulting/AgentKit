@@ -142,7 +142,7 @@ public class CopilotProviderSessionFactoryTests
         // Assert: the system message is the instructions and nothing else, byte for byte as the
         // agent path would configure them
         Assert.Equal("You are a research assistant.", config.SystemMessage!.Content);
-        Assert.Equal(SystemMessageMode.Append, config.SystemMessage.Mode!.Value);
+        Assert.Equal(SystemMessageMode.Customize, config.SystemMessage.Mode!.Value);
 
         // Assert: the record is fenced and carries every entry in order. The separator is a newline
         // rather than the platform's, so a rotation renders identically on every machine - which is
@@ -175,17 +175,18 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves a seed carrying neither instructions nor history leaves the session with no system
-    ///     message at all, as the runtime would default it.
+    ///     Proves a seed carrying neither instructions nor history leaves the session's system
+    ///     message with no content at all: the message carries only the confinement's removal of the
+    ///     runtime's host environment context.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessage()
+    public void CopilotProviderSessionFactory_BuildSessionConfig_BareSeed_CarriesNoSystemMessageContent()
     {
         // Arrange / Act
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.Null(config.SystemMessage);
+        Assert.Null(config.SystemMessage!.Content);
     }
 
     /// <summary>
@@ -200,9 +201,9 @@ public class CopilotProviderSessionFactoryTests
         var seed = new ProviderSessionSeed(null, [], [TranscriptEntry.User("what changed?")]);
         var config = Build(seed);
 
-        // Assert: no instructions means no system message at all, and the record still arrives
+        // Assert: no instructions means no system-message content at all, and the record still arrives
         var content = CopilotProviderSessionFactory.ComposeHistoryPreamble(seed)!;
-        Assert.Null(config.SystemMessage);
+        Assert.Null(config.SystemMessage!.Content);
         Assert.StartsWith(CopilotProviderSessionFactory.RecordOpening, content, StringComparison.Ordinal);
         Assert.Contains("USER: what changed?", content, StringComparison.Ordinal);
     }

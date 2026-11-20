@@ -20,14 +20,14 @@ the SDK's **own** session event objects into the package's own event handlers, a
 SDK's own assistant-message type. So the seeding, the occupancy accounting, the consolidation, the
 agent's streaming and resumption, and the ownership discipline are all exercised end to end, offline.
 
-**Why that is possible at all, and where the boundary is.** The SDK's session and client types are
-sealed with non-public constructors and no virtual members, so neither can be faked, subclassed or
-constructed in a test. AgentKit therefore reaches them through one internal seam — `ICopilotTurnChannel`
-with its opener and resumer delegates — whose production implementation forwards a turn and owns
-one release; see *CopilotTurnChannel Unit Verification Design*, which states plainly what that leaves
-unexercised. The SDK's options, permission and event types, by contrast, are all constructable, so
-nothing about their shapes is simulated. The client's start is reached the same way: the starter's
-internal overload takes the start and the environment as delegates.
+**Why that is possible at all, and where the boundary is.** The SDK's session and client types are sealed with
+non-public constructors and no virtual members, so neither can be faked, subclassed or constructed in a test. AgentKit
+therefore reaches them through one internal seam — `ICopilotTurnChannel` with its opener and resumer delegates — whose
+production implementation forwards a turn, owns one release and opens every session through one confining protocol, the
+protocol's order and failure handling factored out and tested with the runtime's steps as delegates; see
+*CopilotTurnChannel Unit Verification Design*, which states plainly what that leaves unexercised. The SDK's options,
+permission and event types, by contrast, are all constructable, so nothing about their shapes is simulated. The client's
+start is reached the same way: the starter's internal overload takes the start and the environment as delegates.
 
 **The live runtime is exercised by a separate, opt-in suite.** What a scripted runtime cannot
 establish — what the real runtime does with the options it is handed — is measured by the live
@@ -150,6 +150,21 @@ scripted runtime was never asked for a session. The runtime itself refuses to cr
 registers a custom tool under a built-in's name, but only on the agent's first run; refusing it when
 the application composes its tools moves the failure to the place the application can fix it. The
 same scenario is the system-level evidence that agent construction rejects such a tool list.
+
+### Tool Suppression: Ambient MCP Servers and Plugins Are Closed on Every Session
+
+**Test**: `AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed`
+
+Opens both the engine's options and an agent's options through the package's confining protocol,
+with a runtime whose discovery reports a non-GitHub MCP server and whose session keeps reporting it
+enabled however often it is disabled. Asserts, for each, that the server and the built-in GitHub
+server were both named in the options' disabled servers when the session was opened, that the
+session's installed plugins were cleared, that the server was disabled for the session, and that the
+session was then refused with an error naming the server and abandoned. A confined agent receives no
+MCP server: the allow-list keeps a server's tools from the model, but a started server still runs a
+process with the user's environment and can contribute instructions, so a server that cannot be
+closed refuses the session rather than letting the run continue. That the runtime honors these calls
+is shown by the live suite's ambient-server scenario.
 
 ### Permission Handling: A Supplied Tool Is Approved
 
@@ -291,7 +306,9 @@ Verification Design*.
 
 A system-level test run passes when every scenario above passes without error or exception beyond
 those explicitly asserted. Any allow-list that diverges from the published tools or carries an
-unqualified entry, any tool named like a built-in that reaches the runtime, any supplied tool that is
+unqualified entry, any tool named like a built-in that reaches the runtime, any session opened with a
+discovered MCP server left enabled on its options or accepted while one stays enabled, any supplied
+tool that is
 rejected, any unlisted or built-in request that is approved on either path, any missing client that
 is accepted, any occupancy figure that is not the one the runtime reported, any rotation that fails
 to seed the consolidated record, any part of a seeded record appearing in a session's system message,
@@ -308,8 +325,9 @@ package's confinement, its agent and AgentKit's session engine against the **rea
 and a real model, and asserts what the runtime actually did. It re-measures, on every run, the
 runtime properties the package's design depends on — which tools a confined session exposes, which
 names the runtime reserves for its built-ins, what the permission handler is asked, how large and
-image results are delivered, whether an agent's conversation streams and resumes, and how a failed
-start is reported.
+image results are delivered, whether an agent's conversation streams and resumes, how a failed
+start is reported, and whether an ambient MCP server is closed on a session opened through the
+package's channel.
 
 **It is supplementary evidence and is not linked to ReqStream.** The suite never runs in the pipeline
 that builds the trace matrix — that pipeline is hermetic and holds no credential — so a requirement
@@ -336,7 +354,10 @@ that what those tests assert about the options is what the runtime honors.
   host should. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
   generated PNG split blue and yellow; a file outside the sandbox carries a second codeword no confined
   tool may return. The tests run sequentially in one collection, to control cost and because one
-  scenario changes the process environment.
+  scenario changes the process environment. The ambient-server scenario, L12, starts a second,
+  short-lived client of its own in CodingAgent mode, spawned out of process on the runtime the SDK
+  provisioned, whose data directory under the run's temporary root configures one non-GitHub MCP
+  server whose command does not exist — never the user's own Copilot home.
 
 ### Running the Live Suite
 
@@ -363,8 +384,9 @@ holding the TRX test results and the run's `live-*.log`. A manual run leaves the
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Thirteen tests
-cover eleven scenarios; the agent scenario, L10, is three tests.
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Fifteen tests
+cover twelve scenarios; the agent scenario, L10, is three tests, and the ambient-server scenario, L12,
+is two.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -381,6 +403,8 @@ cover eleven scenarios; the agent scenario, L10, is three tests.
 | L10b | `Agent_SerializedSession_ResumesOnANewAgent` | Pass |
 | L10c | `Agent_ImageAttachment_ReachesTheModel` | Pass |
 | L11 | `ClientStarter_AmbientCopilotCliPath_IsExplained` | Pass |
+| L12a | `Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled` | Pass |
+| L12b | `Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled` | Pass |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -412,6 +436,13 @@ few that rest on the model's prose are marked.
   names blue and yellow (prose).
 - **L11**: a second client started through the starter with a bogus `COPILOT_CLI_PATH` fails with an
   explanation naming the variable and its value; the variable is restored afterwards.
+- **L12a**: on a CodingAgent-mode client whose data directory configures a non-GitHub MCP server —
+  which the runtime's discovery is first asserted to report, so the scenario cannot pass on a fixture
+  the runtime ignores — a session opened through the package's production channel named the server
+  in its disabled servers, reports no MCP server enabled in its effective configuration, and exposes
+  exactly the supplied tools.
+- **L12b**: a control. The same options handed to the same kind of client directly, bypassing the
+  channel, leave the server enabled, proving the channel's closure is load-bearing.
 
 ### Live Acceptance Criteria
 
@@ -421,8 +452,9 @@ failure of L1, L2, L5 or L6 means a confined session is not confined on the real
 that the reserved-name set or the guard no longer matches the runtime; of L7 or L8, that a tool's
 result does not reach the model intact; of L9, that the session engine does not hold on the
 runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
-as designed; of L11, that a host is not told why its runtime did not load. Any such failure is
-investigated before a release.
+as designed; of L11, that a host is not told why its runtime did not load; of L12a, that an ambient
+MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
+nothing. Any such failure is investigated before a release.
 
 ### Recorded Run
 
@@ -430,5 +462,13 @@ The suite was run manually on 2026-11-20, on Windows 11 (build 26100), with the 
 `claude-haiku-5.5`. All 13 tests passed, in 1 minute 48 seconds, with the results shown in the table
 above. Two behaviors for which the design kept a fallback in reserve held on the real runtime: a
 released session resumed on a new agent instance, and an in-memory image attachment reached the
-model. Later
-runs of the CI job record their results in the `live-copilot-suite` artifact of each workflow run.
+model.
+
+When the turn channel gained its confining opening protocol, the scenarios that go through it were
+re-run the same day, on the same machine and model, after the change: L12a and L12b, which are new,
+and L9 and L10a to L10c, whose sessions are opened and resumed through the protocol. All six passed.
+L12a's discovery reported the probe server from the user source, enabled; the session opened through
+the channel listed it disabled and exposed exactly the two supplied tools, while L12b's session,
+created directly, listed it enabled. L9 rotated three times. The other scenarios open no session
+through the channel and were not re-run. Later runs of the CI job record their results in the
+`live-copilot-suite` artifact of each workflow run.

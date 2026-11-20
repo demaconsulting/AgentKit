@@ -66,22 +66,33 @@ sections:
               capability closed: skills and built-in skills, custom instructions and their on-demand
               discovery, repository hooks, host git operations, memory and the cross-session store,
               built-in and discovered sub-agents, extensions, configuration discovery, tool search,
-              the schedule tool, image generation, and the runtime's built-in GitHub MCP server.
+              the schedule tool, image generation, the host environment context in the system prompt,
+              experimental features, embedding retrieval, and the runtime's built-in GitHub MCP
+              server.
             justification: |
               Each of these is a channel through which the runtime injects capability or direction
               the composing application never attached and the untrained user cannot adjudicate. A
               confined agent must receive only what its host gave it, so every channel is closed
-              explicitly on every session the factory builds rather than left at whatever the
-              runtime's mode defaults to: the host chooses the client's mode, and the factory cannot
-              read it back. The built-in GitHub MCP server is disabled outright rather than merely
-              filtered, because measured against the live runtime it is started and authenticated
-              with the user's GitHub identity for every session even in the runtime's empty mode.
+              explicitly on every session the factory builds, so the confinement does not depend on
+              the client's mode, which the SDK offers no way to read back. The host environment
+              context names the working directory, the operating system, the git root, a directory
+              listing and the available tools; Empty mode removes it client-side, and the factory
+              removes it through the system message's section overrides so it is removed in any mode.
+              Experimental features could add behavior the host never chose, and embedding retrieval
+              draws context from a cache shared across sessions. The built-in GitHub MCP server is
+              disabled outright rather than merely filtered, because measured against the live
+              runtime it is started and authenticated with the user's GitHub identity for every
+              session even in the runtime's empty mode; every other MCP server, and the session's
+              installed plugins, are closed by the production turn channel, which needs the live
+              session to do it.
               Any one channel silently reverting to the permissive value would widen the agent
               without changing anything the host wrote, so each is asserted rather than assumed.
             tests:
               - CopilotAgentFactory_BuildSessionConfig_InjectedCapability_IsWithheld
               - CopilotAgentFactory_BuildSessionConfig_GitHubMcpServer_IsDisabled
               - CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled
+              - CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved
+              - CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
             title: >-
@@ -110,13 +121,15 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
             title: >-
-              The factory shall carry supplied instructions onto the session's system message, and
-              shall leave the session with no system message when no instructions are supplied.
+              The factory shall carry supplied instructions as the content of the session's system
+              message, and shall add no content of its own when no instructions are supplied.
             justification: |
               A confined agent is governed by the instructions its host gives it, so those
-              instructions are carried onto the session's system message. When a host supplies none,
-              the factory adds no system message of its own, leaving the session as the runtime would
-              default it.
+              instructions are the content of the session's system message, which the runtime
+              appends to its own prompt. When a host supplies none, the factory adds no content of
+              its own. The system message always exists, because it also carries the confinement's
+              removal of the host environment context, so the instructions are set on that message
+              rather than replacing it.
             tests:
               - CopilotAgentFactory_BuildSessionConfig_Instructions_CarriedOnSystemMessage
 
