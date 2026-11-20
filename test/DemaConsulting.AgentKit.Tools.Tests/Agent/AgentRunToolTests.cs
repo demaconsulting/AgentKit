@@ -330,6 +330,43 @@ public class AgentRunToolTests
     }
 
     /// <summary>
+    ///     Proves a child's answer larger than the result ceiling is retained whole when the
+    ///     parent's composition retains large outputs, so the child's work is not lost.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentRunTool_Run_OversizedAnswerWithRetention_IsRetainedForPaging()
+    {
+        // Arrange: a tight result ceiling, a talkative child, and the tool composed with retention
+        var limits = new ToolLimits(maxResultCharacters: 200);
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            limits);
+        var answer = string.Join("\n", Enumerable.Range(1, 50).Select(n => "finding " + n));
+        var tools = ToolOutputSpill.Apply(
+            [AgentRunTool.Create(
+                policy,
+                [new AgentProfile("reviewer", "Review.", [])],
+                (_, _) => Task.FromResult<string?>(answer),
+                NoTools,
+                depth: 0)],
+            limits);
+
+        // Act: delegate, then read the end of the child's answer
+        var preview = await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Check it." },
+            TestContext.Current.CancellationToken);
+        var page = await tools[1].InvokeAsync(
+            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 50, ["lineCount"] = 1 },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a reference rather than a refusal, and the last finding is intact
+        Assert.StartsWith("[Output output-1 from " + AgentRunTool.ToolName, Assert.IsType<string>(preview), StringComparison.Ordinal);
+        Assert.Equal("output-1 lines 50-50 of 50\n50| finding 50", Assert.IsType<string>(page));
+    }
+
+    /// <summary>
     ///     Proves the profile the model named is the profile whose instructions and declared tools
     ///     shape the child, and that the task is the only part the parent supplies.
     /// </summary>

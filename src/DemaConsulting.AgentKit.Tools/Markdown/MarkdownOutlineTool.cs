@@ -44,7 +44,9 @@ namespace DemaConsulting.AgentKit.Tools.Markdown;
 ///     tool, so a document far larger than the read ceiling is still navigable. The tool consults
 ///     <see cref="PathPolicy.TryResolveRead"/> and bounds only the serialized outline by
 ///     <see cref="ToolLimits.MaxResultCharacters"/>, refusing an oversized outline with the
-///     ceiling named rather than truncating it. The delegate is declared to
+///     ceiling named rather than truncating it — or, when the composition retains large outputs
+///     (see <see cref="ToolOutputSpill"/>), retaining the outline whole, indented so it can be
+///     paged a section at a time. The delegate is declared to
 ///     return <see cref="object"/> deliberately — see the remarks on
 ///     <see cref="GuardedToolFactory"/> — and every refusal is returned rather than thrown.
 ///     </para>
@@ -88,6 +90,17 @@ public static class MarkdownOutlineTool
     ///     The character introducing an ATX heading.
     /// </summary>
     private const char HeadingMarker = '#';
+
+    /// <summary>
+    ///     The serializer options producing the indented outline handed over when the outline is
+    ///     too large to return.
+    /// </summary>
+    /// <remarks>
+    ///     Indented because a composition retaining large outputs pages a retained outline by line,
+    ///     and the compact form is a single line. Cached because serializer options are expensive to
+    ///     construct and are immutable once used.
+    /// </remarks>
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 
     /// <summary>
     ///     Creates the <c>markdown_outline</c> tool governed by an access policy.
@@ -229,12 +242,15 @@ public static class MarkdownOutlineTool
                 .ToList(),
         };
 
-        // The result ceiling bounds an outline exactly as it bounds a file's text.
+        // The result ceiling bounds an outline exactly as it bounds a file's text, measured on the
+        // compact form the model would receive. The outline handed over with the refusal is
+        // indented, because a composition retaining large outputs pages it by line and compact
+        // JSON is a single line; any other composition gives exactly this refusal.
         var serialized = JsonSerializer.Serialize(result);
         if (serialized.Length > policy.Limits.MaxResultCharacters)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
+            return ToolResult.Oversized(
+                JsonSerializer.Serialize(result, IndentedJson),
                 "The outline exceeds the "
                 + policy.Limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
                 + "-character result limit.");

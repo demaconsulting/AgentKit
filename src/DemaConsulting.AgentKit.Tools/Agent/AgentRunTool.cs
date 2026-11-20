@@ -368,7 +368,10 @@ public static class AgentRunTool
     /// <param name="policy">The policy whose result ceiling applies.</param>
     /// <param name="profileName">The profile that ran, named in both outcomes.</param>
     /// <param name="answer">The child's final text, which may be null or empty.</param>
-    /// <returns>The child's text, a statement that it said nothing, or a refusal.</returns>
+    /// <returns>
+    ///     The child's text, a statement that it said nothing, or — when the answer exceeds the
+    ///     result ceiling — the oversized-output marker carrying the whole answer and its refusal.
+    /// </returns>
     private static object Report(PathPolicy policy, string profileName, string? answer)
     {
         if (string.IsNullOrWhiteSpace(answer))
@@ -378,11 +381,13 @@ public static class AgentRunTool
 
         // A child's answer is spent out of the parent's context window like any other tool result,
         // so it is bounded by the same ceiling and refused rather than truncated: a truncated report
-        // is worse than none, because the parent cannot tell that it is reading half an answer.
+        // is worse than none, because the parent cannot tell that it is reading half an answer. The
+        // whole answer is handed over with the refusal, so a parent composition retaining large
+        // outputs keeps the child's work for paging instead of losing it.
         if (answer.Length > policy.Limits.MaxResultCharacters)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
+            return ToolResult.Oversized(
+                answer,
                 "The '" + profileName + "' agent reported "
                 + answer.Length.ToString(CultureInfo.InvariantCulture)
                 + " characters, which exceeds the "

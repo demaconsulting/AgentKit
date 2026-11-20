@@ -159,13 +159,77 @@ public class FileListToolTests
     }
 
     /// <summary>
+    ///     Proves a listing larger than the result ceiling is refused with the ceiling named, rather
+    ///     than truncated, when the composition does not retain large outputs.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileListTool_List_ListingBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling()
+    {
+        // Arrange: many files under a small result ceiling
+        using var fixture = new TempDirectoryFixture();
+        WriteManyFiles(fixture.Root, 40);
+        var tool = FileListTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxResultCharacters: 100)));
+
+        // Act: list the workspace
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["directory"] = fixture.Root });
+
+        // Assert: refused as too large with the ceiling named, and no partial listing
+        var text = Assert.IsType<string>(result);
+        Assert.Equal(
+            "Denied (ResourceTooLarge): The listing exceeds the 100-character result limit.",
+            text);
+    }
+
+    /// <summary>
+    ///     Proves a listing larger than the result ceiling is retained whole when the composition
+    ///     retains large outputs, so no file is hidden from the model.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task FileListTool_List_ListingBeyondTheResultCeilingWithRetention_IsRetainedForPaging()
+    {
+        // Arrange: many files, and the listing composed with retention
+        using var fixture = new TempDirectoryFixture();
+        WriteManyFiles(fixture.Root, 40);
+        var limits = new ToolLimits(maxResultCharacters: 100);
+        var tools = ToolOutputSpill.Apply([FileListTool.Create(RootedPolicy(fixture.Root, limits))], limits);
+
+        // Act: list the workspace, then search the retained listing for the last file
+        var preview = Assert.IsType<string>(await InvokeAsync(tools[0], new AIFunctionArguments { ["directory"] = fixture.Root }));
+        var found = Assert.IsType<string>(await InvokeAsync(
+            tools[2],
+            new AIFunctionArguments { ["id"] = "output-1", ["pattern"] = "file-40.txt" }));
+
+        // Assert: a reference rather than a refusal, and the last file is in what was retained
+        Assert.StartsWith("[Output output-1 from " + FileListTool.ToolName, preview, StringComparison.Ordinal);
+        Assert.Contains("file-40.txt", found, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Writes a number of small, distinctly named files.
+    /// </summary>
+    /// <param name="root">The directory to write into.</param>
+    /// <param name="count">The number of files.</param>
+    private static void WriteManyFiles(string root, int count)
+    {
+        for (var index = 1; index <= count; index++)
+        {
+            TempDirectoryFixture.WriteFile(root, "file-" + index + ".txt", "content");
+        }
+    }
+
+    /// <summary>
     ///     Composes a policy over one read-write location.
     /// </summary>
     /// <param name="root">The permitted location.</param>
+    /// <param name="limits">The ceilings to apply, or null for the defaults.</param>
     /// <returns>The policy.</returns>
-    private static PathPolicy RootedPolicy(string root)
+    private static PathPolicy RootedPolicy(string root, ToolLimits? limits = null)
     {
-        return new PathPolicy(root, [PathRule.ReadWrite(root)]);
+        return limits is null
+            ? new PathPolicy(root, [PathRule.ReadWrite(root)])
+            : new PathPolicy(root, [PathRule.ReadWrite(root)], limits);
     }
 
     /// <summary>

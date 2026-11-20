@@ -181,6 +181,69 @@ public class MarkdownOutlineToolTests
     }
 
     /// <summary>
+    ///     Proves an outline larger than the result ceiling is refused with the ceiling named, rather
+    ///     than truncated, when the composition does not retain large outputs.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling()
+    {
+        // Arrange: a document with many headings under a small result ceiling
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "long.md", ManyHeadings(60));
+        var tool = MarkdownOutlineTool.Create(RootedPolicy(fixture.Root, new ToolLimits(maxResultCharacters: 500)));
+
+        // Act: outline it
+        var result = await InvokeAsync(tool, new AIFunctionArguments { ["path"] = "long.md" });
+
+        // Assert: refused with the ceiling named
+        Assert.Equal(
+            "Denied (ResourceTooLarge): The outline exceeds the 500-character result limit.",
+            Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves an outline larger than the result ceiling is retained whole, indented one value per
+    ///     line, when the composition retains large outputs.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeilingWithRetention_IsRetainedIndented()
+    {
+        // Arrange: a document with many headings, and the outline composed with retention
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Root, "long.md", ManyHeadings(60));
+        var limits = new ToolLimits(maxResultCharacters: 500);
+        var tools = ToolOutputSpill.Apply([MarkdownOutlineTool.Create(RootedPolicy(fixture.Root, limits))], limits);
+
+        // Act: outline it, then find the last section in what was retained
+        var preview = Assert.IsType<string>(await InvokeAsync(tools[0], new AIFunctionArguments { ["path"] = "long.md" }));
+        var found = Assert.IsType<string>(await InvokeAsync(
+            tools[2],
+            new AIFunctionArguments { ["id"] = "output-1", ["pattern"] = "\"Section 60\"" }));
+
+        // Assert: a reference rather than a refusal, and the retained outline has one value per line
+        Assert.StartsWith("[Output output-1 from " + MarkdownOutlineTool.ToolName, preview, StringComparison.Ordinal);
+        Assert.Contains(":      \"title\": \"Section 60\",", found, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Builds a Markdown document holding the requested number of level-2 sections.
+    /// </summary>
+    /// <param name="count">The number of sections.</param>
+    /// <returns>The document.</returns>
+    private static string ManyHeadings(int count)
+    {
+        var builder = new StringBuilder();
+        for (var section = 1; section <= count; section++)
+        {
+            builder.Append("## Section ").Append(section).Append("\ntext\n");
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
     ///     Asserts a section element carries the expected level, title, and line range.
     /// </summary>
     /// <param name="section">The section JSON element.</param>

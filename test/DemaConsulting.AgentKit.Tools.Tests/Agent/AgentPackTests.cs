@@ -537,6 +537,147 @@ public class AgentPackTests
     }
 
     /// <summary>
+    ///     Proves a child composed with retention receives the two reader tools after the tools its
+    ///     profile admits, even though the profile does not name them.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools()
+    {
+        // Arrange: a profile admitting one tool, and children composed with retention
+        var profile = new AgentProfile("reviewer", "You review.", ["notes_read"]);
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [profile],
+                Recording(children),
+                [new StubToolPack("notes", "read", "write")],
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        await Delegate(tools[0], "reviewer");
+
+        // Assert: the admitted tool, then the readers, and still not the write tool
+        Assert.Equal(
+            ["notes_read", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            children[0].Tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a profile that admits no tools stays tool-less under retention, because a child
+    ///     with nothing that produces output has nothing to read back.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless()
+    {
+        // Arrange: a profile admitting nothing, with retention chosen for children
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("summarizer", "You summarize.", [])],
+                Recording(children),
+                [new StubToolPack("notes", "read")],
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        await Delegate(tools[0], "summarizer");
+
+        // Assert: no tools at all
+        Assert.Empty(children[0].Tools);
+    }
+
+    /// <summary>
+    ///     Proves the retention choice is carried to a grandchild, so every level of delegation
+    ///     retains.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild()
+    {
+        // Arrange: a profile that may delegate to itself, with retention chosen for children
+        var profile = new AgentProfile("worker", "You work.", ["notes_read", AgentRunTool.ToolName]);
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [profile],
+                Recording(children),
+                [new StubToolPack("notes", "read")],
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate, then have the child delegate in turn
+        await Delegate(tools[0], "worker");
+        await Delegate(children[0].Tools.Single(tool => tool.Name == AgentRunTool.ToolName), "worker");
+
+        // Assert: the grandchild has the readers too
+        Assert.Equal(2, children.Count);
+        Assert.Contains(children[1].Tools, tool => tool.Name == ToolOutputReadTool.ToolName);
+    }
+
+    /// <summary>
+    ///     Proves two children never share retained outputs: each delegated run is its own
+    ///     composition with its own store.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore()
+    {
+        // Arrange: a result ceiling every stub output exceeds, so each call is retained
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: 2));
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_read"])],
+                Recording(children),
+                [new StubToolPack("notes", "read")],
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(policy)
+            .ToList();
+        await Delegate(tools[0], "worker");
+        await Delegate(tools[0], "worker");
+
+        // Act: the first child retains an output; the second child reads that reference
+        var retained = await children[0].Tools[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var read = await children[1].Tools.Single(tool => tool.Name == ToolOutputReadTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["id"] = "output-1" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the first child holds a reference, and the second child's store never issued it
+        Assert.StartsWith("[Output output-1 from notes_read", Assert.IsType<string>(retained), StringComparison.Ordinal);
+        Assert.Contains("never retained", Assert.IsType<string>(read), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Builds a runner that records each child request and answers briefly.
+    /// </summary>
+    /// <param name="children">The list each request is recorded in.</param>
+    /// <returns>The runner.</returns>
+    private static Func<ChildAgentRequest, CancellationToken, Task<string?>> Recording(List<ChildAgentRequest> children) =>
+        (request, _) =>
+        {
+            children.Add(request);
+            return Task.FromResult<string?>("done");
+        };
+
+    /// <summary>
+    ///     Invokes an <c>agent_run</c> tool for a profile, as the runtime would.
+    /// </summary>
+    /// <param name="runTool">The <c>agent_run</c> tool.</param>
+    /// <param name="profile">The profile to delegate to.</param>
+    /// <returns>A task that completes when the delegation has returned.</returns>
+    private static async Task Delegate(AIFunction runTool, string profile)
+    {
+        await runTool.InvokeAsync(
+            new AIFunctionArguments { ["profile"] = profile, ["task"] = "Do it." },
+            TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     ///     Builds a permissive policy for scenarios where containment is not the subject.
     /// </summary>
     /// <returns>A policy granting unrestricted read-write access with default limits.</returns>

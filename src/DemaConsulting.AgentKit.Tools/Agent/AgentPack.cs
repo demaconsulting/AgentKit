@@ -43,6 +43,14 @@ namespace DemaConsulting.AgentKit.Tools.Agent;
 ///     current level.
 ///     </para>
 ///     <para>
+///     <b>A delegated agent retains large tool outputs only when the application says so.</b>
+///     Passing <c>childToolOutput</c> composes every child — and every deeper child — with
+///     retention, each with its own store and its own reader tools, exactly as
+///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> composes the parent. Independently of
+///     that choice, a child's final answer too large for the parent's result ceiling is retained
+///     by the parent whenever the <em>parent's</em> composition retains large outputs.
+///     </para>
+///     <para>
 ///     The class is immutable after construction and is safe for concurrent use.
 ///     </para>
 /// </remarks>
@@ -120,6 +128,12 @@ public sealed class AgentPack : IToolPack
     private readonly HostCapabilities _hostCapabilities;
 
     /// <summary>
+    ///     The retention options a delegated agent's tool list is composed with, or
+    ///     <see langword="null"/> when a child does not retain large outputs.
+    /// </summary>
+    private readonly ToolOutputOptions? _childToolOutput;
+
+    /// <summary>
     ///     The depth of the agent this pack is being composed for, counting a root agent as zero.
     /// </summary>
     private readonly int _depth;
@@ -165,6 +179,16 @@ public sealed class AgentPack : IToolPack
     ///     admits <c>agent_run</c> can delegate in turn; a host whose children may also see, for
     ///     example, passes <c>HostCapabilities.Delegation | HostCapabilities.Vision</c>.
     /// </param>
+    /// <param name="childToolOutput">
+    ///     The retention options a delegated agent's tool list is composed with, exactly as
+    ///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> applies them to the parent, or
+    ///     <see langword="null"/> — the default — for a child that does not retain large outputs.
+    ///     A child is a separate composition, so it is given its own store and its own
+    ///     <c>tool_output_read</c> and <c>tool_output_search</c>, appended after the profile's
+    ///     names are applied so a retaining child can always read what it retained. A profile that
+    ///     admits no tools stays tool-less. The choice is carried to every deeper level of
+    ///     delegation.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
     ///     <paramref name="childPacks"/> is <see langword="null"/>.
@@ -178,8 +202,9 @@ public sealed class AgentPack : IToolPack
         IEnumerable<AgentProfile> profiles,
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
         IEnumerable<IToolPack> childPacks,
-        HostCapabilities hostCapabilities = HostCapabilities.Delegation)
-        : this(profiles, runner, childPacks, hostCapabilities, depth: 0)
+        HostCapabilities hostCapabilities = HostCapabilities.Delegation,
+        ToolOutputOptions? childToolOutput = null)
+        : this(profiles, runner, childPacks, hostCapabilities, childToolOutput, depth: 0)
     {
     }
 
@@ -196,6 +221,9 @@ public sealed class AgentPack : IToolPack
     /// <param name="runner">The host's means of starting an agent.</param>
     /// <param name="childPacks">The packs a delegated agent may draw its tools from.</param>
     /// <param name="hostCapabilities">The capabilities the host provides to a delegated agent.</param>
+    /// <param name="childToolOutput">
+    ///     The retention options a delegated agent's tool list is composed with, or null for none.
+    /// </param>
     /// <param name="depth">The depth of the agent this pack is composed for.</param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
@@ -209,6 +237,7 @@ public sealed class AgentPack : IToolPack
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
         IEnumerable<IToolPack> childPacks,
         HostCapabilities hostCapabilities,
+        ToolOutputOptions? childToolOutput,
         int depth)
     {
         ArgumentNullException.ThrowIfNull(profiles);
@@ -225,6 +254,7 @@ public sealed class AgentPack : IToolPack
 
         _runner = runner;
         _hostCapabilities = hostCapabilities;
+        _childToolOutput = childToolOutput;
         _depth = depth;
     }
 
@@ -339,6 +369,11 @@ public sealed class AgentPack : IToolPack
     ///     covers. A child holds a narrower policy by design, so a sibling profile it can no longer
     ///     reach is absent from it rather than a configuration error reported at run time.
     ///     </para>
+    ///     <para>
+    ///     <b>When the application chose retention for children,</b> the filtered list is composed
+    ///     with it last, giving the child its own store and its own two reader tools. The choice is
+    ///     carried by the pack added one level deeper, so a grandchild retains too.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The parent composition's policy, which the child's may only narrow.</param>
     /// <param name="profile">The profile whose grants and declared names shape the child.</param>
@@ -358,13 +393,27 @@ public sealed class AgentPack : IToolPack
         // the greater depth. A sibling profile this child can no longer reach is not a configuration
         // error — the application's own composition already judged it — so it is simply absent, and
         // a model naming it gets the ordinary unknown-profile refusal.
-        builder.Add(new AgentPack(Reachable(childPolicy), _runner, _childPacks, _hostCapabilities, _depth + 1));
+        builder.Add(new AgentPack(
+            Reachable(childPolicy),
+            _runner,
+            _childPacks,
+            _hostCapabilities,
+            _childToolOutput,
+            _depth + 1));
 
         var composed = builder.Build();
 
         // The profile is a filter over what was published, never a source of tools.
         var admitted = new HashSet<string>(profile.Tools, StringComparer.Ordinal);
-        return [.. composed.Where(tool => admitted.Contains(tool.Name))];
+        List<AIFunction> filtered = [.. composed.Where(tool => admitted.Contains(tool.Name))];
+
+        // Retention is applied after the filter, because the readers are infrastructure for the
+        // tools the child holds rather than capabilities a profile grants: a retaining child must
+        // always be able to read what it retained. A child holding no tools has nothing that could
+        // produce an output, so it stays tool-less rather than gaining two readers of nothing.
+        return _childToolOutput is null || filtered.Count == 0
+            ? filtered
+            : ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput);
     }
 
     /// <summary>
