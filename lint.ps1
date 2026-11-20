@@ -134,10 +134,12 @@ if (-not $skipDotnetTools) {
 #   (1) disk vs. definition - every non-generated chapter file under a document set is listed,
 #       and every non-generated entry listed actually exists. Catches a chapter that was
 #       written but never wired into the document, and an entry left behind after a rename.
-#   (2) model vs. definition - every 'designRef' and 'verificationRef' artifact location
-#       recorded in the SysML2 model names a file that exists AND is listed in that document's
-#       definition.yaml. Catches a modelled unit whose chapter was never written at all, which
-#       direction (1) cannot see.
+#   (2) model vs. definition - every 'designFiles' and 'verificationFiles' artifact location
+#       recorded in the SysML2 model's 'metadata info : SoftwareInfo' annotations names a file
+#       that exists AND is listed in that document's definition.yaml. Catches a modelled unit
+#       whose chapter was never written at all, which direction (1) cannot see. The check fails
+#       if the model yields no such locations at all, so a change to the metadata convention
+#       cannot silently turn it into a no-op.
 # Generated chapters are exempt from the existence check because they are produced by earlier
 # CI steps and are absent from a clean working tree.
 Write-Host "Linting: document-set completeness..."
@@ -174,12 +176,29 @@ foreach ($definition in Get-ChildItem docs -Recurse -Filter definition.yaml -Err
 }
 
 if (Test-Path docs/sysml2/model) {
-    $modelRefs = Select-String -Path (Get-ChildItem docs/sysml2/model -Recurse -Filter *.sysml).FullName `
-        -Pattern 'comment\s+(design|verification)Ref\s+/\*\s*(?:Design|Verification):\s*(\S+\.md)\s*\*/' -AllMatches |
-        ForEach-Object {
-            $source = $_.Path
-            $_.Matches | ForEach-Object { [pscustomobject]@{ Source = $source; Path = $_.Groups[2].Value } }
-        }
+    # Read each 'metadata info : SoftwareInfo { ... }' block, then every quoted value of its
+    # designFiles/verificationFiles list attributes (one attribute may list several files).
+    $modelRefs = @(
+        foreach ($modelFile in Get-ChildItem docs/sysml2/model -Recurse -Filter *.sysml) {
+            $blocks = [regex]::Matches(
+                (Get-Content $modelFile.FullName -Raw),
+                'metadata\s+\w+\s*:\s*SoftwareInfo\s*\{([^}]*)\}')
+            foreach ($block in $blocks) {
+                $attributes = [regex]::Matches(
+                    $block.Groups[1].Value,
+                    '\b(?:design|verification)Files\s*=\s*\(([^)]*)\)\s*;')
+                foreach ($attribute in $attributes) {
+                    foreach ($value in [regex]::Matches($attribute.Groups[1].Value, '"([^"]+)"')) {
+                        [pscustomobject]@{ Source = $modelFile.FullName; Path = $value.Groups[1].Value }
+                    }
+                }
+            }
+        })
+
+    if ($modelRefs.Count -eq 0) {
+        Write-Host "document-set: no designFiles/verificationFiles metadata found in docs/sysml2/model"
+        $lintError = $true
+    }
 
     foreach ($ref in $modelRefs) {
         $setKey = ($ref.Path -split '/')[0..1] -join '/'
