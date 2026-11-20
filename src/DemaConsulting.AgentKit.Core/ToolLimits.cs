@@ -233,6 +233,12 @@ public sealed class ToolLimits
     /// <summary>
     ///     Gets the ceiling on the characters a tool result may return to the model.
     /// </summary>
+    /// <remarks>
+    ///     This is also the threshold above which a composition that retains large tool outputs
+    ///     retains an output instead of returning it, and the bound on the preview and on every
+    ///     page the reader tools return; see <see cref="ToolOutputSpill"/>. One budget keeps one
+    ///     meaning: what fits is returned, and what does not is either refused or retained.
+    /// </remarks>
     public int MaxResultCharacters { get; }
 
     /// <summary>

@@ -94,6 +94,14 @@ public enum DenialReason
 ///         DenialReason.UnsupportedMediaType,
 ///         "The file is an image, not text.",
 ///         redirectToolName: "image_read");
+///
+///     // Oversized: the complete output plus the refusal to give when the composition does not
+///     // retain large outputs. A composition that does retain them hands the model a preview and a
+///     // reference instead.
+///     var listing = string.Join("\n", Enumerable.Range(1, 5000).Select(n => "entry " + n));
+///     object oversized = ToolResult.Oversized(
+///         listing,
+///         "The listing exceeds the 32000-character result limit.");
 ///     </code>
 /// </example>
 public static class ToolResult
@@ -353,4 +361,101 @@ public static class ToolResult
 
         return composed;
     }
+
+    /// <summary>
+    ///     Constructs the result of a tool whose complete output exceeds the result ceiling,
+    ///     carrying both the full output and the refusal to give when nothing can retain it.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     <b>This exists so a tool states the fact once and the composition decides what it means.</b>
+    ///     A tool that produced more than <see cref="ToolLimits.MaxResultCharacters"/> characters
+    ///     cannot know whether the application composed it with retention of large outputs. Without
+    ///     retention the only honest answer is a refusal; with it, the full output is retained and
+    ///     the model is handed a bounded preview and a reference it can page through. Returning
+    ///     this value lets the same tool code give whichever answer the composition supports,
+    ///     rather than every tool learning about retention.
+    ///     </para>
+    ///     <para>
+    ///     <b>Without retention the model sees exactly
+    ///     <c>Denied(DenialReason.ResourceTooLarge, denialMessage)</c></b> — the same text the tool
+    ///     returned before this member existed — so an application that does not opt in observes no
+    ///     change at all. With retention the result becomes a preview naming the reference and the
+    ///     reader tools; see <see cref="ToolOutputSpill"/>. If the output is too large even to
+    ///     retain, the same refusal is returned.
+    ///     </para>
+    ///     <para>
+    ///     The returned value is an internal marker that only a tool built by
+    ///     <see cref="GuardedToolFactory"/> resolves. It never reaches a provider: the guarded tool
+    ///     replaces it with the refusal or the preview before the runtime sees the result. A tool
+    ///     built any other way must not return it.
+    ///     </para>
+    /// </remarks>
+    /// <param name="text">
+    ///     The complete output the tool produced, exactly as it would have returned it had it fit.
+    ///     Must be non-null.
+    /// </param>
+    /// <param name="denialMessage">
+    ///     The explanation of the refusal given when the output is not retained, stating the
+    ///     ceiling it exceeded. Must be non-null and non-empty.
+    /// </param>
+    /// <returns>A marker carrying the full output and the refusal message.</returns>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="text"/> or <paramref name="denialMessage"/> is
+    ///     <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="denialMessage"/> is empty.
+    /// </exception>
+    public static object Oversized(string text, string denialMessage)
+    {
+        // A missing output or a refusal with nothing to say are programming errors in the tool:
+        // there would be nothing to retain, or nothing honest to tell a model when retention is
+        // not composed.
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentException.ThrowIfNullOrEmpty(denialMessage);
+
+        return new OversizedResult(text, denialMessage);
+    }
+}
+
+/// <summary>
+///     The marker a tool returns when its complete output exceeds the result ceiling.
+/// </summary>
+/// <remarks>
+///     <para>
+///     Internal so that nothing outside this library can construct, inspect or forward one: the
+///     only producer is <see cref="ToolResult.Oversized"/> and the only consumer is the guarded
+///     tool wrapper, which always replaces it — with the refusal when retention is not composed,
+///     and with a preview or the refusal when it is. A marker that reached a provider would be an
+///     opaque CLR instance a model cannot read, so it is never left in a delivered result.
+///     </para>
+///     <para>
+///     Instances are immutable and safe for concurrent use.
+///     </para>
+/// </remarks>
+/// <param name="text">The complete output the tool produced.</param>
+/// <param name="denialMessage">The refusal message to use when the output is not retained.</param>
+internal sealed class OversizedResult(string text, string denialMessage)
+{
+    /// <summary>
+    ///     Gets the complete output the tool produced.
+    /// </summary>
+    public string Text { get; } = text;
+
+    /// <summary>
+    ///     Gets the explanation of the refusal given when the output is not retained.
+    /// </summary>
+    public string DenialMessage { get; } = denialMessage;
+
+    /// <summary>
+    ///     Composes the refusal the tool would have returned had it never known about retention.
+    /// </summary>
+    /// <remarks>
+    ///     Composed through <see cref="ToolResult.Denied"/> with
+    ///     <see cref="DenialReason.ResourceTooLarge"/>, so the text is byte-for-byte what the tool
+    ///     returned before the marker existed.
+    /// </remarks>
+    /// <returns>The composed refusal text.</returns>
+    public object ToDenial() => ToolResult.Denied(DenialReason.ResourceTooLarge, DenialMessage);
 }

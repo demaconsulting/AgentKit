@@ -299,4 +299,33 @@ public class ToolResultTests
             text,
             StringComparison.Ordinal);
     }
+
+    /// <summary>
+    ///     Proves an oversized result is a marker rather than text, so it can only be delivered
+    ///     through a guarded tool that resolves it.
+    /// </summary>
+    [Fact]
+    public void ToolResult_Oversized_ValidArguments_ReturnsAMarkerThatIsNotText()
+    {
+        // Act: declare an output oversized
+        var result = ToolResult.Oversized("the whole output", "The output exceeds the limit.");
+
+        // Assert: not a string a runtime could deliver as-is, and carrying both parts
+        Assert.IsNotType<string>(result);
+        var marker = Assert.IsType<OversizedResult>(result);
+        Assert.Equal("the whole output", marker.Text);
+        Assert.Equal("The output exceeds the limit.", marker.DenialMessage);
+    }
+
+    /// <summary>
+    ///     Proves an oversized result without its output or its refusal is a programming error.
+    /// </summary>
+    [Fact]
+    public void ToolResult_Oversized_InvalidArguments_Throw()
+    {
+        // Act & Assert: a missing output, a missing refusal, and an empty refusal
+        Assert.Throws<ArgumentNullException>(() => ToolResult.Oversized(null!, "message"));
+        Assert.Throws<ArgumentNullException>(() => ToolResult.Oversized("text", null!));
+        Assert.Throws<ArgumentException>(() => ToolResult.Oversized("text", string.Empty));
+    }
 }

@@ -411,6 +411,149 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that a composition retaining large outputs turns an oversized custom tool's result
+    ///     into a bounded preview whose reference reads back, and searches, the full output.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_OversizedCustomTool_PreviewReferenceReadsBackTheFullOutput()
+    {
+        // Arrange: a custom tool producing far more than the default result ceiling, composed with
+        // retention through the builder
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy())
+            .Add(new StubToolPack("report", tools: [LargeReportTool()]))
+            .WithToolOutputSpill()
+            .Build();
+
+        // Act: invoke the tool, then page to its end and search it through the readers
+        var preview = Assert.IsType<string>(await InvokeAsync(tools, "report_build"));
+        var tail = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 4999,
+            ["lineCount"] = 2,
+        }));
+        var found = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputSearchTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["pattern"] = "row 2500 ",
+        }));
+
+        // Assert: a bounded preview naming the reference, and the readers reach every line of it
+        Assert.StartsWith("[Output output-1 from report_build", preview, StringComparison.Ordinal);
+        Assert.True(preview.Length <= ToolLimits.DefaultMaxResultCharacters);
+        Assert.Equal("output-1 lines 4999-5000 of 5000\n4999| row 4999 of the report\n5000| row 5000 of the report", tail);
+        Assert.Equal("2500:row 2500 of the report\n", found);
+    }
+
+    /// <summary>
+    ///     Proves that a reference survives a session's rotation, because rotation carries the
+    ///     composed tool list - and the store it holds - unchanged.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_ReferenceSurvivesSessionRotation()
+    {
+        // Arrange: a retaining composition, one output retained, and a session over a narrow window
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy())
+            .Add(new StubToolPack("report", tools: [LargeReportTool()]))
+            .WithToolOutputSpill()
+            .Build();
+        await InvokeAsync(tools, "report_build");
+        var factory = new InMemoryProviderSessionFactory(SessionTestData.SizedResponder(15), windowTokens: 300);
+        var options = new AgentSessionOptions(new FakeSummarizer(0.2), tools: tools, verbatimTurns: 2);
+        await using var session = await CompactingAgentSession.CreateAsync(
+            options, factory, TestContext.Current.CancellationToken);
+
+        // Act: converse until the session rotates, then read the reference through the tools the
+        // replacement session was seeded with
+        for (var turn = 0; turn < 20 && session.RotationCount == 0; turn++)
+        {
+            await session.SendAsync(
+                SessionTestData.UserOfTokens(15, "q" + turn).Text,
+                TestContext.Current.CancellationToken);
+        }
+
+        var seeded = factory.Sessions[^1].Seed.Tools;
+        var page = Assert.IsType<string>(await InvokeAsync(seeded, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 1,
+            ["lineCount"] = 1,
+        }));
+
+        // Assert: the session rotated, and the reference still reads the retained output
+        Assert.True(session.RotationCount > 0);
+        Assert.Equal("output-1 lines 1-1 of 5000\n   1| row 1 of the report", page);
+    }
+
+    /// <summary>
+    ///     Proves that retention is bounded: once a reference's output has been evicted, a reader
+    ///     answers with the fact that it is no longer retained.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_EvictedReference_IsAnsweredNoLongerRetained()
+    {
+        // Arrange: a composition retaining one output at a time
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy())
+            .Add(new StubToolPack("report", tools: [LargeReportTool()]))
+            .WithToolOutputSpill(new ToolOutputOptions(maxRetainedOutputs: 1))
+            .Build();
+
+        // Act: retain two outputs, then read the first
+        await InvokeAsync(tools, "report_build");
+        await InvokeAsync(tools, "report_build");
+        var evicted = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new() { ["id"] = "output-1" }));
+
+        // Assert: an explicit fact, not a silent miss
+        Assert.StartsWith("Denied (TargetNotFound)", evicted, StringComparison.Ordinal);
+        Assert.Contains("no longer retained", evicted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that the readers accept no path, so retention adds no way to reach the file system.
+    /// </summary>
+    [Fact]
+    public void AgentKitCore_SystemToolOutput_Readers_AcceptNoPath()
+    {
+        // Arrange / Act: a retaining composition's reader schemas
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy()).WithToolOutputSpill().Build();
+
+        // Assert: only the two readers, neither with a path parameter
+        Assert.Equal([ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName], tools.Select(tool => tool.Name));
+        Assert.All(tools, tool => Assert.False(
+            tool.JsonSchema.GetProperty("properties").TryGetProperty("path", out _),
+            tool.Name + " accepts a path."));
+    }
+
+    /// <summary>
+    ///     Proves that without retention a tool declaring its output oversized gives exactly the
+    ///     refusal it always gave, so a host that does not opt in observes no change.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_WithoutRetention_OversizedOutputIsRefusedAsBefore()
+    {
+        // Arrange: a tool declaring its output oversized, composed without retention
+        const string message = "The report exceeds the 32000-character result limit.";
+        var tool = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(ToolResult.Oversized(new string('x', 50_000), message))),
+            "report_build",
+            "Builds the full report.");
+        var tools = new ToolPackBuilder(CreateUnrestrictedPolicy())
+            .Add(new StubToolPack("report", tools: [tool]))
+            .Build();
+
+        // Act: invoke it
+        var result = await InvokeAsync(tools, "report_build");
+
+        // Assert: the identical refusal, and no reader was offered
+        Assert.Equal(ToolResult.Denied(DenialReason.ResourceTooLarge, message), result);
+        Assert.Equal(["report_build"], tools.Select(candidate => candidate.Name));
+    }
+
+    /// <summary>
     ///     Creates a policy whose working directory is also its single read-write grant.
     /// </summary>
     /// <param name="root">The location that is both the anchor and the grant.</param>
@@ -418,6 +561,34 @@ public class AgentKitCoreTests
     private static PathPolicy CreateRootedPolicy(string root)
     {
         return new PathPolicy(root, [PathRule.ReadWrite(root)]);
+    }
+
+    /// <summary>
+    ///     Builds a custom tool whose report runs to five thousand lines, well past the default
+    ///     result ceiling.
+    /// </summary>
+    /// <returns>The tool, built the only supported way.</returns>
+    private static AIFunction LargeReportTool() => GuardedToolFactory.Create(
+        (Func<Task<object>>)(() => Task.FromResult(ToolResult.Text(string.Join(
+            "\n",
+            Enumerable.Range(1, 5000).Select(n => "row " + n + " of the report"))))),
+        "report_build",
+        "Builds the full report.");
+
+    /// <summary>
+    ///     Invokes the named tool from a composed list, as the runtime would.
+    /// </summary>
+    /// <param name="tools">The composed list.</param>
+    /// <param name="name">The tool to invoke.</param>
+    /// <param name="arguments">The arguments, or null for none.</param>
+    /// <returns>The tool's result.</returns>
+    private static async Task<object?> InvokeAsync(
+        IReadOnlyList<AIFunction> tools,
+        string name,
+        AIFunctionArguments? arguments = null)
+    {
+        var tool = tools.Single(candidate => candidate.Name == name);
+        return await tool.InvokeAsync(arguments ?? new AIFunctionArguments(), TestContext.Current.CancellationToken);
     }
 
     /// <summary>
