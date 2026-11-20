@@ -25,18 +25,18 @@ reports section ranges that compose into these line-based tools.
 
 The subsystem contains ten units:
 
-| Unit                     | Responsibility                                                           |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `TextFileSearchTool`     | Publishes `text_file_search`: finds text in permitted files grep-style   |
-| `TextFileReadTool`       | Publishes `text_file_read`: returns one permitted file's numbered window |
-| `TextFileCreateTool`     | Publishes `text_file_create`: creates one new permitted text file        |
-| `TextFileWriteTool`      | Publishes `text_file_write`: sets a file's whole content, capturing it   |
-| `TextFileReplaceTool`    | Publishes `text_file_replace`: replaces one exact occurrence of text     |
-| `TextFileCutLinesTool`   | Publishes `text_file_cut_lines`: removes and captures a line range       |
-| `TextFileCopyLinesTool`  | Publishes `text_file_copy_lines`: captures a line range, source intact   |
-| `TextFilePasteLinesTool` | Publishes `text_file_paste_lines`: inserts a captured line range         |
-| `TextFileLineBuffers`    | Stores named text slots shared by write, cut, copy and paste tools       |
-| `TextFilePack`           | Publishes the text tools as one family under the `text_file` prefix      |
+| Unit | Responsibility |
+| --- | --- |
+| `TextFileSearchTool` | Publishes `text_file_search`: finds text in permitted files grep-style |
+| `TextFileReadTool` | Publishes `text_file_read`: returns one permitted file's numbered window |
+| `TextFileCreateTool` | Publishes `text_file_create`: creates one new permitted text file |
+| `TextFileWriteTool` | Publishes `text_file_write`: sets a file's whole content, capturing it |
+| `TextFileReplaceTool` | Publishes `text_file_replace`: replaces one exact occurrence of text |
+| `TextFileCutLinesTool` | Publishes `text_file_cut_lines`: removes and captures a line range |
+| `TextFileCopyLinesTool` | Publishes `text_file_copy_lines`: captures a line range, source intact |
+| `TextFilePasteLinesTool` | Publishes `text_file_paste_lines`: inserts a captured line range |
+| `TextFileLineBuffers` | Stores named text slots shared by write, cut, copy and paste tools |
+| `TextFilePack` | Publishes the text tools as one family under the `text_file` prefix |
 
 `TextLines` and `TextFileBinaryGuard` are internal shared helpers rather than modeled units, in the
 same way `MemoryEmbedding` and `MemoryDenials` are for the Memory subsystem; both are described
@@ -50,13 +50,13 @@ that claims its family prefix — the pack is the unit of attachment, and an app
 construct a single tool directly could also construct one outside the family whose prefix protects it
 from collision.
 
-| Interface                | Direction | Format                       | Constraints                           |
-| ------------------------ | --------- | ---------------------------- | ------------------------------------- |
-| `TextFilePack`           | Outbound  | AgentKitCore `IToolPack`     | Prefix `text_file`; no capability     |
-| `TextFile*Tool.ToolName` | Outbound  | `string` constant            | The name each tool is published under |
-| `TextFileLineBuffers`    | Internal  | Named text slot store        | One instance per tool composition     |
-| `PathPolicy`             | Inbound   | AgentKitCore policy object   | Supplied at construction              |
-| File system              | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `TextFilePack` | Outbound | AgentKitCore `IToolPack` | Prefix `text_file`; no capability |
+| `TextFile*Tool.ToolName` | Outbound | `string` constant | The name each tool is published under |
+| `TextFileLineBuffers` | Internal | Named text slot store | One instance per tool composition |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Supplied at construction |
+| File system | Inbound | Base Class Library file APIs | Reached only where policy permits |
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, and `AIFunction` from

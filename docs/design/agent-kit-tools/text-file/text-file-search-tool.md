@@ -20,14 +20,14 @@ policy would refuse.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member                | Type     | Invariant                                                |
-| --------------------- | -------- | -------------------------------------------------------- |
-| `ToolName`            | `string` | `text_file_search`; public constant; carries the prefix  |
-| `DefaultFilePattern`  | `string` | `*`; used when the caller supplies no file pattern       |
-| `RecursivePrefix`     | `string` | `**/`; accepted and stripped before enumeration          |
-| `RecursiveEverything` | `string` | `**`; treated as every file recursively                  |
-| `NoMatches`           | `string` | Returned as text when the search finds nothing           |
-| `GroupSeparator`      | `string` | `--`; separates context groups when context is requested |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_search`; public constant; carries the prefix |
+| `DefaultFilePattern` | `string` | `*`; used when the caller supplies no file pattern |
+| `RecursivePrefix` | `string` | `**/`; accepted and stripped before enumeration |
+| `RecursiveEverything` | `string` | `**`; treated as every file recursively |
+| `NoMatches` | `string` | Returned as text when the search finds nothing |
+| `GroupSeparator` | `string` | `--`; separates context groups when context is requested |
 
 The search is additionally bounded by `PathPolicy.Limits.MaxResultCharacters` for the assembled
 result. `MaxReadBytes` no longer gates a searched file: each file is streamed line by line so a file

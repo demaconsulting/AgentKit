@@ -19,11 +19,11 @@ and passes that same policy to every tool factory.
 The class is sealed and stateless. The buffer it allocates is local to each `CreateTools` call, not a
 field on the pack.
 
-| Member                   | Type               | Invariant                                          |
-| ------------------------ | ------------------ | -------------------------------------------------- |
-| `FamilyPrefix`           | `string`           | `text_file`; every published tool name starts here |
-| `IToolPack.FamilyPrefix` | `string`           | Explicit implementation returning `FamilyPrefix`   |
-| `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host      |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` | `string` | `text_file`; every published tool name starts here |
+| `IToolPack.FamilyPrefix` | `string` | Explicit implementation returning `FamilyPrefix` |
+| `RequiredCapabilities` | `HostCapabilities` | `None`; the family is available to every host |
 
 The returned tool collection contains, in order, `TextFileSearchTool`, `TextFileReadTool`,
 `TextFileCreateTool`, `TextFileWriteTool`, `TextFileReplaceTool`, `TextFileCutLinesTool`,

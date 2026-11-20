@@ -65,22 +65,22 @@ public class MemoryRecallToolTests
         // Arrange: a store holding two unrelated memories
         var store = new InMemoryMemoryStore();
         var generator = new StubEmbeddingGenerator();
-        await GivenMemoryAsync(store, generator, "mem-tyre", "Rear tyre pressure for touring.", "18 psi cold.");
+        await GivenMemoryAsync(store, generator, "mem-tire", "Rear tire pressure for touring.", "18 psi cold.");
         await GivenMemoryAsync(store, generator, "mem-oil", "Gearbox oil change interval.", "Every 20000 km.");
         var tool = MemoryRecallTool.Create(store, generator, MemoryOptions.Default);
 
         // Act: ask about one of them
-        var result = await RecallAsync(tool, "Rear tyre pressure for touring.");
+        var result = await RecallAsync(tool, "Rear tire pressure for touring.");
 
         // Assert: the nearest match comes back whole
         var element = Assert.IsType<JsonElement>(result);
         Assert.Equal(2, element.GetProperty("matchCount").GetInt32());
 
         var nearest = element.GetProperty("matches")[0];
-        Assert.Equal("mem-tyre", nearest.GetProperty("memoryId").GetString());
-        Assert.Equal("Rear tyre pressure for touring.", nearest.GetProperty("descriptor").GetString());
+        Assert.Equal("mem-tire", nearest.GetProperty("memoryId").GetString());
+        Assert.Equal("Rear tire pressure for touring.", nearest.GetProperty("descriptor").GetString());
         Assert.Equal("18 psi cold.", nearest.GetProperty("details").GetString());
-        Assert.Equal("doc-mem-tyre.md", nearest.GetProperty("sourceDocument").GetString());
+        Assert.Equal("doc-mem-tire.md", nearest.GetProperty("sourceDocument").GetString());
         Assert.Equal("Section 1", nearest.GetProperty("sourceLocator").GetString());
         Assert.Equal(1.0, nearest.GetProperty("similarity").GetDouble(), 6);
     }
@@ -96,7 +96,7 @@ public class MemoryRecallToolTests
         // Arrange: a memory whose details share no words with its descriptor
         var store = new InMemoryMemoryStore();
         var generator = new StubEmbeddingGenerator();
-        await GivenMemoryAsync(store, generator, "mem-a", "Tyre pressures.", "Fourteen sprockets per cassette.");
+        await GivenMemoryAsync(store, generator, "mem-a", "Tire pressures.", "Fourteen sprockets per cassette.");
         await GivenMemoryAsync(store, generator, "mem-b", "Fourteen sprockets per cassette.", "Unrelated payload.");
         var tool = MemoryRecallTool.Create(store, generator, MemoryOptions.Default);
 

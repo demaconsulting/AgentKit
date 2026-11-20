@@ -85,7 +85,7 @@ pairs them. Whoever assembles material for a consolidation joins those lines wit
 
 ### Dependencies
 
-- **ProviderSession** — Uses `TranscriptEntry` in seeds and turns; see _ProviderSession Unit Design_.
+- **ProviderSession** — Uses `TranscriptEntry` in seeds and turns; see *ProviderSession Unit Design*.
 - **RotationEngine** — Calls `SplitAtTail` and renders turn lines during rotation.
 
 ### Callers

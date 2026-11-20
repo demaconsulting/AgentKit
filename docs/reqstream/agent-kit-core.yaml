@@ -385,7 +385,7 @@ sections:
         justification: |
           A guarded tool set is of no use to an agent that cannot run long enough to use it. Without a
           session lifecycle that survives a full context window, a long-running agent is impossible,
-          and a kit of agent tools cannot fulfil the purpose it was built for. The session is the unit
+          and a kit of agent tools cannot fulfill the purpose it was built for. The session is the unit
           an application programs against: it accepts a message, returns an answer, and remains usable
           turn after turn regardless of how much conversation has accumulated behind it.
         children:

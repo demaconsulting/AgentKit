@@ -13,7 +13,7 @@ namespace DemaConsulting.AgentKit.Tools.Todo;
 ///     them.</b> This is the single most important thing to know about this family, and it is
 ///     stated here rather than buried in a sample because an author who attaches the tools without
 ///     such an instruction will watch the model ignore them and conclude they do not work. A model
-///     left to its own judgement mostly relies on its own memory: it can hold a five-phase plan in
+///     left to its own judgment mostly relies on its own memory: it can hold a five-phase plan in
 ///     its head well enough to feel no need for a list, right up to the point where it forgets the
 ///     fourth phase, and neither it nor the user can see that happening.
 ///     </para>

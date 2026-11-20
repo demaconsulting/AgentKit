@@ -34,13 +34,13 @@ construction and none of them mutable afterwards: the parent composition's `Path
 registered `AgentProfile` list, the host's runner, the `ChildToolComposer` seam, and the depth of
 the agent this tool is being built for.
 
-| Member                    | Type      | Invariant                                              |
-|---------------------------|-----------|--------------------------------------------------------|
-| `ToolName`                | `string`  | `agent_run`; public constant; carries the family prefix|
-| Tool description prefix   | `string`  | Constant; explains the shape of a call                 |
-| Constructed description   | `string`  | Names each registered profile and any description      |
-| `ChildToolComposer`       | delegate  | `internal`; the only route to a child's tools          |
-| Refusal messages          | `string`  | Constants or interpolations of a name, ceiling or level|
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `agent_run`; public constant; carries the family prefix |
+| Tool description prefix | `string` | Constant; explains the shape of a call |
+| Constructed description | `string` | Names each registered profile and any description |
+| `ChildToolComposer` | delegate | `internal`; the only route to a child's tools |
+| Refusal messages | `string` | Constants or interpolations of a name, ceiling or level |
 
 ##### `internal delegate IReadOnlyList<AIFunction> ChildToolComposer(AgentProfile profile)`
 
@@ -56,13 +56,13 @@ sibling children different per-composition state.
 The request handed to the host's runner. The class is sealed and immutable; every property is set
 at construction and never changes.
 
-| Member         | Type                        | Invariant                                            |
-|----------------|-----------------------------|------------------------------------------------------|
-| `ProfileName`  | `string`                    | The name the model selected; carries no authority    |
-| `Instructions` | `string`                    | The application's authorship of what the child is    |
-| `Tools`        | `IReadOnlyList<AIFunction>` | Composed against the child's own policy; may be empty|
-| `Task`         | `string`                    | The one part the parent supplied; data, not authority|
-| `Depth`        | `int`                       | The child's depth, counting a root agent as zero     |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ProfileName` | `string` | The name the model selected; carries no authority |
+| `Instructions` | `string` | The application's authorship of what the child is |
+| `Tools` | `IReadOnlyList<AIFunction>` | Composed against the child's own policy; may be empty |
+| `Task` | `string` | The one part the parent supplied; data, not authority |
+| `Depth` | `int` | The child's depth, counting a root agent as zero |
 
 The tool list is already the intersection of the profile's declared names and what the application
 attached, so the host attaches it as it stands. It may be empty when the profile declares no tools,

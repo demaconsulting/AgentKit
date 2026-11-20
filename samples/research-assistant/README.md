@@ -233,7 +233,7 @@ in any of the 8 live runs** measured here (`claude-sonnet-5`, `--embeddings loca
 Five runs whose prompts never mention descriptors at all. What happened, every time:
 
 | What was measured | Result |
-| ----------------- | ------ |
+| --- | --- |
 | Subject-only descriptor rule obeyed (value/revision kept out of the descriptor) | **5 / 5** |
 | Near-duplicate refusal fired | **0 / 5** |
 | Two contradictory memories stored silently — the failure the refusal exists to catch | **0 / 5** |
@@ -260,7 +260,7 @@ whether it works.
 Three runs whose second prompt demands *"a separate new memory… do not revise or update"*.
 
 | What was measured | Result |
-| ----------------- | ------ |
+| --- | --- |
 | Subject-only descriptor rule obeyed | **0 / 3** |
 | Near-duplicate refusal fired | **0 / 3** |
 | Both memories stored — store left holding 12 psi and 18 psi at once | **3 / 3** |
@@ -317,7 +317,7 @@ make it visibly.
 This sample offers two, and the flag that swaps them is the *entire* difference between them:
 
 | `--embeddings` | Backend | Needs | What it measures |
-| -------------- | ------- | ----- | ---------------- |
+| --- | --- | --- | --- |
 | `local` (default) | `LexicalEmbeddingGenerator`, written in this sample | nothing | shared wording |
 | `ollama` | an embedding model served by Ollama | a running Ollama and a pulled model | shared meaning |
 
@@ -332,7 +332,7 @@ token like any other, and the fact that two numerals *contradict* each other ent
 nowhere. The sample's own unit tests measure the consequence:
 
 | Descriptor pair | Tokens | Cosine | Against the 0.88 default |
-| --------------- | ------ | ------ | ------------------------ |
+| --- | --- | --- | --- |
 | "The relief valve is set at 12 psi." / "…18 psi." | 8 | 0.875 | **below** — both stored |
 | "Relief valve setting for the Harbor Skiff bilge pump is 12 psi." / "…18 psi." | 12 | 0.917 | above — refused |
 

@@ -22,12 +22,12 @@ success, delivers that content through the guarded path so it reaches the provid
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                      |
-| ----------------- | -------- | -------------------------------------------------------------- |
-| `ToolName`        | `string` | `image_read`; public constant; carries the family prefix       |
-| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool        |
-| Caption prefix    | `string` | Constant; names the media type, never the word "image" alone   |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `image_read`; public constant; carries the family prefix |
+| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool |
+| Caption prefix | `string` | Constant; names the media type, never the word "image" alone |
+| Denial messages | `string` | Tool-composed constants; policy denials come from `PathPolicy` |
 
 One ceiling from `PathPolicy.Limits` bounds the operation: `MaxBinaryBytes`, the greatest size of
 content that may be returned. It is inclusive — a file exactly at the ceiling is returned.

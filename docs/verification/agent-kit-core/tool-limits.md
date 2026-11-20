@@ -10,7 +10,7 @@ library — so every scenario exercises the real type.
 
 The default-value scenario asserts against **literal numbers** rather than against the published
 constants. Asserting a constant against itself is vacuous, and those six values appear in
-_ToolLimits Unit Design_, in the requirement text and in the public API surface; this scenario is
+*ToolLimits Unit Design*, in the requirement text and in the public API surface; this scenario is
 what stops them drifting silently.
 
 Unit tests reside in `ToolLimitsTests.cs` within the `DemaConsulting.AgentKit.Core.Tests` project.

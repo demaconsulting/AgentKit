@@ -40,13 +40,13 @@ formats later is then a single coherent widening across all three tools, reviewa
 
 The subsystem contains five units, plus three shared helpers that are not units:
 
-| Unit                | Responsibility                                                                |
-|---------------------|-------------------------------------------------------------------------------|
-| `ImageMediaTypes`   | Maps an extension to the media type the family reads, and refuses the rest    |
-| `ImageReadTool`     | Publishes `image_read`: returns one permitted file's content with a caption   |
-| `ImageCropTool`     | Publishes `image_crop`: returns a pixel region of one permitted image         |
-| `ImageAutoCropTool` | Publishes `image_auto_crop`: returns the content region of a permitted image  |
-| `ImagePack`         | Publishes the tools as one family under the `image` prefix, gated on Vision   |
+| Unit | Responsibility |
+| --- | --- |
+| `ImageMediaTypes` | Maps an extension to the media type the family reads, and refuses the rest |
+| `ImageReadTool` | Publishes `image_read`: returns one permitted file's content with a caption |
+| `ImageCropTool` | Publishes `image_crop`: returns a pixel region of one permitted image |
+| `ImageAutoCropTool` | Publishes `image_auto_crop`: returns the content region of a permitted image |
+| `ImagePack` | Publishes the tools as one family under the `image` prefix, gated on Vision |
 
 `ImageProbe`, `ImageAdmission` and `ImageDestination` are shared helpers rather than units: each is
 an internal static function of its arguments, with no state, no policy, no result and nothing a
@@ -72,15 +72,15 @@ except through the pack that claims its family prefix — the pack is the unit o
 application that could construct a single tool directly could also construct one outside the
 family whose prefix protects it from collision.
 
-| Interface                   | Direction | Format                       | Constraints                           |
-|-----------------------------|-----------|------------------------------|---------------------------------------|
-| `ImagePack`                 | Outbound  | AgentKitCore `IToolPack`     | Prefix `image`; requires Vision       |
-| `ImageReadTool.ToolName`    | Outbound  | `string` constant            | The name the read tool carries        |
-| `ImageCropTool.ToolName`    | Outbound  | `string` constant            | The name the crop tool carries        |
-| `ImageAutoCropTool.ToolName`| Outbound  | `string` constant            | The name the auto-crop tool carries   |
-| `ImageMediaTypes`           | Outbound  | Media-type maps and refusals | Extension-driven; states content kind |
-| `PathPolicy`                | Inbound   | AgentKitCore policy object   | Supplied at construction              |
-| File system                 | Inbound   | Base Class Library file APIs | Reached only where policy permits     |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `ImagePack` | Outbound | AgentKitCore `IToolPack` | Prefix `image`; requires Vision |
+| `ImageReadTool.ToolName` | Outbound | `string` constant | The name the read tool carries |
+| `ImageCropTool.ToolName` | Outbound | `string` constant | The name the crop tool carries |
+| `ImageAutoCropTool.ToolName` | Outbound | `string` constant | The name the auto-crop tool carries |
+| `ImageMediaTypes` | Outbound | Media-type maps and refusals | Extension-driven; states content kind |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Supplied at construction |
+| File system | Inbound | Base Class Library file APIs | Reached only where policy permits |
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, `AIFunction` and the content types (`AIContent`,

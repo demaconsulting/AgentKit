@@ -18,11 +18,11 @@ decides at what values.
 
 The class is sealed and public. Instances are immutable after construction.
 
-| Member                   | Type            | Invariant                                  |
-| ------------------------ | --------------- | ------------------------------------------ |
-| `NearDuplicateThreshold` | `double`        | A number in the inclusive range 0.0 to 1.0 |
-| `RecallCount`            | `int`           | Not negative                               |
-| `Default`                | `MemoryOptions` | A shared instance carrying both defaults   |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `NearDuplicateThreshold` | `double` | A number in the inclusive range 0.0 to 1.0 |
+| `RecallCount` | `int` | Not negative |
+| `Default` | `MemoryOptions` | A shared instance carrying both defaults |
 
 Two constants are published: `DefaultNearDuplicateThreshold` (0.88) and `DefaultRecallCount` (5).
 The threshold is a measured starting point — over a seventeen-document technical corpus, two

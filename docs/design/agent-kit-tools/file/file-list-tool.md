@@ -18,14 +18,14 @@ The unit lists file entities, not text content. Its output gives a model names i
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member                 | Type     | Invariant                                               |
-| ---------------------- | -------- | ------------------------------------------------------- |
-| `ToolName`             | `string` | `file_list`; public constant; carries the family prefix |
-| `DefaultSearchPattern` | `string` | `*`; used when no pattern is supplied                   |
-| `RecursivePrefix`      | `string` | `**/`; accepted and stripped before enumeration         |
-| `RecursiveEverything`  | `string` | `**`; treated as every file recursively                 |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_list`; public constant; carries the family prefix |
+| `DefaultSearchPattern` | `string` | `*`; used when no pattern is supplied |
+| `RecursivePrefix` | `string` | `**/`; accepted and stripped before enumeration |
+| `RecursiveEverything` | `string` | `**`; treated as every file recursively |
 | Empty location markers | `string` | Name read-only or read-write access in discovery output |
-| `NameSeparator`        | `string` | Newline; separates headers, markers and names           |
+| `NameSeparator` | `string` | Newline; separates headers, markers and names |
 
 The listing is bounded by `PathPolicy.Limits.MaxResultCharacters`. A listing that exceeds the limit
 is refused rather than truncated.

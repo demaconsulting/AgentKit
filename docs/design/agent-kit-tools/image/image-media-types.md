@@ -29,15 +29,15 @@ it, and — when the answer is none — what refusal a model should be handed.
 
 The class is static and holds no state.
 
-| Member                | Type     | Invariant                                                       |
-|-----------------------|----------|-----------------------------------------------------------------|
-| `Png`                 | `string` | `image/png`; public constant                                    |
-| `Jpeg`                | `string` | `image/jpeg`; public constant; carried by `.jpg` and `.jpeg`    |
-| `Gif`                 | `string` | `image/gif`; public constant                                    |
-| `Webp`                | `string` | `image/webp`; public constant                                   |
-| `Pdf`                 | `string` | `application/pdf`; public constant; not an `image/` media type  |
-| Croppable set         | `string` | Compile-time constant; interpolated into each croppable refusal |
-| Denial messages       | `string` | Compile-time constants; contain no host location                |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `Png` | `string` | `image/png`; public constant |
+| `Jpeg` | `string` | `image/jpeg`; public constant; carried by `.jpg` and `.jpeg` |
+| `Gif` | `string` | `image/gif`; public constant |
+| `Webp` | `string` | `image/webp`; public constant |
+| `Pdf` | `string` | `application/pdf`; public constant; not an `image/` media type |
+| Croppable set | `string` | Compile-time constant; interpolated into each croppable refusal |
+| Denial messages | `string` | Compile-time constants; contain no host location |
 
 #### Key Methods
 

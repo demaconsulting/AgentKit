@@ -37,10 +37,10 @@ wraps.
 `ImagePromotingChatClient` adds no state to the client it decorates. Its only data are fixed
 constants:
 
-| Member            | Type           | Description                                                   |
-|-------------------|----------------|---------------------------------------------------------------|
-| `PromotionNotice` | `const string` | The fixed text introducing a promoted image.                  |
-| `ImageMediaType`  | `const string` | The top-level media type identifying content to promote.      |
+| Member | Type | Description |
+| --- | --- | --- |
+| `PromotionNotice` | `const string` | The fixed text introducing a promoted image. |
+| `ImageMediaType` | `const string` | The top-level media type identifying content to promote. |
 
 The inner client is held by the base `DelegatingChatClient` and is never replaced.
 
@@ -104,13 +104,13 @@ not accept is not made readable by moving it.
 
 ### Error Handling
 
-| Condition                                 | Handling                                        |
-|-------------------------------------------|-------------------------------------------------|
-| Null `innerClient` at construction        | `ArgumentNullException` propagates              |
-| Null `messages`                           | `ArgumentNullException` propagates              |
-| Tool result carrying no image             | Not an error; nothing is added                  |
-| Tool result carrying non-image content    | Not an error; the content is left where it is   |
-| Failure inside the wrapped client         | Propagates unchanged; this unit adds no handling|
+| Condition | Handling |
+| --- | --- |
+| Null `innerClient` at construction | `ArgumentNullException` propagates |
+| Null `messages` | `ArgumentNullException` propagates |
+| Tool result carrying no image | Not an error; nothing is added |
+| Tool result carrying non-image content | Not an error; the content is left where it is |
+| Failure inside the wrapped client | Propagates unchanged; this unit adds no handling |
 
 The dividing line is the one the rest of the system draws: a missing client or a missing
 conversation is a programming error in the host, while anything a model or a tool produced is
@@ -151,10 +151,10 @@ not a library's business.
 
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `DelegatingChatClient`,
   `ChatMessage`, `ChatRole`, `AIContent`, `TextContent`, `DataContent` and
-  `FunctionResultContent`; see _Microsoft.Extensions.AI.Abstractions Design_.
+  `FunctionResultContent`; see *Microsoft.Extensions.AI.Abstractions Design*.
 
 No unit within AgentKitCore is used by this one. It shares the content vocabulary with
-_ToolResult Unit Design_ — it reads the caption-plus-content shape those constructors produce —
+*ToolResult Unit Design* — it reads the caption-plus-content shape those constructors produce —
 but takes no compile-time dependency on it.
 
 ### Callers

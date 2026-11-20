@@ -233,7 +233,7 @@ that the library is trying to avoid. The system therefore keeps its own transcri
 material to an injected `ISummarizer`.
 
 Each consolidation is one call, whatever the material. A rotation fires at a fraction of the
-provider's own window, so the material ageing out is already bounded by that window; and where an
+provider's own window, so the material aging out is already bounded by that window; and where an
 application pairs a small summarizer with a large provider anyway, the call fails or comes back
 empty, which the engine already answers — the material stays verbatim, the window keeps filling, and
 the session sheds its oldest slot. Splitting the material to forestall that was machinery guarding a
@@ -397,19 +397,19 @@ The system additionally exposes the tool-contract API:
   runtime unchanged. Throws `ArgumentNullException` for a missing delegate or description, and
   `ArgumentException` for an empty description or an invalid name.
 
-| Interface                   | Direction        | Format                        | Constraints                       |
-|-----------------------------|------------------|-------------------------------|-----------------------------------|
-| `new ToolLimits(...)`       | Inbound          | Constructor call              | Every ceiling zero or greater     |
-| `ToolLimits.Default`        | Outbound         | `ToolLimits` property read    | None; always succeeds             |
-| `ToolLimits.MaxReadBytes`   | Outbound         | `int` property read           | None; always succeeds             |
-| `ToolResult.Text`           | Inbound/Outbound | Method call / `object` return | `text` non-null                   |
-| `ToolResult.Structured`     | Inbound/Outbound | Method call / `object` return | `value` non-null                  |
-| `ToolResult.Binary`         | Inbound/Outbound | Method call / `object` return | `mediaType` non-null, non-empty   |
-| `ToolResult.Image`          | Inbound/Outbound | Method call / `object` return | `mediaType` denotes an image      |
-| `ToolResult.Denied`         | Inbound/Outbound | Method call / `object` return | Reason defined, message non-empty |
-| `ToolName.Create`           | Inbound/Outbound | Method call / `string` return | Family and verb non-empty         |
-| `ToolName.Validate`         | Inbound          | Method call                   | `name` satisfies the convention   |
-| `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction`    | Delegate, name, description valid |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `new ToolLimits(...)` | Inbound | Constructor call | Every ceiling zero or greater |
+| `ToolLimits.Default` | Outbound | `ToolLimits` property read | None; always succeeds |
+| `ToolLimits.MaxReadBytes` | Outbound | `int` property read | None; always succeeds |
+| `ToolResult.Text` | Inbound/Outbound | Method call / `object` return | `text` non-null |
+| `ToolResult.Structured` | Inbound/Outbound | Method call / `object` return | `value` non-null |
+| `ToolResult.Binary` | Inbound/Outbound | Method call / `object` return | `mediaType` non-null, non-empty |
+| `ToolResult.Image` | Inbound/Outbound | Method call / `object` return | `mediaType` denotes an image |
+| `ToolResult.Denied` | Inbound/Outbound | Method call / `object` return | Reason defined, message non-empty |
+| `ToolName.Create` | Inbound/Outbound | Method call / `string` return | Family and verb non-empty |
+| `ToolName.Validate` | Inbound | Method call | `name` satisfies the convention |
+| `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction` | Delegate, name, description valid |
 
 The system additionally exposes the pack composition API:
 
@@ -435,15 +435,15 @@ The system additionally exposes the pack composition API:
   order. Throws `InvalidOperationException` when a pack returns no collection, a null tool, or a
   tool outside its declared family.
 
-| Interface                              | Direction        | Format                        | Constraints           |
-|----------------------------------------|------------------|-------------------------------|-----------------------|
-| `IToolPack.FamilyPrefix`               | Outbound         | `string` property read        | Non-null, non-empty   |
-| `IToolPack.RequiredCapabilities`       | Outbound         | `HostCapabilities` read       | None; always succeeds |
-| `IToolPack.CreateTools`                | Inbound/Outbound | Method call / `IEnumerable`   | No null element       |
-| `new ToolPackBuilder(...)`             | Inbound          | Constructor call              | `policy` non-null     |
-| `ToolPackBuilder.WithHostCapabilities` | Inbound/Outbound | Method call / builder         | None; always succeeds |
-| `ToolPackBuilder.Add`                  | Inbound/Outbound | Method call / builder         | Prefix unclaimed      |
-| `ToolPackBuilder.Build`                | Inbound/Outbound | Method call / `IReadOnlyList` | Packs honor contracts |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `IToolPack.FamilyPrefix` | Outbound | `string` property read | Non-null, non-empty |
+| `IToolPack.RequiredCapabilities` | Outbound | `HostCapabilities` read | None; always succeeds |
+| `IToolPack.CreateTools` | Inbound/Outbound | Method call / `IEnumerable` | No null element |
+| `new ToolPackBuilder(...)` | Inbound | Constructor call | `policy` non-null |
+| `ToolPackBuilder.WithHostCapabilities` | Inbound/Outbound | Method call / builder | None; always succeeds |
+| `ToolPackBuilder.Add` | Inbound/Outbound | Method call / builder | Prefix unclaimed |
+| `ToolPackBuilder.Build` | Inbound/Outbound | Method call / `IReadOnlyList` | Packs honor contracts |
 
 The system additionally exposes one provider-compatibility API:
 
@@ -452,11 +452,11 @@ The system additionally exposes one provider-compatibility API:
   `ArgumentNullException` when the inner client is null. Both the whole-response and the
   streaming member rewrite the conversation identically and are otherwise pass-through.
 
-| Interface                           | Direction        | Format                 | Constraints       |
-|-------------------------------------|------------------|------------------------|-------------------|
-| `new ImagePromotingChatClient(...)` | Inbound          | Constructor call       | Client non-null   |
-| `GetResponseAsync`                  | Inbound/Outbound | Method call / `Task`   | Messages non-null |
-| `GetStreamingResponseAsync`         | Inbound/Outbound | Method call / sequence | Messages non-null |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `new ImagePromotingChatClient(...)` | Inbound | Constructor call | Client non-null |
+| `GetResponseAsync` | Inbound/Outbound | Method call / `Task` | Messages non-null |
+| `GetStreamingResponseAsync` | Inbound/Outbound | Method call / sequence | Messages non-null |
 
 The system additionally exposes the agent session API:
 
@@ -474,15 +474,15 @@ The system additionally exposes the agent session API:
   conversation and is disposable, and every session answers `CurrentUsage` — how much of its
   provider's window it occupies and out of how much — without contacting the provider to do so.
 
-| Interface                             | Direction | Format                         | Constraints                     |
-|---------------------------------------|-----------|--------------------------------|---------------------------------|
-| `IAgentSession.SendAsync`             | In/Out    | Method call / `Task`           | Message non-blank, not disposed |
-| `AgentSessionResponse`                | Outbound  | Immutable class read           | Answer and usage non-null       |
-| `new AgentSessionOptions(…)`          | Inbound   | Constructor call               | Summarizer non-null             |
-| `ISummarizer.ConsolidateAsync`        | Outbound  | Method call / `Task<string>`   | Must not return null            |
-| `IProviderSession.SendAsync`          | Outbound  | Method call / `ProviderTurn`   | Message non-null, not disposed  |
-| `IProviderSession.CurrentUsage`       | Outbound  | Property read / `ContextUsage` | Answered without a round trip   |
-| `IProviderSessionFactory.CreateAsync` | Outbound  | Method call / session          | Seed non-null                   |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `IAgentSession.SendAsync` | In/Out | Method call / `Task` | Message non-blank, not disposed |
+| `AgentSessionResponse` | Outbound | Immutable class read | Answer and usage non-null |
+| `new AgentSessionOptions(…)` | Inbound | Constructor call | Summarizer non-null |
+| `ISummarizer.ConsolidateAsync` | Outbound | Method call / `Task<string>` | Must not return null |
+| `IProviderSession.SendAsync` | Outbound | Method call / `ProviderTurn` | Message non-null, not disposed |
+| `IProviderSession.CurrentUsage` | Outbound | Property read / `ContextUsage` | Answered without a round trip |
+| `IProviderSessionFactory.CreateAsync` | Outbound | Method call / session | Seed non-null |
 
 Tools a session carries are `Microsoft.Extensions.AI` `AIFunction` instances, the same tool currency
 the rest of AgentKit uses, so a session accepts exactly what a tool pack produces with no conversion
@@ -498,24 +498,24 @@ than on any provider, runtime or agent loop — is what lets one guarded tool be
 them without Core choosing a provider on the application's behalf. Nothing further is taken:
 there is no provider package, no agent framework package and no transitive runtime. As a
 third-party published library, `Microsoft.Extensions.AI.Abstractions` is an OTS item; its
-integration is recorded in _OTS Integration Design_ (`docs/design/ots.md`) and its dedicated
-_Microsoft.Extensions.AI.Abstractions Design_.
+integration is recorded in *OTS Integration Design* (`docs/design/ots.md`) and its dedicated
+*Microsoft.Extensions.AI.Abstractions Design*.
 
 The following OTS items are used for building and verifying this system and are not consumed at
-runtime; see _OTS Integration Design_ (`docs/design/ots.md`) and each item's dedicated design
+runtime; see *OTS Integration Design* (`docs/design/ots.md`) and each item's dedicated design
 document for details:
 
-- **BuildMark** — generates build-notes documentation; see _BuildMark Design_
+- **BuildMark** — generates build-notes documentation; see *BuildMark Design*
 - **FileAssert** — validates generated documents against acceptance criteria; see
-  _FileAssert Design_
-- **Pandoc** — converts Markdown documentation to HTML; see _Pandoc Design_
-- **ReqStream** — enforces requirements-to-test traceability; see _ReqStream Design_
-- **ReviewMark** — enforces file review coverage and currency; see _ReviewMark Design_
-- **SarifMark** — converts CodeQL SARIF results to markdown; see _SarifMark Design_
-- **SonarMark** — generates SonarCloud quality reports; see _SonarMark Design_
-- **VersionMark** — captures and publishes tool-version information; see _VersionMark Design_
-- **WeasyPrint** — converts HTML documentation to PDF; see _WeasyPrint Design_
-- **xUnit** — executes unit and integration tests; see _xUnit Design_
+  *FileAssert Design*
+- **Pandoc** — converts Markdown documentation to HTML; see *Pandoc Design*
+- **ReqStream** — enforces requirements-to-test traceability; see *ReqStream Design*
+- **ReviewMark** — enforces file review coverage and currency; see *ReviewMark Design*
+- **SarifMark** — converts CodeQL SARIF results to markdown; see *SarifMark Design*
+- **SonarMark** — generates SonarCloud quality reports; see *SonarMark Design*
+- **VersionMark** — captures and publishes tool-version information; see *VersionMark Design*
+- **WeasyPrint** — converts HTML documentation to PDF; see *WeasyPrint Design*
+- **xUnit** — executes unit and integration tests; see *xUnit Design*
 
 ## Risk Control Measures
 
@@ -526,16 +526,16 @@ restraint.
 
 The measure is segregated into three units whose responsibilities do not overlap:
 
-- **RealPathResolver** establishes _one spelling for a location_, making a path absolute and
+- **RealPathResolver** establishes *one spelling for a location*, making a path absolute and
   collapsing relative segments, so that containment is a comparison between two values expressed
   the same way. Links are not followed and not detected; containment rests on paths alone.
   Isolating this keeps the normalization separately reviewable and separately testable.
-- **PathRule** establishes _what a location grants_, carrying an access level that is permission
+- **PathRule** establishes *what a location grants*, carrying an access level that is permission
   only: read-only or read-write. It has no addressing meaning and cannot silently change where a
   relative path resolves.
-- **PathPolicy** makes _the single decision_, and both direct access and directory enumeration
+- **PathPolicy** makes *the single decision*, and both direct access and directory enumeration
   are routed through it so that a listing can never advertise a file that access would refuse. It
-  also holds _the one location a relative request means_, so that a bare file name a model states
+  also holds *the one location a relative request means*, so that a bare file name a model states
   is made absolute against the working directory before the normalization and the containment
   test are applied. That anchor grants no permission; the application grants it, or does not
   grant it, exactly as it grants any other location.
@@ -559,16 +559,16 @@ a raw object it could not read. **Family-prefixed naming** ensures an
 application combining this library with the Agent Framework cannot present the model with two
 identically named tools, a situation in which which tool is invoked is undefined. Both are
 enforced at the single supported construction path, `GuardedToolFactory`, so a tool author cannot
-omit either; see _GuardedToolFactory Unit Design_. Resource ceilings carried with the access
-policy are a liveness control rather than a safety control, and are described in _ToolLimits Unit
-Design_.
+omit either; see *GuardedToolFactory Unit Design*. Resource ceilings carried with the access
+policy are a liveness control rather than a safety control, and are described in *ToolLimits Unit
+Design*.
 
 **Capability-gated registration** is a risk control measure of the same kind. Where a host cannot
 support a tool, the tool is not offered at all rather than offered and refused: a model that can
 see a tool it cannot use will spend a turn on it, and a model told only that a tool refused will
 reason around the refusal rather than abandon the approach. Because an unsupported pack is never
 asked to create its tools, accidental registration is unrepresentable rather than merely unlikely;
-see _ToolPackBuilder Unit Design_. Family prefix ownership is part of the same measure: a pack
+see *ToolPackBuilder Unit Design*. Family prefix ownership is part of the same measure: a pack
 claims a prefix no other pack claims, and every tool it publishes must carry that prefix, so an
 application cannot present the model with two tools it cannot tell apart.
 
@@ -706,11 +706,11 @@ application message
 The library targets the following frameworks, enabling broad compatibility across modern .NET
 runtimes:
 
-| Target Framework   | Runtime / Environment                             |
-|--------------------|---------------------------------------------------|
-| `net8.0`           | .NET 8 LTS                                        |
-| `net9.0`           | .NET 9                                            |
-| `net10.0`          | .NET 10                                           |
+| Target Framework | Runtime / Environment |
+| --- | --- |
+| `net8.0` | .NET 8 LTS |
+| `net9.0` | .NET 9 |
+| `net10.0` | .NET 10 |
 
 The library is supported on the following operating systems:
 
@@ -737,5 +737,5 @@ APIs, or framework-version-specific features are used.
   described correctly by the same model on the same provider, so the limitation is one of channel
   rather than capability. A host targeting such a provider wraps its chat client in
   `ImagePromotingChatClient`, **beneath** the function-invocation loop so that the decorator
-  observes tool results after they have been appended; see _ImagePromotingChatClient Unit Design_.
+  observes tool results after they have been appended; see *ImagePromotingChatClient Unit Design*.
   A host whose provider already delivers images from tool results installs nothing.

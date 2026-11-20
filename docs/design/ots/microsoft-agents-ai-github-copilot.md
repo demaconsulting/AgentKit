@@ -58,7 +58,7 @@ deleted.
 The SDK's session and client types are **sealed with non-public constructors and no virtual
 members**, so neither can be faked in a test. AgentKit therefore reaches them through one internal
 seam — `ICopilotTurnChannel` — so everything above it can be exercised without a live runtime; see
-_CopilotTurnChannel Unit Design_. The SDK's event types, by contrast, are all constructable, so the
+*CopilotTurnChannel Unit Design*. The SDK's event types, by contrast, are all constructable, so the
 tests drive the genuine event shapes through the adapter's own matching code.
 
 The SDK's permission-decision RPC surface is marked with the `GHCP001` "evaluation purposes only"

@@ -322,24 +322,24 @@ place, wrong permission".
 
 ### Error Handling
 
-| Condition                                   | Handling                                                   |
-| ------------------------------------------- | ---------------------------------------------------------- |
-| Missing or empty working directory          | `ArgumentException` propagates                             |
-| Null grant collection                       | `ArgumentNullException` propagates                         |
-| Null grant entry                            | `ArgumentNullException` propagates                         |
-| Null limits at construction                 | `ArgumentNullException` propagates                         |
-| Null or empty `searchPattern`               | `ArgumentNullException` / `ArgumentException` propagates   |
-| Omitted or placeholder `path` / `directory` | Handled locally; denotes the working directory             |
-| Real location cannot be determined          | Handled locally; denial with the resolution reason         |
-| Location outside every permitted location   | Handled locally; denial with the location reason           |
-| Location permitted, but not for this access | Handled locally; denial with the permission reason         |
-| Location matches a denied pattern           | Handled locally; denial with the pattern reason            |
-| Directory cannot be listed                  | Handled locally; empty sequence                            |
-| Empty grant collection                      | Accepted; the policy permits nothing                       |
-| Bare segment exists under working directory | Handled locally; working-directory reading wins            |
-| Existence probe cannot determine existence  | Handled locally; treated as missing; alias used            |
-| Ambiguous last-segment alias                | Handled locally; interpreted beneath the working directory |
-| Interpreted path cannot be normalized       | Handled locally; interpretation falls back un-normalized   |
+| Condition | Handling |
+| --- | --- |
+| Missing or empty working directory | `ArgumentException` propagates |
+| Null grant collection | `ArgumentNullException` propagates |
+| Null grant entry | `ArgumentNullException` propagates |
+| Null limits at construction | `ArgumentNullException` propagates |
+| Null or empty `searchPattern` | `ArgumentNullException` / `ArgumentException` propagates |
+| Omitted or placeholder `path` / `directory` | Handled locally; denotes the working directory |
+| Real location cannot be determined | Handled locally; denial with the resolution reason |
+| Location outside every permitted location | Handled locally; denial with the location reason |
+| Location permitted, but not for this access | Handled locally; denial with the permission reason |
+| Location matches a denied pattern | Handled locally; denial with the pattern reason |
+| Directory cannot be listed | Handled locally; empty sequence |
+| Empty grant collection | Accepted; the policy permits nothing |
+| Bare segment exists under working directory | Handled locally; working-directory reading wins |
+| Existence probe cannot determine existence | Handled locally; treated as missing; alias used |
+| Ambiguous last-segment alias | Handled locally; interpreted beneath the working directory |
+| Interpreted path cannot be normalized | Handled locally; interpretation falls back un-normalized |
 
 The dividing line is deliberate and is stated here so a reviewer can check it: **programming
 errors propagate; anything a model can produce is returned.** A path is the one argument a model

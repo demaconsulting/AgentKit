@@ -131,21 +131,21 @@ host process with it, which is the one outcome a damage ceiling must not have.
 
 ### Data Model
 
-| Member                          | Type         | Description                                                       |
-|---------------------------------|--------------|-------------------------------------------------------------------|
-| `MaxReadBytes`                  | `int`        | Ceiling on the bytes a tool may read from one source.             |
-| `MaxResultCharacters`           | `int`        | Ceiling on the characters a tool result may return to the model.  |
-| `MaxBinaryBytes`                | `int`        | Ceiling on the bytes of binary content a tool may return.         |
-| `MaxAgentDepth`                 | `int`        | Ceiling on how deep a chain of delegated agents may run.          |
-| `MaxImagePixels`                | `int`        | Ceiling on the pixels a tool may decode out of one image.         |
-| `MaxDeleteEntries`              | `int`        | Ceiling on the entries one recursive removal may take.            |
-| `Default`                       | `ToolLimits` | Shared instance a host receives when it configures nothing.       |
-| `DefaultMaxReadBytes`           | `const int`  | The published default for `MaxReadBytes`, 65,536.                 |
-| `DefaultMaxResultCharacters`    | `const int`  | The published default for `MaxResultCharacters`, 32,000.          |
-| `DefaultMaxBinaryBytes`         | `const int`  | The published default for `MaxBinaryBytes`, 8,388,608.            |
-| `DefaultMaxAgentDepth`          | `const int`  | The published default for `MaxAgentDepth`, 2.                     |
-| `DefaultMaxImagePixels`         | `const int`  | The published default for `MaxImagePixels`, 16,777,216.           |
-| `DefaultMaxDeleteEntries`       | `const int`  | The published default for `MaxDeleteEntries`, 1,000.              |
+| Member | Type | Description |
+| --- | --- | --- |
+| `MaxReadBytes` | `int` | Ceiling on the bytes a tool may read from one source. |
+| `MaxResultCharacters` | `int` | Ceiling on the characters a tool result may return to the model. |
+| `MaxBinaryBytes` | `int` | Ceiling on the bytes of binary content a tool may return. |
+| `MaxAgentDepth` | `int` | Ceiling on how deep a chain of delegated agents may run. |
+| `MaxImagePixels` | `int` | Ceiling on the pixels a tool may decode out of one image. |
+| `MaxDeleteEntries` | `int` | Ceiling on the entries one recursive removal may take. |
+| `Default` | `ToolLimits` | Shared instance a host receives when it configures nothing. |
+| `DefaultMaxReadBytes` | `const int` | The published default for `MaxReadBytes`, 65,536. |
+| `DefaultMaxResultCharacters` | `const int` | The published default for `MaxResultCharacters`, 32,000. |
+| `DefaultMaxBinaryBytes` | `const int` | The published default for `MaxBinaryBytes`, 8,388,608. |
+| `DefaultMaxAgentDepth` | `const int` | The published default for `MaxAgentDepth`, 2. |
+| `DefaultMaxImagePixels` | `const int` | The published default for `MaxImagePixels`, 16,777,216. |
+| `DefaultMaxDeleteEntries` | `const int` | The published default for `MaxDeleteEntries`, 1,000. |
 
 The six constants exist so that this document, the requirement text and the tests can all name
 one source of truth rather than repeating literals.
@@ -187,10 +187,10 @@ applied.
 
 ### Error Handling
 
-| Condition                   | Handling                                    |
-|-----------------------------|---------------------------------------------|
-| A negative ceiling supplied | `ArgumentOutOfRangeException` propagates    |
-| A zero ceiling supplied     | Not an error; accepted and exposed as zero  |
+| Condition | Handling |
+| --- | --- |
+| A negative ceiling supplied | `ArgumentOutOfRangeException` propagates |
+| A zero ceiling supplied | Not an error; accepted and exposed as zero |
 
 Nothing is handled locally. A negative ceiling is a programming error in the host's configuration
 code — not a runtime condition a model can provoke — so it is surfaced immediately rather than

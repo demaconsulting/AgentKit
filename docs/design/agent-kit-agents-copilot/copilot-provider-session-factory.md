@@ -15,7 +15,7 @@ the only moment at which Copilot accepts configuration.
 **There is no required window parameter, unlike the stateless factory.** Copilot reports its own
 occupancy and its own limit, so the application is not asked for a figure the provider already knows.
 An application may state an optional ceiling, which only ever lowers the window a session accounts
-against and is never raised above what the runtime reports. See _CopilotProviderSession Unit Design_.
+against and is never raised above what the runtime reports. See *CopilotProviderSession Unit Design*.
 
 **There is no permission-handler parameter either.** A session created here is driven by AgentKit's
 session engine rather than by the host turn by turn, so there is no host present to adjudicate a
@@ -82,7 +82,7 @@ the session as it holds any other turn.
 still decisive.** The defect that shipped to review on the stateless path was a seeded tool result
 rendered as a text-only tool-role message, a shape the OpenAI wire mapping discards without an error
 — fifty-five green tests and a live sample run never noticed. Here that class of defect is
-_unrepresentable_: a seeded tool result is a labeled line inside one message, and no provider's role
+*unrepresentable*: a seeded tool result is a labeled line inside one message, and no provider's role
 mapping can drop part of a message without dropping the message.
 
 **What was rejected, each checked against the shipped assembly rather than assumed:**
@@ -99,18 +99,18 @@ mapping can drop part of a message without dropping the message.
   reference, and several carry a reason the runtime may have omitted them. There is no
   conversational attachment, and a channel the runtime may silently omit is precisely the one not
   to use.
-- **`ResumeSessionConfig` and session resumption.** Resumes _Copilot's own_ stored history for
+- **`ResumeSessionConfig` and session resumption.** Resumes *Copilot's own* stored history for
   an existing session identifier. It cannot inject a rewritten history; it would resurrect the
   history a rotation exists to discard.
 - **The session RPC's message queue.** Carries prompts, display prompts, attachments and a
   required-tool hint — a queue of user prompts, not history bearing roles.
-- **`SystemMessageMode.Customize` with section overrides.** The sections are Copilot's _own_
+- **`SystemMessageMode.Customize` with section overrides.** The sections are Copilot's *own*
   prompt sections. Writing history into one replaces part of the runtime's system prompt, which is
   more invasive than appending and forks the single configuration path the safety argument depends
   on. It is doubly rejected now, since it is the system channel.
 
 **Two consequences, stated rather than hidden.** Charged to the conversation, the record counts
-toward the figure rotation is decided on, so a session rotates progressively _earlier_ as records
+toward the figure rotation is decided on, so a session rotates progressively *earlier* as records
 accumulate — the safe direction, and well-defined at the limit because Core's rotation threshold is
 never below one token. And the record arrives as one message rather than as the turns it describes,
 so the model may weight it differently from turns it lived through; that is recorded as unverified
@@ -119,7 +119,7 @@ rather than asserted.
 ### Data Model
 
 - **`_opener`** (`CopilotChannelOpener`) — Opens one runtime session per rotation. In production, a
-  session on the host's client; in a test, a scripted channel. See _CopilotTurnChannel Unit Design_.
+  session on the host's client; in a test, a scripted channel. See *CopilotTurnChannel Unit Design*.
 - **`_model`** (`string?`) — The model backing every session this factory creates, or null to leave
   the choice to the runtime.
 - **`_maxWindowTokens`** (`int?`) — The ceiling each session accounts its window against, or null to
@@ -151,7 +151,7 @@ is refused at session creation rather than here. Record the window ceiling as st
 **Algorithm:** Reject a null opener and record it. The SDK's session type is sealed with a non-public
 constructor and no virtual members, and its client type is sealed, so nothing above them can be
 exercised without a live runtime and credentials unless the opening of a session is injectable. See
-_Why a Turn-Channel Seam Exists_ in _AgentKitAgentsCopilot System Design_.
+*Why a Turn-Channel Seam Exists* in *AgentKitAgentsCopilot System Design*.
 
 **Preconditions:** `opener` is not null.
 
@@ -194,8 +194,8 @@ through untouched is what makes a session the engine drives configured byte for 
 path configures one: nothing a tool returned reaches the configuration at all.
 
 The whole confinement comes from the agent factory rather than from here. A second allow-list
-derivation is the drift this package exists to prevent, so there is not one; see _CopilotAgentFactory
-Unit Design_.
+derivation is the drift this package exists to prevent, so there is not one; see *CopilotAgentFactory
+Unit Design*.
 
 Exposed as a seam so a test can assert what a rotation actually configures — the derived allow-list,
 the raised runtime compaction threshold, the registered observer and the instructions-only system
@@ -225,28 +225,28 @@ asserts on it directly — the configuration no longer carries it.
 
 ### Error Handling
 
-| Condition                               | Handling                                       |
-|-----------------------------------------|------------------------------------------------|
-| Null `client` or `opener`               | `ArgumentNullException` propagates             |
-| Window ceiling below one                | `ArgumentOutOfRangeException` propagates       |
-| Null `seed`                             | `ArgumentNullException` propagates             |
-| Cancellation before opening             | `OperationCanceledException`; nothing is opened|
-| Cancellation after opening              | `OperationCanceledException`; session released |
-| Opener returned null                    | `InvalidOperationException` propagates         |
-| Two seeded tools carry one name         | `ArgumentException` propagates                 |
+| Condition | Handling |
+| --- | --- |
+| Null `client` or `opener` | `ArgumentNullException` propagates |
+| Window ceiling below one | `ArgumentOutOfRangeException` propagates |
+| Null `seed` | `ArgumentNullException` propagates |
+| Cancellation before opening | `OperationCanceledException`; nothing is opened |
+| Cancellation after opening | `OperationCanceledException`; session released |
+| Opener returned null | `InvalidOperationException` propagates |
+| Two seeded tools carry one name | `ArgumentException` propagates |
 
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSessionFactory`, `ProviderSessionSeed` and
-  `TranscriptEntry`; see _ProviderSession Unit Design_.
+  `TranscriptEntry`; see *ProviderSession Unit Design*.
 - **CopilotAgentFactory** — supplies the single confinement path every session in this package is
-  built through; see _CopilotAgentFactory Unit Design_.
+  built through; see *CopilotAgentFactory Unit Design*.
 - **CopilotSessionObserver** — registered on each session before it is created; see
-  _CopilotSessionObserver Unit Design_.
-- **CopilotTurnChannel** — opens and owns each runtime session; see _CopilotTurnChannel Unit
-  Design_.
+  *CopilotSessionObserver Unit Design*.
+- **CopilotTurnChannel** — opens and owns each runtime session; see *CopilotTurnChannel Unit
+  Design*.
 - **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`, `SessionConfig` and the session
-  event type; see _Microsoft.Agents.AI.GitHub.Copilot Design_.
+  event type; see *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ### Callers
 

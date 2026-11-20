@@ -103,12 +103,12 @@ disposes it at the next rotation.
 
 ### Error Handling
 
-| Condition                        | Handling                                 |
-|----------------------------------|------------------------------------------|
-| Null `client`                    | `ArgumentNullException` propagates       |
-| `windowTokens` not positive      | `ArgumentOutOfRangeException` propagates |
-| Null `seed`                      | `ArgumentNullException` propagates       |
-| Cancellation before creation     | `OperationCanceledException` propagates  |
+| Condition | Handling |
+| --- | --- |
+| Null `client` | `ArgumentNullException` propagates |
+| `windowTokens` not positive | `ArgumentOutOfRangeException` propagates |
+| Null `seed` | `ArgumentNullException` propagates |
+| Cancellation before creation | `OperationCanceledException` propagates |
 
 Every condition is a defect in the composing application or a cancellation the caller asked for, so
 each is surfaced where it arose. A canceled creation yields no session, so a canceled rotation leaves

@@ -5,7 +5,7 @@ sample shows how to *consume* AgentKit's shipped tools, this
 one shows how to *extend* AgentKit: how an application author writes their own guarded tools with
 `GuardedToolFactory` and publishes them as packs, composed alongside a shipped pack and run against
 either the GitHub Copilot runtime or an Ollama model. Refer to the sample's own README for the full
-option reference and a catalogue of things to try.
+option reference and a catalog of things to try.
 
 ## Two Custom Tools, Two Packs
 

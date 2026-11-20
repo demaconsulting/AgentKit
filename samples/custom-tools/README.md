@@ -102,7 +102,7 @@ end-of-input to leave.
 ## Options
 
 | Option | Description |
-| -------- | ------------- |
+| --- | --- |
 | `--workspace <path>` | Folder relative paths anchor to, granted read-write. **Required.** |
 | `--provider copilot\|ollama` | Runtime to run the agent on. Default: `copilot`. |
 | `--host <url>` | Ollama server URL. Default: `http://localhost:11434`. Ollama only. |

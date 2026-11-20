@@ -19,10 +19,10 @@ levels are reported without changing how section ends are computed.
 
 The subsystem contains two units:
 
-| Unit                  | Responsibility                                                       |
-| --------------------- | -------------------------------------------------------------------- |
-| `MarkdownOutlineTool` | Publishes `markdown_outline`: reports heading sections and ranges    |
-| `MarkdownPack`        | Publishes the outline tool as one family under the `markdown` prefix |
+| Unit | Responsibility |
+| --- | --- |
+| `MarkdownOutlineTool` | Publishes `markdown_outline`: reports heading sections and ranges |
+| `MarkdownPack` | Publishes the outline tool as one family under the `markdown` prefix |
 
 ### Interfaces
 
@@ -30,13 +30,13 @@ The subsystem exposes exactly one public type, `MarkdownPack`, plus the name con
 unit publishes. The tool's factory is `internal`, so a tool cannot be obtained except through the
 pack that claims its family prefix.
 
-| Interface                      | Direction | Format                       | Constraints                       |
-| ------------------------------ | --------- | ---------------------------- | --------------------------------- |
-| `MarkdownPack`                 | Outbound  | AgentKitCore `IToolPack`     | Prefix `markdown`; no capability  |
-| `MarkdownOutlineTool.ToolName` | Outbound  | `string` constant            | `markdown_outline`                |
-| Structured outline result      | Outbound  | ToolResult structured object | Path, section count and sections  |
-| `PathPolicy`                   | Inbound   | AgentKitCore policy object   | Supplied at construction          |
-| File system                    | Inbound   | Base Class Library file APIs | Reached only where policy permits |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `MarkdownPack` | Outbound | AgentKitCore `IToolPack` | Prefix `markdown`; no capability |
+| `MarkdownOutlineTool.ToolName` | Outbound | `string` constant | `markdown_outline` |
+| Structured outline result | Outbound | ToolResult structured object | Path, section count and sections |
+| `PathPolicy` | Inbound | AgentKitCore policy object | Supplied at construction |
+| File system | Inbound | Base Class Library file APIs | Reached only where policy permits |
 
 The subsystem consumes `PathPolicy`, `ToolLimits`, `ToolResult`, `GuardedToolFactory`, `IToolPack`
 and `HostCapabilities` from AgentKitCore, and `AIFunction` from

@@ -10,7 +10,7 @@ contacts nothing, records every configuration it was handed and every prompt it 
 releases.
 
 The summarizer is constructed over the internal channel-opener seam, for the reason
-_CopilotTurnChannel Unit Verification Design_ records: the SDK's session and client types are sealed
+*CopilotTurnChannel Unit Verification Design* records: the SDK's session and client types are sealed
 with non-public constructors and no virtual members, so a consolidation cannot be exercised at all
 unless the opening of a session is injectable.
 
@@ -86,8 +86,8 @@ summarizer that had quietly fallen back to it would carry whatever tools it was 
 The second asserts a consolidation session takes the engine path's infinite-session configuration too,
 rather than the runtime's default: a consolidation is one prompt and one answer, and a runtime that
 reshaped the material mid-consolidation would produce a record of something other than what it was
-given. The threshold that configuration carries is asserted where it is set, in _CopilotAgentFactory
-Unit Verification Design_.
+given. The threshold that configuration carries is asserted where it is set, in *CopilotAgentFactory
+Unit Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotSummarizer-RunsOutsideTheCompactedSession: A Session of Its Own, Each Time
 
@@ -96,7 +96,7 @@ Unit Verification Design_.
 Performs two consolidations, as two rotations would, and asserts two sessions were opened and each
 received exactly one prompt. A consolidation sent through the live conversation would spend the very
 context it exists to reclaim and would itself count toward the occupancy that triggered the rotation
-— the measured reason the session contract takes a summarizer at all. Asserting a _fresh_ session
+— the measured reason the session contract takes a summarizer at all. Asserting a *fresh* session
 each time also pins the other half: a cached session would make the second consolidation's material
 follow the first's, so a consolidation would stop being a pure function of what it was given.
 

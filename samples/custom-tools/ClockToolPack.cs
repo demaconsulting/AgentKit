@@ -80,7 +80,7 @@ public sealed class ClockToolPack : IToolPack
     public IEnumerable<AIFunction> CreateTools(PathPolicy policy)
     {
         // The policy is intentionally unused: this pack's tool consults none. Referencing it here
-        // would be theatre, so it is left alone rather than passed to a factory that ignores it.
+        // would be theater, so it is left alone rather than passed to a factory that ignores it.
         _ = policy;
 
         return [ClockNowTool.Create()];
