@@ -28,9 +28,10 @@ every channel a session's options can reach; some channels can be closed only wi
 and session, so the production channel closes them, on the one path `Open`, `OpenRetained` and
 `Resume` share:
 
-1. **Discover and disable.** The runtime is asked which MCP servers it would start for the session's
-   working directory — from the data directory's configuration, the workspace, installed plugins and
-   its built-in servers — and every name is added to the session's disabled servers. The SDK
+1. **Discover and disable.** The runtime is asked to discover the MCP servers for the session's
+   working directory — the SDK documents discovery as covering the user, workspace, plugin and
+   builtin sources: the data directory's configuration, the workspace, installed plugins and its
+   built-in servers — and every name is added to the session's disabled servers. The SDK
    documents a server named there as not started or authenticated on creation or cold resumption, so
    none of those is started. The session options take exact names only, which is why the names come from
    the runtime.
@@ -49,10 +50,13 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
    released and deleted; a resumed session is only released, because refusing to continue a
    conversation must not destroy it.
 
-The SDK documents the runtime's MCP discovery as covering the user, workspace, plugin and builtin
-sources, so a server from another source, such as a managed catalog or a signed-in account, may
-start before step 3 disables it. The allow-list already keeps its tools from the model, no turn runs
-before the seal, and a server that cannot be closed refuses the session.
+Servers the runtime's MCP discovery returns are named in the session's disabled servers before the
+session exists, so the runtime does not start or authenticate them. The SDK documents that discovery
+as covering the user, workspace, plugin and builtin sources. A server from a source it cannot
+enumerate before creation, such as a managed catalog or a signed-in account, may start, and
+authenticate with the host environment, while the session is created. Step 3 disables any such
+server before any turn runs, and the session is refused if one stays enabled. This guarantees that
+the model cannot reach an ambient MCP server; it does not prevent one from running.
 
 **What it deliberately does not do.** It exposes no event subscription and no configuration. A
 session's event handler and every other setting are reached through the session options at creation

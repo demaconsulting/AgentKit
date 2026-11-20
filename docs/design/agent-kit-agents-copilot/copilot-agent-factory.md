@@ -20,8 +20,9 @@ That "one place" has four callers: an agent's first run, which creates a session
 that agent, which resumes it; `CopilotProviderSessionFactory`, for a compacting session; and
 `CopilotSummarizer`, for a consolidation. All four end in the same confinement block. A second
 builder with its own derivation is precisely the drift this design exists to prevent, so there is
-not one. The half of the confinement that needs the live client and session — closing every ambient
-MCP server and clearing the session's installed plugins — is applied by the production turn channel
+not one. The half of the confinement that needs the live client and session — disabling every
+ambient MCP server before any turn and clearing the session's installed plugins — is applied by the
+production turn channel
 on the one path every opener and resumer shares; see *CopilotTurnChannel Unit Design*.
 
 The class is static and holds no state.
@@ -85,10 +86,11 @@ unset would hand a non-Empty client's own default to the session, so the factory
 started and authenticated with the user's GitHub identity on every session, even in the client's
 Empty mode. The source-qualified allow-list already keeps its tools out of reach, but a server
 holding the user's identity is disabled outright rather than merely filtered. Every other MCP server
-— from the user, workspace, plugin, builtin, managed or account source
-— is closed by the production turn channel, which adds every server the runtime discovers to this
-list before the session is created, then disables and verifies whatever is still enabled once the
-session exists. That needs the live client and session, which this builder does not have.
+— from the user, workspace, plugin, builtin, managed or account source — is disabled before any turn
+by the production turn channel, which adds every server the runtime discovers to this list before
+the session is created, then disables and verifies whatever is still enabled once the session
+exists; a server discovery cannot name may start during creation, but is kept from the model. That
+needs the live client and session, which this builder does not have.
 
 **Large-output diversion stays disabled.** The runtime would divert a result larger than about twenty
 kilobytes to a temporary file and hand the model its path. A confined agent cannot read that file —
@@ -392,9 +394,17 @@ its handler reproduces it. The pinned manual mode applies either way.
 and cannot enforce it: the SDK offers no way to read a client's mode back. The factory therefore
 relies on the mode for nothing that reaches the model: every capability or context default Empty
 mode supplies is set on each session here, and the turn channel clears the installed plugins and
-closes every MCP server the session lists — a server from a source discovery does not cover may
-start before it is closed, though no turn runs first. What a client that violates the precondition
-can still add is host-side
+disables every MCP server the session lists, refusing the session if one stays enabled. AgentKit
+keeps every ambient MCP server from the model. Discovered servers are disabled before the session
+exists, any other before the first turn, and the session is refused if one stays enabled. A server
+the SDK cannot enumerate before creation, such as a managed catalog's or a signed-in account's, may
+still start during session creation. A host that must also keep such servers from running supplies a
+`CopilotClientMode.Empty` client on a clean data directory it owns. That removes the sources the
+directory holds, namely its MCP configuration and installed plugins. SDK 2.0.1 does not document
+that Empty mode or a clean data directory keeps a managed-catalog or account server from starting;
+an account server follows the signed-in account and its organization's policy. The client therefore
+narrows those sources rather than guaranteeing that none starts. What a client that violates the
+precondition can still add is host-side
 behavior no session option reaches: settings in a shared data directory such as user-level hooks,
 credential storage in the system keychain rather than the data directory, telemetry and runtime
 file logging, and anything the host attaches at client level, such as plugin directories or

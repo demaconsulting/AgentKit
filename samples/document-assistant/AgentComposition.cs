@@ -314,9 +314,10 @@ public static class AgentComposition
     {
         // The host constructs, starts, and disposes the client; the factory takes no ownership.
         // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
-        // runtime's own defaults off and its state in that directory, and AgentKit closes the ambient
-        // channels - plugins, MCP servers, skills, custom instructions, host environment context - on
-        // every session itself. A per-user application-data folder keeps that state out of the workspace.
+        // runtime's own defaults off and its state in that directory, and AgentKit withholds the
+        // ambient channels - plugins, MCP servers, skills, custom instructions, host environment
+        // context - from the model on every session itself. A per-user application-data folder keeps
+        // that state out of the workspace.
         var client = new CopilotClient(new CopilotClientOptions
         {
             Mode = CopilotClientMode.Empty,

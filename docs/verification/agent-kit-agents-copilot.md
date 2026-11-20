@@ -162,8 +162,13 @@ server were both named in the options' disabled servers when the session was ope
 session's installed plugins were cleared, that the server was disabled for the session, and that the
 session was then refused with an error naming the server and abandoned. A confined agent receives no
 MCP server: the allow-list keeps a server's tools from the model, but a started server still runs a
-process with the user's environment and can contribute instructions, so a server that cannot be
-closed refuses the session rather than letting the run continue. That the runtime honors the
+process with the user's environment and can contribute instructions, so a server that stays enabled
+refuses the session rather than letting the run continue. AgentKit keeps every ambient MCP server
+from the model. Discovered servers are disabled before the session exists, any other before the
+first turn, and the session is refused if one stays enabled. A server the SDK cannot enumerate
+before creation, such as a managed catalog's or a signed-in account's, may still start during
+session creation, so this scenario evidences that ambient servers are withheld from the model, not
+that none runs. That the runtime honors the
 create-time disabled list (L12a), the seal's session-scoped disable (L12c), and the resume-time
 disabled list on a session resumed through the channel (L12d) is shown by the live suite's
 ambient-server scenarios.

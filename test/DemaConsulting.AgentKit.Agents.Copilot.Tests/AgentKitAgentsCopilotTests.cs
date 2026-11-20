@@ -396,10 +396,10 @@ public class AgentKitAgentsCopilotTests
 
     /// <summary>
     ///     Proves every session the package opens on a real client — an engine session and an
-    ///     agent's — has every ambient MCP server closed: a server the runtime discovers, a
-    ///     non-GitHub one included, is disabled before the session is created; the session's
-    ///     installed plugins are cleared; and a session in which a server stays enabled is refused
-    ///     and abandoned rather than handed to the model.
+    ///     agent's — has every ambient MCP server withheld from the model: a server the runtime
+    ///     discovers, a non-GitHub one included, is disabled before the session is created; the
+    ///     session's installed plugins are cleared; and a session in which a server stays enabled is
+    ///     refused and abandoned rather than handed to the model.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed()

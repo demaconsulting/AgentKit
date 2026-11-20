@@ -20,10 +20,10 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
   outcomes, assistant messages and their streamed deltas, per-request usage, session errors, and the
   runtime's own compaction, truncation, context clearing and snapshot rewind, each attributed to the
   agent that produced it;
-- MCP and plugin control: discovery of the MCP servers a runtime would start, per-session disabling of
-  named servers at creation and on a live session, a listing of a session's effective MCP
-  configuration with each server's enablement, and a session-options patch replacing the session's
-  installed plugins.
+- MCP and plugin control: discovery of a runtime's MCP servers from the sources it documents,
+  per-session disabling of named servers at creation and on a live session, a listing of a session's
+  effective MCP configuration with each server's enablement, and a session-options patch replacing
+  the session's installed plugins.
 
 ### Verification Approach
 

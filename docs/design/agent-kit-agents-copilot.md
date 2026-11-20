@@ -215,22 +215,25 @@ on the client's mode, which AgentKit cannot read:
 only with the live client and session, which the options builders deliberately do not have, so the
 production turn channel applies them on the one path every opener and resumer shares:
 
-- **Every ambient MCP server is closed.** The runtime starts MCP servers from ambient configuration —
-  the data directory, the workspace, installed plugins, its built-in servers, a managed catalog, and
-  a signed-in account — and Empty mode does not stop them. Before a session
-  is created or resumed, the channel asks the runtime to discover the servers it would start and
+- **Every ambient MCP server is withheld from the model.** The runtime starts MCP servers from ambient
+  configuration — the data directory, the workspace, installed plugins, its built-in servers, a
+  managed catalog, and a signed-in account — and Empty mode does not stop them. Before a session is
+  created or resumed, the channel asks the runtime to discover its MCP servers for the session and
   names every one in the session's disabled servers, so none of those is started at creation or cold
-  resumption. The allow-list already
-  keeps an MCP server's tools from the model; closing the server also keeps it from running a process
-  with the user's environment and from contributing instructions.
+  resumption. The allow-list already keeps an MCP server's tools from the model; disabling a
+  discovered server before creation also keeps it from running a process with the user's environment
+  and from contributing instructions; a server discovery cannot name is handled by the seal below.
 - **The session is sealed.** Once the session exists, its installed plugins — which can contribute
   servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
   sends; every MCP server the session still reports enabled, including one from a source discovery
-  does not cover, is disabled for that session only; and the configuration is listed again. The SDK
-  documents the runtime's MCP discovery as covering the user, workspace, plugin and builtin sources,
-  so a server from another source, such as a managed catalog or a signed-in account, may start
-  before the seal disables it; no turn runs before the seal, and a server that cannot be closed
-  refuses the session.
+  does not cover, is disabled for that session only; and the configuration is listed again. Servers
+  the runtime's MCP discovery returns are named in the session's disabled servers before the session
+  exists, so the runtime does not start or authenticate them. The SDK documents that discovery as
+  covering the user, workspace, plugin and builtin sources. A server from a source it cannot
+  enumerate before creation, such as a managed catalog or a signed-in account, may start, and
+  authenticate with the host environment, while the session is created. The seal disables any such
+  server before any turn runs, and the session is refused if one stays enabled. This guarantees that
+  the model cannot reach an ambient MCP server; it does not prevent one from running.
 - **It fails closed.** A server the runtime keeps enabled refuses the session with an
   `InvalidOperationException` naming it, so the run fails rather than continuing with the server
   available. A created session nothing has recorded is released and deleted; a resumed session is
@@ -480,8 +483,14 @@ The host constructs the client, and three of its choices bear on this system:
   environment context removed; experimental features off and
   embedding retrieval skipped; the installed plugins cleared; and every MCP server the session lists
   disabled and verified, with the session refused if one stays enabled — though a server from a
-  source discovery does not cover may start before the seal disables it, as *The session is sealed*
-  above records. What a client that violates the
+  source discovery does not cover may start, and authenticate, before the seal disables it, as *The
+  session is sealed* above records. A host that must also keep such servers from running supplies a
+  `CopilotClientMode.Empty` client on a clean data directory it owns. That removes the sources the
+  directory holds, namely its MCP configuration and installed plugins. SDK 2.0.1 does not document
+  that Empty mode or a clean data directory keeps a managed-catalog or account server from starting;
+  an account server follows the signed-in account and its organization's policy. The client
+  therefore narrows those sources rather than guaranteeing that none starts. What a client that
+  violates the
   precondition can still add is host-side behavior no session option reaches: settings in a shared
   data directory such as user-level hooks, credential storage in the system keychain rather than the
   data directory, telemetry and runtime file logging, and anything the host attaches at client level,
@@ -621,11 +630,13 @@ so no path can acquire capability another path withholds.
   and the cross-session store, sub-agents, extensions, configuration discovery, tool search, schedule
   management, image generation, experimental features and embedding retrieval are closed on every
   session, the host environment context is removed from the system prompt, the built-in GitHub MCP
-  server is disabled, every other MCP server the runtime would start is disabled and verified, and
+  server is disabled, every other MCP server the session lists is disabled and verified, and
   the session's installed plugins are cleared, because each would attach capability, direction or
-  identity the composing application never granted. A session in which an MCP server stays enabled
-  is refused rather than used; a server from a source discovery does not cover may start before the
-  seal disables it, though no turn runs first.
+  identity the composing application never granted. AgentKit keeps every ambient MCP server from the
+  model. Discovered servers are disabled before the session exists, any other before the first turn,
+  and the session is refused if one stays enabled. A server the SDK cannot enumerate before
+  creation, such as a managed catalog's or a signed-in account's, may still start during session
+  creation.
 - **A documented client precondition.** Empty mode on a host-owned data directory is required and
   cannot be detected; what a client violating it could still add is host-side behavior no session
   option reaches, listed under *Host Client Construction*.

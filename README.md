@@ -205,8 +205,9 @@ var dataDirectory = Path.Combine(
 await using var client = new CopilotClient(new CopilotClientOptions
 {
     // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the runtime's
-    // own defaults off and its state in that directory, and AgentKit closes the ambient channels -
-    // plugins, MCP servers, skills, custom instructions, host environment context - on every session.
+    // own defaults off and its state in that directory, and AgentKit withholds the ambient channels -
+    // plugins, MCP servers, skills, custom instructions, host environment context - from the model on
+    // every session.
     Mode = CopilotClientMode.Empty,
     Runtime = RuntimeConnection.ForInProcess(baseDirectory: dataDirectory),
 
@@ -227,15 +228,23 @@ var agent = CopilotAgentFactory.Create(
 
 AgentKit requires Empty mode on a data directory the host owns, and cannot detect it: the SDK offers
 no way to read a client's mode back. So it relies on the mode for nothing that reaches the model. It
-closes the runtime's ambient channels on every session itself — including every MCP server the
-runtime would start and the session's installed plugins — and refuses a session in which an MCP
-server cannot be closed. The SDK documents the runtime's MCP discovery as covering the user,
-workspace, plugin and builtin sources, so a server from another source, such as a managed catalog
-or a signed-in account, may start before AgentKit disables it; no turn runs before then, and a
-server that cannot be closed refuses the session. A client in another mode, or on a shared data
-directory, can still bring
-host-side behavior no session option reaches, such as user-level hooks or keychain credential
-storage.
+withholds the runtime's ambient channels from the model on every session itself — including every
+MCP server the session lists and the session's installed plugins — and refuses a session in which an
+MCP server stays enabled. Servers the runtime's MCP discovery returns are named in the session's disabled
+servers before the session exists, so the runtime does not start or authenticate them. The SDK
+documents that discovery as covering the user, workspace, plugin and builtin sources. A server from
+a source it cannot enumerate before creation, such as a managed catalog or a signed-in account, may
+start, and authenticate with the host environment, while the session is created. AgentKit disables
+any such server before any turn runs, and the session is refused if one stays enabled. This
+guarantees that the model cannot reach an ambient MCP server; it does not prevent one from running.
+A host that must also keep such servers from running supplies a `CopilotClientMode.Empty` client on
+a clean data directory it owns. That removes the sources the directory holds, namely its MCP
+configuration and installed plugins. SDK 2.0.1 does not document that Empty mode or a clean data
+directory keeps a managed-catalog or account server from starting; an account server follows the
+signed-in account and its organization's policy. The client therefore narrows those sources rather
+than guaranteeing that none starts. A client in another mode, or on a shared data directory, can
+still bring host-side behavior no session option reaches, such as user-level hooks or keychain
+credential storage.
 
 In-process hosting has no client-level working directory, so the session working directory is
 passed to `CopilotAgentFactory.Create`, or to `CopilotProviderSessionFactory` for a compacting

@@ -127,14 +127,17 @@ sections:
               process with the user's environment and identity and can contribute instructions to the
               system prompt, so each is closed rather than filtered. The session options take only
               exact server names, so the names come from the runtime's own discovery, and naming them
-              before creation is what keeps them from starting at all. The SDK documents the
-              runtime's MCP discovery as covering the user, workspace, plugin and builtin sources,
-              so a server from another source, such as a managed catalog or a signed-in account,
-              may start before the seal disables it; no turn runs before the seal, and a server
-              that cannot be closed refuses the session. Installed plugins — which can contribute
-              servers, hooks,
-              skills and agents — can be cleared only once the session exists, so the session is
-              sealed afterwards: its
+              before creation is what keeps them from starting at all. Servers the runtime's MCP
+              discovery returns are named in the session's disabled servers before the session
+              exists, so the runtime does not start or authenticate them. The SDK documents that
+              discovery as covering the user, workspace, plugin and builtin sources. A server from a
+              source it cannot enumerate before creation, such as a managed catalog or a signed-in
+              account, may start, and authenticate with the host environment, while the session is
+              created. The seal disables any such server before any turn runs, and the session is
+              refused if one stays enabled. This guarantees that the model cannot reach an ambient
+              MCP server; it does not prevent one from running. Installed plugins — which can
+              contribute servers, hooks, skills and agents — can be cleared only once the session
+              exists, so the session is sealed afterwards: its
               plugins are cleared, every server it still reports enabled is disabled for that session,
               and the result is verified. A server the runtime keeps enabled refuses the session
               rather than letting a run continue with a channel open; a created session nothing has

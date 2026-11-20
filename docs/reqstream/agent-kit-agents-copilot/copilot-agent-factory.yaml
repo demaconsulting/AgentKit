@@ -86,8 +86,8 @@ sections:
               disabled outright rather than merely filtered, because measured against the live
               runtime it is started and authenticated with the user's GitHub identity for every
               session even in the runtime's empty mode; every other MCP server, and the session's
-              installed plugins, are closed by the production turn channel, which needs the live
-              session to do it.
+              installed plugins, are disabled before any turn runs by the production turn channel,
+              which needs the live session to do it.
               Any one channel silently reverting to the permissive value would widen the agent
               without changing anything the host wrote, so each is asserted rather than assumed.
             tests:

@@ -131,9 +131,11 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 ///     server the runtime discovers is disabled, so none is started; once it exists, its
 ///     installed plugins are cleared and any MCP server still enabled is disabled; and a session
 ///     in which a server stays enabled is refused — a created one released and deleted, a resumed
-///     one only detached, so a conversation is never destroyed. These steps need the live client
-///     and session, which the factory's configuration builders deliberately do not have, so they
-///     live here.
+///     one only detached, so a conversation is never destroyed. A server the SDK cannot enumerate
+///     before creation, such as a managed catalog's or a signed-in account's, may still start
+///     during session creation: the protocol guarantees that the model cannot reach an ambient
+///     MCP server, not that none runs. These steps need the live client and session, which the
+///     factory's configuration builders deliberately do not have, so they live here.
 ///     </para>
 ///     <para>
 ///     Deliberately a forwarded turn, one guarded release and one opening protocol. It is the one
@@ -281,23 +283,28 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     }
 
     /// <summary>
-    ///     Opens a session through the confinement's runtime half: discovers the ambient MCP servers
-    ///     and disables them, opens the session, then seals it — abandoning it if the seal fails.
+    ///     Opens a session through the confinement's runtime half: disables the MCP servers the
+    ///     runtime's discovery reports, opens the session, then seals it — abandoning it if the seal
+    ///     fails.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///     <b>Why discovery comes first.</b> A server named in <c>DisabledServers</c> when the session
     ///     is created or cold-resumed is, per the SDK, "not started or authenticated" — so naming
-    ///     every discovered server here keeps a server from ambient configuration from ever running
-    ///     a process with the user's environment or identity. Disabling it only afterwards would start
-    ///     it first.
+    ///     every discovered server here keeps those servers from running a process with the user's
+    ///     environment or identity. Disabling one only afterwards would start it first.
     ///     </para>
     ///     <para>
-    ///     <b>Why sealing follows anyway.</b> The SDK documents the runtime's discovery as covering the
-    ///     user, workspace, plugin and builtin sources, not the managed or account sources the
-    ///     session's effective configuration can also report, and the session's installed plugins can
-    ///     only be cleared once it exists. A server from such a source may start before the seal
-    ///     disables it; no turn runs before the seal. The seal closes both and verifies the result.
+    ///     <b>Why sealing follows anyway.</b> Servers the runtime's MCP discovery returns are named in
+    ///     the session's disabled servers before the session exists, so the runtime does not start or
+    ///     authenticate them. The SDK documents that discovery as covering the user, workspace, plugin
+    ///     and builtin sources. A server from a source it cannot enumerate before creation, such as a
+    ///     managed catalog or a signed-in account, may start, and authenticate with the host
+    ///     environment, while the session is created. The seal disables any such server before any
+    ///     turn runs, and the session is refused if one stays enabled. This guarantees that the model
+    ///     cannot reach an ambient MCP server; it does not prevent one from running. The session's
+    ///     installed plugins, too, can only be cleared once it exists. A host that needs prevention:
+    ///     see the client precondition on <c>CopilotAgentFactory</c>.
     ///     </para>
     ///     <para>
     ///     <b>An unsealed session never reaches a caller.</b> If the seal fails — a server stays
@@ -312,7 +319,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// </remarks>
     /// <typeparam name="TSession">The session handle type.</typeparam>
     /// <param name="config">The session configuration, updated with the discovered servers before it is used.</param>
-    /// <param name="discover">Discovers the names of the MCP servers the runtime would start.</param>
+    /// <param name="discover">Discovers the names of the MCP servers the runtime's discovery reports.</param>
     /// <param name="open">Creates or resumes the session from <paramref name="config"/>.</param>
     /// <param name="seal">Seals the opened session; throws if it cannot.</param>
     /// <param name="abandon">Releases a session whose seal failed. Must not throw.</param>
@@ -463,7 +470,8 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
             cancellationToken);
 
     /// <summary>
-    ///     Discovers the names of the MCP servers the runtime would start for a session.
+    ///     Discovers the names of the MCP servers the runtime's discovery reports for a session — the
+    ///     user, workspace, plugin and builtin sources, per the SDK.
     /// </summary>
     /// <remarks>
     ///     The client's RPC surface exists only once the client has started, so the client is

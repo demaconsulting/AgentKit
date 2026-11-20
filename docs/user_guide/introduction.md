@@ -558,9 +558,9 @@ The host owns the `CopilotClient`: it constructs, starts and disposes it, and no
 builds ever disposes it. **The client must be in `CopilotClientMode.Empty` on a data directory the
 host owns**, where the runtime keeps its session state. That is a precondition AgentKit cannot
 detect — the SDK offers no way to read a client's mode back — so AgentKit relies on the mode for
-nothing that reaches the model and closes the runtime's ambient channels on every session itself,
-except that a server from a source the runtime's discovery does not cover may start before it is
-closed (see below). A
+nothing that reaches the model and withholds the runtime's ambient channels from the model on every
+session itself; a server from a source the runtime's discovery does not cover may start, and
+authenticate, during session creation (see below). A
 client that violates the precondition can still bring host-side behavior no session option reaches:
 settings in a shared data directory such as user-level hooks, credential storage in the system
 keychain rather than the data directory, telemetry and runtime file logging, and anything attached
@@ -607,15 +607,23 @@ runtime's other channels of injected capability on every session — skills, cus
 repository hooks, host git operations and commit co-author trailers, extensions, built-in
 sub-agents, memory, experimental features, embedding
 retrieval, and the host environment context the runtime would write into the system prompt. When a
-session is opened, every MCP server the runtime would start — the built-in GitHub server, servers
-configured in the data directory or the workspace, and servers plugins bring — is discovered and
-disabled before the session starts; once it exists, its installed plugins are cleared and any MCP
-server still enabled, such as one from a managed catalog or a signed-in account, is disabled and
-verified. The SDK documents the runtime's MCP discovery as covering the user, workspace, plugin and
-builtin sources, so a server from another source, such as a managed catalog or a signed-in account,
-may start before it is disabled; no turn runs before then, and a server that cannot be closed
-refuses the session. A
-session in which a server stays enabled is refused rather than used. It does
+session is opened, every MCP server the runtime's discovery reports — the built-in GitHub server,
+servers configured in the data directory or the workspace, and servers plugins bring — is disabled
+before the session starts; once it exists, its installed plugins are cleared and any MCP server
+still enabled, such as one from a managed catalog or a signed-in account, is disabled and verified.
+Servers the runtime's MCP discovery returns are named in the session's disabled servers before the
+session exists, so the runtime does not start or authenticate them. The SDK documents that discovery
+as covering the user, workspace, plugin and builtin sources. A server from a source it cannot
+enumerate before creation, such as a managed catalog or a signed-in account, may start, and
+authenticate with the host environment, while the session is created. The factory disables any such
+server before any turn runs, and the session is refused if one stays enabled. This guarantees that
+the model cannot reach an ambient MCP server; it does not prevent one from running. A host that must
+also keep such servers from running supplies a `CopilotClientMode.Empty` client on a clean data
+directory it owns. That removes the sources the directory holds, namely its MCP configuration and
+installed plugins. SDK 2.0.1 does not document that Empty mode or a clean data directory keeps a
+managed-catalog or account server from starting; an account server follows the signed-in account and
+its organization's policy. The client therefore narrows those sources rather than guaranteeing that
+none starts. It does
 **not** install the image-promoting decorator, because the Copilot runtime already delivers a
 tool-returned image to the model.
 

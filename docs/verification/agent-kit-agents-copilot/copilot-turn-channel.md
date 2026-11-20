@@ -201,7 +201,7 @@ reading the SDK rather than by a test. The consequence of getting it wrong is wo
 SDK's default is sixty seconds, a tool-using research turn routinely exceeds it, and the resulting
 failure would read as a model or tool fault rather than as a deadline nobody chose.
 
-#### AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins: Every Ambient MCP Server Closed, Plugins Cleared, Fail Closed
+#### AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins: Ambient MCP Servers Disabled Before Any Turn, Plugins Cleared, Fail Closed
 
 **Tests**:
 

@@ -100,9 +100,9 @@ sections:
 
           - id: AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl
             title: >-
-              Microsoft.Copilot.SDK shall provide discovery of the MCP servers a runtime would start,
-              per-session disabling of named servers at creation and on a live session, a listing of a
-              session's effective MCP configuration with each server's enablement, and a
+              Microsoft.Copilot.SDK shall provide discovery of a runtime's MCP servers from the sources
+              it documents, per-session disabling of named servers at creation and on a live session, a
+              listing of a session's effective MCP configuration with each server's enablement, and a
               session-options patch replacing the session's installed plugins.
             justification: |
               The package closes every ambient MCP server a session lists and the session's installed
@@ -111,10 +111,12 @@ sections:
               require, the disabled-server option keeps a named server from starting, the live
               listing reports the session's effective MCP configuration, with each server's
               provenance, including the managed and account sources discovery is not documented to
-              cover, the
-              session-scoped disable closes a server without touching the user's persistent
-              configuration, and the options patch is the call the SDK's own Empty mode makes to
-              clear installed plugins. They are marked for evaluation by the SDK, so a change to them
+              cover, the session-scoped disable closes a server without touching the user's
+              persistent configuration, and the options patch is the call the SDK's own Empty mode
+              makes to clear installed plugins. Discovery is not documented to reach the managed or
+              account sources, so such a server may start during creation; the seal keeps it from the
+              model, not from running — see the turn channel. They are marked for evaluation by the
+              SDK, so a change to them
               is caught by the opt-in live suite, whose ambient-server scenarios configure a
               non-GitHub server on a CodingAgent client. In all four, discovery reports the server;
               the channel names it on the create-time disabled list and the opened session reports
