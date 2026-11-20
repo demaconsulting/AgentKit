@@ -288,18 +288,21 @@ single output retained (4,194,304 characters), the total retained (16,777,216 ch
 32 MiB) and the number of outputs retained (256); pass one to `WithToolOutputSpill` to change any of
 them. When a new output would exceed a ceiling the **oldest** outputs are released first, and a
 reference to a released output is answered with the fact that it is no longer retained, so the model
-re-runs the tool rather than guessing. A single output larger than the per-output ceiling is refused
-with the tool's usual refusal — never truncated.
+re-runs the tool rather than guessing. A single output larger than the per-output ceiling is never
+truncated; it is refused. A tool that reports its output as oversized gives its usual refusal: the
+built-in `file_list`, `markdown_outline`, `text_file_search` and `agent_run` do this, as does your
+own tool if it returns `ToolResult.Oversized`. Any other tool, including your own tools returning
+text or JSON, gets a refusal stating the output's size and the retention limit.
 
 **Lifetime and isolation.** Retained outputs live exactly as long as the tool list they were
 composed into. A session carries that list unchanged across compaction, so a reference survives a
 rotation. Each `Build` has its own store, and so does each delegated agent: pass `childToolOutput`
-to `AgentPack` to compose children (and their children) with retention, each with its own store and
-its own two readers. A child whose profile admits no tools stays tool-less. A child's final answer
-that is too large for the *parent's* ceiling is retained by the parent whenever the parent's
-composition retains outputs. A host that hands one composed tool list to several conversations
-shares the retained outputs between them, exactly as it would share a task list; compose per
-conversation to keep them apart.
+to `AgentPack`, after `hostCapabilities`, to compose children (and their children) with retention,
+each with its own store and its own two readers. A child whose profile admits no tools stays
+tool-less. A child's final answer that is too large for the *parent's* ceiling is retained by the
+parent whenever the parent's composition retains outputs. A host that hands one composed tool list
+to several conversations shares the retained outputs between them, exactly as it would share a task
+list; compose per conversation to keep them apart.
 
 **Without the opt-in nothing changes.** Every refusal is the same text it always was, no reader is
 offered, and a custom tool's oversized result still reaches the provider unbounded. Retention works
