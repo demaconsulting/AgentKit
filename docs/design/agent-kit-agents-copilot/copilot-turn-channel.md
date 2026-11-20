@@ -23,9 +23,9 @@ each session through one confining protocol, with the decisions of the last two 
 methods the tests reach through delegates. That is the smallest surface that makes the rest
 reachable, and it is the same reasoning that made `CopilotAgentFactory.BuildSessionConfig` internal.
 
-**Every production session is opened through one confining protocol.** `CopilotAgentFactory` closes
-every channel a session's options can reach; some channels can be closed only with the live client
-and session, so the production channel closes them, on the one path `Open`, `OpenRetained` and
+**Every production session is opened through one confining protocol.** `CopilotAgentFactory` withholds
+every channel a session's options can reach; some channels can be withheld only with the live client
+and session, so the production channel withholds them, on the one path `Open`, `OpenRetained` and
 `Resume` share:
 
 1. **Discover and disable.** The runtime is asked to discover the MCP servers for the session's
@@ -44,7 +44,7 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
    listed; every
    server still enabled is disabled for this session only, never in the user's persistent
    configuration; and the configuration is listed again.
-4. **Fail closed.** A server the runtime keeps enabled refuses the session with an
+4. **Refuse rather than continue.** A server the runtime keeps enabled refuses the session with an
    `InvalidOperationException` naming it. A session that cannot be sealed for any reason is
    abandoned before the failure propagates: a created session, which nothing has recorded, is
    released and deleted; a resumed session is only released, because refusing to continue a

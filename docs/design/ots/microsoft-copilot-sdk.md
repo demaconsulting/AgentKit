@@ -53,17 +53,15 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
 - **The infinite-session configuration** — its background-compaction threshold raised clear of
   AgentKit's rotation point on every session AgentKit's own engine drives, so the runtime's compactor
   and AgentKit's do not act on one conversation
-- **MCP and plugin control** — the client's MCP discovery (`mcp.discover`), which the SDK documents
-  as discovering servers from the user, workspace, plugin and builtin sources; the session's
-  disabled-servers option, which keeps a named server from starting on creation or cold resumption;
-  the session's effective MCP configuration listing (`session.mcp.listConfigured`), which reports
-  the session's effective MCP configuration, with each server's enablement after configuration and
-  policy filtering and its provenance (`McpServerSource`: user, workspace, plugin, builtin, managed
-  or account); the
-  session-scoped disable (`session.mcp.disable`); and the session-options patch whose plugin options
-  replace the session's installed plugins (`plugins.installed`). AgentKit uses them to close every
-  ambient MCP server a session lists and clear installed plugins on every session, independently of
-  the client's mode
+- **MCP and plugin control** — the client's MCP discovery (`mcp.discover`), which the SDK documents as discovering
+  servers from the user, workspace, plugin and builtin sources; the session's disabled-servers option, which keeps a
+  named server from starting on creation or cold resumption; the session's effective MCP configuration listing
+  (`session.mcp.listConfigured`), which reports the session's effective MCP configuration, with each server's enablement
+  after configuration and policy filtering and its provenance (`McpServerSource`: user, workspace, plugin, builtin,
+  managed or account); the session-scoped disable (`session.mcp.disable`); and the session-options patch whose plugin
+  options replace the session's installed plugins (`plugins.installed`). AgentKit uses them to disable, before any turn,
+  every ambient MCP server a session lists and to clear installed plugins on every session, independently of the
+  client's mode
 
 ### Integration Pattern
 
@@ -80,10 +78,10 @@ The integration requires it, and AgentKit cannot enforce it: `CopilotClient` exp
 its mode back. AgentKit therefore relies on the mode for nothing that reaches the model. Every
 capability or context default Empty mode supplies per session is set by AgentKit on each session —
 the host environment context removed through the same section override, experimental features off,
-embedding retrieval skipped, commit co-author trailers off, every other option channel closed — and
+embedding retrieval skipped, commit co-author trailers off, every other option channel withheld — and
 the installed plugins are
 cleared with the same options patch Empty mode sends after every create and resume. Every MCP server
-the session lists is closed and verified too, which Empty mode does not do. What a client that violates the
+the session lists is disabled and verified too, which Empty mode does not do. What a client that violates the
 precondition can still add is host-side behavior no session option reaches: settings in a shared
 data directory such as user-level hooks, credential storage in the system keychain rather than the
 data directory, telemetry and runtime file logging, and anything the host attaches at client level
@@ -133,7 +131,7 @@ the opt-in live suite where noted:**
   opened through AgentKit's channel it is named on the create-time disabled list and reported
   disabled, with no server enabled (L12a); on a session created directly it is enabled (L12b); when
   discovery is replaced with one that finds nothing, it is enabled when the seal begins and the seal's
-  session-scoped disable closes it, which the re-listing confirms (L12c); and on a session resumed
+  session-scoped disable turns it off, which the re-listing confirms (L12c); and on a session resumed
   through the channel it is named before the resume and no server is enabled afterwards (L12d). In
   each scenario through the channel the tool set is exactly the supplied tools and the plugins patch
   is accepted; no fixture installs a plugin, so clearing an installed plugin is shown only offline.
@@ -157,8 +155,8 @@ tests drive the genuine event shapes through AgentKit's own matching code.
 
 The SDK's permission-decision RPC surface, and the MCP discovery, MCP configuration and
 session-options RPC surface, are marked with the `MCPSDK001` "evaluation purposes only" diagnostic.
-AgentKit necessarily references them to wire a permission handler and to close ambient MCP servers
-and installed plugins, so that diagnostic is suppressed in the package and in its tests, and a
+AgentKit necessarily references them to wire a permission handler and to disable ambient MCP servers
+and clear installed plugins, so that diagnostic is suppressed in the package and in its tests, and a
 consumer that references the permission-handler parameter will see the same diagnostic from its own
 build. A change to the MCP and plugin calls fails safe — a failing call refuses the session — and is
 caught by the opt-in live suite.

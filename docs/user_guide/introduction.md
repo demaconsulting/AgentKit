@@ -602,7 +602,7 @@ only the diagnosis described under *Troubleshooting the Copilot Runtime* below.
 Copilot arrives as a complete runtime carrying its own tools — shell, fetch, file editing and more.
 The factory suppresses them by deriving the session allow-list from the same tools you supplied, so
 a confined agent is offered only the tools you gave it. Every entry is source-qualified as a custom
-tool: a bare name would also admit a built-in tool of the same name. The factory also closes the
+tool: a bare name would also admit a built-in tool of the same name. The factory also withholds the
 runtime's other channels of injected capability on every session — skills, custom instructions,
 repository hooks, host git operations and commit co-author trailers, extensions, built-in
 sub-agents, memory, experimental features, embedding
@@ -817,7 +817,7 @@ for answer quality across a long conversation, not to save money.
   conversation that is refused this way is kept, not deleted.
 - **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
   runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP
-  installation, which the runtime's session-scoped disable may require an installation id to close.
+  installation, which the runtime's session-scoped disable may require an installation id to disable.
   The SDK's listing of a session's MCP servers does not expose that id, so AgentKit cannot supply it
   and refuses the session instead. Use a data directory with no MCP installations.
 - **A rejected permission request in the runtime's log.** The model asked for something other than

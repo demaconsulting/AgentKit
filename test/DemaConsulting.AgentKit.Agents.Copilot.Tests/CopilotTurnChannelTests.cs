@@ -267,8 +267,8 @@ public class CopilotTurnChannelTests
 
     /// <summary>
     ///     Proves a server that stays enabled after it was disabled refuses the session with an error
-    ///     that names it, and points the host to the sources a session cannot close, so the runtime's
-    ///     failure to close a server never reaches the model.
+    ///     that names it, and points the host to the sources a session cannot disable before
+    ///     creation, so the runtime's failure to disable a server never reaches the model.
     /// </summary>
     [Fact]
     public async Task CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt()

@@ -38,8 +38,8 @@ sections:
           channel: the runtime's skills, discovered instructions, hooks, memory, sub-agents,
           extensions, installed plugins, MCP servers and the host environment context it writes into
           the system prompt would attach capability and direction the composing application never
-          granted, so those channels are closed on every session for the same reason the built-in
-          tools are suppressed. They are closed per session because the SDK offers no way to read a
+          granted, so those channels are withheld on every session for the same reason the built-in
+          tools are suppressed. They are withheld per session because the SDK offers no way to read a
           client's mode back, so the confinement cannot depend on it; and MCP servers are disabled
           rather than merely filtered out of the allow-list, because Empty mode does not itself stop
           ambient MCP servers, and a server that is started runs a process with the user's

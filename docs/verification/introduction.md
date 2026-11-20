@@ -156,7 +156,7 @@ constituent software items, specifically:
   GitHub Copilot `CopilotClient`, suppressing the runtime's built-in tools by deriving a
   source-qualified session allow-list from the supplied tools, and carries an AgentKit session over
   the same runtime
-- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, closes every
+- **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, withholds every
   channel of runtime-injected capability, refuses a tool named like a runtime built-in, installs a
   default-safe permission handler, and builds the agent without taking ownership of the client
 - **CopilotAgent (Unit)** — The agent the factory builds, and its `CopilotAgentSession`: creates a

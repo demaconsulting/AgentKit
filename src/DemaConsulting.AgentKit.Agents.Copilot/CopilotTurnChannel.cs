@@ -309,8 +309,8 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     <para>
     ///     <b>An unsealed session never reaches a caller.</b> If the seal fails — a server stays
     ///     enabled, or the runtime refuses a call — the session is abandoned by the supplied policy
-    ///     and the failure propagates, so the run fails closed rather than continuing with a channel
-    ///     open. A discovery that fails opens nothing.
+    ///     and the failure propagates, so the run is refused rather than continuing with an ambient MCP
+    ///     server or installed plugin within the model's reach. A discovery that fails opens nothing.
     ///     </para>
     ///     <para>
     ///     Factored out with the runtime's steps as delegates for the same reason as

@@ -215,7 +215,7 @@ embedding retrieval is skipped. The sixth asserts, on all three, that commit co-
 set off rather than left unset: off is an Empty-mode default, and the SDK forwards the setting in any
 other mode only when it is set. Every value is read from the built options rather than inferred, so
 any one reverting to the permissive value — which would widen the agent without changing anything
-the host wrote — fails its scenario. Closing every other MCP server and clearing the installed
+the host wrote — fails its scenario. Disabling every other MCP server and clearing the installed
 plugins need the live session and are verified in *CopilotTurnChannel Unit Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-DisablesLargeOutputDiversion: Results Stay Inline

@@ -203,7 +203,7 @@ behind on the runtime.
 **Algorithm:** Take the seed's instructions as the system message's content — unchanged, and alone — hand them
 with the seeded tools, the model and the working directory to
 `CopilotAgentFactory.BuildEngineSessionConfig` — which refuses a tool named like a runtime built-in,
-derives the source-qualified allow-list, closes the runtime's injection channels, pins the permission
+derives the source-qualified allow-list, withholds the runtime's injection channels, pins the permission
 mode, installs the default-deny permission handler, applies the model and the working directory, and
 raises the runtime's own compaction threshold clear of the engine's rotation point — and then set the
 observer's handler as `Events.OnEvent`.

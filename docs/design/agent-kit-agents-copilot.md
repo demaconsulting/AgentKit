@@ -191,7 +191,7 @@ on the client's mode, which AgentKit cannot read:
   bare-name allow-list also admits a built-in tool whose name matches, so the qualifier is what makes
   the list name only the tools this package registered. The runtime classifies a tool by where it was
   registered rather than by parsing its name, so a colliding name cannot spoof the qualifier.
-- **Closes every other channel of injected capability.** Skills and the built-in skills, discovered
+- **Withholds every other channel of injected capability.** Skills and the built-in skills, discovered
   custom instructions and on-demand instruction discovery, repository hooks, host git operations and
   commit co-author trailers,
   the cross-session store and memory, the built-in sub-agents and non-local agent discovery,
@@ -211,7 +211,7 @@ on the client's mode, which AgentKit cannot read:
   manual mode keeps the handler the only authority, whatever mode ambient configuration would choose.
 - **Installs the permission handler** — the host's, or the default-deny one; see below.
 
-**The runtime half of the confinement is applied by the turn channel.** Some channels can be closed
+**The runtime half of the confinement is applied by the turn channel.** Some channels can be withheld
 only with the live client and session, which the options builders deliberately do not have, so the
 production turn channel applies them on the one path every opener and resumer shares:
 
@@ -234,7 +234,7 @@ production turn channel applies them on the one path every opener and resumer sh
   authenticate with the host environment, while the session is created. The seal disables any such
   server before any turn runs, and the session is refused if one stays enabled. This guarantees that
   the model cannot reach an ambient MCP server; it does not prevent one from running.
-- **It fails closed.** A server the runtime keeps enabled refuses the session with an
+- **It refuses rather than continuing.** A server the runtime keeps enabled refuses the session with an
   `InvalidOperationException` naming it, so the run fails rather than continuing with the server
   available. A created session nothing has recorded is released and deleted; a resumed session is
   only released, because refusing to continue a conversation must not destroy it. A discovery that
@@ -408,7 +408,7 @@ The system holds eight units: the agent, its factory and the starter that a host
 agent uses, and the five that carry a Core session over the runtime.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, refuses a tool
-  named like a built-in, derives the allow-list from the supplied tools, closes the runtime's
+  named like a built-in, derives the allow-list from the supplied tools, withholds the runtime's
   injection channels, pins the permission mode, installs a default-deny permission handler, and
   builds the agent without taking ownership of the client. It is also the **single** place a Copilot
   session's options are built, for an agent's created and resumed sessions and for both
@@ -439,7 +439,7 @@ agent uses, and the five that carry a Core session over the runtime.
 - **CopilotTurnChannel (Unit)** — the internal seam over the sealed SDK session types, and the
   production implementation that opens every session through one confining protocol — every
   discovered MCP server disabled before creation, installed plugins cleared and every MCP server
-  closed and verified afterwards, the session refused if one stays enabled — and owns one runtime
+  disabled and verified afterwards, the session refused if one stays enabled — and owns one runtime
   session handle and releases it — deleting the session for the engine, the summarizer and an
   agent's run made without a conversation, keeping it for an agent's conversation.
 
@@ -479,7 +479,7 @@ The host constructs the client, and three of its choices bear on this system:
   it, and AgentKit cannot detect it: the SDK offers no way to read a client's mode back. AgentKit
   therefore does not rely on the mode for anything that reaches the model. On any client it applies,
   per session, the custom allow-list and the pinned default-deny permission handling; every runtime
-  option channel closed, including host git operations and commit co-author trailers; the host
+  option channel withheld, including host git operations and commit co-author trailers; the host
   environment context removed; experimental features off and
   embedding retrieval skipped; the installed plugins cleared; and every MCP server the session lists
   disabled and verified, with the session refused if one stays enabled — though a server from a
@@ -540,10 +540,10 @@ Application
         │  messages (text, DataContent)
         ▼
 CopilotAgent ──► CopilotAgentFactory.BuildSessionConfig / BuildResumeSessionConfig
-        │                    (allow-list, channels closed, Manual mode, handler, streaming on)
+        │                    (allow-list, channels withheld, Manual mode, handler, streaming on)
         │  fresh CreateSessionOptions or ResumeSessionOptions (+ run's mapper as Events.OnEvent)
         ▼
-CopilotTurnChannel (MCP closed, plugins cleared; kept on release) ──► CopilotSession (runtime)
+CopilotTurnChannel (MCP disabled before any turn, plugins cleared; kept on release) ──► CopilotSession (runtime)
         │  MessageOptions (prompt, blob attachments)            │  events
         ▼                                                       ▼
 CopilotAgent ◄──────────────────────────────────── text deltas, tool calls, results, usage
@@ -562,7 +562,7 @@ CopilotProviderSessionFactory ──► CopilotAgentFactory.BuildEngineSessionCo
         │                                   (same confinement, compaction held clear)
         │  CreateSessionOptions (+ observer as Events.OnEvent)
         ▼
-CopilotTurnChannel (MCP closed, plugins cleared; deleted on release) ──► CopilotSession (runtime)
+CopilotTurnChannel (MCP disabled before any turn, plugins cleared; deleted on release) ──► CopilotSession (runtime)
         │  turn                              │  events
         ▼                                    ▼
 CopilotProviderSession ◄──────────── CopilotSessionObserver
@@ -625,10 +625,10 @@ so no path can acquire capability another path withholds.
   including every built-in request — is rejected without asking a user who could not adjudicate it.
   The manual mode ensures every request reaches the handler. A host handler replaces this default
   outright; see *Permission Handling Is Default-Deny*.
-- **The closed injection channels.** Skills, discovered instructions, hooks, git operations and
+- **The withheld injection channels.** Skills, discovered instructions, hooks, git operations and
   commit co-author trailers, memory
   and the cross-session store, sub-agents, extensions, configuration discovery, tool search, schedule
-  management, image generation, experimental features and embedding retrieval are closed on every
+  management, image generation, experimental features and embedding retrieval are disabled on every
   session, the host environment context is removed from the system prompt, the built-in GitHub MCP
   server is disabled, every other MCP server the session lists is disabled and verified, and
   the session's installed plugins are cleared, because each would attach capability, direction or
@@ -659,7 +659,7 @@ for is ended rather than reused. Both are argued above.
 - **One confinement path**: every session — agent created, agent resumed, engine and consolidation —
   is built through one derivation of the allow-list and one confinement block, and opened through one
   confining protocol; a second builder would be the drift this package prevents
-- **Fail closed**: a session the runtime will not confine — an MCP server it keeps enabled, a
+- **Refuse rather than continue**: a session the runtime will not confine — an MCP server it keeps enabled, a
   discovery or seal it refuses — is never handed to the model
 - **Fresh options per session**: no session options object is reused or cloned, because the SDK
   mutates the options it is handed and its clone is shallow

@@ -39,7 +39,7 @@ and which abandonment a created and a resumed session receive — are reviewed r
 The opt-in live suite shows on the real runtime what each ambient-server scenario covers: discovery
 reports the server and the channel names it on the create-time disabled list, with no server enabled
 afterwards (L12a); a session created without the channel has it enabled (L12b); the seal's
-session-scoped disable closes a server left enabled at creation, and the re-listing confirms it
+session-scoped disable turns off a server left enabled at creation, and the re-listing confirms it
 (L12c); and a session resumed through the channel has it named before the resume and no server
 enabled afterwards (L12d). The plugins patch is shown accepted, not shown clearing an installed
 plugin, because no fixture installs one.
@@ -201,7 +201,7 @@ reading the SDK rather than by a test. The consequence of getting it wrong is wo
 SDK's default is sixty seconds, a tool-using research turn routinely exceeds it, and the resulting
 failure would read as a model or tool fault rather than as a deadline nobody chose.
 
-#### AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins: Ambient MCP Servers Disabled Before Any Turn, Plugins Cleared, Fail Closed
+#### AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins: Ambient MCP Servers Disabled Before Any Turn, Plugins Cleared, Session Refused If One Stays Enabled
 
 **Tests**:
 

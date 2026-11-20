@@ -17,7 +17,7 @@ sections:
               directory and the system message with its section overrides.
             justification: |
               Every guarantee the Copilot package makes is expressed in these options: the published
-              tools and the allow-list that suppresses the runtime's built-ins, the closed channels of
+              tools and the allow-list that suppresses the runtime's built-ins, the withheld channels of
               injected capability, the permission mode that puts every request to the handler, and the
               handler itself. They live on the options a created and a resumed session share, which is
               what lets the package confine a resumed agent session exactly as it confined the created
@@ -105,13 +105,13 @@ sections:
               listing of a session's effective MCP configuration with each server's enablement, and a
               session-options patch replacing the session's installed plugins.
             justification: |
-              The package closes every ambient MCP server a session lists and the session's installed
-              plugins on every session, independently of the client's mode, and these are the only
+              The package disables, before any turn, every ambient MCP server a session lists and clears the
+              session's installed plugins on every session, independently of the client's mode, and these are the only
               public calls that reach them: discovery supplies the exact names the session options
               require, the disabled-server option keeps a named server from starting, the live
               listing reports the session's effective MCP configuration, with each server's
               provenance, including the managed and account sources discovery is not documented to
-              cover, the session-scoped disable closes a server without touching the user's
+              cover, the session-scoped disable turns a server off without touching the user's
               persistent configuration, and the options patch is the call the SDK's own Empty mode
               makes to clear installed plugins. Discovery is not documented to reach the managed or
               account sources, so such a server may start during creation; the seal keeps it from the
@@ -121,7 +121,7 @@ sections:
               non-GitHub server on a CodingAgent client. In all four, discovery reports the server;
               the channel names it on the create-time disabled list and the opened session reports
               it disabled, with no server enabled (L12a); without the channel it is enabled (L12b);
-              the seal's session-scoped disable closes a server left enabled at creation and the
+              the seal's session-scoped disable turns off a server left enabled at creation and the
               re-listing confirms it (L12c); and a session resumed through the channel has the server
               named before the resume and no server enabled afterwards (L12d). The plugins
               patch is accepted in every scenario through the channel; no fixture installs a plugin,

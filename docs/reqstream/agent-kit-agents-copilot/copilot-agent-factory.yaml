@@ -63,7 +63,7 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
             title: >-
               The factory shall build every session with every channel of runtime-injected
-              capability closed: skills and built-in skills, custom instructions and their on-demand
+              capability withheld: skills and built-in skills, custom instructions and their on-demand
               discovery, repository hooks, host git operations and commit co-author trailers, memory
               and the cross-session store,
               built-in and discovered sub-agents, extensions, configuration discovery, tool search,
@@ -73,7 +73,7 @@ sections:
             justification: |
               Each of these is a channel through which the runtime injects capability or direction
               the composing application never attached and the untrained user cannot adjudicate. A
-              confined agent must receive only what its host gave it, so every channel is closed
+              confined agent must receive only what its host gave it, so every channel is withheld
               explicitly on every session the factory builds, so the confinement does not depend on
               the client's mode, which the SDK offers no way to read back. The host environment
               context names the working directory, the operating system, the git root, a directory
@@ -165,7 +165,7 @@ sections:
               suppresses the runtime's built-ins cannot drift apart. A second builder with its own
               derivation is exactly that drift, so every path ends in the same block: the tools and
               the allow-list are assigned from one collection, the skill and custom-instruction
-              channels are closed, and a permission handler is installed. The one rule the two paths
+              channels are withheld, and a permission handler is installed. The one rule the two paths
               disagree about is emptiness. An agent publishing no tools is a defect in its host and is
               still refused; a consolidation must run on a session offering nothing, which produces an
               empty allow-list and a handler that approves nothing — the strongest confinement this
@@ -264,7 +264,7 @@ sections:
               configuration the session was created with.
             justification: |
               The runtime applies a resume's configuration to the session it reopens, so a resume
-              built without the allow-list, the closed channels and the permission handler would hand
+              built without the allow-list, the withheld channels and the permission handler would hand
               an existing conversation the runtime's defaults — every built-in tool, and permission
               requests no handler answers. A resumed session is therefore confined afresh rather than
               trusted to remember.

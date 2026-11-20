@@ -48,7 +48,7 @@ AgentKit relies on.** It drives the real SDK against the real Copilot runtime an
 the tools a confined session exposes, the names the runtime reserves for its built-ins, the
 permission requests the handler is asked, inline delivery of large and image tool results, a
 rotation on the runtime's own usage, an agent's streaming, resumption and attachments, and the
-closing of an ambient MCP server on a client in CodingAgent mode. It never
+disabling of an ambient MCP server on a client in CodingAgent mode. It never
 runs in the pipeline that builds the trace matrix, so none of its tests is linked to a requirement
 below. Its scenarios, gating, evidence location and recorded results are described in
 *AgentKitAgentsCopilot System Verification Design*.
@@ -261,7 +261,7 @@ which is supplementary evidence and is not traced. The MCP and plugin control en
 the same way: the calls reach the runtime, so the offline tests drive AgentKit's policy over the
 SDK's own result and patch types. The live suite shows on the real runtime that discovery reports an
 ambient server and the create-time disabled list names it (L12a), that the seal's session-scoped
-disable closes a server left enabled at creation and the re-listing confirms it (L12c), and that a
+disable turns off a server left enabled at creation and the re-listing confirms it (L12c), and that a
 session resumed through the channel has the server named before the resume and no server enabled
 afterwards (L12d); it shows the plugins patch accepted, not clearing an installed
 plugin, because no fixture installs one.

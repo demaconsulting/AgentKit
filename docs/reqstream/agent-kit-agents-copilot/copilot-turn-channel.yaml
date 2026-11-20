@@ -125,7 +125,7 @@ sections:
               catalog, and a signed-in account — and Empty mode does not stop them. The
               custom allow-list keeps their tools from the model, but a started server still runs a
               process with the user's environment and identity and can contribute instructions to the
-              system prompt, so each is closed rather than filtered. The session options take only
+              system prompt, so each is disabled rather than filtered. The session options take only
               exact server names, so the names come from the runtime's own discovery, and naming them
               before creation is what keeps them from starting at all. Servers the runtime's MCP
               discovery returns are named in the session's disabled servers before the session

@@ -68,7 +68,7 @@ sections:
             title: >-
               The factory shall derive each session's allow-list from the same collection it publishes
               as the session's tool definitions, qualifying every entry as a custom tool, and shall
-              build every session with every channel of runtime-injected capability closed.
+              build every session with every channel of runtime-injected capability withheld.
             justification: |
               A session the engine drives is exactly as exposed to the runtime's built-in tools,
               skills and discovered instructions as an agent is, so it receives exactly the same

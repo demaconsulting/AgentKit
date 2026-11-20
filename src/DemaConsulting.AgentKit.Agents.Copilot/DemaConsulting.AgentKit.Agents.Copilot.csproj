@@ -39,7 +39,7 @@
     <!-- The Copilot SDK marks its permission-decision RPC surface, and the MCP discovery, MCP
          configuration and session-options RPC surface, with the MCPSDK001 "evaluation purposes only"
          diagnostic. This package necessarily references that surface to wire a permission handler and
-         to close the runtime's ambient MCP servers and installed plugins on every session, so the
+         to disable the runtime's ambient MCP servers and clear installed plugins on every session, so the
          diagnostic is suppressed for this project. Consumers that reference the permission-handler
          parameter will see the same diagnostic from their own build. -->
     <NoWarn>$(NoWarn);MCPSDK001</NoWarn>

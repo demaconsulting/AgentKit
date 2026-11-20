@@ -40,7 +40,7 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves the runtime's two other injection channels are closed on a session the engine
+    ///     Proves the runtime's two other injection channels are withheld on a session the engine
     ///     drives, exactly as they are on the agent path. Either reverting to the permissive value
     ///     would widen the session beyond what its host attached without changing anything the host
     ///     wrote.

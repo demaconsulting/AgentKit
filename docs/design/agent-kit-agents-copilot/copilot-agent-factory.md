@@ -44,7 +44,7 @@ the refresh of custom instructions — are create-only, and AgentKit sets none o
 | `Permissions.Mode` | `PermissionMode.Manual` | every request reaches the handler |
 | `Permissions.OnRequest` | the host handler, or the default-deny one | adjudicates each permission request |
 
-**Every other channel of injected capability is closed.** Each is set explicitly on every session,
+**Every other channel of injected capability is withheld.** Each is set explicitly on every session,
 so the confinement does not depend on the client's mode, which the factory cannot read:
 
 | Member | Value | Reason |
@@ -202,7 +202,7 @@ the runtime's own threshold. See *Session Options Are Built on One Path* below.
 Internal seam producing the `ResumeSessionOptions` an agent resumes a recorded session with.
 
 **A resumed session is confined afresh, not trusted to remember.** The runtime applies a resume's
-options to the session it reopens, so a resume built without the allow-list, the closed channels and
+options to the session it reopens, so a resume built without the allow-list, the withheld channels and
 the permission handler would hand an existing conversation the runtime's defaults — every built-in
 tool, and permission requests no handler answers.
 
@@ -250,7 +250,7 @@ and a resumed session share.
 1. Assign `Tools.Definitions` and `Tools.AvailableTools` from the same collection in two adjacent
    statements, qualifying each allow-list entry as `custom:<name>`, so no reachable state has a
    published tool that is not allowed or an allowed name that is not published.
-2. Close every channel in the *Data Model* table above, including the built-in GitHub MCP server, and
+2. Withhold every channel in the *Data Model* table above, disabling the built-in GitHub MCP server by name, and
    configure the system message to remove the host environment context.
 3. Pin `Permissions.Mode` to `PermissionMode.Manual`.
 4. Install the supplied handler, or the default-deny one from `CreateDefaultPermissionHandler`.
@@ -414,7 +414,7 @@ extensions. The `client` parameter's documentation states the precondition.
 backs a session materially changes how reliably a confined agent uses its tools and how accurately it
 reads an image, and a working directory has no client-level setting at all, so the host must be able
 to choose both *here*. A host that built session options itself to reach either setting would forfeit
-the derived allow-list, the closed channels and the default-deny permission handler — producing an
+the derived allow-list, the withheld channels and the default-deny permission handler — producing an
 agent that looks configured but is not confined. Exposing the settings on the factory removes the
 incentive to bypass it.
 

@@ -238,7 +238,7 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
-    ///     Proves the factory closes both channels of runtime-injected capability on every session
+    ///     Proves the factory withholds both channels of runtime-injected capability on every session
     ///     it builds: skills are disabled and custom instructions are skipped.
     /// </summary>
     /// <remarks>
@@ -259,7 +259,7 @@ public class CopilotAgentFactoryTests
         Assert.False(config.Skills.Enabled);
         Assert.True(config.Instructions.SkipCustomInstructions);
 
-        // The further channels the runtime offers are closed explicitly too, independent of the
+        // The further channels the runtime offers are withheld explicitly too, independent of the
         // client mode the host chose.
         Assert.False(config.Tools.LargeOutput!.Enabled);
         Assert.False(config.Tools.Search!.Enabled);

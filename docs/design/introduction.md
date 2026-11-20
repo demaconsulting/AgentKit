@@ -157,7 +157,7 @@ software items, specifically:
   built-in tools suppressed by deriving the session allow-list from the supplied tools — and carries
   an AgentKit session over the same runtime
 - **CopilotAgentFactory (Unit)** — The static factory that refuses built-in tool names, derives the
-  source-qualified allow-list, closes the runtime's injection channels, pins the permission mode,
+  source-qualified allow-list, withholds the runtime's injection channels, pins the permission mode,
   installs a default-deny permission handler, and builds the agent without taking ownership of the
   client; the single place a Copilot session's options are built, created or resumed
 - **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, with the public

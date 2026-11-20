@@ -31,7 +31,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <see cref="CopilotProviderSessionFactory"/> and <see cref="CopilotSummarizer"/> — go through
 ///     <see cref="BuildEngineSessionConfig"/>. All of them end in <see cref="ApplyConfinement"/>, which is
 ///     the single site where the allow-list is derived, every channel of runtime-injected
-///     capability a session's options can reach is closed, and the default-safe permission
+///     capability a session's options can reach is withheld, and the default-safe permission
 ///     handler is installed. A second builder with its own derivation is precisely the drift this
 ///     arrangement exists to prevent, so there is not one. The half of the confinement that needs
 ///     the live client and session — disabling every ambient MCP server for the session before any
@@ -75,8 +75,8 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <b>Client precondition: <c>CopilotClientMode.Empty</c> on a data directory the host
 ///     owns.</b> The integration requires it, and AgentKit cannot enforce it: the SDK exposes no
 ///     way to read a client's mode back. AgentKit therefore does not rely on the mode for anything
-///     that reaches the model. Independently of the mode, it closes on every session each
-///     channel that the session's options and the live session can reach: the custom
+///     that reaches the model. Independently of the mode, it applies on every session each
+///     control that the session's options and the live session can reach: the custom
 ///     allow-list and the pinned default-deny permission handling; every runtime option channel
 ///     — skills, custom instructions, hooks, memory, sub-agents, git operations and commit
 ///     co-author trailers, extensions, the cross-session store; the host environment context in
@@ -669,7 +669,7 @@ public static class CopilotAgentFactory
     }
 
     /// <summary>
-    ///     Confines a session to the supplied tools: derives the allow-list from them, closes the
+    ///     Confines a session to the supplied tools: derives the allow-list from them, withholds the
     ///     runtime's injection channels, and installs a permission handler.
     /// </summary>
     /// <remarks>

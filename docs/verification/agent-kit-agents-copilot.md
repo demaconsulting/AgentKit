@@ -108,7 +108,7 @@ the traced scenarios stand on their own.
 System tests reside in `AgentKitAgentsCopilotTests.cs`, with the scripted runtime in
 `FakeCopilotTurnChannel.cs`, both within the `DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
 The runtime's other injection channels — its skills, its custom instructions, its built-in GitHub MCP
-server and the rest — are closed on the same session options and are verified at the unit level
+server and the rest — are withheld on the same session options and are verified at the unit level
 against the built options, where each value is set.
 
 ## Test Environment
@@ -151,7 +151,7 @@ registers a custom tool under a built-in's name, but only on the agent's first r
 the application composes its tools moves the failure to the place the application can fix it. The
 same scenario is the system-level evidence that agent construction rejects such a tool list.
 
-### Tool Suppression: Ambient MCP Servers and Plugins Are Closed on Every Session
+### Tool Suppression: Ambient MCP Servers Disabled and Plugins Cleared Before Any Turn on Every Session
 
 **Test**: `AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed`
 
@@ -333,7 +333,7 @@ and a real model, and asserts what the runtime actually did. It re-measures, on 
 runtime properties the package's design depends on — which tools a confined session exposes, which
 names the runtime reserves for its built-ins, what the permission handler is asked, how large and
 image results are delivered, whether an agent's conversation streams and resumes, how a failed
-start is reported, and whether an ambient MCP server is closed on a session opened through the
+start is reported, and whether an ambient MCP server is disabled on a session opened through the
 package's channel.
 
 **It is supplementary evidence and is not linked to ReqStream.** The suite never runs in the pipeline
@@ -451,13 +451,13 @@ few that rest on the model's prose are marked.
   in its disabled servers, reports no MCP server enabled in its effective configuration, and exposes
   exactly the supplied tools.
 - **L12b**: a control. The same options handed to the same kind of client directly, bypassing the
-  channel, leave the server enabled, proving the channel's closure is load-bearing.
+  channel, leave the server enabled, proving the channel's disabling of the server is load-bearing.
 - **L12c**: the production channel's opening protocol with its discovery step replaced by one that
   finds nothing, so the server is not on the create-time disabled list. The server is asserted
   enabled in the listing taken just before the production seal runs, and after the seal it is listed
   disabled, no MCP server is enabled, and the session exposes exactly the supplied tools — so the
-  seal's own session-scoped disable closed it. The server's command does not exist, so this shows
-  the runtime's enablement closed and re-listed, not a running process terminated.
+  seal's own session-scoped disable turned it off. The server's command does not exist, so this shows
+  the runtime's enablement withdrawn and re-listed, not a running process terminated.
 - **L12d**: a session created on the same kind of client directly, with the server listed enabled,
   takes one short turn so the runtime persists it, and is released; it is then resumed through the
   production channel's resume path. The resumed session keeps its identifier, the server is named in

@@ -459,7 +459,7 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
-    ///     L12b: a control showing the channel's MCP closure is load-bearing — the same configuration
+    ///     L12b: a control showing the channel's disabling of the server is load-bearing — the same configuration
     ///     handed to the runtime directly, bypassing the production channel, leaves the ambient
     ///     server enabled.
     /// </summary>
@@ -489,14 +489,14 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
-    ///     L12c: the seal alone closes an ambient MCP server the session enabled at creation — the
+    ///     L12c: the seal alone disables an ambient MCP server the session enabled at creation — the
     ///     production channel's discovery step is replaced with one that finds nothing, so the server
     ///     is enabled when the session opens, and the production seal's session-scoped disable is what
-    ///     closes it. This is the path a server from a source discovery does not cover takes.
+    ///     disables it. This is the path a server from a source discovery does not cover takes.
     /// </summary>
     /// <remarks>
     ///     The server's command does not exist, so "enabled" here is the runtime's configuration
-    ///     state, not a running process: the scenario shows the session-scoped disable closes the
+    ///     state, not a running process: the scenario shows the session-scoped disable withdraws the
     ///     server's enablement and the re-listing confirms it, not that a live process is terminated.
     /// </remarks>
     [Fact]

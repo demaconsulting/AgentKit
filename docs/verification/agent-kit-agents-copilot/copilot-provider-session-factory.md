@@ -89,8 +89,8 @@ constitutes a failure.
 
 The safety-critical assertion, repeated on the session path. Builds the options a rotation produces
 and asserts the allow-list is exactly the names of the published tools, each qualified as a custom
-tool, in the same order, and that the runtime's skills and custom instructions are closed. The
-remaining channels of runtime-injected capability are closed by the same confinement block on every
+tool, in the same order, and that the runtime's skills and custom instructions are withheld. The
+remaining channels of runtime-injected capability are withheld by the same confinement block on every
 path and are asserted in *CopilotAgentFactory Unit Verification Design*. It is asserted here as well
 as on the agent path because the session path is reached by a different entry point and takes no
 host-supplied handler: a session that was confined only by inheriting the agent path's code, with no
