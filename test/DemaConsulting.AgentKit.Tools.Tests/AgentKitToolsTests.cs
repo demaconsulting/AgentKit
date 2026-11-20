@@ -581,7 +581,7 @@ public class AgentKitToolsTests
         };
         var tools = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Delegation)
-            .Add(new AgentPack([profile], runner, [new TodoPack()], childToolOutput: ToolOutputOptions.Default))
+            .Add(new AgentPack([profile], runner, [new TodoPack()], HostCapabilities.Delegation, childToolOutput: ToolOutputOptions.Default))
             .WithToolOutputSpill()
             .Build();
 

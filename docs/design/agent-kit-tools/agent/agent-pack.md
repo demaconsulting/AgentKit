@@ -55,22 +55,40 @@ would publish the `agent` prefix twice.
 
 #### Key Methods
 
-##### AgentPack(profiles, runner, childPacks, hostCapabilities, childToolOutput)
+##### AgentPack(profiles, runner, childPacks, hostCapabilities)
 
-The public constructor. Registers the profiles and packs the application supplies, at the root
-depth of zero.
+The original public constructor, kept with exactly the signature it had before retention existed.
+Registers the profiles and packs the application supplies, at the root depth of zero, for
+delegated agents that do not retain large tool outputs.
 
-**Preconditions:** `profiles`, `runner` and `childPacks` are non-null; `profiles` contains no null entry and no
-duplicate name; `childPacks` contains no null entry, no `AgentPack`, and no two packs claiming one family prefix.
-`hostCapabilities` defaults to `HostCapabilities.Delegation` so a child whose profile admits `agent_run` can delegate in
-turn; a host whose children may also see, for example, passes `HostCapabilities.Delegation | HostCapabilities.Vision`.
-`childToolOutput` to `null`; when supplied, every delegated agent holding at least one tool is composed with of large
-tool outputs using those options.
+**Preconditions:** `profiles`, `runner` and `childPacks` are non-null; `profiles` contains no
+null entry and no duplicate name; `childPacks` contains no null entry, no `AgentPack`, and no two
+packs claiming one family prefix. `hostCapabilities` defaults to `HostCapabilities.Delegation` so
+a child whose profile admits `agent_run` can delegate in turn; a host whose children may also
+see, for example, passes `HostCapabilities.Delegation | HostCapabilities.Vision`.
 
-**Algorithm:** delegates to the private depth-aware constructor with `depth: 0`.
+**Algorithm:** delegates to the overload below with `childToolOutput: null`.
 
 **Postconditions:** the pack is immutable, ready to be added to a `ToolPackBuilder`, and can be
 added any number of times.
+
+##### AgentPack(profiles, runner, childPacks, hostCapabilities, childToolOutput)
+
+The public constructor for delegated agents that retain large tool outputs. Its preconditions on
+`profiles`, `runner`, `childPacks` and `hostCapabilities` are those of the original constructor.
+`childToolOutput` may be `null`, which composes children without retention; when supplied, every
+delegated agent holding at least one tool is composed with retention of large tool outputs using
+those options.
+
+**Algorithm:** delegates to the private depth-aware constructor with `depth: 0`.
+
+**Postconditions:** as for the original constructor.
+
+**Rationale:** this is an overload rather than an optional parameter appended to the original
+constructor, because appending a parameter would remove the original signature from the compiled
+assembly and a host built against the earlier release would no longer bind. None of its
+parameters is optional, so no call is ambiguous: a call of three or four arguments binds the
+original constructor, and a call of five binds this one.
 
 ##### private AgentPack(..., ToolOutputOptions? childToolOutput, int depth)
 

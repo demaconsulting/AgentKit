@@ -32,14 +32,15 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-seven scenarios below pass without error or exception
+A unit test run passes when all twenty-eight scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
 rather than composed against the child's policy, a widening profile accepted at the
 application's own composition, a narrowing profile refused, a delegation refused or thrown over
-a sibling profile the child cannot reach, or a profile stating no grants that fails to inherit
-the parent's policy each constitute a failure.
+a sibling profile the child cannot reach, a profile stating no grants that fails to inherit
+the parent's policy, or the constructor that predates retention missing from the compiled
+assembly each constitute a failure.
 
 #### Test Scenarios
 
@@ -259,3 +260,12 @@ Isolation: an output retained by the first child is unknown to the second child'
 
 Boundary condition: without `childToolOutput` a child receives exactly the admitted tools, with no
 readers appended.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: The Constructor That Predates Retention Is Kept
+
+**Test**: `AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature`
+
+Compatibility: reflection finds the public constructor taking the profiles, the runner, the child
+packs and the host capabilities, with the capabilities still defaulting to delegation, so a host
+compiled against the earlier release keeps binding. A child composed through the three-argument
+call receives exactly its admitted tool, with no readers.

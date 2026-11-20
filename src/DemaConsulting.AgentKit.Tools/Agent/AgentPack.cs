@@ -156,6 +156,13 @@ public sealed class AgentPack : IToolPack
     ///     this family automatically, one level deeper, whenever its profile admits
     ///     <c>agent_run</c>; listing it as well would publish the <c>agent</c> prefix twice.
     ///     </para>
+    ///     <para>
+    ///     A delegated agent composed by this constructor does not retain large tool outputs; it is
+    ///     equivalent to passing <see langword="null"/> as <c>childToolOutput</c> to
+    ///     <see cref="AgentPack(IEnumerable{AgentProfile}, Func{ChildAgentRequest, CancellationToken, Task{string}}, IEnumerable{IToolPack}, HostCapabilities, ToolOutputOptions)"/>.
+    ///     This signature is kept exactly as it was before retention existed, so a host compiled
+    ///     against an earlier release keeps binding to it.
+    ///     </para>
     /// </remarks>
     /// <param name="profiles">
     ///     The agents the application is willing to have started, in the order the model should see
@@ -179,11 +186,67 @@ public sealed class AgentPack : IToolPack
     ///     admits <c>agent_run</c> can delegate in turn; a host whose children may also see, for
     ///     example, passes <c>HostCapabilities.Delegation | HostCapabilities.Vision</c>.
     /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
+    ///     <paramref name="childPacks"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="profiles"/> holds a null entry or two profiles of the same
+    ///     name, or when <paramref name="childPacks"/> holds a null entry, an
+    ///     <see cref="AgentPack"/>, or two packs claiming one family prefix.
+    /// </exception>
+    public AgentPack(
+        IEnumerable<AgentProfile> profiles,
+        Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
+        IEnumerable<IToolPack> childPacks,
+        HostCapabilities hostCapabilities = HostCapabilities.Delegation)
+        : this(profiles, runner, childPacks, hostCapabilities, childToolOutput: null)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentPack"/> class whose delegated agents
+    ///     retain large tool outputs as the application states.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Everything said of
+    ///     <see cref="AgentPack(IEnumerable{AgentProfile}, Func{ChildAgentRequest, CancellationToken, Task{string}}, IEnumerable{IToolPack}, HostCapabilities)"/>
+    ///     applies here; this overload adds only <paramref name="childToolOutput"/>.
+    ///     </para>
+    ///     <para>
+    ///     It is an overload rather than an optional parameter appended to the earlier constructor,
+    ///     because appending a parameter would remove the earlier signature from the compiled
+    ///     assembly. None of its parameters is optional, so no call binds to both constructors: a
+    ///     call of three or four arguments binds the earlier one, a call of five binds this one.
+    ///     </para>
+    /// </remarks>
+    /// <param name="profiles">
+    ///     The agents the application is willing to have started, in the order the model should see
+    ///     them. Must be non-null, must contain no null entry, and must carry no two profiles of the
+    ///     same name. May be empty, which registers the tool with nothing to delegate to.
+    /// </param>
+    /// <param name="runner">
+    ///     The host's means of starting an agent. Must be non-null; see
+    ///     <see cref="ChildAgentRequest"/> for what a runner must do with it.
+    /// </param>
+    /// <param name="childPacks">
+    ///     The packs a delegated agent may draw its tools from — normally the same packs the
+    ///     application attached to the parent. Must be non-null, must contain no null entry, must
+    ///     not contain an <see cref="AgentPack"/>, and must carry no two packs of the same family
+    ///     prefix. May be empty, which registers profiles whose children have no tools.
+    /// </param>
+    /// <param name="hostCapabilities">
+    ///     The capabilities the host provides to a delegated agent, applied when composing a child
+    ///     exactly as <see cref="ToolPackBuilder.WithHostCapabilities"/> applies them to the parent.
+    ///     Pass <see cref="HostCapabilities.Delegation"/> so that a child whose profile admits
+    ///     <c>agent_run</c> can delegate in turn.
+    /// </param>
     /// <param name="childToolOutput">
     ///     The retention options a delegated agent's tool list is composed with, exactly as
     ///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> applies them to the parent, or
-    ///     <see langword="null"/> — the default — for a child that does not retain large outputs.
-    ///     A child is a separate composition, so it is given its own store and its own
+    ///     <see langword="null"/> for a child that does not retain large outputs. A child is a
+    ///     separate composition, so it is given its own store and its own
     ///     <c>tool_output_read</c> and <c>tool_output_search</c>, appended after the profile's
     ///     names are applied so a retaining child can always read what it retained. A profile that
     ///     admits no tools stays tool-less. The choice is carried to every deeper level of
@@ -202,8 +265,8 @@ public sealed class AgentPack : IToolPack
         IEnumerable<AgentProfile> profiles,
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
         IEnumerable<IToolPack> childPacks,
-        HostCapabilities hostCapabilities = HostCapabilities.Delegation,
-        ToolOutputOptions? childToolOutput = null)
+        HostCapabilities hostCapabilities,
+        ToolOutputOptions? childToolOutput)
         : this(profiles, runner, childPacks, hostCapabilities, childToolOutput, depth: 0)
     {
     }

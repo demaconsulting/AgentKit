@@ -200,17 +200,21 @@ sections:
                   large outputs, giving it its own store and the read and search tools after the
                   tools its profile admits, shall carry that choice to every deeper level, and shall
                   leave a profile admitting no tools tool-less; without those options a child's tools
-                  shall be unchanged.
+                  shall be unchanged, and the constructor that predates those options shall remain
+                  available with its exact signature.
                 justification: |
                   A child's tool list is composed separately from its parent's, so the parent's choice
                   cannot reach it unless the application states it for children too. The readers are
                   infrastructure for the tools a child holds rather than a capability a profile
                   grants, so they follow the profile filter; a child holding nothing produces nothing
                   to read back. Each child's own store keeps one child's outputs out of another's,
-                  exactly as each child's own task list does.
+                  exactly as each child's own task list does. The options are taken by a new
+                  constructor overload rather than an appended optional parameter, so a host compiled
+                  against the earlier release keeps binding to the constructor it was built against.
                 tests:
                   - AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools
                   - AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless
                   - AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild
                   - AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore
                   - AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached
+                  - AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature

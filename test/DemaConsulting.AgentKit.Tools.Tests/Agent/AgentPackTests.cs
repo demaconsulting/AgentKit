@@ -551,6 +551,7 @@ public class AgentPackTests
                 [profile],
                 Recording(children),
                 [new StubToolPack("notes", "read", "write")],
+                HostCapabilities.Delegation,
                 childToolOutput: ToolOutputOptions.Default)
             .CreateTools(Policy())
             .ToList();
@@ -578,6 +579,7 @@ public class AgentPackTests
                 [new AgentProfile("summarizer", "You summarize.", [])],
                 Recording(children),
                 [new StubToolPack("notes", "read")],
+                HostCapabilities.Delegation,
                 childToolOutput: ToolOutputOptions.Default)
             .CreateTools(Policy())
             .ToList();
@@ -604,6 +606,7 @@ public class AgentPackTests
                 [profile],
                 Recording(children),
                 [new StubToolPack("notes", "read")],
+                HostCapabilities.Delegation,
                 childToolOutput: ToolOutputOptions.Default)
             .CreateTools(Policy())
             .ToList();
@@ -635,6 +638,7 @@ public class AgentPackTests
                 [new AgentProfile("worker", "You work.", ["notes_read"])],
                 Recording(children),
                 [new StubToolPack("notes", "read")],
+                HostCapabilities.Delegation,
                 childToolOutput: ToolOutputOptions.Default)
             .CreateTools(policy)
             .ToList();
@@ -650,6 +654,44 @@ public class AgentPackTests
         // Assert: the first child holds a reference, and the second child's store never issued it
         Assert.StartsWith("[Output output-1 from notes_read", Assert.IsType<string>(retained), StringComparison.Ordinal);
         Assert.Contains("never retained", Assert.IsType<string>(read), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves the constructor that predates retention is still compiled with its exact
+    ///     signature, so a host built against an earlier release keeps binding, and that a child it
+    ///     composes does not retain large outputs.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature()
+    {
+        // Arrange: the four parameter types of the constructor as it was before retention existed
+        Type[] signature =
+        [
+            typeof(IEnumerable<AgentProfile>),
+            typeof(Func<ChildAgentRequest, CancellationToken, Task<string>>),
+            typeof(IEnumerable<IToolPack>),
+            typeof(HostCapabilities),
+        ];
+        var children = new List<ChildAgentRequest>();
+
+        // Act: look the constructor up, and compose a child through the three-argument call
+        var constructor = typeof(AgentPack).GetConstructor(signature);
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_read"])],
+                Recording(children),
+                [new StubToolPack("notes", "read")])
+            .CreateTools(Policy())
+            .ToList();
+        await Delegate(tools[0], "worker");
+
+        // Assert: the signature exists, its last parameter keeps its default, and the child has no readers
+        Assert.NotNull(constructor);
+        Assert.True(constructor.GetParameters()[3].HasDefaultValue);
+        Assert.Equal(
+            (int)HostCapabilities.Delegation,
+            Convert.ToInt32(constructor.GetParameters()[3].DefaultValue, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(["notes_read"], children[0].Tools.Select(tool => tool.Name));
     }
 
     /// <summary>
