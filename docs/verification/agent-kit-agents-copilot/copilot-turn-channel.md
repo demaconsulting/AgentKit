@@ -62,7 +62,8 @@ rather than tested, and each is recorded here rather than implied to be covered:
   which require the live runtime. The opt-in live Copilot suite shows
   the first three on the real runtime, including a conversation released by one agent and resumed by
   another, and shows of the fourth exactly what L12a to L12d cover, as listed above: the create-time
-  disabled list, the seal's session-scoped disable and re-listing, and the resumed path sealed, with
+  disabled list, the seal's session-scoped disable and re-listing, and the resume-time disabled list
+  on a session resumed through the channel, with
   the plugins patch accepted but not shown clearing an installed plugin. It is supplementary evidence
   outside the trace matrix, described in *AgentKitAgentsCopilot
   System Verification Design*.
@@ -224,7 +225,7 @@ the servers are listed, so a server a plugin contributed is gone before the list
 a non-GitHub server enabled on the first listing — the case of a source discovery does not report —
 and disabled on the second, and asserts only that server was disabled, the configuration was listed
 again, and the session was accepted. The sixth keeps reporting the server enabled and asserts the
-refusal names it.
+refusal names it and points to the signed-in account or its organization among the sources to check.
 
 The last asserts the plugin patch carries an empty installed list rather than none, which the runtime
 would read as no change.
@@ -232,5 +233,6 @@ would read as no change.
 Which abandonment a created and a resumed session receive — deleted, or only released — is a
 composition over the SDK and is reviewed rather than tested; the system-level ambient-server scenario
 in *AgentKitAgentsCopilot System Verification Design* runs the protocol end to end over the
-factory's own configurations, and the opt-in live suite shows the created path (L12a, L12c) and the
-resumed path (L12d) sealed on the real runtime; the abandonment policy itself is reviewed.
+factory's own configurations, and the opt-in live suite shows on the real runtime the created path
+(L12a, L12c) and the resume-time disabled list on a session resumed through the channel (L12d); the
+abandonment policy itself is reviewed.

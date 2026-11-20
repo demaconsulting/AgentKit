@@ -275,8 +275,10 @@ internal sealed class CopilotAgent : AIAgent
     ///     The event handler is set on the freshly built configuration before the session is opened,
     ///     because the SDK registers it before the create or resume request is issued — which is what
     ///     makes the run's first events observable. The identifier is recorded as soon as a session
-    ///     exists, before any turn is taken, so a run that fails still leaves a resumable conversation
-    ///     rather than an orphaned runtime session.
+    ///     exists, before any turn is taken, so a run that fails still leaves the conversation naming
+    ///     its runtime session rather than an orphaned one. The runtime has been observed to refuse
+    ///     resuming a session that never took a turn ("Session not found"), so after a first run that
+    ///     failed or was canceled before its turn reached the runtime, a later run's resume fails.
     /// </remarks>
     /// <param name="conversation">The conversation the run belongs to.</param>
     /// <param name="ephemeral">Whether the conversation exists only for this run.</param>

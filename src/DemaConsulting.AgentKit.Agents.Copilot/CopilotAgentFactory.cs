@@ -81,12 +81,13 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     co-author trailers, extensions, the cross-session store; the host environment context in
 ///     the system prompt; experimental features; embedding retrieval; the session's installed
 ///     plugins; and every MCP server the session lists, disabled and then verified, with the
-///     session refused if one stays enabled. The runtime's MCP discovery covers only the sources
-///     the SDK documents for it — user, workspace, plugin and builtin — so a server from any
-///     other source, such as a managed catalog, may start before the seal disables it; no turn
-///     runs before the seal, and a server that cannot be closed refuses the session. What a client that violates the precondition can still add
-///     is host-side behavior no session option reaches: settings in a shared data directory such
-///     as user-level hooks, credential storage in the system keychain rather than the data
+///     session refused if one stays enabled. The SDK documents the runtime's MCP discovery as
+///     covering the user, workspace, plugin and builtin sources, so a server from another
+///     source, such as a managed catalog or a signed-in account, may start before the seal
+///     disables it; no turn runs before the seal, and a server that cannot be closed refuses the
+///     session. What a client that violates the precondition can still add is host-side
+///     behavior no session option reaches: settings in a shared data directory such as
+///     user-level hooks, credential storage in the system keychain rather than the data
 ///     directory, telemetry and runtime file logging, and anything the host attaches at client
 ///     level, such as plugin directories or extensions. Those are the host's to control.
 ///     </para>
@@ -752,13 +753,13 @@ public static class CopilotAgentFactory
         // server for every session. The custom: allow-list keeps that server's tools out of reach,
         // but the server is still started and authenticated with the user's GitHub identity, so it
         // is disabled outright rather than merely filtered. Every other MCP server - from the user,
-        // workspace, plugin, builtin or managed source - is closed by the production channel, which
-        // needs the live client and session this builder does not have: it adds every server the
-        // runtime discovers to this list before the session is created, so none of those is
-        // started; then clears the session's installed plugins, disables any server still enabled
-        // (a source discovery does not report, such as a managed catalog's, can start before it is
-        // disabled), and refuses the session if one remains. See
-        // CopilotSessionChannel.
+        // workspace, plugin, builtin, managed or account source - is closed by the production
+        // channel, which needs the live client and session this builder does not have: it adds
+        // every server the runtime discovers to this list before the session is created, so none
+        // of those is started; then clears the session's installed plugins, disables any server
+        // still enabled (a source discovery is not documented to report, such as a managed
+        // catalog's or a signed-in account's, can start before it is disabled), and refuses the
+        // session if one remains. See CopilotSessionChannel.
         config.Mcp.DisabledServers = [BuiltInGitHubMcpServer];
 
         // Every request goes to the handler. In the runtime's AllowAll mode tool, path and URL

@@ -164,8 +164,9 @@ session was then refused with an error naming the server and abandoned. A confin
 MCP server: the allow-list keeps a server's tools from the model, but a started server still runs a
 process with the user's environment and can contribute instructions, so a server that cannot be
 closed refuses the session rather than letting the run continue. That the runtime honors the
-create-time disabled list, the session-scoped disable and the seal on a resumed session is shown by
-the live suite's ambient-server scenarios L12a, L12c and L12d.
+create-time disabled list (L12a), the seal's session-scoped disable (L12c), and the resume-time
+disabled list on a session resumed through the channel (L12d) is shown by the live suite's
+ambient-server scenarios.
 
 ### Permission Handling: A Supplied Tool Is Approved
 
@@ -469,7 +470,8 @@ runtime's own usage; of L10a to L10c, that the agent does not stream, resume or 
 as designed; of L11, that a host is not told why its runtime did not load; of L12a, that an ambient
 MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
 nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime;
-of L12d, that a resumed session is not confined. Any such failure is investigated before a release.
+of L12d, that the resume-time disabled list is not honored on a session resumed through the
+channel. Any such failure is investigated before a release.
 
 ### Recorded Run
 

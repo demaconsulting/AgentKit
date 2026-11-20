@@ -229,10 +229,11 @@ AgentKit requires Empty mode on a data directory the host owns, and cannot detec
 no way to read a client's mode back. So it relies on the mode for nothing that reaches the model. It
 closes the runtime's ambient channels on every session itself — including every MCP server the
 runtime would start and the session's installed plugins — and refuses a session in which an MCP
-server cannot be closed. The runtime's MCP discovery covers only the sources the SDK documents for
-it — user, workspace, plugin and builtin — so a server from any other source, such as a managed
-catalog, may start before AgentKit disables it; no turn runs before then, and a server that cannot
-be closed refuses the session. A client in another mode, or on a shared data directory, can still bring
+server cannot be closed. The SDK documents the runtime's MCP discovery as covering the user,
+workspace, plugin and builtin sources, so a server from another source, such as a managed catalog
+or a signed-in account, may start before AgentKit disables it; no turn runs before then, and a
+server that cannot be closed refuses the session. A client in another mode, or on a shared data
+directory, can still bring
 host-side behavior no session option reaches, such as user-level hooks or keychain credential
 storage.
 

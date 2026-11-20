@@ -109,7 +109,9 @@ sections:
               plugins on every session, independently of the client's mode, and these are the only
               public calls that reach them: discovery supplies the exact names the session options
               require, the disabled-server option keeps a named server from starting, the live
-              listing reports every source including those discovery does not cover, the
+              listing reports the session's effective MCP configuration, with each server's
+              provenance, including the managed and account sources discovery is not documented to
+              cover, the
               session-scoped disable closes a server without touching the user's persistent
               configuration, and the options patch is the call the SDK's own Empty mode makes to
               clear installed plugins. They are marked for evaluation by the SDK, so a change to them

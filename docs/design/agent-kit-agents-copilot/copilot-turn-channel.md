@@ -37,9 +37,10 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
 2. **Open.** The session is created or resumed from the updated options.
 3. **Seal.** The session's installed plugins — which can contribute MCP servers, hooks, skills and
    agents — are replaced with none, the call Empty mode itself makes after every create and resume,
-   made here so it holds in any mode. The session's effective MCP configuration, which reports each
-   server's provenance — user, workspace, plugin, builtin or managed — including the managed source
-   discovery does not document, is listed; every
+   made here so it does not depend on the client's mode. The session's effective MCP configuration,
+   with each server's provenance as an `McpServerSource` — user, workspace, plugin, builtin, managed
+   or account — including the managed and account sources discovery is not documented to cover, is
+   listed; every
    server still enabled is disabled for this session only, never in the user's persistent
    configuration; and the configuration is listed again.
 4. **Fail closed.** A server the runtime keeps enabled refuses the session with an
@@ -48,10 +49,10 @@ and session, so the production channel closes them, on the one path `Open`, `Ope
    released and deleted; a resumed session is only released, because refusing to continue a
    conversation must not destroy it.
 
-The runtime's MCP discovery covers only the sources the SDK documents for it — user, workspace,
-plugin and builtin — so a server from any other source, such as a managed catalog, may start before
-step 3 disables it. The allow-list already keeps its tools from the model, no turn runs before the
-seal, and a server that cannot be closed refuses the session.
+The SDK documents the runtime's MCP discovery as covering the user, workspace, plugin and builtin
+sources, so a server from another source, such as a managed catalog or a signed-in account, may
+start before step 3 disables it. The allow-list already keeps its tools from the model, no turn runs
+before the seal, and a server that cannot be closed refuses the session.
 
 **What it deliberately does not do.** It exposes no event subscription and no configuration. A
 session's event handler and every other setting are reached through the session options at creation

@@ -610,10 +610,11 @@ retrieval, and the host environment context the runtime would write into the sys
 session is opened, every MCP server the runtime would start — the built-in GitHub server, servers
 configured in the data directory or the workspace, and servers plugins bring — is discovered and
 disabled before the session starts; once it exists, its installed plugins are cleared and any MCP
-server still enabled, such as one from a managed catalog, is disabled and verified. The runtime's
-MCP discovery covers only the sources the SDK documents for it — user, workspace, plugin and
-builtin — so a server from any other source, such as a managed catalog, may start before it is
-disabled; no turn runs before then, and a server that cannot be closed refuses the session. A
+server still enabled, such as one from a managed catalog or a signed-in account, is disabled and
+verified. The SDK documents the runtime's MCP discovery as covering the user, workspace, plugin and
+builtin sources, so a server from another source, such as a managed catalog or a signed-in account,
+may start before it is disabled; no turn runs before then, and a server that cannot be closed
+refuses the session. A
 session in which a server stays enabled is refused rather than used. It does
 **not** install the image-promoting decorator, because the Copilot runtime already delivers a
 tool-returned image to the model.
@@ -758,6 +759,10 @@ if (resumed.SessionId is { } sessionId)
 There is no separate resume-by-identifier method; deserializing is the route. A session serialized
 by the earlier Agent Framework Copilot adapter has the same shape and remains readable.
 
+The runtime cannot resume a session that never took a turn: if a conversation's first run failed or
+was canceled before its turn reached the runtime, a later run fails with the runtime's "Session not
+found" error, so start a new `CopilotAgentSession` instead.
+
 ### Provider Sessions on Copilot
 
 This package also supplies an `IProviderSession` for the Copilot runtime, so a Copilot conversation
@@ -799,7 +804,8 @@ for answer quality across a long conversation, not to save money.
   an MCP server for the session and the runtime still reported it enabled, so the session was refused
   rather than handed to the model with the server available. Run the client in
   `CopilotClientMode.Empty` on a data directory of the application's own that configures no MCP
-  servers, and check for MCP servers a managed catalog provides. A resumed
+  servers, and check for MCP servers provided by a managed catalog or by the signed-in account or
+  its organization. A resumed
   conversation that is refused this way is kept, not deleted.
 - **The session is refused while AgentKit disables an MCP server — a `RemoteRpcException` from the
   runtime's disable call, or the "kept … enabled" error above.** The server may be an *owned* MCP

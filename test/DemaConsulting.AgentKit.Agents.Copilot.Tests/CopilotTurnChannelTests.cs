@@ -233,8 +233,9 @@ public class CopilotTurnChannelTests
     }
 
     /// <summary>
-    ///     Proves a server the runtime still reports enabled after creation — one that discovery did
-    ///     not report, such as a server from a managed catalog — is disabled for the
+    ///     Proves a server the runtime still reports enabled after creation — one that discovery is
+    ///     not documented to report, such as a server from a managed catalog or one the signed-in
+    ///     account or its organization provides — is disabled for the
     ///     session and then verified, and the session is accepted once none remains enabled.
     /// </summary>
     [Fact]
@@ -266,7 +267,8 @@ public class CopilotTurnChannelTests
 
     /// <summary>
     ///     Proves a server that stays enabled after it was disabled refuses the session with an error
-    ///     that names it, so the runtime's failure to close a server never reaches the model.
+    ///     that names it, and points the host to the sources a session cannot close, so the runtime's
+    ///     failure to close a server never reaches the model.
     /// </summary>
     [Fact]
     public async Task CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt()
@@ -283,6 +285,7 @@ public class CopilotTurnChannelTests
 
         // Assert
         Assert.Contains("'docs-search'", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("signed-in account or its organization", failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

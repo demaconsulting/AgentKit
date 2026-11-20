@@ -216,8 +216,8 @@ only with the live client and session, which the options builders deliberately d
 production turn channel applies them on the one path every opener and resumer shares:
 
 - **Every ambient MCP server is closed.** The runtime starts MCP servers from ambient configuration —
-  the data directory, the workspace, installed plugins, its built-in servers, and a managed
-  catalog — and Empty mode does not stop them. Before a session
+  the data directory, the workspace, installed plugins, its built-in servers, a managed catalog, and
+  a signed-in account — and Empty mode does not stop them. Before a session
   is created or resumed, the channel asks the runtime to discover the servers it would start and
   names every one in the session's disabled servers, so none of those is started at creation or cold
   resumption. The allow-list already
@@ -226,11 +226,11 @@ production turn channel applies them on the one path every opener and resumer sh
 - **The session is sealed.** Once the session exists, its installed plugins — which can contribute
   servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
   sends; every MCP server the session still reports enabled, including one from a source discovery
-  does not cover, is disabled for that session only; and the configuration is listed again. The
-  runtime's MCP discovery covers only the sources the SDK documents for it — user, workspace, plugin
-  and builtin — so a server from any other source, such as a managed catalog, may start before the
-  seal disables it; no turn runs before the seal, and a server that cannot be closed refuses the
-  session.
+  does not cover, is disabled for that session only; and the configuration is listed again. The SDK
+  documents the runtime's MCP discovery as covering the user, workspace, plugin and builtin sources,
+  so a server from another source, such as a managed catalog or a signed-in account, may start
+  before the seal disables it; no turn runs before the seal, and a server that cannot be closed
+  refuses the session.
 - **It fails closed.** A server the runtime keeps enabled refuses the session with an
   `InvalidOperationException` naming it, so the run fails rather than continuing with the server
   available. A created session nothing has recorded is released and deleted; a resumed session is

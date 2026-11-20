@@ -85,7 +85,7 @@ unset would hand a non-Empty client's own default to the session, so the factory
 started and authenticated with the user's GitHub identity on every session, even in the client's
 Empty mode. The source-qualified allow-list already keeps its tools out of reach, but a server
 holding the user's identity is disabled outright rather than merely filtered. Every other MCP server
-— from the user, workspace, plugin, builtin or managed source
+— from the user, workspace, plugin, builtin, managed or account source
 — is closed by the production turn channel, which adds every server the runtime discovers to this
 list before the session is created, then disables and verifies whatever is still enabled once the
 session exists. That needs the live client and session, which this builder does not have.

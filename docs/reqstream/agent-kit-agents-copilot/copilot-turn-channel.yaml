@@ -121,17 +121,18 @@ sections:
             tags: [security]
             justification: |
               The runtime starts MCP servers from ambient configuration — the data directory's
-              configuration, the workspace, installed plugins, the built-in servers, and a managed
-              catalog — and Empty mode does not stop them. The
+              configuration, the workspace, installed plugins, the built-in servers, a managed
+              catalog, and a signed-in account — and Empty mode does not stop them. The
               custom allow-list keeps their tools from the model, but a started server still runs a
               process with the user's environment and identity and can contribute instructions to the
               system prompt, so each is closed rather than filtered. The session options take only
               exact server names, so the names come from the runtime's own discovery, and naming them
-              before creation is what keeps them from starting at all. Discovery does not cover every
-              source: it covers only the sources the SDK documents for it — user, workspace, plugin
-              and builtin — so a server from any other source, such as a managed catalog, may start
-              before the seal disables it; no turn runs before the seal, and a server that cannot be
-              closed refuses the session. Installed plugins — which can contribute servers, hooks,
+              before creation is what keeps them from starting at all. The SDK documents the
+              runtime's MCP discovery as covering the user, workspace, plugin and builtin sources,
+              so a server from another source, such as a managed catalog or a signed-in account,
+              may start before the seal disables it; no turn runs before the seal, and a server
+              that cannot be closed refuses the session. Installed plugins — which can contribute
+              servers, hooks,
               skills and agents — can be cleared only once the session exists, so the session is
               sealed afterwards: its
               plugins are cleared, every server it still reports enabled is disabled for that session,

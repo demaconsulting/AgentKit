@@ -205,8 +205,10 @@ directory. A null channel from either delegate is refused.
 
 The handler is set on the options before the session is opened because the SDK registers it before
 the create or resume request is issued, which is what makes the run's first events observable. The
-identifier is recorded before any turn is taken, so a run whose turn fails still leaves a resumable
-conversation rather than an orphaned runtime session.
+identifier is recorded before any turn is taken, so a run whose turn fails still leaves the
+conversation naming its runtime session rather than an orphaned one. The runtime has been observed
+to refuse resuming a session that never took a turn ("Session not found"), so after a first run
+that failed or was canceled before its turn reached the runtime, a later run's resume fails.
 
 **Postconditions:** An open channel, owned by the caller; on a first run, `SessionId` recorded.
 
@@ -366,8 +368,11 @@ Each is deliberate and recorded so it is not mistaken for an omission:
 | Releasing the session handle fails | Swallowed by the channel; the run's own outcome stands |
 
 On both of those paths the session is kept for a conversation and deleted for a run made without
-one. A failed or canceled run on a conversation leaves it resumable: its identifier was recorded
-before the turn, and a conversation's session is never deleted.
+one. A failed or canceled run on a conversation keeps its identifier and its session: the identifier
+was recorded before the turn, and a conversation's session is never deleted. The runtime refuses to
+resume a session that never took a turn ("Session not found", observed by the live suite's L12d
+run), so after a first run that failed or was canceled before its turn reached the runtime, a later
+run's resume fails and propagates, as in the table above; the host starts a new conversation.
 
 ### Dependencies
 

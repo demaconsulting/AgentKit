@@ -53,11 +53,13 @@ runtime NuGet dependency of the AgentKitAgentsCopilot package only, deliberately
 - **The infinite-session configuration** — its background-compaction threshold raised clear of
   AgentKit's rotation point on every session AgentKit's own engine drives, so the runtime's compactor
   and AgentKit's do not act on one conversation
-- **MCP and plugin control** — the client's MCP discovery (`mcp.discover`), which names the servers
-  the runtime would start from user, workspace, plugin and built-in sources; the session's
+- **MCP and plugin control** — the client's MCP discovery (`mcp.discover`), which the SDK documents
+  as discovering servers from the user, workspace, plugin and builtin sources; the session's
   disabled-servers option, which keeps a named server from starting on creation or cold resumption;
   the session's effective MCP configuration listing (`session.mcp.listConfigured`), which reports
-  each server's enablement after configuration and policy filtering across every source; the
+  the session's effective MCP configuration, with each server's enablement after configuration and
+  policy filtering and its provenance (`McpServerSource`: user, workspace, plugin, builtin, managed
+  or account); the
   session-scoped disable (`session.mcp.disable`); and the session-options patch whose plugin options
   replace the session's installed plugins (`plugins.installed`). AgentKit uses them to close every
   ambient MCP server a session lists and clear installed plugins on every session, independently of
@@ -113,15 +115,15 @@ the opt-in live suite where noted:**
   every session.
 - **Empty mode does not stop ambient MCP servers.** Its only MCP default is in-memory token storage.
   The runtime starts servers configured in the data directory's `mcp-config.json`, in the workspace,
-  by installed plugins, and by a managed catalog; Empty mode's base-directory
+  by installed plugins, by a managed catalog, and by a signed-in account; Empty mode's base-directory
   requirement keeps the data directory's configuration out only when the directory is the host's own,
-  and reaches neither the workspace nor the managed source. AgentKit
+  and is not documented to reach the workspace, managed or account sources. AgentKit
   therefore discovers and disables every server before creating or resuming a session, then lists the
   session's effective MCP configuration, disables any server still enabled for that session, and
-  refuses the session if one stays enabled. The runtime's MCP discovery covers only the sources the
-  SDK documents for it — user, workspace, plugin and builtin — so a server from any other source,
-  such as a managed catalog, may start before the seal disables it; no turn runs before the seal, and
-  a server that cannot be closed refuses the session. The live suite configures a non-GitHub server
+  refuses the session if one stays enabled. The SDK documents the runtime's MCP discovery as covering
+  the user, workspace, plugin and builtin sources, so a server from another source, such as a managed
+  catalog or a signed-in account, may start before the seal disables it; no turn runs before the
+  seal, and a server that cannot be closed refuses the session. The live suite configures a non-GitHub server
   in a CodingAgent client's data directory, and discovery reports it in every scenario. On a session
   opened through AgentKit's channel it is named on the create-time disabled list and reported
   disabled, with no server enabled (L12a); on a session created directly it is enabled (L12b); when
