@@ -1,4 +1,6 @@
 package AgentKitCore {
+    private import SoftwareItemMetadata::*;
+
     doc
     /*
      * AgentKitCore provides the small, stable contract every other AgentKit package
@@ -18,10 +20,12 @@ package AgentKitCore {
     part def AgentKitCoreSystem {
         doc /* The AgentKit Core system as a whole. */
 
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Core.Tests/AgentKitCoreTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-core.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-core.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-core.yaml */
+        metadata info : SoftwareInfo {
+            testFiles = ("test/DemaConsulting.AgentKit.Core.Tests/AgentKitCoreTests.cs");
+            designFiles = ("docs/design/agent-kit-core.md");
+            verificationFiles = ("docs/verification/agent-kit-core.md");
+            requirementFiles = ("docs/reqstream/agent-kit-core.yaml");
+        }
 
         part realPathResolver : RealPathResolver;
         part pathRule : PathRule;

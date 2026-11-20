@@ -1,4 +1,6 @@
 package AgentKitAgentsOllama {
+    private import SoftwareItemMetadata::*;
+
     doc
     /*
      * AgentKitAgentsOllama makes the context window a compacting session accounts against the
@@ -14,10 +16,12 @@ package AgentKitAgentsOllama {
     part def AgentKitAgentsOllamaSystem {
         doc /* The AgentKit Ollama Agents system as a whole. */
 
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Agents.Ollama.Tests/AgentKitAgentsOllamaTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-agents-ollama.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-agents-ollama.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-agents-ollama.yaml */
+        metadata info : SoftwareInfo {
+            testFiles = ("test/DemaConsulting.AgentKit.Agents.Ollama.Tests/AgentKitAgentsOllamaTests.cs");
+            designFiles = ("docs/design/agent-kit-agents-ollama.md");
+            verificationFiles = ("docs/verification/agent-kit-agents-ollama.md");
+            requirementFiles = ("docs/reqstream/agent-kit-agents-ollama.yaml");
+        }
 
         part ollamaContextWindow : OllamaContextWindow;
         part ollamaContextSizingChatClient : OllamaContextSizingChatClient;

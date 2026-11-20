@@ -1,11 +1,15 @@
 package AgentKitTools {
+    private import SoftwareItemMetadata::*;
+
     part def File {
         doc /* The type-agnostic file tool family: policy-governed listing, copying, moving and deletion of files of any type, and creation, moving and recursive deletion of the directories that hold them, published as one pack under the file family prefix. */
 
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-tools/file.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-tools/file.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-tools/file.yaml */
+        metadata info : SoftwareInfo {
+            testFiles = ("test/DemaConsulting.AgentKit.Tools.Tests/File/FileTests.cs");
+            designFiles = ("docs/design/agent-kit-tools/file.md");
+            verificationFiles = ("docs/verification/agent-kit-tools/file.md");
+            requirementFiles = ("docs/reqstream/agent-kit-tools/file.yaml");
+        }
 
         part fileListTool : FileListTool;
         part fileCopyTool : FileCopyTool;
