@@ -267,6 +267,11 @@ public class CopilotAgentFactoryTests
         Assert.False(config.State.EnableCrossSessionStore);
         Assert.False(config.Hooks.EnableRepositoryHooks);
         Assert.Empty(config.Agents.IncludedBuiltInAgents!);
+        Assert.True(config.Agents.LocalDiscoveryOnly);
+        Assert.Null(config.Agents.Definitions);
+        Assert.Null(config.Agents.Selected);
+        Assert.False(config.EnableConfigDiscovery);
+        Assert.False(config.Extensions.Enabled);
         Assert.Null(config.Mcp.Servers);
         Assert.Contains(CopilotAgentFactory.BuiltInGitHubMcpServer, config.Mcp.DisabledServers!);
     }
@@ -361,6 +366,9 @@ public class CopilotAgentFactoryTests
             engine.Tools.Definitions!.Select(tool => tool.Name));
         Assert.Equal(agent.Skills.Enabled, engine.Skills.Enabled);
         Assert.Equal(agent.Instructions.SkipCustomInstructions, engine.Instructions.SkipCustomInstructions);
+        Assert.Equal(agent.EnableConfigDiscovery, engine.EnableConfigDiscovery);
+        Assert.Equal(agent.Agents.LocalDiscoveryOnly, engine.Agents.LocalDiscoveryOnly);
+        Assert.Equal(agent.Agents.IncludedBuiltInAgents, engine.Agents.IncludedBuiltInAgents);
     }
 
     /// <summary>
@@ -487,6 +495,9 @@ public class CopilotAgentFactoryTests
         Assert.True(resumed.Instructions.SkipCustomInstructions);
         Assert.False(resumed.Tools.LargeOutput!.Enabled);
         Assert.False(resumed.State.Memory!.Enabled);
+        Assert.Empty(resumed.Agents.IncludedBuiltInAgents!);
+        Assert.True(resumed.Agents.LocalDiscoveryOnly);
+        Assert.False(resumed.EnableConfigDiscovery);
 
         // Assert: the host's own settings
         Assert.Equal("gpt-5.4-mini", resumed.Model);

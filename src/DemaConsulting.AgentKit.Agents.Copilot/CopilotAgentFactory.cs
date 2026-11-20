@@ -730,6 +730,11 @@ public static class CopilotAgentFactory
         config.Git.CoauthorEnabled = false;
         config.State.EnableCrossSessionStore = false;
         config.State.Memory = new Microsoft.Copilot.MemoryConfiguration { Enabled = false };
+
+        // Sub-agents: built-ins are removed by the empty include list; user, project and plugin
+        // agent definitions are not loaded because configuration discovery is off (measured: with
+        // it off, the session lists no agent); and the delegation tool is a built-in the custom:
+        // allow-list never grants.
         config.Agents.IncludedBuiltInAgents = [];
         config.Agents.LocalDiscoveryOnly = true;
         config.Extensions.Enabled = false;

@@ -165,9 +165,10 @@ software items, specifically:
   resumes it on every later one, streams the runtime's events as agent updates, sends inline data as
   in-memory attachments, and releases a conversation's session without deleting it after every run
   (a run made without a conversation deletes its session)
-- **CopilotClientStarter (Unit)** — Starts the host's Copilot client and explains a failed start —
-  an ambient `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without
-  changing the connection or the environment
+- **CopilotClientStarter (Unit)** — Starts the host's Copilot client and explains a failed start
+  with the runtime's error and, where that error identifies it, the cause — an ambient
+  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
+  connection or the environment
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for

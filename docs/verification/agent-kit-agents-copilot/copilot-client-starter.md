@@ -18,15 +18,16 @@ succeed, fail with a chosen exception, or be canceled, and the environment reade
 chosen value or none. Nothing about the starter's own logic is stubbed: the classification of the
 failure, the message it composes and the cause it keeps are the production code.
 
-Every failure test asserts that the original exception is kept as the inner exception, because the
-explanation is a guess about the most likely cause and the original failure is the fact.
+Every failure test asserts that the original exception is kept as the inner exception and that its
+message is carried in the explanation, because the explanation is a judgment about the cause and the
+original failure is the fact.
 
-**What is out of automated scope, stated honestly.** That a real in-process runtime fails to load
-when `COPILOT_CLI_PATH` names a Copilot CLI install, and that the starter's explanation then reaches
-the host, is a property of the runtime rather than of this class. It is shown by the opt-in live
-Copilot suite's `AgentKitAgentsCopilotLive_ClientStarter_AmbientCopilotCliPath_IsExplained`, which
-starts a second client with a bogus value set and asserts the explanation names the variable and its
-value. That suite is supplementary evidence outside the trace matrix, described in
+**What is out of automated scope, stated honestly.** That a real in-process runtime fails to load when
+`COPILOT_CLI_PATH` names a Copilot CLI install, and that the starter's explanation then reaches the host, is a property
+of the runtime rather than of this class. It is shown by the opt-in live Copilot suite's
+`AgentKitAgentsCopilotLive_ClientStarter_AmbientCopilotCliPath_IsExplained`, which starts a second client with a bogus
+value set and asserts the explanation carries the runtime's error, which names the variable's folder, and names the
+variable, its value and the remedies. That suite is supplementary evidence outside the trace matrix, described in
 *AgentKitAgentsCopilot System Verification Design*.
 
 Unit tests reside in `CopilotClientStarterTests.cs` within the
@@ -47,10 +48,11 @@ Unit tests reside in `CopilotClientStarterTests.cs` within the
 
 A unit test run passes when every scenario below passes without error or exception beyond those
 explicitly asserted. Any successful start that throws or consults the environment, any failed start
-whose explanation omits the variable, its value or the remedies when the variable is set, any failed
-start that does not name the direct SDK reference when the variable is unset, any explanation that
-loses the original failure, any cancellation that is wrapped or explained, or a missing client that
-is accepted constitutes a failure.
+whose explanation omits the runtime's error, any failed start whose explanation omits the variable,
+its value or the remedies when the error names the variable's location, any explanation that blames
+the variable for an error that does not name its location, any failed start that does not name the
+direct SDK reference when the variable is unset, any explanation that loses the original failure, any
+cancellation that is wrapped or explained, or a missing client that is accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -67,19 +69,33 @@ diagnosis.
 
 **Test**: `CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause`
 
-Error path. The start fails while the environment reader reports `COPILOT_CLI_PATH` set to a Copilot
-CLI path. The test asserts the result is an `InvalidOperationException` whose message names the
-variable and its value, tells the host to unset it, and offers `RuntimeConnection.ForSpawnedStdio`
-as the alternative, and whose inner exception is the original failure, by reference. The variable is
-named because it is the cause a host is least likely to suspect: it is set by the shell the host was
-started from, not by anything the host wrote.
+Error path. The start fails, while the environment reader reports `COPILOT_CLI_PATH` set to a Copilot
+CLI path, with the error the SDK raises when the runtime library is not beside that path — one naming
+the variable's folder. The paths are built from the temporary directory, so the scenario holds on
+every operating system. The test asserts the result is an `InvalidOperationException` whose message
+carries the runtime's error, names the variable and its value, gives the fix — unset it — and offers
+`RuntimeConnection.ForSpawnedStdio` as the alternative, and whose inner exception is the original
+failure, by reference. The variable is named because it is the cause a host is least likely to
+suspect: it is set by the shell the host was started from, not by anything the host wrote.
+
+#### AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride: Another Cause, Not Misattributed
+
+**Test**: `CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable`
+
+Error path and the boundary of the previous scenario. The variable is set, but the start fails with
+an error that does not name its location — an authentication failure. The test asserts the message
+carries the runtime's error and reports the variable and its value, but gives **no** fix: it does not
+tell the host to unset the variable. Every Copilot CLI shell sets the variable, so most failures from
+such shells have other causes; a fix aimed at the variable would send the host after the wrong one.
+The original failure is kept as the cause, by reference.
 
 #### AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime: The Missing Direct Reference
 
 **Test**: `CopilotClientStarter_Start_FailsWithoutCliPath_ExplainsTheMissingRuntime`
 
-Error path. The start fails while the variable is not set. The test asserts the message says the
-variable is not set and names `Microsoft.Copilot.SDK`, the package a host must reference directly
+Error path. The start fails while the variable is not set. The test asserts the message carries the
+runtime's error, says the variable is not set and names `Microsoft.Copilot.SDK`, the package a host
+must reference directly
 for the runtime to be provisioned beside it, and that the original failure is kept as the cause.
 This is the boundary of the previous scenario: the same failure, explained by the other common cause
 when the first cannot apply.

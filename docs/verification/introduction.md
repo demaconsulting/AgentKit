@@ -163,7 +163,7 @@ constituent software items, specifically:
   confined Copilot session on a conversation's first run and resumes it on every later run, streams
   what the runtime produces, delivers inline data as attachments, and serializes the conversation
 - **CopilotClientStarter (Unit)** — Starts a host's Copilot client and explains a runtime that
-  cannot load, naming its likely cause and remedy
+  cannot load, reporting the runtime's error and, where that error identifies it, the cause and remedy
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for

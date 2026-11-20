@@ -20,7 +20,11 @@ cannot load into an error that says why and what to do.
   references the package directly. A host application that reaches the SDK only transitively, through
   AgentKit, has no runtime in its output.
 
-This class names the likely cause in both cases, with the remedies.
+This class reports the runtime's own error, and names `COPILOT_CLI_PATH` as the cause, with the
+remedies, only when that error names the location the variable points to. Every Copilot CLI shell sets
+the variable, so most failed starts from such shells have other causes; when the error does not name
+that location, the class reports the variable's value without blaming it. When the variable is unset,
+it names the missing direct SDK reference as the likely cause of a runtime that was not found.
 
 **It diagnoses and changes nothing.** The host owns the client and chooses its connection. This class
 never alters the connection and never changes the process environment: pointing `COPILOT_CLI_PATH` at
@@ -66,35 +70,58 @@ started and still the host's to dispose.
 
 **Algorithm:** Await the start. On an `OperationCanceledException`, let it propagate unchanged: a
 cancellation is not a fault to explain. On any other exception, read `COPILOT_CLI_PATH` and throw an
-`InvalidOperationException` whose message is `Explain` of that value and whose `InnerException` is the
-original failure.
+`InvalidOperationException` whose message is `Explain` of that value and the failure, and whose
+`InnerException` is the original failure.
 
 Internal, as the test seam: the SDK's client cannot be made to fail on demand without a broken
 runtime, and a test must not change the process environment, so both are injected.
 
 **Postconditions:** As the public overload.
 
-#### Explain(string? cliPath)
+#### Explain(string? cliPath, Exception failure)
 
 **Purpose:** Compose the explanation for a client that failed to start.
 
-**Algorithm:**
+**Algorithm:** Every message begins with the runtime's own error — the failure's message — and points
+at the inner exception for it. Then:
 
-- **When `cliPath` is non-blank**, the message names the variable and its value, and explains that
-  in-process hosting loads the runtime library from beside that path instead of the runtime
-  `Microsoft.Copilot.SDK` provisioned into the application's output; that a Copilot CLI installation
-  does not ship that library; and that every shell the Copilot CLI starts sets the variable. It gives
-  three remedies: unset `COPILOT_CLI_PATH` for the process, point it at a runtime that ships the
-  in-process library, or connect with `RuntimeConnection.ForSpawnedStdio` and an environment that
-  omits it.
+- **When `cliPath` is non-blank and `NamesLocation` reports that the failure names the location it
+  points to**, the message names the variable and its value, and explains that the runtime is loaded
+  from beside that path instead of from the runtime `Microsoft.Copilot.SDK` provisioned into the
+  application's output; that a Copilot CLI installation does not ship the in-process runtime library;
+  and that every shell the Copilot CLI starts sets the variable. It gives three remedies: unset
+  `COPILOT_CLI_PATH` for the process, point it at a runtime that ships the in-process library, or
+  connect with `RuntimeConnection.ForSpawnedStdio` and an environment that omits it.
+- **When `cliPath` is non-blank but the failure does not name that location**, the message reports the
+  variable's value and states that the error does not name that location, so the variable is not shown
+  to be the cause. It gives no fix; it notes only that, if the error is that the in-process runtime
+  library could not be loaded, unsetting the variable is the remedy, because a Copilot CLI installation
+  does not ship that library.
 - **When it is null or blank**, the message states that the runtime is loaded from the application's
-  output, and names the most common cause: a host application that does not reference
-  `Microsoft.Copilot.SDK` directly, because the SDK provisions its runtime only into a project that
-  references the package itself. The remedy is to add that reference.
-
-Both messages end by pointing at the inner exception for the runtime's own error.
+  output and that, if the error is that the runtime library was not found, the most common cause is a
+  host application that does not reference `Microsoft.Copilot.SDK` directly, because the SDK
+  provisions its runtime only into a project that references the package itself. The remedy is to add
+  that reference.
 
 **Postconditions:** The explanation text.
+
+#### NamesLocation(Exception failure, string cliPath)
+
+**Purpose:** Decide whether a failure shows `COPILOT_CLI_PATH` to be its cause, without parsing the
+runtime's message format.
+
+**Algorithm:** The location is the variable's value itself, plus the directory containing its full path
+— the directory the SDK searches for the runtime library and names in its error. The directory is
+skipped when the value cannot be resolved as a path or when the directory is a filesystem root, which
+would match almost any path. Walk the failure and its chain of inner exceptions; the result is true
+when any message contains the value or the directory, ignoring case on Windows, whose paths are
+case-insensitive, and matching case elsewhere.
+
+This is a containment check against a value the class already holds, so it survives changes to the
+SDK's wording for as long as the SDK names the path it searched; if a future SDK stopped naming it, the
+explanation would fall back to the hedged wording rather than to a wrong assertion.
+
+**Postconditions:** True when the failure names the location; otherwise false.
 
 ### Error Handling
 
@@ -102,11 +129,14 @@ Both messages end by pointing at the inner exception for the runtime's own error
 | --- | --- |
 | Null `client` | `ArgumentNullException` propagates |
 | Start canceled | `OperationCanceledException` propagates unchanged |
-| Start failed, `COPILOT_CLI_PATH` set | `InvalidOperationException` naming the variable, value and remedies |
-| Start failed, `COPILOT_CLI_PATH` unset | `InvalidOperationException` naming the missing direct SDK reference |
+| Start failed; variable set; error names its location | runtime's error, the variable, its value and remedies |
+| Start failed; variable set; error does not name it | runtime's error and the variable's value, not blamed |
+| Start failed; `COPILOT_CLI_PATH` unset | runtime's error and the missing direct SDK reference |
 
-In both failure cases the original exception is the `InnerException`, so nothing the runtime reported
-is lost. The class handles nothing locally: every failure propagates, explained or unchanged.
+Every failed start raises an `InvalidOperationException` whose message begins with the runtime's error and carries
+what the table names; the variable is `COPILOT_CLI_PATH`. The original exception is the `InnerException`, so nothing
+the runtime reported is lost. The class handles nothing locally: every failure propagates, explained or
+unchanged.
 
 ### Dependencies
 

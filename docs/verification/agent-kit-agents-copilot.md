@@ -302,9 +302,10 @@ every path at once is what stops one path being missed.
 **Test**: `AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained`
 
 Starts a client through the starter with a start that fails the way an in-process runtime does when
-`COPILOT_CLI_PATH` redirects it, and an environment reporting that variable set. Asserts the failure
-reaching the host names `COPILOT_CLI_PATH` and keeps the original failure as its inner exception. A
-host started from a Copilot CLI shell inherits that variable without having written it, so a start
+`COPILOT_CLI_PATH` redirects it — an error naming the folder the variable points into — and an
+environment reporting that variable set. Asserts the failure reaching the host carries the runtime's
+error, names `COPILOT_CLI_PATH`, gives the fix, and keeps the original failure as its inner exception.
+A host started from a Copilot CLI shell inherits that variable without having written it, so a start
 failure that did not name it would leave the host looking everywhere but the cause. The other
 explanations and the pass-through of a cancellation are asserted in *CopilotClientStarter Unit
 Verification Design*.
@@ -323,7 +324,8 @@ any rotation that costs more than the one request the engine was already making,
 session left unreleased, any session created with the runtime's own compaction left at the runtime's
 default threshold, any agent run that is not confined, streamed or released as asserted, any
 resumption under a different confinement, any session that diverts a large tool result, or any failed
-start that does not name its likely cause constitutes a failure.
+start whose explanation omits the runtime's error or blames `COPILOT_CLI_PATH` for an error that does
+not name its location constitutes a failure.
 
 ## Supplementary Live Verification
 
@@ -333,8 +335,8 @@ and a real model, and asserts what the runtime actually did. It re-measures, on 
 runtime properties the package's design depends on — which tools a confined session exposes, which
 names the runtime reserves for its built-ins, what the permission handler is asked, how large and
 image results are delivered, whether an agent's conversation streams and resumes, how a failed
-start is reported, and whether an ambient MCP server is disabled on a session opened through the
-package's channel.
+start is reported, whether an ambient MCP server is disabled on a session opened through the
+package's channel, and whether agent definitions reach such a session.
 
 **It is supplementary evidence and is not linked to ReqStream.** The suite never runs in the pipeline
 that builds the trace matrix — that pipeline is hermetic and holds no credential — so a requirement
@@ -364,7 +366,9 @@ that what those tests assert about the options is what the runtime honors.
   scenario changes the process environment. The ambient-server scenario, L12, starts a second,
   short-lived client of its own per test in CodingAgent mode, spawned out of process on the runtime the SDK
   provisioned, whose data directory under the run's temporary root configures one non-GitHub MCP
-  server whose command does not exist — never the user's own Copilot home.
+  server whose command does not exist — never the user's own Copilot home. The agent-definitions
+  scenario, L13, starts one more such client whose data directory under the run's root defines a user
+  agent, and gives its session a workspace under the run's root that defines a project agent.
 
 ### Running the Live Suite
 
@@ -391,8 +395,8 @@ holding the TRX test results and the run's `live-*.log`. A manual run leaves the
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Seventeen tests
-cover twelve scenarios; the agent scenario, L10, is three tests, and the ambient-server scenario, L12,
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Eighteen tests
+cover thirteen scenarios; the agent scenario, L10, is three tests, and the ambient-server scenario, L12,
 is four.
 
 | # | Test | Recorded result |
@@ -414,6 +418,7 @@ is four.
 | L12b | `Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled` | Pass |
 | L12c | `Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal` | Pass |
 | L12d | `Confinement_AmbientMcpServerOnAResumedSession_IsDisabled` | Pass |
+| L13 | `Confinement_AgentDefinitionsOnACodingAgentClient_AreWithheld` | Pass |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -444,7 +449,8 @@ few that rest on the model's prose are marked.
 - **L10c**: an image passed to the agent as inline data reaches the model as an attachment; the answer
   names blue and yellow (prose).
 - **L11**: a second client started through the starter with a bogus `COPILOT_CLI_PATH` fails with an
-  explanation naming the variable and its value; the variable is restored afterwards.
+  explanation that carries the runtime's error — which names the folder the variable points into —
+  and names the variable, its value and the fix; the variable is restored afterwards.
 - **L12a**: on a CodingAgent-mode client whose data directory configures a non-GitHub MCP server —
   which the runtime's discovery is first asserted to report, so the scenario cannot pass on a fixture
   the runtime ignores — a session opened through the package's production channel named the server
@@ -463,6 +469,11 @@ few that rest on the model's prose are marked.
   production channel's resume path. The resumed session keeps its identifier, the server is named in
   the resume options' disabled servers, no MCP server is enabled in its effective configuration, and
   it exposes exactly the supplied tools.
+- **L13**: on a CodingAgent-mode client whose data directory defines a user agent, with a workspace
+  that defines a project agent — both of which the runtime's own discovery is first asserted to
+  report, so the scenario cannot pass on a fixture the runtime ignores — a session opened through the
+  package's production channel lists no agent, built-in sub-agents included, and exposes exactly the
+  supplied tools, so no agent can be selected or delegated to. No model turn is taken.
 
 ### Live Acceptance Criteria
 
@@ -476,7 +487,8 @@ as designed; of L11, that a host is not told why its runtime did not load; of L1
 MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
 nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime;
 of L12d, that the resume-time disabled list is not honored on a session resumed through the
-channel. Any such failure is investigated before a release.
+channel; of L13, that an agent definition or built-in sub-agent reaches a confined session. Any such
+failure is investigated before a release.
 
 ### Recorded Run
 
@@ -504,5 +516,14 @@ disabled. L12d's directly created session listed the probe enabled; its first at
 session that had taken no turn was refused by the runtime with "Session not found", so the scenario
 takes one short turn before releasing it, after which the resume through the channel named the
 probe on the disabled list and listed it disabled. Every session opened or resumed through the
-channel exposed exactly the two supplied tools. Later runs of the CI job record their results in the
+channel exposed exactly the two supplied tools.
+
+When L13 was added and the starter came to report the runtime's error and to blame
+`COPILOT_CLI_PATH` only when that error names the variable's location, L13 and L11 were run on
+2026-11-20, on the same machine and model, filtered to `*AgentDefinitions*` and `*ClientStarter*`;
+both passed, in 10 seconds. L13's discovery reported the user agent from the user source and the
+workspace agent from the project source; the session opened through the channel listed no agent,
+built-ins included, and exposed exactly the two supplied tools. L11's runtime error named the three
+paths it searched in the folder `COPILOT_CLI_PATH` points into, so the explanation carried that error
+and named the variable, its value and the fix. Later runs of the CI job record their results in the
 `live-copilot-suite` artifact of each workflow run.

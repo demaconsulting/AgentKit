@@ -16,7 +16,10 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     launched from such a shell fails to start with an error about a missing library that names
 ///     neither the variable nor the remedy. The other common failure — a host application that does
 ///     not reference <c>Microsoft.Copilot.SDK</c> itself, so the runtime was never provisioned — is
-///     just as opaque. This helper names the likely cause in both cases.
+///     just as opaque. This helper reports the runtime's own error and names <c>COPILOT_CLI_PATH</c>
+///     as the cause only when that error names the location the variable points to; otherwise it
+///     reports the variable's value without blaming it, or, when the variable is unset, names the
+///     missing direct SDK reference as the likely cause of a runtime that was not found.
 ///     </para>
 ///     <para>
 ///     <b>It diagnoses and changes nothing.</b> The host owns the client and chooses its connection;
@@ -45,9 +48,11 @@ public static class CopilotClientStarter
     /// <returns>A task that completes when the client has started.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">
-    ///     The client failed to start. The message names the likely cause and its remedies, and the
-    ///     original failure is the <see cref="Exception.InnerException"/>. The host should report the
-    ///     message; the client is left not started, and the host still disposes it.
+    ///     The client failed to start. The message reports the runtime's own error and names
+    ///     <c>COPILOT_CLI_PATH</c> as the cause, with its remedies, only when that error names the
+    ///     location the variable points to; the original failure is the
+    ///     <see cref="Exception.InnerException"/>. The host should report the message; the client is
+    ///     left not started, and the host still disposes it.
     /// </exception>
     /// <exception cref="OperationCanceledException">
     ///     The start was canceled. It propagates unchanged, because a cancellation is not a fault to
@@ -111,32 +116,94 @@ public static class CopilotClientStarter
         }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
-            throw new InvalidOperationException(Explain(getEnvironmentVariable(CliPathVariable)), failure);
+            throw new InvalidOperationException(Explain(getEnvironmentVariable(CliPathVariable), failure), failure);
         }
     }
 
     /// <summary>
     ///     Composes the explanation for a client that failed to start.
     /// </summary>
+    /// <remarks>
+    ///     Every explanation begins with the runtime's own error. The variable is blamed only when the
+    ///     failure names the location it points to — the SDK names every path it searched — so a
+    ///     failure with another cause, which is common because every Copilot CLI shell sets the
+    ///     variable, is not sent after the wrong fix.
+    /// </remarks>
     /// <param name="cliPath">The value of <c>COPILOT_CLI_PATH</c>, or <see langword="null"/>/blank when unset.</param>
-    /// <returns>The explanation, naming the likely cause and its remedies.</returns>
-    internal static string Explain(string? cliPath)
+    /// <param name="failure">The failure the start raised.</param>
+    /// <returns>The explanation, carrying the runtime's error and, where it identifies one, the cause and its remedies.</returns>
+    internal static string Explain(string? cliPath, Exception failure)
     {
-        if (!string.IsNullOrWhiteSpace(cliPath))
+        var opening = "The Copilot client could not start: " + failure.Message + " ";
+
+        if (string.IsNullOrWhiteSpace(cliPath))
         {
-            return "The Copilot client could not start. The " + CliPathVariable + " environment variable is set to '"
-                + cliPath + "', so in-process hosting loads the Copilot runtime library from beside that path "
-                + "instead of the runtime Microsoft.Copilot.SDK provisioned into this application's output; a "
-                + "Copilot CLI installation does not ship that library, and every shell the Copilot CLI starts "
-                + "sets the variable. To fix it, unset " + CliPathVariable + " for this process, point it at a "
-                + "runtime that ships the in-process library, or connect with RuntimeConnection.ForSpawnedStdio "
-                + "and an environment that omits it. The inner exception carries the runtime's own error.";
+            return opening + CliPathVariable + " is not set, so the runtime is loaded from this application's "
+                + "output. If the error is that the runtime library was not found, the most common cause is a "
+                + "host application that does not reference Microsoft.Copilot.SDK directly: the SDK provisions "
+                + "its runtime only into a project that references the package itself, so add a "
+                + "PackageReference to Microsoft.Copilot.SDK to the host application. The inner exception "
+                + "carries the runtime's own error.";
         }
 
-        return "The Copilot client could not start. " + CliPathVariable + " is not set, so the runtime is loaded "
-            + "from this application's output. The most common cause is a host application that does not "
-            + "reference Microsoft.Copilot.SDK directly: the SDK provisions its runtime only into a project that "
-            + "references the package itself. Add a PackageReference to Microsoft.Copilot.SDK to the host "
-            + "application. The inner exception carries the runtime's own error.";
+        if (NamesLocation(failure, cliPath))
+        {
+            return opening + "The error names the location " + CliPathVariable + " points to. The variable is "
+                + "set to '" + cliPath + "', so the runtime is loaded from beside that path instead of from the "
+                + "runtime Microsoft.Copilot.SDK provisioned into this application's output; a Copilot CLI "
+                + "installation does not ship the in-process runtime library, and every shell the Copilot CLI "
+                + "starts sets the variable. To fix it, unset " + CliPathVariable + " for this process, point it "
+                + "at a runtime that ships the in-process library, or connect with "
+                + "RuntimeConnection.ForSpawnedStdio and an environment that omits it. The inner exception "
+                + "carries the runtime's own error.";
+        }
+
+        return opening + CliPathVariable + " is set to '" + cliPath + "', but the error does not name that "
+            + "location, so the variable is not shown to be the cause; the inner exception carries the "
+            + "runtime's own error. If the error is that the in-process runtime library could not be loaded, "
+            + "unset " + CliPathVariable + " for this process: a Copilot CLI installation, which every Copilot "
+            + "CLI shell points it at, does not ship that library.";
+    }
+
+    /// <summary>
+    ///     Determines whether a failure names the location <c>COPILOT_CLI_PATH</c> points to.
+    /// </summary>
+    /// <remarks>
+    ///     The location is the variable's value itself or the full-path directory containing it; the
+    ///     directory is skipped when it cannot be resolved or is a filesystem root, which would match
+    ///     almost any path. Every message in the failure's inner-exception chain is searched, ignoring
+    ///     case on Windows, whose paths are case-insensitive, and matching case elsewhere.
+    /// </remarks>
+    /// <param name="failure">The failure the start raised.</param>
+    /// <param name="cliPath">The value of <c>COPILOT_CLI_PATH</c>; not blank.</param>
+    /// <returns><see langword="true"/> when a message in the chain contains the value or its directory.</returns>
+    internal static bool NamesLocation(Exception failure, string cliPath)
+    {
+        var needles = new List<string> { cliPath };
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(cliPath));
+            if (!string.IsNullOrEmpty(directory) &&
+                !string.Equals(directory, Path.GetPathRoot(directory), StringComparison.Ordinal))
+            {
+                needles.Add(directory);
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // The value is not a usable path; only the value itself can be named.
+        }
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        for (var current = failure; current is not null; current = current.InnerException)
+        {
+            var message = current.Message;
+            if (needles.Exists(needle => message.Contains(needle, comparison)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

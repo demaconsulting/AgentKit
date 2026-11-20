@@ -42,15 +42,18 @@ public class CopilotClientStarterTests
     }
 
     /// <summary>
-    ///     Proves a start that fails while <c>COPILOT_CLI_PATH</c> is set is explained by naming the
-    ///     variable, its value and the remedies, with the original failure kept as the cause.
+    ///     Proves a start that fails with an error naming the location <c>COPILOT_CLI_PATH</c> points
+    ///     to is explained by reporting the runtime's error and naming the variable, its value and
+    ///     the remedies, with the original failure kept as the cause.
     /// </summary>
     [Fact]
     public async Task CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause()
     {
-        // Arrange
-        var cause = new InvalidOperationException("FFI runtime library not found.");
-        const string cliPath = @"C:\Tools\copilot\copilot.exe";
+        // Arrange: the error the SDK raises when the runtime library is not beside the variable's path
+        var cliPath = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
+        var directory = Path.GetDirectoryName(cliPath)!;
+        var cause = new InvalidOperationException(
+            $"FFI runtime library not found. Looked for '{Path.Combine(directory, "copilot_runtime.dll")}'.");
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
@@ -60,15 +63,44 @@ public class CopilotClientStarterTests
 
         // Assert
         Assert.Same(cause, failure.InnerException);
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
         Assert.Contains(cliPath, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
         Assert.Contains("unset", failure.Message, StringComparison.Ordinal);
         Assert.Contains("ForSpawnedStdio", failure.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
-    ///     Proves a start that fails while <c>COPILOT_CLI_PATH</c> is unset is explained by naming the
-    ///     other common cause: a host that does not reference the SDK, so no runtime was provisioned.
+    ///     Proves a start that fails for another cause while <c>COPILOT_CLI_PATH</c> is set reports
+    ///     the runtime's error and the variable's value without blaming the variable, with the
+    ///     original failure kept as the cause.
+    /// </summary>
+    [Fact]
+    public async Task CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable()
+    {
+        // Arrange: an error that does not name the location the variable points to
+        var cliPath = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
+        var cause = new InvalidOperationException("Authentication failed: no credential.");
+
+        // Act
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
+            _ => Task.FromException(cause),
+            name => name == "COPILOT_CLI_PATH" ? cliPath : null,
+            TestContext.Current.CancellationToken));
+
+        // Assert
+        Assert.Same(cause, failure.InnerException);
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
+        Assert.Contains(cliPath, failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("To fix it", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a start that fails while <c>COPILOT_CLI_PATH</c> is unset is explained by reporting
+    ///     the runtime's error and naming the other common cause: a host that does not reference the
+    ///     SDK, so no runtime was provisioned.
     /// </summary>
     [Fact]
     public async Task CopilotClientStarter_Start_FailsWithoutCliPath_ExplainsTheMissingRuntime()
@@ -84,6 +116,7 @@ public class CopilotClientStarterTests
 
         // Assert
         Assert.Same(cause, failure.InnerException);
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
         Assert.Contains("not set", failure.Message, StringComparison.Ordinal);
     }

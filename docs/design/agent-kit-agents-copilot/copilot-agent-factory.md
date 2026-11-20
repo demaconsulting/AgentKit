@@ -62,13 +62,23 @@ so the confinement does not depend on the client's mode, which the factory canno
 | `State.EnableCrossSessionStore` | `false` | nothing carries over from another session |
 | `State.Memory.Enabled` | `false` | withholds the runtime's own memory |
 | `Agents.IncludedBuiltInAgents` | empty | withholds the built-in sub-agents |
-| `Agents.LocalDiscoveryOnly` | `true` | no agent definitions are discovered beyond the local set |
+| `Agents.LocalDiscoveryOnly` | `true` | no organization-level or remote agent discovery |
 | `Extensions.Enabled` | `false` | withholds runtime extensions |
-| `EnableConfigDiscovery` | `false` | withholds configuration discovered on disk |
+| `EnableConfigDiscovery` | `false` | withholds on-disk configuration, agent definitions included |
 | `SystemMessage` | `Customize`; `EnvironmentContext` removed | no host environment detail in the prompt |
 | `Experiments.EnableExperimentalMode` | `false` | withholds behavior the host never chose |
 | `State.SkipEmbeddingRetrieval` | `true` | no context retrieved from a cache shared across sessions |
 | `Mcp.DisabledServers` | the built-in GitHub MCP server | the production channel adds every discovered server |
+
+**Sub-agents are locked twice.** First, none reaches the session: the empty built-in list removes the
+built-in sub-agents, and configuration discovery being off keeps user, project and plugin agent
+definitions from being loaded. Both are session-level options the SDK forwards identically in every
+mode; Empty mode adds only the local-discovery default the factory already sets. Second, dispatching to
+a sub-agent goes through the runtime's built-in `task` tool, which the `custom:` allow-list never
+grants. Measured against the live runtime with configuration discovery deliberately re-enabled and the
+built-ins included, the session listed the agents yet still offered only the supplied tools; the
+opt-in live suite's scenario L13 shows the production case, in which a CodingAgent client's session
+lists no agent at all.
 
 **The host environment context is removed from the system prompt.** The runtime's environment
 context names the working directory, the operating system, the git root, a directory listing and the

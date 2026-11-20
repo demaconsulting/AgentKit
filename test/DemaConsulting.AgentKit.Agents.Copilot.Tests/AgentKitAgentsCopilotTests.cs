@@ -380,17 +380,23 @@ public class AgentKitAgentsCopilotTests
     [Fact]
     public async Task AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained()
     {
-        // Arrange: a start that fails the way an in-process runtime does when redirected
-        var cause = new InvalidOperationException("FFI runtime library not found.");
+        // Arrange: a start that fails the way an in-process runtime does when redirected, naming
+        // the directory the variable points into
+        var cliPath = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
+        var directory = Path.GetDirectoryName(cliPath)!;
+        var cause = new InvalidOperationException(
+            $"FFI runtime library not found. Looked for '{Path.Combine(directory, "copilot_runtime.dll")}'.");
 
         // Act
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
             _ => Task.FromException(cause),
-            name => name == "COPILOT_CLI_PATH" ? "/opt/copilot/copilot" : null,
+            name => name == "COPILOT_CLI_PATH" ? cliPath : null,
             TestContext.Current.CancellationToken));
 
         // Assert
+        Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
         Assert.Same(cause, failure.InnerException);
     }
 

@@ -166,8 +166,11 @@ in-process hosting loads the runtime library from beside that path instead of fr
 output, and there is no per-client override. A Copilot CLI installation does not ship that library,
 and every shell the Copilot CLI starts sets the variable, so a host launched from such a shell fails to
 start. A spawned-process connection reads the variable from its replacement environment when one is
-supplied. AgentKit never changes the environment; `CopilotClientStarter` explains the failure and the
-remedies; see *CopilotClientStarter Unit Design*.
+supplied. The SDK's failure names the paths it searched beside the variable's value — `FFI runtime
+library not found. Looked for '<directory>\copilot_runtime.dll', …`, where the directory is the one
+containing the variable's full path — and that named location is the signal `CopilotClientStarter`
+relies on to attribute a failure to the variable. AgentKit never changes the environment;
+`CopilotClientStarter` explains the failure and the remedies; see *CopilotClientStarter Unit Design*.
 
 ### Deployment and Runtime Provisioning
 

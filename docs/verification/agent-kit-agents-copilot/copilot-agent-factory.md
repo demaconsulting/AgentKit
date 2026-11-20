@@ -198,25 +198,23 @@ that does not exist rather than leaving the choice to it.
 `CopilotAgentFactory_BuildSessionConfig_ImageGeneration_IsDisabled`,
 `CopilotAgentFactory_BuildSessionConfig_EnvironmentContext_IsRemoved`,
 `CopilotAgentFactory_BuildSessionConfig_ExperimentalModeAndEmbeddingRetrieval_AreOff`,
-`CopilotAgentFactory_BuildSessionConfig_GitCoauthorTrailers_AreOff`
-The first asserts, on the options the factory builds, that the runtime's skills are disabled, its
-custom instructions skipped, tool search and memory disabled, the cross-session store and repository
-hooks off, the built-in sub-agents removed, and no MCP server of the host's configured, so a confined
-agent receives only the capability and direction its host attached. The second asserts the runtime's
-built-in GitHub MCP server is disabled outright on a created agent session, a resumed one and an
-engine session; the runtime starts and authenticates that server for every session even in Empty
-mode, so filtering it through the allow-list alone would leave it running. The third asserts image
-generation is switched off. The fourth asserts, on a created agent session, a resumed one and an
-engine session, each with and without instructions, that the system message is in customize mode
-with the host environment context section removed and the instructions, or nothing, as its content:
-the confinement does not depend on the client's mode, so the context Empty mode would remove is
-removed here in any mode. The fifth asserts, on all three, that experimental features are off and
-embedding retrieval is skipped. The sixth asserts, on all three, that commit co-author trailers are
-set off rather than left unset: off is an Empty-mode default, and the SDK forwards the setting in any
-other mode only when it is set. Every value is read from the built options rather than inferred, so
-any one reverting to the permissive value — which would widen the agent without changing anything
-the host wrote — fails its scenario. Disabling every other MCP server and clearing the installed
-plugins need the live session and are verified in *CopilotTurnChannel Unit Verification Design*.
+`CopilotAgentFactory_BuildSessionConfig_GitCoauthorTrailers_AreOff` The first asserts, on the options the factory
+builds, that the runtime's skills are disabled, its custom instructions skipped, tool search and memory disabled, the
+cross-session store and repository hooks off, the built-in sub-agents removed, configuration discovery and extensions
+off, agent discovery local-only, no agent definitions or selected agent, and no MCP server of the host's configured, so
+a confined agent receives only the capability and direction its host attached. The second asserts the runtime's built-in
+GitHub MCP server is disabled outright on a created agent session, a resumed one and an engine session; the runtime
+starts and authenticates that server for every session even in Empty mode, so filtering it through the allow-list alone
+would leave it running. The third asserts image generation is switched off. The fourth asserts, on a created agent
+session, a resumed one and an engine session, each with and without instructions, that the system message is in
+customize mode with the host environment context section removed and the instructions, or nothing, as its content: the
+confinement does not depend on the client's mode, so the context Empty mode would remove is removed here in any mode.
+The fifth asserts, on all three, that experimental features are off and embedding retrieval is skipped. The sixth
+asserts, on all three, that commit co-author trailers are set off rather than left unset: off is an Empty-mode default,
+and the SDK forwards the setting in any other mode only when it is set. Every value is read from the built options
+rather than inferred, so any one reverting to the permissive value — which would widen the agent without changing
+anything the host wrote — fails its scenario. Disabling every other MCP server and clearing the installed plugins need
+the live session and are verified in *CopilotTurnChannel Unit Verification Design*.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-DisablesLargeOutputDiversion: Results Stay Inline
 
@@ -238,8 +236,11 @@ shows a thirty-kilobyte result arriving whole on the real runtime.
 `CopilotAgentFactory_BuildEngineSessionConfig_DuplicateToolNames_Throws`
 
 The first builds the same tool set through the agent and engine entry points and asserts the
-allow-list, the published tool names, the skills setting and the custom-instruction setting are
-identical. The second does the same for the agent's created and resumed options. Together they are
+allow-list, the published tool names, the skills setting, the custom-instruction setting, the
+configuration-discovery setting and the agent options — the built-in sub-agent list and local-only
+discovery — are identical. The second does the same for the agent's created and resumed options,
+and asserts the resumed options remove the built-in sub-agents, keep agent discovery local-only and
+leave configuration discovery off. Together they are
 what make having three entry points safe: the entry points differ in what tool lists they accept, in
 the runtime compaction and in the streaming switch, and in nothing that decides what a session may
 call. An implementation that forked the derivation would pass every other scenario in this file and
@@ -258,7 +259,8 @@ did not relax everything else.
 
 Builds creation and resumption options from the same tools, instructions, model and working
 directory, and asserts the resumption carries the same allow-list and tool definitions, the skills,
-custom instructions, large-output diversion and memory withheld, the same model, working directory
+custom instructions, large-output diversion and memory withheld, the built-in sub-agents removed,
+agent discovery local-only and configuration discovery off, the same model, working directory
 and system message, and a default-deny handler that rejects a built-in request. The runtime is handed
 a fresh configuration on every resumption, so a resumption built with less than the creation had
 would quietly widen a conversation from its second run on.

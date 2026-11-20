@@ -313,7 +313,8 @@ sections:
       - id: AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
         title: >-
           The library shall let a host start its Copilot client so that a runtime that cannot load
-          is reported with its likely cause and remedy.
+          is reported with the runtime's own error and, where the error identifies it, its cause
+          and remedy.
         justification: |
           The Copilot runtime is loaded in-process from the application's output — unless an ambient
           environment variable, set by every Copilot CLI shell, redirects it to an installation that
@@ -324,6 +325,7 @@ sections:
         children:
           - AgentKitAgentsCopilot-CopilotClientStarter-StartsTheClient
           - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride
+          - AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride
           - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime
           - AgentKitAgentsCopilot-CopilotClientStarter-PassesCancellationThrough
           - AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient

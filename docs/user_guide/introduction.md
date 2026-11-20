@@ -796,8 +796,10 @@ for answer quality across a long conversation, not to save money.
   the CLI's own installation, which does not ship that library. Unset it for the host process —
   `Remove-Item Env:COPILOT_CLI_PATH` in PowerShell, `unset COPILOT_CLI_PATH` in bash — point it at a
   runtime that ships the in-process library, or connect with `RuntimeConnection.ForSpawnedStdio` and
-  an environment that omits it. `CopilotClientStarter.StartAsync` names the variable and its value
-  in the error it raises.
+  an environment that omits it. `CopilotClientStarter.StartAsync` includes the runtime's own error in
+  the error it raises, and names the variable, its value and these remedies when that error points
+  at the variable's location; otherwise it reports the variable's value without blaming it, since the
+  variable is set in every Copilot CLI shell whatever the cause of a failure.
 - **The client fails to start, and `COPILOT_CLI_PATH` is not set.** The runtime is missing from the
   application's output. The most common cause is a host project that does not reference
   `Microsoft.Copilot.SDK` directly; others are `CopilotSkipCliDownload` set for the host, or a

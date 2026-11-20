@@ -33,6 +33,16 @@ public sealed class CopilotLiveTests
     private const string AmbientMcpProbe = "agentkit-ambient-probe";
 
     /// <summary>
+    ///     The name of the user agent L13 defines in a client's data directory.
+    /// </summary>
+    private const string UserAgentProbe = "agentkit-probe-user";
+
+    /// <summary>
+    ///     The name of the project agent L13 defines in the session's workspace.
+    /// </summary>
+    private const string WorkspaceAgentProbe = "agentkit-probe-workspace";
+
+    /// <summary>
     ///     How long one turn may take before the scenario gives up.
     /// </summary>
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromMinutes(4);
@@ -388,7 +398,8 @@ public sealed class CopilotLiveTests
 
     /// <summary>
     ///     L11: a client that cannot start because <c>COPILOT_CLI_PATH</c> points elsewhere is
-    ///     explained by the starter, naming the variable and the remedy.
+    ///     explained by the starter, carrying the runtime's error, which names the variable's folder,
+    ///     and naming the variable and the remedy.
     /// </summary>
     [Fact]
     public async Task AgentKitAgentsCopilotLive_ClientStarter_AmbientCopilotCliPath_IsExplained()
@@ -410,10 +421,13 @@ public sealed class CopilotLiveTests
                 () => CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken));
             _live.Log($"L11 explanation: {failure.Message} | cause: {failure.InnerException?.Message}");
 
-            // Assert
+            // Assert: the runtime's error names the variable's folder, so the starter blames the
+            // variable and gives the remedies
+            Assert.NotNull(failure.InnerException);
+            Assert.Contains(failure.InnerException.Message, failure.Message, StringComparison.Ordinal);
             Assert.Contains(variable, failure.Message, StringComparison.Ordinal);
             Assert.Contains(bogus, failure.Message, StringComparison.Ordinal);
-            Assert.NotNull(failure.InnerException);
+            Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -602,6 +616,58 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     L13: agent definitions — a user agent in the data directory of a client in CodingAgent
+    ///     mode and a project agent in the session's workspace, both of which the runtime's own
+    ///     discovery reports — are withheld from a session opened through the production channel,
+    ///     which lists no agent, built-ins included, and exposes exactly the supplied tools.
+    /// </summary>
+    /// <remarks>
+    ///     No model turn is taken: the session's agent listing and tool set are what decide whether
+    ///     a definition could be selected or delegated to. Discovery finding both definitions is the
+    ///     control that keeps the scenario from passing on a fixture the runtime ignores.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_Confinement_AgentDefinitionsOnACodingAgentClient_AreWithheld()
+    {
+        // Arrange: a CodingAgent client whose data directory defines a user agent, and a workspace
+        // that defines a project agent, both under the run's root
+        _live.RequireOptIn();
+        var workspace = Path.Combine(_live.Root, "agents-workspace");
+        Assert.StartsWith(_live.Root, workspace, StringComparison.Ordinal);
+        Directory.CreateDirectory(Path.Combine(workspace, ".github", "agents"));
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace, ".github", "agents", $"{WorkspaceAgentProbe}.agent.md"),
+            AgentDefinition(WorkspaceAgentProbe),
+            TestContext.Current.CancellationToken);
+        await using var client = await StartAgentDefinitionsClientAsync("agents-home", workspace);
+        var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, workspace);
+
+        // Act: open the session exactly as production opens one
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(client, config, TestContext.Current.CancellationToken);
+        try
+        {
+            var listed = await session.Rpc.Agent.ListAsync(
+                new SessionAgentListRequest { IncludeBuiltInAgents = true },
+                TestContext.Current.CancellationToken);
+            var agents = (listed.Agents ?? []).Select(agent => $"{agent.Name}({agent.Source})").ToList();
+            var metadata = await session.Rpc.Tools.GetCurrentMetadataAsync(TestContext.Current.CancellationToken);
+            var names = (metadata.Tools ?? []).Select(tool => tool.Name).ToList();
+            _live.Log($"L13 session agents: [{string.Join(", ", agents)}]");
+            _live.Log($"L13 tools: [{string.Join(", ", names)}]");
+
+            // Assert: no agent definition and no built-in sub-agent reached the session, and the
+            // tool set is exactly the supplied tools
+            Assert.Empty(agents);
+            Assert.Equal(_live.ReadTools.Select(tool => tool.Name).Order(), names.Order());
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
     ///     Builds an agent over the run's client, confined to the read tools and the sandbox.
     /// </summary>
     /// <returns>The agent.</returns>
@@ -667,6 +733,63 @@ public sealed class CopilotLiveTests
             throw;
         }
     }
+
+    /// <summary>
+    ///     Starts a second client, in CodingAgent mode, whose data directory under the run's root
+    ///     defines one user agent, and confirms the runtime discovers it and the workspace's project
+    ///     agent.
+    /// </summary>
+    /// <remarks>
+    ///     The data directory is created under the run's root and never the user's own Copilot home,
+    ///     and the client is spawned out of process rather than hosted in-process beside the run's
+    ///     own client. Discovery finding both definitions is the control that keeps L13 from passing
+    ///     vacuously on a fixture the runtime ignores.
+    /// </remarks>
+    /// <param name="name">The data directory's folder name under the run's root.</param>
+    /// <param name="workspace">The workspace whose project agent discovery must also find.</param>
+    /// <returns>The started client. The caller disposes it.</returns>
+    private async Task<CopilotClient> StartAgentDefinitionsClientAsync(string name, string workspace)
+    {
+        var home = Path.Combine(_live.Root, name);
+        Assert.StartsWith(_live.Root, home, StringComparison.Ordinal);
+        Directory.CreateDirectory(Path.Combine(home, "agents"));
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "agents", $"{UserAgentProbe}.agent.md"),
+            AgentDefinition(UserAgentProbe),
+            TestContext.Current.CancellationToken);
+
+        var client = new CopilotClient(new CopilotClientOptions
+        {
+            Mode = CopilotClientMode.CodingAgent,
+            Runtime = RuntimeConnection.ForSpawnedStdio(baseDirectory: home),
+            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
+        });
+        try
+        {
+            await CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken);
+            var discovered = await client.Rpc.Agents.DiscoverAsync(
+                null,
+                [workspace],
+                cancellationToken: TestContext.Current.CancellationToken);
+            _live.Log($"L13 discovered on {name}: [{string.Join(", ", discovered.Agents.Select(agent => $"{agent.Name}({agent.Source})"))}]");
+            Assert.Contains(discovered.Agents, agent => agent.Name == UserAgentProbe);
+            Assert.Contains(discovered.Agents, agent => agent.Name == WorkspaceAgentProbe);
+            return client;
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Composes a minimal agent definition file.
+    /// </summary>
+    /// <param name="name">The agent's name.</param>
+    /// <returns>The definition's content: front matter naming the agent, and its instructions.</returns>
+    private static string AgentDefinition(string name) =>
+        $"---\nname: {name}\ndescription: Probe agent.\n---\nReply with PROBE.\n";
 
     /// <summary>
     ///     Describes a session's effective MCP configuration for the log.

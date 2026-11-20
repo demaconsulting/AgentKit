@@ -254,8 +254,10 @@ session. It grants nothing: what the agent may read or write is decided by the t
 > runtime library from beside that path instead of from the application's output. Every shell the
 > Copilot CLI starts sets it to the CLI's own installation, which does not ship that library, so a
 > host launched from such a shell fails to start. Unset it first — `Remove-Item Env:COPILOT_CLI_PATH`
-> in PowerShell, `unset COPILOT_CLI_PATH` in bash. `CopilotClientStarter.StartAsync` names this
-> cause, or a host that does not reference `Microsoft.Copilot.SDK` directly, in the error it raises.
+> in PowerShell, `unset COPILOT_CLI_PATH` in bash. `CopilotClientStarter.StartAsync` includes the
+> runtime's own error in the error it raises, and names this cause when that error points at the
+> variable's location, or a missing direct reference to `Microsoft.Copilot.SDK` when the variable is
+> unset.
 
 ### Breaking Changes in the Copilot Adapter
 

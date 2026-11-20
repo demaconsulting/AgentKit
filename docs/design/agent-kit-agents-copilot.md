@@ -194,7 +194,8 @@ on the client's mode, which AgentKit cannot read:
 - **Withholds every other channel of injected capability.** Skills and the built-in skills, discovered
   custom instructions and on-demand instruction discovery, repository hooks, host git operations and
   commit co-author trailers,
-  the cross-session store and memory, the built-in sub-agents and non-local agent discovery,
+  the cross-session store and memory, the built-in sub-agents and discovered agent definitions (with
+  the delegation tool outside the allow-list),
   extensions, configuration discovery, tool search, schedule management, image generation,
   experimental features, embedding retrieval, and the runtime's diversion of large tool results to a
   file are all switched off. The runtime's host environment context — the working directory, the
@@ -358,8 +359,8 @@ the package's `build` folder rather than its `buildTransitive` folder, so they r
 holding a direct reference to `Microsoft.Copilot.SDK`. An application that reaches the SDK
 transitively, through this package, provisions nothing, and its client then fails to start. **A host
 application must therefore add its own direct reference to `Microsoft.Copilot.SDK`**, at the version
-this package depends on or a later compatible one. `CopilotClientStarter` names this cause when a
-start fails; see *External Interfaces*.
+this package depends on or a later compatible one. `CopilotClientStarter` names this as the likely
+cause when a start fails with `COPILOT_CLI_PATH` unset; see *External Interfaces*.
 
 **This package ships no runtime.** Its project sets `CopilotSkipCliDownload`, which the SDK's targets
 honor by skipping the download, the copy to the output and the content registration alike. That
@@ -420,8 +421,9 @@ agent uses, and the five that carry a Core session over the runtime.
   without a conversation), serializes a conversation so it can outlive the process, and serializes runs on one
   conversation.
 - **CopilotClientStarter (Unit)** — a host-facing helper that starts the host's client and, when the
-  start fails, explains the likely cause — an ambient `COPILOT_CLI_PATH`, or a host that does not
-  reference the SDK directly — without changing the connection or the environment.
+  start fails, reports the runtime's error and, where that error identifies it, the cause — an ambient
+  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
+  connection or the environment.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
   carries the seeded record ahead of the first message it sends, refuses a turn that reported no
   usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
@@ -523,10 +525,12 @@ spawned-process connection reads the variable from the replacement environment w
 so an environment that omits it avoids the problem.
 
 `CopilotClientStarter.StartAsync` starts the client and, on a failure, throws an
-`InvalidOperationException` carrying the original failure and naming the likely cause: the variable
-and its value, with the three remedies — unset it, point it at a runtime that ships the in-process
-library, or connect through a spawned process with an environment that omits it — or, when the
-variable is not set, the host's missing direct reference to the SDK. The helper never changes the
+`InvalidOperationException` carrying the original failure and the runtime's error, and naming the
+variable, its value and the three remedies — unset it, point it at a runtime that ships the
+in-process library, or connect through a spawned process with an environment that omits it — when
+that error names the location the variable points to. Otherwise it reports the variable's value
+without blaming it, or, when the variable is not set, names the host's missing direct reference to
+the SDK as the likely cause of a runtime-not-found error. The helper never changes the
 connection or the environment: pointing the variable at a valid runtime is a supported configuration,
 and changing the process environment from a library is a global side effect. Cancellation propagates
 unchanged. The helper is optional; a host that starts the client itself loses only the diagnosis.
