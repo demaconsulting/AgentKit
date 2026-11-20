@@ -110,11 +110,15 @@ at the inner exception for it. Then:
 **Purpose:** Decide whether a failure shows `COPILOT_CLI_PATH` to be its cause, without parsing the
 runtime's message format.
 
-**Algorithm:** The location is the variable's value itself, plus the directory containing its full path
-— the directory the SDK searches for the runtime library and names in its error. The directory is
-skipped when the value cannot be resolved as a path or when the directory is a filesystem root, which
-would match almost any path. Walk the failure and its chain of inner exceptions; the result is true
-when any message contains the value or the directory, ignoring case on Windows, whose paths are
+**Algorithm:** The location is the directory containing the value's full path
+(GetDirectoryName(GetFullPath(value))), followed by a directory separator. That is the form in which
+the SDK prints every path it searched for the runtime library beside the value, and the trailing
+separator keeps a sibling directory whose name merely begins with the same text from matching. The
+bare value is not matched: the SDK always prints full paths, and a relative value such as copilot
+would match unrelated text. Nothing is matched when the value cannot be resolved as a path or when the
+directory is a filesystem root, which would match almost any path. Walk the failure and its chain of
+inner exceptions, skipping any null message so the diagnosis never throws and masks the failure; the
+result is true when any message contains the location, ignoring case on Windows, whose paths are
 case-insensitive, and matching case elsewhere.
 
 This is a containment check against a value the class already holds, so it survives changes to the
@@ -132,6 +136,7 @@ explanation would fall back to the hedged wording rather than to a wrong asserti
 | Start failed; variable set; error names its location | runtime's error, the variable, its value and remedies |
 | Start failed; variable set; error does not name it | runtime's error and the variable's value, not blamed |
 | Start failed; `COPILOT_CLI_PATH` unset | runtime's error and the missing direct SDK reference |
+| Start failed; a message in the chain is null | treated as not naming the location; original kept |
 
 Every failed start raises an `InvalidOperationException` whose message begins with the runtime's error and carries
 what the table names; the variable is `COPILOT_CLI_PATH`. The original exception is the `InnerException`, so nothing

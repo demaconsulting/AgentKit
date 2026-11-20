@@ -169,36 +169,44 @@ public static class CopilotClientStarter
     ///     Determines whether a failure names the location <c>COPILOT_CLI_PATH</c> points to.
     /// </summary>
     /// <remarks>
-    ///     The location is the variable's value itself or the full-path directory containing it; the
-    ///     directory is skipped when it cannot be resolved or is a filesystem root, which would match
-    ///     almost any path. Every message in the failure's inner-exception chain is searched, ignoring
-    ///     case on Windows, whose paths are case-insensitive, and matching case elsewhere.
+    ///     The location is the full-path directory containing the variable's value, followed by a
+    ///     directory separator — the form in which the SDK prints every path it searched beside the
+    ///     value. The trailing separator keeps a sibling directory whose name merely begins with the
+    ///     same text from matching. The bare value is never matched: the SDK always prints full paths,
+    ///     and a relative value such as <c>copilot</c> would match unrelated text. Nothing is matched
+    ///     when the value cannot be resolved or its directory is a filesystem root, which would match
+    ///     almost any path. Every message in the failure's inner-exception chain is searched, skipping
+    ///     a null message so the diagnosis can never throw and mask the failure, ignoring case on
+    ///     Windows, whose paths are case-insensitive, and matching case elsewhere.
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
     /// <param name="cliPath">The value of <c>COPILOT_CLI_PATH</c>; not blank.</param>
-    /// <returns><see langword="true"/> when a message in the chain contains the value or its directory.</returns>
+    /// <returns><see langword="true"/> when a message in the chain contains the value's directory followed by a separator.</returns>
     internal static bool NamesLocation(Exception failure, string cliPath)
     {
-        var needles = new List<string> { cliPath };
+        string needle;
         try
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(cliPath));
-            if (!string.IsNullOrEmpty(directory) &&
-                !string.Equals(directory, Path.GetPathRoot(directory), StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(directory) ||
+                string.Equals(directory, Path.GetPathRoot(directory), StringComparison.Ordinal))
             {
-                needles.Add(directory);
+                return false;
             }
+
+            needle = directory + Path.DirectorySeparatorChar;
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            // The value is not a usable path; only the value itself can be named.
+            // The value is not a usable path, so no location the SDK searched can be identified.
+            return false;
         }
 
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         for (var current = failure; current is not null; current = current.InnerException)
         {
-            var message = current.Message;
-            if (needles.Exists(needle => message.Contains(needle, comparison)))
+            string? message = current.Message;
+            if (message is not null && message.Contains(needle, comparison))
             {
                 return true;
             }

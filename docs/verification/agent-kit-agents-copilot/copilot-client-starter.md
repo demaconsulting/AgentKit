@@ -52,7 +52,8 @@ whose explanation omits the runtime's error, any failed start whose explanation 
 its value or the remedies when the error names the variable's location, any explanation that blames
 the variable for an error that does not name its location, any failed start that does not name the
 direct SDK reference when the variable is unset, any explanation that loses the original failure, any
-cancellation that is wrapped or explained, or a missing client that is accepted constitutes a failure.
+cancellation that is wrapped or explained, any diagnosis that throws instead of explaining, or a
+missing client that is accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -67,7 +68,12 @@ diagnosis.
 
 #### AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride: The Ambient Override, by Name
 
-**Test**: `CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause`
+**Tests**:
+
+- `CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause`
+- `CopilotClientStarter_NamesLocation_NullMessageInChain_SearchesTheRest`
+- `CopilotClientStarter_NamesLocation_BareRelativeValue_MatchesTheFullPathTheSdkSearched`
+- `CopilotClientStarter_NamesLocation_MatchOnlyInInnerException_ReturnsTrue`
 
 Error path. The start fails, while the environment reader reports `COPILOT_CLI_PATH` set to a Copilot
 CLI path, with the error the SDK raises when the runtime library is not beside that path — one naming
@@ -78,16 +84,37 @@ carries the runtime's error, names the variable and its value, gives the fix —
 failure, by reference. The variable is named because it is the cause a host is least likely to
 suspect: it is set by the shell the host was started from, not by anything the host wrote.
 
+The other three tests exercise the location check directly and assert that it reports the location
+whenever the error names the full path the SDK searched. They cover a bare relative value, matched
+through the full path the SDK resolves it to and prints; an error found only in an inner exception;
+and an inner error wrapped by an exception whose message is null, which is skipped while the rest of
+the chain is still searched.
+
 #### AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride: Another Cause, Not Misattributed
 
-**Test**: `CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable`
+**Tests**:
+
+- `CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable`
+- `CopilotClientStarter_Start_FailsWithNullMessage_ReportsWithoutThrowing`
+- `CopilotClientStarter_NamesLocation_BareRelativeValue_DoesNotMatchTheBareValue`
+- `CopilotClientStarter_NamesLocation_SiblingDirectory_DoesNotMatch`
+- `CopilotClientStarter_NamesLocation_RootDirectory_IsNotMatched`
 
 Error path and the boundary of the previous scenario. The variable is set, but the start fails with
 an error that does not name its location — an authentication failure. The test asserts the message
-carries the runtime's error and reports the variable and its value, but gives **no** fix: it does not
-tell the host to unset the variable. Every Copilot CLI shell sets the variable, so most failures from
-such shells have other causes; a fix aimed at the variable would send the host after the wrong one.
-The original failure is kept as the cause, by reference.
+carries the runtime's error, reports the variable and its value, and states that the variable *is not
+shown to be the cause*. It gives none of the previous scenario's remedies: the message contains no
+"To fix it". It mentions unsetting the variable only conditionally, for the case where the error is
+that the in-process runtime library could not be loaded. Every Copilot CLI shell sets the variable, so
+most failures from such shells have other causes; a fix aimed at the variable would send the host
+after the wrong one. The original failure is kept as the cause, by reference.
+
+The other tests pin the cases that must not blame the variable. A failure whose message is null is
+still reported, with the original kept as the cause, rather than the diagnosis throwing and masking it.
+The location check does not match a bare relative value such as `copilot` against unrelated text that
+contains the same word. It does not match a sibling directory whose name merely begins with the
+variable's directory name. And it does not match a variable whose directory is a filesystem root,
+which would match almost any path.
 
 #### AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime: The Missing Direct Reference
 

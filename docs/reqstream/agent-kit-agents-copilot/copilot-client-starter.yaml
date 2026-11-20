@@ -32,6 +32,9 @@ sections:
               Naming the variable and the remedy turns an hour of diagnosis into a one-line fix.
             tests:
               - CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause
+              - CopilotClientStarter_NamesLocation_NullMessageInChain_SearchesTheRest
+              - CopilotClientStarter_NamesLocation_BareRelativeValue_MatchesTheFullPathTheSdkSearched
+              - CopilotClientStarter_NamesLocation_MatchOnlyInInnerException_ReturnsTrue
 
           - id: AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride
             title: >-
@@ -45,6 +48,10 @@ sections:
               fix; reporting the runtime's error and the variable's value leaves the host the facts.
             tests:
               - CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable
+              - CopilotClientStarter_Start_FailsWithNullMessage_ReportsWithoutThrowing
+              - CopilotClientStarter_NamesLocation_BareRelativeValue_DoesNotMatchTheBareValue
+              - CopilotClientStarter_NamesLocation_SiblingDirectory_DoesNotMatch
+              - CopilotClientStarter_NamesLocation_RootDirectory_IsNotMatched
 
           - id: AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime
             title: >-
