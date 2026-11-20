@@ -183,6 +183,15 @@ description of.
 4. **Output**: One ordered tool list, governed by the single policy — the tools of every family the
    application attached, in the order it attached them
 
+**Oversized result path:** the listing, searching, outlining and delegating tools measure their
+assembled result against `MaxResultCharacters` and, when it is over, return Core's
+`ToolResult.Oversized` carrying the whole result and their usual refusal message. A composition
+without retention of large outputs delivers exactly that refusal, as before; a composition with it
+— `ToolPackBuilder.WithToolOutputSpill` — retains the result and delivers a preview and a reference
+(see *ToolOutputSpill Unit Design*). The text file read tool keeps refusing, because the file it
+reads is already pageable by line range. A delegated agent is composed with retention only when the
+application passes `childToolOutput` to `AgentPack`.
+
 ### Policy-derived publication
 
 The registration check above decides *whether a family is asked for its tools*. A second, finer

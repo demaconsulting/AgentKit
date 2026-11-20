@@ -27,6 +27,15 @@ The system consists of:
   attaching content
 - **ToolResult Unit**: Constructs the results a guarded tool returns to the model, and defines
   the reasons a tool may refuse an operation
+- **ToolOutputOptions Unit**: Carries the preview size and retention ceilings observed when large
+  tool outputs are retained
+- **ToolOutputStore Unit**: Holds one composition's retained tool outputs in memory, named by
+  opaque references and bounded by count and size
+- **ToolOutputSpill Unit**: Composes opt-in retention of large tool outputs into a tool list,
+  replacing an oversized result with a bounded preview and a reference
+- **ToolOutputReadTool Unit**: Publishes `tool_output_read`, which pages through a retained output
+- **ToolOutputSearchTool Unit**: Publishes `tool_output_search`, which finds a pattern in a
+  retained output
 - **ToolName Unit**: Defines the tool naming convention and validates names against it
 - **GuardedToolFactory Unit**: The only supported way to construct a tool, applying the
   result-delivery guard and the naming rules to every tool it creates
@@ -133,6 +142,23 @@ The session engine needs none of the guarded-construction contract to do its wor
 guarded-construction contract needs none of the session engine. The relationship is conceptual rather
 than compiled: the tools an application puts into `AgentSessionOptions` are exactly the ones
 `ToolPackBuilder` produces, expressed in the same `AIFunction` currency.
+
+The five tool-output units form a fifth collaboration, **opt-in retention of large tool outputs**.
+Without it, a tool whose output exceeds `ToolLimits.MaxResultCharacters` refuses, and the work that
+produced the output is lost. An application opts in through `ToolPackBuilder.WithToolOutputSpill`
+or `ToolOutputSpill.Apply`. `ToolOutputSpill` then allocates one `ToolOutputStore` per composition,
+re-wraps every tool's `GuardedFunction` (see *GuardedToolFactory Unit Design*) so that its results
+pass through the composition's retention, and appends `ToolOutputReadTool` and
+`ToolOutputSearchTool` over the same store. A tool whose output is too large either declares it
+with `ToolResult.Oversized` or simply returns it; either way the wrapper retains it and returns a
+bounded preview naming an opaque reference such as `output-3`. Without the opt-in, the wrapper
+turns the declaration back into the identical refusal the tool always gave. Because the behavior
+lives inside each `AIFunction`, it is identical on every provider, and because the session engine
+carries the tool list unchanged across rotations, a reference survives compaction. The readers take
+an identifier and nothing else, so retention adds no way to reach the file system.
+`ToolOutputOptions` and `ToolLimits` depend on nothing; the store depends on the options and
+`ToolResult`; the readers on the store, `GuardedToolFactory`, `ToolResult` and `ToolLimits`; and
+`ToolOutputSpill` on all of them — so this collaboration is acyclic as well.
 
 ### Rotation, Not In-Place Reduction
 
@@ -388,6 +414,10 @@ The system additionally exposes the tool-contract API:
   the refusal text. Throws `ArgumentOutOfRangeException` for an undefined reason,
   `ArgumentNullException` / `ArgumentException` for a missing or empty message, and
   `ArgumentException` for an invalid redirect tool name.
+- **ToolResult.Oversized(string text, string denialMessage)**: Returns a marker declaring the
+  complete output too large to return; a guarded tool resolves it to the refusal, or to a preview
+  when retention is composed. Throws `ArgumentNullException` / `ArgumentException` for a missing
+  text or a missing or empty message.
 - **ToolName.Create(string family, string verb)**: Composes and validates `{family}_{verb}`.
   Throws `ArgumentNullException` / `ArgumentException` for a missing or invalid part.
 - **ToolName.Validate(string name)**: Validates a tool name against the naming convention.
@@ -407,6 +437,7 @@ The system additionally exposes the tool-contract API:
 | `ToolResult.Binary` | Inbound/Outbound | Method call / `object` return | `mediaType` non-null, non-empty |
 | `ToolResult.Image` | Inbound/Outbound | Method call / `object` return | `mediaType` denotes an image |
 | `ToolResult.Denied` | Inbound/Outbound | Method call / `object` return | Reason defined, message non-empty |
+| `ToolResult.Oversized` | Inbound/Outbound | Method call / `object` return | Text non-null, message non-empty |
 | `ToolName.Create` | Inbound/Outbound | Method call / `string` return | Family and verb non-empty |
 | `ToolName.Validate` | Inbound | Method call | `name` satisfies the convention |
 | `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction` | Delegate, name, description valid |
@@ -444,6 +475,31 @@ The system additionally exposes the pack composition API:
 | `ToolPackBuilder.WithHostCapabilities` | Inbound/Outbound | Method call / builder | None; always succeeds |
 | `ToolPackBuilder.Add` | Inbound/Outbound | Method call / builder | Prefix unclaimed |
 | `ToolPackBuilder.Build` | Inbound/Outbound | Method call / `IReadOnlyList` | Packs honor contracts |
+
+The system additionally exposes the large-tool-output retention API:
+
+- **new ToolOutputOptions(int previewCharacters, int maxOutputCharacters, int
+  maxRetainedCharacters, int maxRetainedOutputs)**: Creates retention options; every parameter is
+  optional. Throws `ArgumentOutOfRangeException` for a negative preview, a non-positive per-output
+  or count ceiling, or a total ceiling below the per-output ceiling.
+- **ToolOutputOptions.Default**: The shared options a host receives when it configures nothing.
+- **ToolPackBuilder.WithToolOutputSpill(ToolOutputOptions? options)**: Requests retention of large
+  outputs for the composition, replacing any earlier request, and returns the builder.
+- **ToolOutputSpill.Apply(IEnumerable&lt;AIFunction&gt; tools, ToolLimits limits, ToolOutputOptions?
+  options)**: Wraps every tool so an oversized output is retained and previewed, and appends the
+  two readers. Throws `ArgumentNullException` for missing arguments and `ArgumentException` for a
+  null, duplicate or reserved tool name.
+- **ToolOutputReadTool.ToolName** (`tool_output_read`) and **ToolOutputSearchTool.ToolName**
+  (`tool_output_search`): The names the readers are published under, taking an output identifier
+  and paging or search arguments, and no path.
+
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `new ToolOutputOptions(...)` | Inbound | Constructor call | Ceilings positive and consistent |
+| `ToolPackBuilder.WithToolOutputSpill` | Inbound/Outbound | Method call / builder | None; always succeeds |
+| `ToolOutputSpill.Apply` | Inbound/Outbound | Method call / `IReadOnlyList` | Names unique, unreserved |
+| `tool_output_read` | Model-facing | Tool call / `string` | Identifier from a preview |
+| `tool_output_search` | Model-facing | Tool call / `string` | Identifier and pattern |
 
 The system additionally exposes one provider-compatibility API:
 
@@ -495,7 +551,9 @@ The AgentKit Core takes exactly one runtime NuGet dependency,
 `AIFunction` is the common currency across the GitHub Copilot SDK, the Microsoft Agent Framework
 and any `Microsoft.Extensions.AI` `IChatClient`. Depending on the abstractions package — rather
 than on any provider, runtime or agent loop — is what lets one guarded tool be offered to all of
-them without Core choosing a provider on the application's behalf. Nothing further is taken:
+them without Core choosing a provider on the application's behalf. Its `DelegatingAIFunction` is
+what lets a guarded tool resolve an oversized output on the way out while forwarding every piece of
+its metadata unchanged. Nothing further is taken:
 there is no provider package, no agent framework package and no transitive runtime. As a
 third-party published library, `Microsoft.Extensions.AI.Abstractions` is an OTS item; its
 integration is recorded in *OTS Integration Design* (`docs/design/ots.md`) and its dedicated
@@ -571,6 +629,16 @@ asked to create its tools, accidental registration is unrepresentable rather tha
 see *ToolPackBuilder Unit Design*. Family prefix ownership is part of the same measure: a pack
 claims a prefix no other pack claims, and every tool it publishes must carry that prefix, so an
 application cannot present the model with two tools it cannot tell apart.
+
+**Retention of large tool outputs adds no reach.** The two reader tools accept an opaque output
+identifier and paging or search arguments, and no path, so there is no expressible request by
+which they could reach the file system; they read only the in-memory store of the composition that
+offered them, so one agent cannot read another's outputs. A provider-side remedy that writes large
+outputs to a temporary file the model is told to read was rejected for exactly this reason: it
+would either be unreadable to the confined tools or require widening their grants. The oversized
+marker a tool returns can never reach a provider unresolved, because the guarded wrapper replaces
+it with the identical refusal when retention is not composed. Retained memory is bounded per
+output, in total and by count, with oldest-first eviction; see *ToolOutputStore Unit Design*.
 
 Four further controls belong to the session engine. The first is **segregation between the engine and
 any provider**. The engine never touches a provider API. It produces `ProviderSessionSeed`, consumes
@@ -656,6 +724,26 @@ is released, and the original failure is what the caller learns even when that r
    so the prefix no other pack may claim is a promise that is verified rather than trusted
 5. **Output**: One ordered tool list — pack-add order, then the order each pack produced its tools
    — which the application hands to the agent runtime
+
+**Large tool output retention path (opt-in):**
+
+1. **Composition**: `ToolOutputSpill.Apply` — directly or from `ToolPackBuilder.Build` — allocates
+   one store, re-wraps every tool so its results pass through the composition's retention, and
+   appends `tool_output_read` and `tool_output_search`
+2. **Invocation**: A tool returns its result; a tool that measured its own output against the
+   result ceiling returns `ToolResult.Oversized` with the whole output and its refusal
+3. **Decision**: A declared-oversized output, or a textual result longer than
+   `MaxResultCharacters`, is retained; binary content and results within the ceiling pass through
+4. **Retention**: The output is normalized into lines (structured data indented, long lines
+   wrapped) and stored under the next `output-N` identifier, evicting the oldest outputs as needed;
+   an output above the per-output ceiling is refused instead
+5. **Output**: A preview — a header naming the reference, the size and the readers, then numbered
+   head and tail lines — fitted within the result ceiling, delivered as the tool's result
+6. **Reading**: The model calls `tool_output_read` or `tool_output_search` with the identifier;
+   each answers from the store within the result ceiling, or refuses with a stated fact
+
+Without the opt-in, step 3 is replaced by the wrapper turning a declared-oversized output back into
+the tool's own refusal, and every other result is delivered exactly as before.
 
 **Agent session turn path:**
 

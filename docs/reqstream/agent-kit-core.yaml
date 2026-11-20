@@ -293,6 +293,7 @@ sections:
           - AgentKitCore-GuardedToolFactory-GuardAlwaysApplied
           - AgentKitCore-GuardedToolFactory-DescriptionRequired
           - AgentKitCore-GuardedToolFactory-RejectMissingDelegate
+          - AgentKitCore-GuardedToolFactory-MetadataPreserved
         tests:
           - AgentKitCore_SystemGuardedTool_ConstructedTool_CarriesValidatedNameAndDescription
 
@@ -354,6 +355,83 @@ sections:
         tests:
           - AgentKitCore_SystemToolPacks_CollidingFamilyPrefixes_AreRejected
 
+      - id: AgentKitCore-ToolOutput-SpillAndPage
+        title: >-
+          When an application opts in, the library shall retain a tool output too large to return,
+          hand the model a bounded preview and an opaque reference in its place, and offer tools
+          that page through and search the retained output by that reference and by nothing else;
+          without the opt-in, every result shall be delivered exactly as before.
+        tags: [system, security]
+        justification: |
+          Without retention, a tool whose output exceeds the result ceiling must refuse, and the
+          work that produced the output - a broad search, a full listing, a delegated agent's whole
+          report - is lost; a custom tool's oversized result reaches the provider unbounded. A
+          provider-side remedy such as diverting the output to a temporary file the model is told
+          to read is unusable here, because the confined tools cannot read outside the locations
+          the application granted. Retaining the output in memory and naming it by an opaque
+          reference gives the model what it needs without any new way to reach the file system,
+          because the reader tools accept no path. The behavior lives in the tools themselves, so
+          it is identical on every provider, and a reference survives compaction because the tool
+          list does. It is opt-in because it adds two tools to the model's list and changes what
+          an oversized result looks like, which is the application's decision to make.
+        children:
+          - AgentKitCore-ToolResult-Oversized
+          - AgentKitCore-GuardedToolFactory-OversizedResolvedWithoutRetention
+          - AgentKitCore-ToolPackBuilder-ToolOutputSpill
+          - AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix
+          - AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
+          - AgentKitCore-ToolOutputSpill-PreviewComposition
+          - AgentKitCore-ToolOutputSpill-TextualResultsRetained
+          - AgentKitCore-ToolOutputSpill-BinaryNeverRetained
+          - AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained
+          - AgentKitCore-ToolOutputSpill-ReadersAppendedNotRetained
+          - AgentKitCore-ToolOutputSpill-IsolatedPerApplication
+          - AgentKitCore-ToolOutputSpill-RejectsInvalidLists
+          - AgentKitCore-ToolOutputStore-OpaqueReferences
+          - AgentKitCore-ToolOutputStore-NormalizedForPaging
+          - AgentKitCore-ToolOutputStore-ThreadSafe
+          - AgentKitCore-ToolOutputReadTool-ToolName
+          - AgentKitCore-ToolOutputReadTool-NoPathParameter
+          - AgentKitCore-ToolOutputReadTool-NumberedPage
+          - AgentKitCore-ToolOutputReadTool-OmittedCountFitsCeiling
+          - AgentKitCore-ToolOutputReadTool-BoundedPage
+          - AgentKitCore-ToolOutputReadTool-InvalidRequestsRefused
+          - AgentKitCore-ToolOutputSearchTool-ToolNameNoPath
+          - AgentKitCore-ToolOutputSearchTool-LiteralByDefault
+          - AgentKitCore-ToolOutputSearchTool-RegularExpression
+          - AgentKitCore-ToolOutputSearchTool-ContextAndCap
+          - AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused
+          - AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused
+          - AgentKitCore-ToolOutputSearchTool-BoundedResult
+        tests:
+          - AgentKitCore_SystemToolOutput_OversizedCustomTool_PreviewReferenceReadsBackTheFullOutput
+          - AgentKitCore_SystemToolOutput_ReferenceSurvivesSessionRotation
+          - AgentKitCore_SystemToolOutput_Readers_AcceptNoPath
+          - AgentKitCore_SystemToolOutput_WithoutRetention_OversizedOutputIsRefusedAsBefore
+
+      - id: AgentKitCore-ToolOutput-BoundedRetention
+        title: >-
+          The library shall bound what it retains of large tool outputs, by the size of one output,
+          by the total retained and by the number of outputs, releasing the oldest first, and shall
+          answer a reference to a released output by stating that it is no longer retained.
+        tags: [system, reliability]
+        justification: |
+          A long-running agent produces outputs without end, and memory a host cannot bound is a
+          failure waiting for a busy day. Releasing the oldest first keeps the outputs a model is
+          most likely still using. A released reference must be answered with that fact, so the
+          model re-runs the tool rather than doubting the reference or inventing its contents. An
+          output too large even to retain is refused honestly rather than truncated.
+        children:
+          - AgentKitCore-ToolOutputOptions-Defaults
+          - AgentKitCore-ToolOutputOptions-Customizable
+          - AgentKitCore-ToolOutputOptions-RejectsInvalid
+          - AgentKitCore-ToolOutputStore-PerOutputCeiling
+          - AgentKitCore-ToolOutputStore-OldestEvictedFirst
+          - AgentKitCore-ToolOutputStore-LookupOutcomes
+          - AgentKitCore-ToolOutputSpill-OverRetentionCeilingRefused
+        tests:
+          - AgentKitCore_SystemToolOutput_EvictedReference_IsAnsweredNoLongerRetained
+
       - id: AgentKitCore-ToolCurrency-AIFunctionAbstractions
         title: >-
           The library shall present each tool to the runtime as a Microsoft.Extensions.AI
@@ -373,6 +451,7 @@ sections:
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-Content
           - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction
         tests:
           - AgentKitCore_SystemGuardedTool_ImageResult_ReachesRuntimeAsContent
 

@@ -2,7 +2,7 @@ package AgentKitCore {
     private import SoftwareItemMetadata::*;
 
     part def ToolPackBuilder {
-        doc /* Composes tool packs into the tool list an application offers a model, registering a pack only when the host provides every capability the pack requires and rejecting two packs that claim the same family prefix. */
+        doc /* Composes tool packs into the tool list an application offers a model, registering a pack only when the host provides every capability the pack requires and rejecting two packs that claim the same family prefix, and, when the application asks, composing retention of large tool outputs over the result. */
 
         metadata info : SoftwareInfo {
             sourceFiles = ("src/DemaConsulting.AgentKit.Core/ToolPackBuilder.cs");

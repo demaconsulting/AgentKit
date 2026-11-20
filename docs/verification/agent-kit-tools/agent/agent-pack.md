@@ -32,7 +32,7 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-two scenarios below pass without error or exception
+A unit test run passes when all twenty-seven scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
@@ -227,3 +227,35 @@ Error path: the child names the sibling profile its own policy cannot cover and 
 unknown-profile refusal naming the profiles it does have. The absent profile is a fact about
 the child's own state, stated the way every other refusal in the family is stated, and it is
 what confirms the child cannot reach through a sibling to something its parent narrowed away.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: A Retaining Child Receives the Readers After Its Tools
+
+**Test**: `AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools`
+
+Normal operation: with `childToolOutput` supplied, the child receives the one tool its profile
+admits followed by `tool_output_read` and `tool_output_search`, and still not the write tool.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: A Tool-Less Profile Stays Tool-Less
+
+**Test**: `AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless`
+
+Boundary condition: a profile admitting nothing is composed with no tools at all, readers included.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: The Choice Is Carried to a Grandchild
+
+**Test**: `AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild`
+
+Normal operation: a child delegating in turn composes a grandchild that also holds the readers.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: Each Child Has Its Own Store
+
+**Test**: `AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore`
+
+Isolation: an output retained by the first child is unknown to the second child's reader.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: Without the Option a Child Is Unchanged
+
+**Test**: `AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached`
+
+Boundary condition: without `childToolOutput` a child receives exactly the admitted tools, with no
+readers appended.

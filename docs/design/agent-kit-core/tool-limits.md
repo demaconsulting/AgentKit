@@ -32,6 +32,11 @@ characters is on the order of eight thousand tokens handed back to the model, wh
 single tool result to a small fraction of a turn and keeps a multi-step task affordable. Setting
 this equal to `MaxReadBytes` would let one result crowd out every subsequent step.
 
+The same ceiling is also the threshold above which a composition that retains large tool outputs
+retains an output instead of returning it, and the bound on the preview and on every page the
+reader tools return; see *ToolOutputSpill Unit Design*. A second threshold was rejected: one budget
+keeps one meaning — what fits is returned, and what does not is either refused or retained.
+
 **`MaxBinaryBytes` = 8 MiB.** Images are not charged against the context window by the same route
 as text, so a character ceiling is the wrong control for them and a byte ceiling is the right one.
 Eight MiB sits at or below the per-attachment ceilings the major providers publish, so
@@ -211,3 +216,4 @@ N/A - `ToolLimits` depends only on the .NET base class library.
 
 `ToolLimits` is a public API entry point: a host constructs one — or takes `Default` — and hands
 it to a `PathPolicy`. Within this system it is held by `PathPolicy`; see *PathPolicy Unit Design*.
+`ToolOutputSpill`, `ToolOutputReadTool` and `ToolOutputSearchTool` read its result ceiling.

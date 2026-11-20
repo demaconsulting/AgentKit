@@ -142,6 +142,26 @@ policy refusal — passes `null`.
 `ArgumentException` for a missing or empty message; `ArgumentException` for an invalid redirect
 name.
 
+#### Oversized(string text, string denialMessage)
+
+Returns an internal `OversizedResult` marker carrying the complete output and the refusal message
+to use when nothing retains it.
+
+**Why it exists:** a tool whose output exceeds `ToolLimits.MaxResultCharacters` cannot know whether
+the application composed retention of large outputs. Returning the marker states the fact once and
+lets the composition decide: without retention the guarded wrapper replaces it with exactly
+`Denied(ResourceTooLarge, denialMessage)` — the text the tool returned before the marker existed —
+and with retention the output is retained and previewed; see *ToolOutputSpill Unit Design*.
+
+**Preconditions:** `text` is non-null; `denialMessage` is non-null and non-empty.
+
+**Postconditions:** the returned value is not a `string`; it is resolved by the `GuardedFunction`
+wrapper before any runtime sees it, so a tool built any other way must not return it. The marker
+exposes `Text`, `DenialMessage` and `ToDenial()`, which composes the refusal through `Denied`.
+
+**Throws:** `ArgumentNullException` for a missing text or message; `ArgumentException` for an
+empty message.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -153,6 +173,7 @@ name.
 | Undefined `DenialReason` | `ArgumentOutOfRangeException` propagates |
 | Null or empty refusal `message` | `ArgumentNullException` / `ArgumentException` |
 | Invalid `redirectToolName` | `ArgumentException` propagates |
+| Null `Oversized` text, or null or empty refusal message | `ArgumentNullException` / `ArgumentException` |
 | A refused operation | Not an error; a refusal is returned |
 
 The dividing line is the same one `PathPolicy` draws: **programming errors propagate; runtime
@@ -189,5 +210,6 @@ overloads to make the guarded factory look unnecessary; see *GuardedToolFactory 
 ### Callers
 
 `ToolResult` is a public API entry point: a tool author calls it to build the value a tool
-returns. Within this system nothing else calls it; the tool packs that consume it are introduced
-in later increments.
+returns. Within this system `ToolOutputSpill`, `ToolOutputStore`, `ToolOutputReadTool` and
+`ToolOutputSearchTool` compose their refusals through `Denied`, and the `GuardedFunction` wrapper
+resolves the `Oversized` marker.

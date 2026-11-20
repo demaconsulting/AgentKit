@@ -28,7 +28,8 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 | `NameSeparator` | `string` | Newline; separates headers, markers and names |
 
 The listing is bounded by `PathPolicy.Limits.MaxResultCharacters`. A listing that exceeds the limit
-is refused rather than truncated.
+is refused rather than truncated — or, when the composition retains large tool outputs, retained
+whole and previewed.
 
 #### Key Methods
 
@@ -60,8 +61,10 @@ governed by the supplied policy for the rest of its life.
 4. The named directory is listed under the working-directory anchor when the request was relative and
    the policy can emit relative names; otherwise it is listed under its resolved absolute header.
 5. An empty named-directory result returns `No files matched.`.
-6. A result over `MaxResultCharacters` is refused as `ResourceTooLarge`, naming the ceiling as a
-   plain fact and prescribing no remedy.
+6. A result over `MaxResultCharacters` is returned as `ToolResult.Oversized(text, message)`.
+   Without retention of large outputs the model receives exactly `ResourceTooLarge`, naming the
+   ceiling as a plain fact and prescribing no remedy; with it, the whole listing is retained and
+   previewed (see *ToolOutputSpill Unit Design*).
 7. Otherwise the listing is returned as text.
 
 ##### ListEveryLocation(PathPolicy policy, string pattern)

@@ -27,7 +27,7 @@ Unit tests reside in `Markdown/MarkdownOutlineToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 8 requirement scenarios below, covering 8 listed test method
+A unit test run passes when all 10 requirement scenarios below, covering 10 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -84,3 +84,19 @@ rather than refused, with the late heading reported at its correct line range.
 **Test**: `MarkdownOutlineTool_Outline_MissingFile_ReturnsDenial`
 
 The listed tests prove a missing file is refused as target-not-found rather than throwing.
+
+##### AgentKitTools-Markdown-OutlineTool-BoundedResult: Bounded Result
+
+**Test**: `MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling`
+
+The listed tests prove that, without retention of large outputs, the outline of a sixty-section
+document under a 500-character ceiling is refused with exactly the `ResourceTooLarge` text naming
+the ceiling.
+
+##### AgentKitTools-Markdown-OutlineTool-OversizedResultRetainable: Oversized Result Retainable
+
+**Test**: `MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeilingWithRetention_IsRetainedIndented`
+
+The listed tests prove that, composed with retention, the outline is answered with a preview naming
+`output-1`, and that searching the retained outline finds the last section's title on a line of its
+own — the indented form a model can page.

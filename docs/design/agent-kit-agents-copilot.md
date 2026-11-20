@@ -307,10 +307,31 @@ A confined agent has no tool that can read a file outside its granted locations 
 own read tool is suppressed — so a diverted result is a result the model can never see; measured
 against the live runtime, a model handed such a path failed the task. AgentKit's tools bound their
 own output through Core's tool limits, so a result that reaches the runtime is already a size the
-application chose to deliver, and it is delivered whole. AgentKit offers no provider-neutral
-equivalent of spilling a large result to a file: bounding a result is the tool's responsibility on
-every provider, and on this one the bound is honored rather than second-guessed. The opt-in live suite
-re-verifies that a result well past the runtime's diversion size arrives inline.
+application chose to deliver, and it is delivered whole. Bounding a result is the tool's
+responsibility on every provider, and on this one the bound is honored rather than second-guessed. An
+application that would rather keep a large result than have it refused composes Core's retention,
+which is provider-neutral and keeps the result in memory rather than in a file; see *Large Tool
+Outputs Are Retained in the Tools, Not by the Runtime*. The opt-in live suite re-verifies that a
+result well past the runtime's diversion size arrives inline.
+
+## Large Tool Outputs Are Retained in the Tools, Not by the Runtime
+
+Core's opt-in retention of large tool outputs (see *ToolOutputSpill Unit Design*) lives inside each
+`AIFunction`. The runtime invokes the very instances `CopilotAgentFactory` assigns as a session's tool
+definitions, and an agent hands the same instances to every run, created or resumed, so a retained
+output's reference outlives the run that produced it. Retention is therefore the large-output
+mechanism on Copilot exactly as on every other provider, with no change to this system. The two
+reader tools a retaining composition appends are published as definitions, named in the
+source-qualified allow-list as `custom:tool_output_read` and `custom:tool_output_search`, and
+approved one call at a time by the default permission handler, like any other supplied tool. Neither
+name is one the runtime reserves. A host that supplies its own handler must approve them as it
+approves its other tools.
+
+The runtime's own large-output diversion (`Tools.LargeOutput`) stays switched off whether or not
+retention is composed. It would hand the model the path of a temporary file no confined tool can
+read, whereas a retained output is reached through readers that take a reference and no path. With
+retention composed, what reaches the runtime is the tool's bounded preview, and it is delivered
+inline like any other result.
 
 ## Why a Turn-Channel Seam Exists
 
@@ -649,6 +670,8 @@ so no path can acquire capability another path withholds.
   associates with other behavior.
 - **Inline tool results.** The runtime's diversion of large results to a file is off, so no result
   is turned into a path the confined agent cannot read; see *Tool Results Are Delivered Inline*.
+  Where the application opts in, a large result is kept by Core's retention inside the tools, never
+  by the runtime.
 
 Two further measures protect the conversation rather than the machine: the runtime's own compaction
 threshold is held clear of the engine's rotation point, with every runtime rewrite of the

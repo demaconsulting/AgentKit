@@ -78,6 +78,15 @@ the guard it justifies; see *GuardedToolFactory Unit Verification Design*.
 `GuardedToolFactory` holds no state. Its only data is the options object it constructs per call,
 which is local to `Create`.
 
+The internal `GuardedFunction` it returns derives from `DelegatingAIFunction` and holds:
+
+| Member | Type | Description |
+| --- | --- | --- |
+| `InnerFunction` | `AIFunction` | The function the underlying factory built (inherited). |
+| `_spill` | `SpillAttachment?` | The composition's retention, or `null` when none is composed. |
+
+Instances are immutable; `WithSpill` returns a new wrapper over the same inner function.
+
 ### Key Methods
 
 #### Create(Delegate method, string name, string description, JsonSerializerOptions? serializerOptions)
@@ -95,7 +104,8 @@ non-null and non-empty. `serializerOptions` may be null.
 3. Construct the factory options internally, setting the name, the description, the supplied
    serializer options and the result-delivery guard.
 4. Delegate to the underlying `AIFunctionFactory.Create(Delegate, AIFunctionFactoryOptions)`
-   overload and return the tool.
+   overload.
+5. Wrap the result in a `GuardedFunction` carrying no retention, and return it.
 
 **Postconditions:** the returned tool carries the validated name and the supplied description;
 its text and content results are delivered unchanged whatever its declared return type, and any
@@ -131,8 +141,10 @@ for an empty description or a name violating the convention.
 
 #### MarshalResult(object? result, JsonSerializerOptions? serializerOptions)
 
-Private helper implementing the guard. It returns `null`, a `string`, an `AIContent` and an
-`IEnumerable<AIContent>` unchanged, and serializes anything else to a `JsonElement`.
+Private helper implementing the guard. It returns `null`, a `string`, an `AIContent`, an
+`IEnumerable<AIContent>` and the oversized-output marker unchanged, and serializes anything else to
+a `JsonElement`. The marker is passed through so the wrapper can resolve it; serializing it would
+hand a provider a JSON rendering of the whole output the ceiling exists to keep out.
 
 **Serialization uses a `JsonTypeInfo` obtained from the options** rather than the
 reflection-based `SerializeToElement` overload, so the unit carries no trimming or
@@ -142,6 +154,30 @@ the same source the underlying factory would have used.
 
 **Postconditions:** the returned value is either the argument itself or a `JsonElement`; the
 helper never throws for a shape reason.
+
+#### GuardedFunction.InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+
+Invokes the inner function and resolves its result for delivery:
+
+- **No retention composed:** an `OversizedResult` marker from `ToolResult.Oversized` is replaced by
+  exactly `ToolResult.Denied(DenialReason.ResourceTooLarge, marker.DenialMessage)` — the text the
+  tool returned before the marker existed — and every other result passes through untouched. A
+  host that has not opted in therefore observes no change, and a marker never reaches a provider.
+- **Retention composed:** every result is handed to `SpillAttachment.Deliver`, which retains an
+  oversized output and returns its preview, and returns anything else unchanged; see
+  *ToolOutputSpill Unit Design*.
+
+**The wrapper is transparent.** `DelegatingAIFunction` forwards the name, the description, the
+parameter and return schemas, the serializer options, the underlying method, the additional
+properties and service lookup to the inner function. Every consumer in this library and in the
+provider adapters reads only those members and invokes the tool, so wrapping changes nothing a
+consumer observes except the result handling above.
+
+#### GuardedFunction.WithSpill(SpillAttachment spill)
+
+Returns a new `GuardedFunction` over the same inner function carrying the supplied retention. A
+new instance rather than a mutation, so a tool already handed to a provider or held in another
+composition keeps the behavior it was composed with. Called only by `ToolOutputSpill.Apply`.
 
 ### Error Handling
 
@@ -180,11 +216,14 @@ tests and irrelevant to the case this library is in.
 - **ToolResult** — the results a guarded tool returns; see *ToolResult Unit Design*. The
   dependency is conceptual rather than compile-time: the factory does not reference the result
   constructors, but the guard exists precisely because of the shapes they produce.
+- **ToolOutputSpill** — the `SpillAttachment` a wrapper hands results to when retention is
+  composed; see *ToolOutputSpill Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `AIFunction`, `AIFunctionFactory`,
-  `AIFunctionFactoryOptions`, `AIContent` and `AIJsonUtilities.DefaultOptions`.
+  `AIFunctionFactoryOptions`, `DelegatingAIFunction`, `AIContent` and
+  `AIJsonUtilities.DefaultOptions`.
 
 ### Callers
 
 `GuardedToolFactory` is a public API entry point: a pack author calls it to build every tool.
-Within this system nothing else calls it; the tool packs that consume it are introduced in later
-increments.
+Within this system `ToolOutputReadTool` and `ToolOutputSearchTool` build their tools through it,
+and `ToolOutputSpill` re-wraps the functions it returns.

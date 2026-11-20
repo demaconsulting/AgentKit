@@ -1,0 +1,124 @@
+---
+# Software Unit Requirements for ToolOutputSpill
+#
+# These requirements describe the design-level behavior of the ToolOutputSpill unit, which
+# composes retention of large tool outputs into a tool list.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputSpill Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
+            title: >-
+              A composition retaining large outputs shall return a result within the result ceiling
+              unchanged, and shall retain a textual result exceeding it, returning in its place a
+              preview no longer than the ceiling that names the reference, the source tool, the
+              output's size, and both reader tools.
+            justification: |
+              The result ceiling already states how much of the context window one result may
+              spend; reusing it keeps one budget with one meaning. Naming the reference and the
+              readers in a successful result is the designed recourse, so the model can read the
+              part it needs rather than guess how to narrow a refused request.
+            tests:
+              - ToolOutputSpill_Apply_ResultWithinCeiling_IsReturnedUnchanged
+              - ToolOutputSpill_Apply_OversizedText_ReturnsBoundedPreviewNamingReferenceAndReaders
+
+          - id: AgentKitCore-ToolOutputSpill-PreviewComposition
+            title: >-
+              The preview shall show numbered lines from the head and the tail of the output with the
+              omitted range marked, shall state which lines it shows and whether lines were wrapped,
+              and shall fit with its header within the result ceiling, delivering the header alone
+              when no line fits.
+            justification: |
+              The head of an output usually says what it is and the tail how it finished. Numbering
+              lines exactly as the file reader does lets the model page without learning a new
+              shape. The reference is the result, so it is always delivered even when a very small
+              ceiling leaves room for nothing else.
+            tests:
+              - ToolOutputSpill_Apply_OversizedText_PreviewShowsNumberedHeadAndTail
+              - ToolOutputSpill_Apply_WrappedOutput_HeaderNotesTheWrapping
+              - ToolOutputSpill_Apply_SmallCeiling_PreviewIsClampedAndHeaderAlwaysDelivered
+
+          - id: AgentKitCore-ToolOutputSpill-TextualResultsRetained
+            title: >-
+              A composition retaining large outputs shall retain an oversized string, JSON document,
+              text content or sequence of text content, indenting a JSON document for paging, from
+              any tool in the composition including one not built by the guarded factory.
+            justification: |
+              Hosts write their own tools, and an oversized custom result is exactly what would
+              otherwise reach a provider unbounded. Compact JSON is one line a model cannot page, so
+              structured data is indented when it is retained.
+            tests:
+              - ToolOutputSpill_Apply_OversizedStructuredResult_IsRetainedIndented
+              - ToolOutputSpill_Apply_OversizedTextContentList_IsRetained
+              - ToolOutputSpill_Apply_ToolNotBuiltByTheFactory_IsRetainedToo
+
+          - id: AgentKitCore-ToolOutputSpill-BinaryNeverRetained
+            title: >-
+              A composition retaining large outputs shall pass binary content, any result containing
+              it, and an absent result through unchanged.
+            justification: |
+              Binary content is already bounded by its own ceiling and is meaningless as numbered
+              lines; a captioned image must reach the provider as the image it is.
+            tests:
+              - ToolOutputSpill_Apply_BinaryContent_PassesThroughUnchanged
+              - ToolOutputSpill_Apply_NullResult_PassesThrough
+
+          - id: AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained
+            title: >-
+              A composition retaining large outputs shall retain an output a tool declared oversized,
+              whatever its measured size.
+            justification: |
+              A tool that measures its result against a ceiling of its own decides when it is
+              oversized; the composition honors that decision rather than second-guessing it.
+            tests:
+              - ToolOutputSpill_Apply_OversizedMarker_IsRetained
+
+          - id: AgentKitCore-ToolOutputSpill-OverRetentionCeilingRefused
+            title: >-
+              A composition retaining large outputs shall refuse an output larger than the
+              per-output retention ceiling, giving the tool's own refusal when the tool declared the
+              output oversized and otherwise a refusal naming the retention ceiling, and shall never
+              truncate it.
+            tags: [reliability]
+            justification: |
+              Retention is bounded, and an output too large to retain must still be answered
+              honestly. A truncated output would hide what the model never knew to ask for.
+            tests:
+              - ToolOutputSpill_Apply_MarkerOverRetentionCeiling_ReturnsTheToolsRefusal
+              - ToolOutputSpill_Apply_PlainOutputOverRetentionCeiling_IsRefusedNamingTheCeiling
+
+          - id: AgentKitCore-ToolOutputSpill-ReadersAppendedNotRetained
+            title: >-
+              A composition retaining large outputs shall append the read and search tools after the
+              supplied tools, preserve each supplied tool's metadata, and never retain a reader's own
+              result.
+            justification: |
+              The readers are the recourse the preview names, so they must be present wherever a
+              preview can appear. A reader's result is bounded and refused when over the ceiling, so
+              a page can never become yet another reference.
+            tests:
+              - ToolOutputSpill_Apply_Tools_AreFollowedByTheReaders
+              - ToolOutputSpill_Apply_ReaderResults_AreNeverRetained
+
+          - id: AgentKitCore-ToolOutputSpill-IsolatedPerApplication
+            title: >-
+              Each composition retaining large outputs shall have its own store, and composing
+              retention shall not alter the tools it was composed from.
+            tags: [security]
+            justification: |
+              One composition must not be able to read another's outputs, and a tool list composed
+              without retention must keep behaving as it did.
+            tests:
+              - ToolOutputSpill_Apply_TwoApplications_DoNotShareReferencesOrAlterTheSuppliedTools
+
+          - id: AgentKitCore-ToolOutputSpill-RejectsInvalidLists
+            title: >-
+              Composing retention shall reject a missing list or ceilings, a null tool, two tools of
+              one name, and a tool whose name carries the reserved tool_output prefix.
+            justification: |
+              Each is a mistake in the composing application. A tool named like a reader would be
+              indistinguishable from the readers the composition appends.
+            tests:
+              - ToolOutputSpill_Apply_InvalidLists_Throw

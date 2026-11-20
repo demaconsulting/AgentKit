@@ -113,8 +113,9 @@ registered profile, and the five captured values for the rest of its life.
    cancellation token.
 7. The runner's result is turned into a returned result: a `null` or empty answer is reported as
    an agent that finished without reporting anything, an answer longer than
-   `policy.Limits.MaxResultCharacters` is refused as `ResourceTooLarge` naming the ceiling, and
-   any other answer is returned as text.
+   `policy.Limits.MaxResultCharacters` is returned as `ToolResult.Oversized` — giving exactly the
+   `ResourceTooLarge` refusal naming the ceiling without retention of large outputs, and a retained
+   preview with it — and any other answer is returned as text.
 
 ##### DescribeTool(IReadOnlyList<AgentProfile> profiles)
 

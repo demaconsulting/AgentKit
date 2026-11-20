@@ -27,7 +27,7 @@ project.
 
 #### Acceptance Criteria
 
-A unit test run passes when all 6 requirement scenarios below, covering 8 listed test method
+A unit test run passes when all 8 requirement scenarios below, covering 10 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -76,3 +76,18 @@ The listed tests prove a glob pattern restricts the listing, and a recursive pre
 **Test**: `FileListTool_List_DirectoryOutsideGrants_ReturnsDenial`
 
 The listed tests prove a directory outside the grants is refused, disclosing the permitted location.
+
+##### AgentKitTools-File-ListTool-BoundedResult: Bounded Result
+
+**Test**: `FileListTool_List_ListingBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling`
+
+The listed tests prove that, without retention of large outputs, a listing of forty files under a
+100-character ceiling is refused with exactly the `ResourceTooLarge` text naming the ceiling, and no
+partial listing is returned.
+
+##### AgentKitTools-File-ListTool-OversizedResultRetainable: Oversized Result Retainable
+
+**Test**: `FileListTool_List_ListingBeyondTheResultCeilingWithRetention_IsRetainedForPaging`
+
+The listed tests prove that, composed with retention, the same listing is answered with a preview
+naming `output-1`, and that `tool_output_search` finds the last file in the retained listing.

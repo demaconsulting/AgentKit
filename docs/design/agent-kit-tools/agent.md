@@ -114,13 +114,14 @@ are compared ordinally.
 find out what it may delegate to will usually just not delegate, so the profile names — and their
 descriptions where they have one — appear in the tool description a model reads while choosing.
 
-**A child that said nothing is not a failure.** A runner returning `null` or empty text is
-reported as an agent that finished without reporting anything; a child can legitimately have found
-there was nothing to report, and telling the parent it failed would invite it to retry work that
-was already done. A child's answer is bounded by `MaxResultCharacters` and refused rather than
-truncated, because a truncated report is worse than none. An exception raised inside the runner
-propagates rather than becoming a refusal, because this library cannot tell a transient outage
-from a misconfiguration.
+**A child that said nothing is not a failure.** A runner returning `null` or empty text is reported as an agent that
+finished without reporting anything; a child can legitimately have found there was nothing to report, and telling the
+parent it failed would invite it to retry work that was already done. A child's answer is bounded by
+`MaxResultCharacters` and refused rather than truncated, because a truncated report is worse than none — or, when the
+parent's composition retains large tool outputs, retained whole so the parent can page through it. A child is composed
+with retention of its own only when the application passes `childToolOutput` to the pack. An exception raised inside the
+runner propagates rather than becoming a refusal, because this library cannot tell a transient outage from a
+misconfiguration.
 
 ### The Isolation Mistake, Made Impossible to Write
 

@@ -1,0 +1,85 @@
+---
+# Software Unit Requirements for ToolOutputStore
+#
+# These requirements describe the design-level behavior of the ToolOutputStore unit, the
+# in-memory store of the large tool outputs one composition has retained.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputStore Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputStore-OpaqueReferences
+            title: >-
+              The output store shall name each retained output by an opaque identifier of the form
+              output-N, issued in increasing order, and shall return the retained output for that
+              identifier.
+            tags: [security]
+            justification: |
+              A reference that looked like a path would invite a model to hand it to a file tool,
+              and one that could be guessed across compositions would let one agent read another's
+              outputs. An opaque, ordered identifier names exactly one output in exactly one store,
+              and its order is what lets the store tell an evicted reference from an unknown one.
+            tests:
+              - ToolOutputStore_Add_Outputs_IssuesMonotonicIdsAndRetainsTheLines
+
+          - id: AgentKitCore-ToolOutputStore-NormalizedForPaging
+            title: >-
+              The output store shall retain an output as lines, treating every line-ending
+              convention as one break, ending the last line at a trailing break, and wrapping a line
+              longer than 2,000 characters onto continuation lines without splitting a character.
+            justification: |
+              A model pages a retained output by line number, so the lines must be stable and none
+              may be larger than a page. Minified text and compact JSON arrive as one enormous line,
+              which would otherwise be impossible to page.
+            tests:
+              - ToolOutputStore_Add_MixedLineEndings_AreNormalizedToLines
+              - ToolOutputStore_Add_VeryLongLine_IsWrappedOntoContinuationLines
+              - ToolOutputStore_Add_WrapAtSurrogatePair_KeepsThePairTogether
+              - ToolOutputStore_Indent_CompactJson_SpansSeveralLines
+
+          - id: AgentKitCore-ToolOutputStore-PerOutputCeiling
+            title: >-
+              The output store shall not retain an output larger than the per-output ceiling, and
+              shall release nothing already retained when it refuses one.
+            tags: [reliability]
+            justification: |
+              One unbounded output must not be able to exhaust a host's memory, and refusing it must
+              not cost the model references it already holds.
+            tests:
+              - ToolOutputStore_Add_OutputOverPerOutputCeiling_IsNotRetained
+
+          - id: AgentKitCore-ToolOutputStore-OldestEvictedFirst
+            title: >-
+              The output store shall evict its oldest outputs first whenever retaining another would
+              exceed the ceiling on retained outputs or on retained characters.
+            tags: [reliability]
+            justification: |
+              A long session produces outputs without end, so the store must be bounded. The most
+              recent outputs are the ones a model is most likely still working with, so the oldest
+              are released first.
+            tests:
+              - ToolOutputStore_Add_BeyondTheCountCeiling_EvictsTheOldestFirst
+              - ToolOutputStore_Add_BeyondTheCharacterCeiling_EvictsTheOldestFirst
+
+          - id: AgentKitCore-ToolOutputStore-LookupOutcomes
+            title: >-
+              The output store shall distinguish a malformed identifier, an identifier never issued,
+              and an identifier whose output was evicted, and shall state each as a refusal.
+            justification: |
+              Each tells the model a different fact. An evicted reference in particular must be
+              reported as no longer retained, so the model knows to re-run the tool rather than to
+              doubt the identifier it was given.
+            tests:
+              - ToolOutputStore_Find_MalformedOrUnissuedIds_AreDistinguished
+              - ToolOutputStore_Refusal_EachFailure_StatesItsFact
+
+          - id: AgentKitCore-ToolOutputStore-ThreadSafe
+            title: >-
+              The output store shall accept concurrent retention, issuing every output a distinct
+              identifier and retaining every one within its ceilings.
+            justification: |
+              Providers invoke several tools of one composition concurrently, and every one of them
+              writes to the same store.
+            tests:
+              - ToolOutputStore_Add_Concurrently_IssuesDistinctIdsAndRetainsEveryOutput

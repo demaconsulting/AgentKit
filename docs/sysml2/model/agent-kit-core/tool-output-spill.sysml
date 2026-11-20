@@ -1,0 +1,15 @@
+package AgentKitCore {
+    private import SoftwareItemMetadata::*;
+
+    part def ToolOutputSpill {
+        doc /* Composes opt-in retention of large tool outputs into a tool list: wraps every tool so an output exceeding the result ceiling is retained and replaced by a bounded preview naming its reference and the reader tools, passes binary content through unchanged, refuses an output too large to retain, and appends the two reader tools over a fresh per-composition store. */
+
+        metadata info : SoftwareInfo {
+            sourceFiles = ("src/DemaConsulting.AgentKit.Core/ToolOutputSpill.cs");
+            testFiles = ("test/DemaConsulting.AgentKit.Core.Tests/ToolOutputSpillTests.cs");
+            designFiles = ("docs/design/agent-kit-core/tool-output-spill.md");
+            verificationFiles = ("docs/verification/agent-kit-core/tool-output-spill.md");
+            requirementFiles = ("docs/reqstream/agent-kit-core/tool-output-spill.yaml");
+        }
+    }
+}

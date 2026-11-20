@@ -65,7 +65,9 @@ triple-tilde fences, and hashes on lines indented four or more spaces, are conte
 
 **Policy and ceilings match text reading.** The outline tool uses the read decision, checks
 `MaxReadBytes` before reading, and checks `MaxResultCharacters` against the serialized structured
-result before returning it. Oversized inputs or results are refused rather than truncated.
+result before returning it. Oversized inputs or results are refused rather than truncated; when the
+composition retains large tool outputs, an oversized outline is retained, indented, and previewed
+instead.
 
 **No host capability is required.** Reading Markdown structure needs no model vision or other special
 host support, so `MarkdownPack.RequiredCapabilities` is `HostCapabilities.None`.

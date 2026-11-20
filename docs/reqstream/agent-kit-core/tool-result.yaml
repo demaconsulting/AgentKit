@@ -113,3 +113,17 @@ sections:
               composition is fixed and the only free text is what the caller supplied.
             tests:
               - ToolResult_Denied_Message_ContainsOnlySuppliedTextAndReason
+
+          - id: AgentKitCore-ToolResult-Oversized
+            title: >-
+              A tool result shall be able to declare an output too large to return, carrying the
+              whole output and the refusal to give when it is not retained, and shall reject a
+              missing output or an empty refusal.
+            justification: |
+              A tool cannot know whether the application composed retention of large outputs. Stating
+              the fact once - here is the whole output, and here is the honest refusal - lets the
+              composition give whichever answer it supports without every tool learning about
+              retention.
+            tests:
+              - ToolResult_Oversized_ValidArguments_ReturnsAMarkerThatIsNotText
+              - ToolResult_Oversized_InvalidArguments_Throw

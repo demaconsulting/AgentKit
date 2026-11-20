@@ -91,3 +91,25 @@ sections:
                   act on.
                 tests:
                   - MarkdownOutlineTool_Outline_MissingFile_ReturnsDenial
+
+              - id: AgentKitTools-Markdown-OutlineTool-BoundedResult
+                title: >-
+                  When the composition does not retain large outputs, the outline tool shall refuse
+                  an outline exceeding the policy's result ceiling, naming the ceiling rather than
+                  truncating.
+                justification: |
+                  A truncated outline would hide sections the model would then never know to read;
+                  naming the ceiling lets it narrow the outline with a shallower depth instead.
+                tests:
+                  - MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-Markdown-OutlineTool-OversizedResultRetainable
+                title: >-
+                  When the composition retains large outputs, the outline tool shall have an outline
+                  exceeding the policy's result ceiling retained whole, one value per line, for paging
+                  rather than refused.
+                justification: |
+                  An outline is structured data whose compact form is a single line a model cannot
+                  page; retaining it indented keeps every section reachable a page at a time.
+                tests:
+                  - MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeilingWithRetention_IsRetainedIndented

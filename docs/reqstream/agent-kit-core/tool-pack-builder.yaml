@@ -137,3 +137,31 @@ sections:
             tests:
               - ToolPackBuilder_Build_CalledTwice_ReturnsTheSameComposition
               - ToolPackBuilder_Build_PackAddedAfterAnEarlierBuild_AppearsInTheNextBuild
+
+          - id: AgentKitCore-ToolPackBuilder-ToolOutputSpill
+            title: >-
+              The builder shall compose retention of large outputs when asked, at build time and
+              whatever the order of the request relative to adding packs, appending the read and
+              search tools after every pack's tools, applying the last options supplied and the
+              policy's result ceiling, and giving each built list its own store.
+            justification: |
+              Retention is a composition decision like declaring host capabilities, so it follows the
+              same rules: a later request replaces an earlier one, and the order of calls does not
+              matter. A fresh store per build keeps two built lists from sharing references.
+            tests:
+              - ToolPackBuilder_WithToolOutputSpill_AppendsTheReadersAfterEveryPack
+              - ToolPackBuilder_WithToolOutputSpill_CalledTwice_TheLastOptionsWin
+              - ToolPackBuilder_WithToolOutputSpill_EachBuild_HasItsOwnStore
+
+          - id: AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix
+            title: >-
+              While retention of large outputs is composed, the builder shall reject a pack claiming
+              the tool_output prefix or publishing a tool under it, and without retention shall
+              reserve nothing.
+            justification: |
+              A pack's tool named like a reader would be indistinguishable from the readers the
+              composition appends. Reserving the prefix only when retention is chosen keeps every
+              existing composition unchanged.
+            tests:
+              - ToolPackBuilder_WithToolOutputSpill_ReservedPrefix_ThrowsInvalidOperationException
+              - ToolPackBuilder_Build_WithoutToolOutputSpill_DoesNotReserveThePrefix

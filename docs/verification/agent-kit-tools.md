@@ -231,11 +231,30 @@ over its own narrowed policy — so the file families filter for it with no chan
 family — and that the allow-list is a filter over what was published rather than a source of tools,
 so a named-but-suppressed tool yields absence rather than a composition failure.
 
+### Large Tool Outputs: Oversized Built-In Results Are Retained
+
+**Test**: `AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained`
+
+Composes the TextFile, File and Markdown families with retention of large outputs over a workspace
+of sixty notes and a 300-character ceiling. Asserts a full listing and a broad search are each
+answered with a preview naming its own reference, that reading a long file with `text_file_read`
+is still refused — its source is already pageable — and that searching the retained search result
+finds the last note's match.
+
+### Large Tool Outputs: A Delegated Agent's Oversized Answer Is Retained by the Parent
+
+**Test**: `AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent`
+
+Composes a retaining parent with the Agent family, passing `childToolOutput` so children retain
+too, and a runner answering eighty lines. Asserts the parent's `agent_run` result is a preview, the
+last line reads back exactly, and the child was handed its admitted tool followed by the two
+readers.
+
 ## Acceptance Criteria
 
 A system-level test run passes when the scenarios above pass without error or exception beyond
 those explicitly asserted. Any unexpected exception, a non-empty tool list from an empty
 composition, a family that does not contribute its tools when attached, a family contributed to a
 host that did not declare the capability it requires, a delegated agent's writes appearing in its
-parent's task list, or a failure to compose through the AgentKitCore pack contract constitutes a
-failure.
+parent's task list, an oversized listing, search, outline or delegated answer neither refused nor retained,
+or a failure to compose through the AgentKitCore pack contract constitutes a failure.

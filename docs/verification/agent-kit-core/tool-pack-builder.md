@@ -38,7 +38,7 @@ within the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twenty-four scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-nine scenarios below pass without error or exception beyond
 those explicitly asserted. A pack registered without its capabilities being satisfied, an
 unsupported pack asked to create tools, a composition in the wrong order, an accepted collision,
 an accepted foreign tool name, and any malformed pack that is not refused each constitute a
@@ -207,3 +207,37 @@ an empty list on a second call, which is a trap rather than a discipline.
 
 Asserts each build reports the builder's state as it is at that call, so a cached first answer
 would fail this scenario.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpill: The Readers Are Appended After Every Pack
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_AppendsTheReadersAfterEveryPack`
+
+Requests retention between two `Add` calls and asserts the packs' tools in order followed by
+`tool_output_read` and `tool_output_search`, and that the call chains.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpill: The Last Options Win
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_CalledTwice_TheLastOptionsWin`
+
+Requests retention twice over a policy with a small result ceiling, and asserts an oversized output
+is refused naming the second options' retention ceiling.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpill: Each Build Has Its Own Store
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_EachBuild_HasItsOwnStore`
+
+Retains an output through one build and asserts the reader of a second build reports the reference
+was never retained.
+
+#### AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix: The Reserved Prefix Is Rejected
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_ReservedPrefix_ThrowsInvalidOperationException`
+
+Error path: with retention requested, a pack claiming `tool_output` and a pack publishing
+`tool_output_peek` under a shorter prefix both throw at `Build`.
+
+#### AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix: Without Retention Nothing Is Reserved
+
+**Test**: `ToolPackBuilder_Build_WithoutToolOutputSpill_DoesNotReserveThePrefix`
+
+Boundary: without the request the same pack composes as it always did.

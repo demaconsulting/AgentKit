@@ -43,7 +43,7 @@ where a policy needs a working directory.
 
 #### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond
+A unit test run passes when all sixteen scenarios below pass without error or exception beyond
 those explicitly asserted. A tool description that omits a registered profile, a missing
 required constructor argument accepted, an unknown or malformed profile that reaches the
 runner, a composition failure that escapes the tool call, a call at the depth ceiling that
@@ -143,9 +143,17 @@ would invite it to retry work that was already done.
 **Test**: `AgentRunTool_Run_OversizedAnswer_IsRefusedRatherThanTruncated`
 
 Boundary condition on the result ceiling: an answer longer than `MaxResultCharacters` is
-refused as `ResourceTooLarge` naming the ceiling, and no partial answer is returned. A
-truncated report is worse than none, because the parent cannot tell it is reading half an
-answer.
+refused as `ResourceTooLarge` naming the ceiling, and no partial answer is returned, when the
+composition does not retain large outputs. A truncated report is worse than none, because the
+parent cannot tell it is reading half an answer.
+
+##### AgentKitTools-Agent-RunTool-OversizedAnswerRetainable: An Oversized Answer Is Retained With Retention
+
+**Test**: `AgentRunTool_Run_OversizedAnswerWithRetention_IsRetainedForPaging`
+
+Normal operation under retention: composed with retention of large outputs, a fifty-line answer
+over a 200-character ceiling is answered with a preview naming `output-1`, and the last finding is
+read back exactly through `tool_output_read`, so the child's work is kept rather than lost.
 
 ##### AgentKitTools-Agent-RunTool-ComposesNamedProfileOnly: The Named Profile Is the Only One Composed
 

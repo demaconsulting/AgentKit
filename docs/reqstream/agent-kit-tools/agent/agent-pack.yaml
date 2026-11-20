@@ -192,3 +192,25 @@ sections:
                 tests:
                   - AgentPack_CreateTools_ProfileNarrowingTheGrants_IsAcceptedAndReachesTheChild
                   - AgentPack_CreateTools_ProfileWithoutGrants_InheritsTheParentPolicy
+
+              - id: AgentKitTools-Agent-Pack-ChildToolOutputOptIn
+                title: >-
+                  When the application supplies retention options for children, the agent pack
+                  shall compose each delegated agent holding at least one tool with retention of
+                  large outputs, giving it its own store and the read and search tools after the
+                  tools its profile admits, shall carry that choice to every deeper level, and shall
+                  leave a profile admitting no tools tool-less; without those options a child's tools
+                  shall be unchanged.
+                justification: |
+                  A child's tool list is composed separately from its parent's, so the parent's choice
+                  cannot reach it unless the application states it for children too. The readers are
+                  infrastructure for the tools a child holds rather than a capability a profile
+                  grants, so they follow the profile filter; a child holding nothing produces nothing
+                  to read back. Each child's own store keeps one child's outputs out of another's,
+                  exactly as each child's own task list does.
+                tests:
+                  - AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools
+                  - AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless
+                  - AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild
+                  - AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore
+                  - AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached

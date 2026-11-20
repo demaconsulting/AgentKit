@@ -331,3 +331,29 @@ sections:
           - AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient
         tests:
           - AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained
+
+      - id: AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
+        title: >-
+          The library shall publish the reader tools of a tool list composed with retention of large
+          outputs on every Copilot session it builds, name each in the session's source-qualified
+          allow-list, approve each through the default permission handler, and hand the runtime the
+          very tools that retain an oversized output and page it back, with the runtime's own
+          diversion of large tool results left switched off.
+        tags: [security]
+        justification: |
+          On Copilot the runtime, not this library, invokes the tools, and it can invoke only what is
+          published, allow-listed and permitted. A reader missing from any of the three would leave a
+          preview naming a tool the model cannot call. The runtime's own diversion of a large result
+          to a temporary file stays off whether or not retention is composed: the file would be
+          unreadable to a confined agent, whereas a retained output is reached through readers that
+          take a reference and no path. Retention lives in the tools themselves, so it is the
+          large-output mechanism on Copilot exactly as on every other provider, and what the runtime
+          delivers inline is the tool's bounded preview.
+        children:
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DefaultPermissionHandler
+          - AgentKitAgentsCopilot-CopilotAgentFactory-DisablesLargeOutputDiversion
+          - AgentKitAgentsCopilot-CopilotAgentFactory-OneConfinementPath
+        tests:
+          - AgentKitAgentsCopilot_ToolOutput_ReadersArePublishedAllowListedAndApproved
+          - AgentKitAgentsCopilot_ToolOutput_ConfiguredToolsDeliverPreviewAndPage

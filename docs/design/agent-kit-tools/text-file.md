@@ -155,8 +155,10 @@ naming its reason. Nothing is thrown at a model, because an exception raised dur
 the agent's turn and strands it.
 
 **Ceilings refuse rather than truncate what they bound.** `MaxReadBytes` bounds what may be read and
-`MaxResultCharacters` bounds what may be returned. Search and read refuse an overrun with the
-ceiling named. A partial file or partial search result would be an omission the model cannot detect
-and would reason past. The one bounded prefix in the family is not an exception to this: search
-renders a single line longer than `MaxReadBytes` against a truncated prefix so no pathological line
-is ever materialized whole, and the search tool's own remarks disclose it.
+`MaxResultCharacters` bounds what may be returned. Search and read refuse an overrun with the ceiling named. A partial
+file or partial search result would be an omission the model cannot detect and would reason past. When the composition
+retains large tool outputs, search hands its whole result over with the refusal (`ToolResult.Oversized`) so it is
+retained and previewed instead; read keeps refusing, because the file it reads is already pageable by line range. The
+one bounded prefix in the family is not an exception to this: search renders a single line longer than `MaxReadBytes`
+against a truncated prefix so no pathological line is ever materialized whole, and the search tool's own remarks
+disclose it.

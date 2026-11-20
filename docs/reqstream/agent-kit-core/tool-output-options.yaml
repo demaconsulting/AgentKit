@@ -1,0 +1,47 @@
+---
+# Software Unit Requirements for ToolOutputOptions
+#
+# These requirements describe the design-level behavior of the ToolOutputOptions unit, which
+# carries the preview size and retention ceilings a composition retaining large tool outputs
+# observes.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputOptions Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputOptions-Defaults
+            title: >-
+              The retention options shall provide published defaults of a 4,000-character preview,
+              a 4,194,304-character ceiling on one retained output, a 16,777,216-character ceiling
+              on everything retained, and a ceiling of 256 retained outputs.
+            justification: |
+              A host that opts in to retention without configuring it must receive ceilings that
+              keep memory bounded and a preview small enough not to crowd out the conversation.
+              Publishing the values as constants lets a host reason about them and lets the
+              documentation state them exactly.
+            tests:
+              - ToolOutputOptions_Default_CarriesThePublishedDefaults
+
+          - id: AgentKitCore-ToolOutputOptions-Customizable
+            title: >-
+              The retention options shall let a host replace any one value without restating the
+              others, and shall permit a zero preview.
+            justification: |
+              Hosts differ in memory budget and in how much of an output a model should see before
+              choosing to read it. A zero preview is a legitimate choice for a host that wants every
+              large output read deliberately, so it is accepted rather than refused.
+            tests:
+              - ToolOutputOptions_Constructor_OverriddenValues_AreCarried
+              - ToolOutputOptions_Constructor_ZeroPreview_IsPermitted
+
+          - id: AgentKitCore-ToolOutputOptions-RejectsInvalid
+            title: >-
+              The retention options shall reject a negative preview, a non-positive per-output or
+              count ceiling, and a total ceiling smaller than the per-output ceiling.
+            justification: |
+              Each is a mistake in the host's configuration code rather than a condition a model can
+              provoke. A total ceiling smaller than one maximum-size output would refuse outputs the
+              per-output ceiling admits, so the two would contradict each other.
+            tests:
+              - ToolOutputOptions_Constructor_InvalidValues_ThrowArgumentOutOfRangeException

@@ -30,6 +30,7 @@ The class is sealed and immutable after construction; it is safe for concurrent 
 | `_childPacks` | `List<IToolPack>` | Packs, not tools; no `AgentPack`; unique prefixes |
 | `_runner` | Host runner delegate | The host's means of starting an agent |
 | `_hostCapabilities` | `HostCapabilities` | Applied when composing a child |
+| `_childToolOutput` | `ToolOutputOptions?` | Retention options for a child; `null` for none |
 | `_depth` | `int` | Depth of the agent this pack is composed for |
 | `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; exactly the run tool |
 
@@ -54,23 +55,24 @@ would publish the `agent` prefix twice.
 
 #### Key Methods
 
-##### AgentPack(profiles, runner, childPacks, hostCapabilities)
+##### AgentPack(profiles, runner, childPacks, hostCapabilities, childToolOutput)
 
 The public constructor. Registers the profiles and packs the application supplies, at the root
 depth of zero.
 
-**Preconditions:** `profiles`, `runner` and `childPacks` are non-null; `profiles` contains no
-null entry and no duplicate name; `childPacks` contains no null entry, no `AgentPack`, and no two
-packs claiming one family prefix. `hostCapabilities` defaults to `HostCapabilities.Delegation` so
-a child whose profile admits `agent_run` can delegate in turn; a host whose children may also
-see, for example, passes `HostCapabilities.Delegation | HostCapabilities.Vision`.
+**Preconditions:** `profiles`, `runner` and `childPacks` are non-null; `profiles` contains no null entry and no
+duplicate name; `childPacks` contains no null entry, no `AgentPack`, and no two packs claiming one family prefix.
+`hostCapabilities` defaults to `HostCapabilities.Delegation` so a child whose profile admits `agent_run` can delegate in
+turn; a host whose children may also see, for example, passes `HostCapabilities.Delegation | HostCapabilities.Vision`.
+`childToolOutput` to `null`; when supplied, every delegated agent holding at least one tool is composed with of large
+tool outputs using those options.
 
 **Algorithm:** delegates to the private depth-aware constructor with `depth: 0`.
 
 **Postconditions:** the pack is immutable, ready to be added to a `ToolPackBuilder`, and can be
 added any number of times.
 
-##### private AgentPack(..., int depth)
+##### private AgentPack(..., ToolOutputOptions? childToolOutput, int depth)
 
 The private depth-aware constructor. Called only by `ComposeChild`, one level deeper than the
 composing pack. Depth is private because a public depth parameter would let a composing
@@ -80,7 +82,7 @@ family exists to keep.
 **Algorithm:** validates the arguments, materializes `profiles` and `childPacks` into internal
 lists — a lazily evaluated sequence could yield a different set each time it was enumerated,
 which would make a child's composition unrepeatable — validates the materialized collections, and
-captures `runner`, `hostCapabilities` and `depth`.
+captures `runner`, `hostCapabilities`, `childToolOutput` and `depth`.
 
 ##### RequiredCapabilities
 
@@ -118,9 +120,18 @@ The `ChildToolComposer` implementation; the whole isolation mechanism.
 **Algorithm:** builds the child's policy from `BuildChildPolicy`, constructs a fresh
 `ToolPackBuilder` on that policy under `_hostCapabilities`, adds every pack in `_childPacks` to
 it, adds a new `AgentPack` one depth deeper — carrying the runner, the child packs, the host
-capabilities and the profiles `Reachable` reports for the child's own policy, so a child whose
-profile admits `agent_run` can delegate in turn — calls `Build`, and returns the composed tools
-filtered by the profile's declared names.
+capabilities, the child retention options and the profiles `Reachable` reports for the child's own
+policy, so a child whose profile admits `agent_run` can delegate in turn and a grandchild retains as
+its parent does — calls `Build`, and filters the composed tools by the profile's declared names.
+When `_childToolOutput` is set and the filtered list is non-empty, it returns
+`ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput)`; otherwise the filtered
+list.
+
+**Retention is applied after the filter.** The readers are infrastructure for the tools a child
+holds rather than a capability a profile grants, so a retaining child can always read what it
+retained without its profile naming them. A child holding no tools produces nothing to read back,
+so a tool-less profile stays tool-less. Each child gets its own store, exactly as it gets its own
+task list.
 
 **Every tool here is new.** The packs are asked for tools again rather than reusing the parent's,
 so each child gets its own per-composition state. The parent's tools are not consulted, filtered,
@@ -204,7 +215,8 @@ The pack is not reachable from a model's tool call, so no runtime refusal arises
 
 #### Dependencies
 
-`IToolPack`, `HostCapabilities`, `PathPolicy`, `PathRule`, `AccessLevel` and `ToolPackBuilder`
+`IToolPack`, `HostCapabilities`, `PathPolicy`, `PathRule`, `AccessLevel`, `ToolPackBuilder`,
+`ToolOutputOptions` and `ToolOutputSpill`
 from AgentKitCore. `AgentProfile`, `ChildAgentRequest`, `AgentRunTool` and `ChildToolComposer`
 from this subsystem. `AIFunction` from `Microsoft.Extensions.AI.Abstractions`, as the type the
 created tools take.

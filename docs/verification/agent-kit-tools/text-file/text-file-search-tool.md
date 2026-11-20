@@ -27,7 +27,7 @@ Unit tests reside in `TextFile/TextFileSearchToolTests.cs` within the
 
 #### Acceptance Criteria
 
-A unit test run passes when all 12 requirement scenarios below, covering 17 listed test method
+A unit test run passes when all 13 requirement scenarios below, covering 18 listed test method
 entries, pass without error or exception beyond those explicitly asserted. A missing name or
 description, accepted null construction input, wrong capability or tool order, ignored policy
 decision, leaked path, unsafe file mutation, malformed request thrown as a framework error, or
@@ -123,4 +123,13 @@ file being silently skipped for size.
 **Test**: `TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling`
 
 The listed tests prove an assembled result larger than the policy's result ceiling is refused as
-`ResourceTooLarge` with the ceiling named, and that no match is returned in its place.
+`ResourceTooLarge` with the ceiling named, and that no match is returned in its place, when the
+composition does not retain large outputs.
+
+##### AgentKitTools-TextFile-SearchTool-OversizedResultRetainable: Oversized Result Retainable
+
+**Test**: `TextFileSearchTool_Search_ResultBeyondTheResultCeilingWithRetention_IsRetainedForPaging`
+
+The listed tests prove that, composed with retention of large outputs, the same oversized result is
+answered with a preview naming `output-1`, and that the hundredth match is read back intact through
+`tool_output_read`.

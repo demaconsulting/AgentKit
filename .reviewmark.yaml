@@ -264,6 +264,71 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolResult.cs"            # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolResultTests.cs"  # unit tests
 
+  # AgentKitCore-ToolOutputOptions Review (one per unit)
+  - id: AgentKitCore-ToolOutputOptions
+    title: Review that AgentKitCore ToolOutputOptions Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-options.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-options.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-options.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputOptions.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputOptionsTests.cs"  # unit tests
+
+  # AgentKitCore-ToolOutputStore Review (one per unit)
+  - id: AgentKitCore-ToolOutputStore
+    title: Review that AgentKitCore ToolOutputStore Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-store.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-store.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-store.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputStore.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputStoreTests.cs"  # unit tests
+
+  # AgentKitCore-ToolOutputSpill Review (one per unit)
+  - id: AgentKitCore-ToolOutputSpill
+    title: Review that AgentKitCore ToolOutputSpill Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-spill.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-spill.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-spill.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputSpill.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputSpillTests.cs"  # unit tests
+
+  # AgentKitCore-ToolOutputReadTool Review (one per unit)
+  - id: AgentKitCore-ToolOutputReadTool
+    title: Review that AgentKitCore ToolOutputReadTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-read-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-read-tool.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-read-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputReadTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputReadToolTests.cs"  # unit tests
+
+  # AgentKitCore-ToolOutputSearchTool Review (one per unit)
+  - id: AgentKitCore-ToolOutputSearchTool
+    title: Review that AgentKitCore ToolOutputSearchTool Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-search-tool.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-search-tool.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-search-tool.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputSearchTool.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputSearchToolTests.cs"  # unit tests
+
   # AgentKitCore-AgentSession Review (one per unit)
   - id: AgentKitCore-AgentSession
     title: Review that AgentKitCore AgentSession Implementation is Correct
