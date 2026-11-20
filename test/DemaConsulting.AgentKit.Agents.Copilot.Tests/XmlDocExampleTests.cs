@@ -24,7 +24,7 @@ public class XmlDocExampleTests
             "DemaConsulting.AgentKit.Agents.Copilot.xml",
             "DemaConsulting.AgentKit.Agents.Copilot",
             "DemaConsulting.AgentKit.Core",
-            "GitHub.Copilot",
+            "Microsoft.Copilot",
             "Microsoft.Agents.AI",
             "Microsoft.Extensions.AI");
     }

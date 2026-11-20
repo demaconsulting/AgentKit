@@ -484,7 +484,7 @@ public sealed class CommandLineOptions
     ///     fixed model that could be looked up.
     ///     </para>
     ///     <para>
-    ///     It cannot be looked up. <c>CopilotAgentFactory</c> leaves <c>SessionConfig.Model</c>
+    ///     It cannot be looked up. <c>CopilotAgentFactory</c> leaves <c>CreateSessionOptions.Model</c>
     ///     unset when no model is named, and the runtime neither reports nor promises which model
     ///     it then selects — it depends on what the signed-in user may use, and is resolved inside
     ///     the runtime at session time. So this says so plainly and names the flag that removes the

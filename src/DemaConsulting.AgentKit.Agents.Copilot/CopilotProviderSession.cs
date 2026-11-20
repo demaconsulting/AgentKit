@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 

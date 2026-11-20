@@ -1,4 +1,4 @@
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
@@ -145,7 +145,7 @@ internal sealed class FakeCopilotRuntime
     /// <summary>
     ///     Gets the configurations sessions were asked to be created from, in order.
     /// </summary>
-    internal List<SessionConfig> Configs { get; } = [];
+    internal List<CreateSessionOptions> Configs { get; } = [];
 
     /// <summary>
     ///     Gets the channels opened, in order.
@@ -167,7 +167,7 @@ internal sealed class FakeCopilotRuntime
         _beforeOpen?.Invoke(Configs.Count);
 
         Configs.Add(config);
-        var channel = new FakeCopilotTurnChannel(config.OnEvent, _script(Channels.Count));
+        var channel = new FakeCopilotTurnChannel(config.Events.OnEvent, _script(Channels.Count));
         Channels.Add(channel);
         return Task.FromResult<ICopilotTurnChannel>(channel);
     };
@@ -208,19 +208,19 @@ internal static class CopilotEvents
     ///     Builds an assistant message the runtime produced.
     /// </summary>
     /// <param name="content">The message text.</param>
-    /// <param name="parentToolCallId">
+    /// <param name="agentId">
     ///     The call that started a nested agent, when the message belongs to one.
     /// </param>
     /// <returns>The assistant message event.</returns>
-    internal static AssistantMessageEvent Assistant(string content, string? parentToolCallId = null) =>
+    internal static AssistantMessageEvent Assistant(string content, string? agentId = null) =>
         new()
         {
             Data = new AssistantMessageData
             {
                 Content = content,
                 MessageId = $"message-{Interlocked.Increment(ref _sequence)}",
-                ParentToolCallId = parentToolCallId,
             },
+            AgentId = agentId,
         };
 
     /// <summary>
@@ -234,20 +234,20 @@ internal static class CopilotEvents
     /// </remarks>
     /// <param name="toolCallId">The runtime's identifier for the call.</param>
     /// <param name="toolName">The tool being called.</param>
-    /// <param name="parentToolCallId">The call that started a nested agent, when this belongs to one.</param>
+    /// <param name="agentId">The sub-agent instance that produced the event, when it belongs to one.</param>
     /// <returns>The tool-execution start event.</returns>
     internal static ToolExecutionStartEvent ToolStart(
         string? toolCallId,
         string toolName,
-        string? parentToolCallId = null) =>
+        string? agentId = null) =>
         new()
         {
             Data = new ToolExecutionStartData
             {
                 ToolCallId = toolCallId!,
                 ToolName = toolName,
-                ParentToolCallId = parentToolCallId,
             },
+            AgentId = agentId,
         };
 
     /// <summary>
@@ -255,12 +255,12 @@ internal static class CopilotEvents
     /// </summary>
     /// <param name="toolCallId">The identifier of the call this answers.</param>
     /// <param name="content">The result the tool produced.</param>
-    /// <param name="parentToolCallId">The call that started a nested agent, when this belongs to one.</param>
+    /// <param name="agentId">The sub-agent instance that produced the event, when it belongs to one.</param>
     /// <returns>The tool-execution completion event.</returns>
     internal static ToolExecutionCompleteEvent ToolComplete(
         string toolCallId,
         string content,
-        string? parentToolCallId = null) =>
+        string? agentId = null) =>
         new()
         {
             Data = new ToolExecutionCompleteData
@@ -268,8 +268,8 @@ internal static class CopilotEvents
                 ToolCallId = toolCallId,
                 Success = true,
                 Result = new ToolExecutionCompleteResult { Content = content },
-                ParentToolCallId = parentToolCallId,
             },
+            AgentId = agentId,
         };
 
     /// <summary>

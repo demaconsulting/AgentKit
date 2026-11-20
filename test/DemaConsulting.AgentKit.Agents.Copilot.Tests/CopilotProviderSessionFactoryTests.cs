@@ -1,6 +1,6 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot;
+using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -13,7 +13,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 /// </summary>
 /// <remarks>
 ///     All of this is decided at session creation and is observable nowhere else, so the assertions
-///     are made against the <c>SessionConfig</c> the factory produced. No Copilot runtime is started
+///     are made against the <c>CreateSessionOptions</c> the factory produced. No Copilot runtime is started
 ///     and no credential is used.
 /// </remarks>
 public class CopilotProviderSessionFactoryTests
@@ -35,8 +35,8 @@ public class CopilotProviderSessionFactoryTests
 
         // Assert: the allow-list is exactly the published tool names, in the same order
         var expected = tools.Select(tool => tool.Name).ToList();
-        Assert.Equal(expected, config.AvailableTools);
-        Assert.Equal(expected, config.Tools!.Select(tool => tool.Name).ToList());
+        Assert.Equal(expected.Select(name => $"custom:{name}"), config.Tools.AvailableTools);
+        Assert.Equal(expected, config.Tools.Definitions!.Select(tool => tool.Name).ToList());
     }
 
     /// <summary>
@@ -52,8 +52,8 @@ public class CopilotProviderSessionFactoryTests
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.False(config.EnableSkills);
-        Assert.True(config.SkipCustomInstructions);
+        Assert.False(config.Skills.Enabled);
+        Assert.True(config.Instructions.SkipCustomInstructions);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public class CopilotProviderSessionFactoryTests
     {
         // Arrange
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
-        var handler = config.OnPermissionRequest;
+        var handler = config.Permissions.OnRequest;
         Assert.NotNull(handler);
 
         // Act
@@ -104,9 +104,9 @@ public class CopilotProviderSessionFactoryTests
         var config = Build(new ProviderSessionSeed(null, [MakeTool("doc_read")], []));
 
         // Assert
-        Assert.NotNull(config.InfiniteSessions);
-        Assert.False(config.InfiniteSessions.Enabled);
-        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
+        Assert.NotNull(config.State.InfiniteSessions);
+        Assert.False(config.State.InfiniteSessions.Enabled);
+        Assert.True(config.State.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
     }
 
     /// <summary>
@@ -243,7 +243,7 @@ public class CopilotProviderSessionFactoryTests
     {
         // Arrange
         var seed = new ProviderSessionSeed(null, [MakeTool("doc_read")], []);
-        var untouched = new SessionConfig();
+        var untouched = new CreateSessionOptions();
 
         // Act
         var named = CopilotProviderSessionFactory.BuildProviderSessionConfig(seed, _ => { }, "gpt-5.4-mini");
@@ -280,7 +280,7 @@ public class CopilotProviderSessionFactoryTests
         await session.SendAsync("first turn", TestContext.Current.CancellationToken);
 
         // Assert: a handler was on the configuration, and the first turn's reading reached the session
-        Assert.NotNull(runtime.Configs[0].OnEvent);
+        Assert.NotNull(runtime.Configs[0].Events.OnEvent);
         Assert.Equal(777, session.CurrentUsage.UsedTokens);
     }
 
@@ -366,7 +366,7 @@ public class CopilotProviderSessionFactoryTests
     /// </summary>
     /// <param name="seed">The seed to configure from.</param>
     /// <returns>The session configuration.</returns>
-    private static SessionConfig Build(ProviderSessionSeed seed) =>
+    private static CreateSessionOptions Build(ProviderSessionSeed seed) =>
         CopilotProviderSessionFactory.BuildProviderSessionConfig(seed, _ => { }, model: null);
 
     /// <summary>

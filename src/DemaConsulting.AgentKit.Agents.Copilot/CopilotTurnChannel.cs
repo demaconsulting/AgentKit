@@ -1,4 +1,4 @@
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
@@ -69,7 +69,7 @@ internal interface ICopilotTurnChannel : IAsyncDisposable
 /// <param name="cancellationToken">Cancels the creation.</param>
 /// <returns>The opened channel. Ownership passes to the caller.</returns>
 internal delegate Task<ICopilotTurnChannel> CopilotChannelOpener(
-    SessionConfig config,
+    CreateSessionOptions config,
     CancellationToken cancellationToken);
 
 /// <summary>

@@ -18,10 +18,10 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
 
-    <!-- The GitHub Copilot SDK marks its permission-decision RPC surface with the GHCP001
+    <!-- The Copilot SDK marks its permission-decision RPC surface with the MCPSDK001
          "evaluation purposes only" diagnostic. These tests exercise that surface directly, so the
          diagnostic is suppressed for this test project. -->
-    <NoWarn>$(NoWarn);GHCP001</NoWarn>
+    <NoWarn>$(NoWarn);MCPSDK001</NoWarn>
   </PropertyGroup>
 
   <!-- Implicit Usings -->

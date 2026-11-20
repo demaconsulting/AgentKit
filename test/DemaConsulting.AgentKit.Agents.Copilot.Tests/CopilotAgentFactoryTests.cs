@@ -1,6 +1,6 @@
 using DemaConsulting.AgentKit.Agents.Copilot;
-using GitHub.Copilot;
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot;
+using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -82,7 +82,7 @@ public class CopilotAgentFactoryTests
 
         var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: handler);
 
-        Assert.Same(handler, config.OnPermissionRequest);
+        Assert.Same(handler, config.Permissions.OnRequest);
     }
 
     /// <summary>
@@ -136,7 +136,7 @@ public class CopilotAgentFactoryTests
     {
         // Arrange: a valid tool set, and an untouched session for the default to compare against
         var tools = new List<AIFunction> { MakeTool("doc_read") };
-        var untouched = new SessionConfig();
+        var untouched = new CreateSessionOptions();
 
         // Act: build the session without naming a model
         var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
@@ -165,8 +165,19 @@ public class CopilotAgentFactoryTests
         var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
 
         // Assert: the agent receives only the capability and direction its host attached
-        Assert.False(config.EnableSkills);
-        Assert.True(config.SkipCustomInstructions);
+        Assert.False(config.Skills.Enabled);
+        Assert.True(config.Instructions.SkipCustomInstructions);
+
+        // The further channels the runtime offers are closed explicitly too, independent of the
+        // client mode the host chose.
+        Assert.False(config.Tools.LargeOutput!.Enabled);
+        Assert.False(config.Tools.Search!.Enabled);
+        Assert.False(config.State.Memory!.Enabled);
+        Assert.False(config.State.EnableCrossSessionStore);
+        Assert.False(config.Hooks.EnableRepositoryHooks);
+        Assert.Empty(config.Agents.IncludedBuiltInAgents!);
+        Assert.Null(config.Mcp.Servers);
+        Assert.Contains(CopilotAgentFactory.BuiltInGitHubMcpServer, config.Mcp.DisabledServers!);
     }
 
     /// <summary>
@@ -180,13 +191,13 @@ public class CopilotAgentFactoryTests
     {
         // Arrange: a valid tool set, and an untouched session for the default to compare against
         var tools = new List<AIFunction> { MakeTool("doc_read") };
-        var untouched = new SessionConfig();
+        var untouched = new CreateSessionOptions();
 
         // Act
         var config = CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null);
 
         // Assert: whatever a freshly constructed session carries - the factory set nothing
-        Assert.Equal(untouched.InfiniteSessions, config.InfiniteSessions);
+        Assert.Equal(untouched.State.InfiniteSessions, config.State.InfiniteSessions);
     }
 
     /// <summary>
@@ -195,7 +206,7 @@ public class CopilotAgentFactoryTests
     /// </summary>
     /// <remarks>
     ///     The threshold is the assertion that matters, because the flag does not work: measured
-    ///     against SDK 1.0.11, a session created with <c>Enabled = false</c> compacted as soon as
+    ///     against the live runtime, a session created with <c>Enabled = false</c> compacted as soon as
     ///     the threshold was crossed, exactly as one created with it true. The threshold is honored,
     ///     and it is what keeps the two compactors apart — the engine rotates at 0.70, and the
     ///     runtime's default of 0.80 leaves only a tenth of the window between them, which one turn
@@ -212,10 +223,10 @@ public class CopilotAgentFactoryTests
 
         // Assert: the honored setting is raised clear of the engine's own rotation point, and the
         // flag is still stated so the intent survives if the runtime ever respects it
-        Assert.NotNull(config.InfiniteSessions);
-        Assert.False(config.InfiniteSessions.Enabled);
-        Assert.NotNull(config.InfiniteSessions.BackgroundCompactionThreshold);
-        Assert.True(config.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
+        Assert.NotNull(config.State.InfiniteSessions);
+        Assert.False(config.State.InfiniteSessions.Enabled);
+        Assert.NotNull(config.State.InfiniteSessions.BackgroundCompactionThreshold);
+        Assert.True(config.State.InfiniteSessions.BackgroundCompactionThreshold > 0.90);
     }
 
     /// <summary>
@@ -231,10 +242,10 @@ public class CopilotAgentFactoryTests
         var config = CopilotAgentFactory.BuildEngineSessionConfig([], instructions: null, model: null);
 
         // Assert: nothing published, nothing allowed, and the injection channels still shut
-        Assert.Empty(config.Tools!);
-        Assert.Empty(config.AvailableTools!);
-        Assert.False(config.EnableSkills);
-        Assert.True(config.SkipCustomInstructions);
+        Assert.Empty(config.Tools.Definitions!);
+        Assert.Empty(config.Tools.AvailableTools!);
+        Assert.False(config.Skills.Enabled);
+        Assert.True(config.Instructions.SkipCustomInstructions);
     }
 
     /// <summary>
@@ -253,12 +264,12 @@ public class CopilotAgentFactoryTests
         var engine = CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null);
 
         // Assert
-        Assert.Equal(agent.AvailableTools, engine.AvailableTools);
+        Assert.Equal(agent.Tools.AvailableTools, engine.Tools.AvailableTools);
         Assert.Equal(
-            agent.Tools!.Select(tool => tool.Name),
-            engine.Tools!.Select(tool => tool.Name));
-        Assert.Equal(agent.EnableSkills, engine.EnableSkills);
-        Assert.Equal(agent.SkipCustomInstructions, engine.SkipCustomInstructions);
+            agent.Tools.Definitions!.Select(tool => tool.Name),
+            engine.Tools.Definitions!.Select(tool => tool.Name));
+        Assert.Equal(agent.Skills.Enabled, engine.Skills.Enabled);
+        Assert.Equal(agent.Instructions.SkipCustomInstructions, engine.Instructions.SkipCustomInstructions);
     }
 
     /// <summary>

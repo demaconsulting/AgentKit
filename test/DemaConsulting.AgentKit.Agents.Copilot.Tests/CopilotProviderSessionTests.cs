@@ -1,5 +1,5 @@
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
@@ -88,8 +88,8 @@ public class CopilotProviderSessionTests
         // Arrange: a delegated run, whose child produces traffic of its own
         var runtime = Runtime(Turn(
             CopilotEvents.ToolStart("call-1", "agent_run"),
-            CopilotEvents.ToolStart("nested-1", "doc_read", parentToolCallId: "call-1"),
-            CopilotEvents.Assistant("nested answer", parentToolCallId: "call-1"),
+            CopilotEvents.ToolStart("nested-1", "doc_read", agentId: "call-1"),
+            CopilotEvents.Assistant("nested answer", agentId: "call-1"),
             CopilotEvents.ToolComplete("call-1", "the child reported back"),
             CopilotEvents.Usage(900, 8000),
             CopilotEvents.Assistant("Delegated and done.")));
@@ -664,7 +664,7 @@ public class CopilotProviderSessionTests
     /// <returns>The scripted turn.</returns>
     private static ScriptedTurn Turn(params SessionEvent[] events) =>
         new(events, events.OfType<AssistantMessageEvent>().LastOrDefault(
-            message => message.Data?.ParentToolCallId is null));
+            message => message.AgentId is null));
 
     /// <summary>
     ///     Builds a fake runtime whose one session performs the given turns.

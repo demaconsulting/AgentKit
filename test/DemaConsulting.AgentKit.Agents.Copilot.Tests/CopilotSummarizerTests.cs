@@ -53,10 +53,10 @@ public class CopilotSummarizerTests
 
         // Assert: nothing published, nothing allowed, and the runtime's other injection channels shut
         var config = Assert.Single(runtime.Configs);
-        Assert.Empty(config.Tools!);
-        Assert.Empty(config.AvailableTools!);
-        Assert.False(config.EnableSkills);
-        Assert.True(config.SkipCustomInstructions);
+        Assert.Empty(config.Tools.Definitions!);
+        Assert.Empty(config.Tools.AvailableTools!);
+        Assert.False(config.Skills.Enabled);
+        Assert.True(config.Instructions.SkipCustomInstructions);
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ public class CopilotSummarizerTests
         await summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.False(Assert.Single(runtime.Configs).InfiniteSessions!.Enabled);
+        Assert.False(Assert.Single(runtime.Configs).State.InfiniteSessions!.Enabled);
     }
 
     /// <summary>

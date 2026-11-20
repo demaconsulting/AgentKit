@@ -1,7 +1,7 @@
 using DemaConsulting.AgentKit.Agents.Copilot;
 using DemaConsulting.AgentKit.Core;
-using GitHub.Copilot;
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot;
+using Microsoft.Copilot.Rpc;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -43,9 +43,9 @@ public class AgentKitAgentsCopilotTests
         // Assert: the allow-list is exactly the names of the published tools, in the same order,
         // and the published tool set is the same size — the two are derived from one collection
         var expectedNames = tools.Select(tool => tool.Name).ToList();
-        Assert.Equal(expectedNames, config.AvailableTools);
-        Assert.Equal(tools.Count, config.Tools!.Count);
-        Assert.Equal(expectedNames, config.Tools.Select(tool => tool.Name).ToList());
+        Assert.Equal(expectedNames.Select(name => $"custom:{name}"), config.Tools.AvailableTools);
+        Assert.Equal(tools.Count, config.Tools.Definitions!.Count);
+        Assert.Equal(expectedNames, config.Tools.Definitions.Select(tool => tool.Name).ToList());
     }
 
     /// <summary>
@@ -237,8 +237,8 @@ public class AgentKitAgentsCopilotTests
             runtime.Configs,
             config =>
             {
-                Assert.True(config.InfiniteSessions!.BackgroundCompactionThreshold > 0.90);
-                Assert.False(config.InfiniteSessions.Enabled);
+                Assert.True(config.State.InfiniteSessions!.BackgroundCompactionThreshold > 0.90);
+                Assert.False(config.State.InfiniteSessions.Enabled);
             });
     }
 
@@ -261,9 +261,9 @@ public class AgentKitAgentsCopilotTests
     /// <param name="config">The session whose handler to invoke.</param>
     /// <param name="request">The permission request to adjudicate.</param>
     /// <returns>The handler's decision.</returns>
-    private static Task<PermissionDecision> Decide(SessionConfig config, PermissionRequest request)
+    private static Task<PermissionDecision> Decide(CreateSessionOptions config, PermissionRequest request)
     {
-        var handler = config.OnPermissionRequest;
+        var handler = config.Permissions.OnRequest;
         Assert.NotNull(handler);
         return handler(request, null!);
     }
