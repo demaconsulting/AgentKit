@@ -123,8 +123,8 @@ a provider without decoding, not one whose frame count it cannot establish.
 
 **Test**: `ImageMediaTypes_DenyNonCroppableType_Pdf_StatesRasterizationIsRequired`
 
-Error path for the one admitted type that *looks* croppable and is not. Without the page-and-
-resolution reason stated, a model would reasonably retry with different coordinates.
+Error path for the one admitted type that *looks* croppable and is not. Without the page-and-resolution
+reason stated, a model would reasonably retry with different coordinates.
 
 ##### AgentKitTools-Image-MediaTypes-RefusesNonCroppableType: An svg Is Refused Identically on Both Paths
 

@@ -92,8 +92,8 @@ from an *explicit* constructor proves nothing about this tool, because the compi
 first and fails the build before the coverage check is reached.
 
 This pins a stable release. Enforcement was originally adopted on a prerelease as a deliberate
-exception to the convention of pinning stable versions of every tool, because documentation-
-coverage enforcement did not exist in the then-current stable release and shipping an API reference
+exception to the convention of pinning stable versions of every tool, because documentation-coverage
+enforcement did not exist in the then-current stable release and shipping an API reference
 with unenforced gaps was judged the worse outcome. That exception is now closed: enforcement is
 available in a stable release of the same line, so the convention holds again with no prerelease
 carve-out. The pinned version lives in the four project files, which are the only place it is
