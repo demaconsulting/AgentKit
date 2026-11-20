@@ -25,12 +25,12 @@ The class is static and holds no state. A constructed tool holds exactly one cap
 from `policy.Limits.MaxDeleteEntries` on every call rather than captured, so a host's
 configuration reaches the tool through the same object every other budget does.
 
-| Member            | Type     | Invariant                                                     |
-| ----------------- | -------- | ------------------------------------------------------------- |
-| `ToolName`        | `string` | `file_delete_directory`; public constant; carries the prefix  |
-| `ToolDescription` | `string` | Non-empty; states the link rule and the entry ceiling         |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy      |
-| Success messages  | `string` | Two constants; a removed tree and a removed link differ       |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_delete_directory`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; states the link rule and the entry ceiling |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
+| Success messages | `string` | Two constants; a removed tree and a removed link differ |
 
 The model supplies only `path`.
 

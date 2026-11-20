@@ -31,7 +31,7 @@ design retired. Nothing here is estimated. A host may state a **ceiling**, which
 window the session accounts against; the runtime's figure still governs, and a ceiling above it is
 ignored.
 
-**No image-promoting decorator**, for the reason _CopilotAgentFactory Unit Design_ records: the
+**No image-promoting decorator**, for the reason *CopilotAgentFactory Unit Design* records: the
 Copilot runtime already delivers a tool's binary results to the model — the SDK's tool-completion
 result carries them explicitly — so promoting an image onto a user message here would duplicate
 content the model already received. The absence is intentional and is restated in this class's own
@@ -43,23 +43,23 @@ that contract.
 **Construction is internal.** A session is obtained from `CopilotProviderSessionFactory`, which is
 the only thing that can build one correctly: a channel opened without the observer registered as the
 session's event handler would answer turns and report no occupancy at all. See
-_CopilotProviderSessionFactory Unit Design_.
+*CopilotProviderSessionFactory Unit Design*.
 
 ### Data Model
 
 - **`_channel`** (`ICopilotTurnChannel`) — The runtime session this instance owns. Invariant: the
   same session the observer beside it was registered on. Released by `DisposeAsync` and by nothing
-  else. See _CopilotTurnChannel Unit Design_.
+  else. See *CopilotTurnChannel Unit Design*.
 - **`_observer`** (`CopilotSessionObserver`) — Watches the runtime's event stream and holds the
   occupancy reading and the current turn's entries. Invariant: registered on `_channel`'s session
-  before that session was created. See _CopilotSessionObserver Unit Design_.
+  before that session was created. See *CopilotSessionObserver Unit Design*.
 - **`_maxWindowTokens`** (`int?`) — The ceiling a host stated on the window this session accounts
   against, or null for none. Invariant: it only ever lowers — the effective window is the smaller of
   this and the runtime's reported limit.
 - **`_historyPreamble`** (`string?`) — The seeded conversation record, until the first message
   carries it, and null thereafter. Invariant: consumed at most once, so a long conversation carries
   it exactly once. Held rather than configured because a record charged to the engine's overhead
-  makes its accounting drift; see _CopilotProviderSessionFactory Unit Design_.
+  makes its accounting drift; see *CopilotProviderSessionFactory Unit Design*.
 - **`_unusableReason`** (`string?`) — Why this session may no longer be used, or null while it may.
   Invariant: it latches — once set, never cleared.
 - **`IsReleased`** (`bool`) — Whether this session has been released. Invariant: once true, never
@@ -142,8 +142,8 @@ The three refusals are ordered because the first invalidates the others:
    runtime's own compaction threshold raised clear of the engine's rotation point, which is a margin
    rather than a guarantee; if it compacted or truncated anyway, the engine's transcript describes a
    conversation the provider no longer holds, and every figure below is about that vanished
-   conversation. See _The Runtime's Own Compaction Is Held Clear of Rotation_ in
-   _AgentKitAgentsCopilot System Design_.
+   conversation. See *The Runtime's Own Compaction Is Held Clear of Rotation* in
+   *AgentKitAgentsCopilot System Design*.
 2. **The session went idle without producing an assistant message.** The runtime's wait returns
    nothing in that case, which means the turn failed rather than that the model had nothing to say.
    The message names the runtime's own error where one was reported, because a refusal an
@@ -163,12 +163,12 @@ and will not be sent again. Neither is recoverable by retrying on this session, 
 `InvalidOperationException` is the ordinary host response, which would re-run the application's
 tools, with their real side effects, against a conversation the engine may no longer describe. So
 the reason is latched and every later turn is refused before it is sent. Cancellation arriving once
-the prompt is in flight is the same case and is latched the same way. See _A Session the Engine
-Cannot Account For Is Finished_ in _AgentKitAgentsCopilot System Design_.
+the prompt is in flight is the same case and is latched the same way. See *A Session the Engine
+Cannot Account For Is Finished* in *AgentKitAgentsCopilot System Design*.
 
 The answer reaches this method twice — as an event the observer collected and as the value the wait
 returned — and is recorded once, because `ProviderTurn` takes a trailing assistant entry whose text
-is the answer to _be_ the answer.
+is the answer to *be* the answer.
 
 **Preconditions:** `message` is not null; the session is not released and has not been found
 unusable; cancellation has not been requested.
@@ -255,17 +255,17 @@ sight that it is a clamp.
 
 ### Error Handling
 
-| Condition                                    | Handling                                        |
-|----------------------------------------------|-------------------------------------------------|
-| Null `channel` or `observer`                 | `ArgumentNullException` propagates              |
-| Null `message`                               | `ArgumentNullException` propagates              |
-| Turn on a released session                   | `ObjectDisposedException` propagates            |
-| Cancellation before the turn                 | `OperationCanceledException` propagates         |
-| Runtime compacted or truncated the history   | `InvalidOperationException` propagates          |
-| Session idle with no assistant message       | `InvalidOperationException` propagates          |
-| No usage reported for the turn               | `InvalidOperationException` propagates          |
+| Condition | Handling |
+| --- | --- |
+| Null `channel` or `observer` | `ArgumentNullException` propagates |
+| Null `message` | `ArgumentNullException` propagates |
+| Turn on a released session | `ObjectDisposedException` propagates |
+| Cancellation before the turn | `OperationCanceledException` propagates |
+| Runtime compacted or truncated the history | `InvalidOperationException` propagates |
+| Session idle with no assistant message | `InvalidOperationException` propagates |
+| No usage reported for the turn | `InvalidOperationException` propagates |
 | Turn on a session finished by an earlier one | `InvalidOperationException` naming that failure |
-| Failure at or after the send                 | Session finished naming it; propagates          |
+| Failure at or after the send | Session finished naming it; propagates |
 
 None of the last five is a programming error, and none is softened. Each names a fact the engine
 cannot proceed without, and each is something an application can see and act on. The first of them
@@ -284,17 +284,17 @@ must be refused as clearly as the turn that failed.
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSession`, `ProviderTurn`, `TranscriptEntry` and
-  `ContextUsage`; see _ProviderSession Unit Design_ and _ContextUsage Unit Design_.
+  `ContextUsage`; see *ProviderSession Unit Design* and *ContextUsage Unit Design*.
 - **CopilotSessionObserver** — holds the occupancy reading and the turn's entries; see
-  _CopilotSessionObserver Unit Design_.
-- **CopilotTurnChannel** — carries the turn and owns the runtime session; see _CopilotTurnChannel
-  Unit Design_.
+  *CopilotSessionObserver Unit Design*.
+- **CopilotTurnChannel** — carries the turn and owns the runtime session; see *CopilotTurnChannel
+  Unit Design*.
 - **Microsoft.Agents.AI.GitHub.Copilot** — supplies the assistant-message event a turn returns; see
-  _Microsoft.Agents.AI.GitHub.Copilot Design_.
+  *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ### Callers
 
 `CopilotProviderSessionFactory` constructs one at the start of a conversation and again at every
-rotation; see _CopilotProviderSessionFactory Unit Design_. Because the constructor is internal and
+rotation; see *CopilotProviderSessionFactory Unit Design*. Because the constructor is internal and
 takes a channel only that factory opens, nothing else constructs one — within this system or outside
 it.

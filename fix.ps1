@@ -4,23 +4,18 @@
 #   Applies all available auto-fixers with progress output. Always exits 0.
 #   Run this after making changes to automatically handle formatting
 #   so agents and developers do not need to respond to lint output.
-#   Handles: dotnet format, markdownlint, yamlfix, YAML line endings.
+#   Handles: dotnet format, LintMark (markdown), yamlfix, YAML line endings.
 #
 # EXTENSION POINTS:
-#   Search for "[PROJECT-SPECIFIC]" comments to find the designated locations
-#   for adding project-specific auto-fix operations.
+#   Search for "[PROJECT-SPECIFIC]" comments to add project-specific fixers.
 #
 # MODIFICATION POLICY:
 #   Only modify this file to add project-specific operations at the designated
 #   [PROJECT-SPECIFIC] extension points, or to update tool versions as needed.
 
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
-
 function Get-VenvActivateScript {
-    if (Test-Path ".venv/Scripts/Activate.ps1") { return ".venv/Scripts/Activate.ps1" }  # Windows
-    if (Test-Path ".venv/bin/Activate.ps1") { return ".venv/bin/Activate.ps1" }          # Linux/macOS
+    if (Test-Path ".venv/Scripts/Activate.ps1") { return ".venv/Scripts/Activate.ps1" }
+    if (Test-Path ".venv/bin/Activate.ps1") { return ".venv/bin/Activate.ps1" }
     return $null
 }
 
@@ -58,7 +53,7 @@ function Normalize-YamlLineEndings {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
     Get-ChildItem -Recurse -Include "*.yaml", "*.yml" |
-        Where-Object { $_.FullName -notmatch '[/\\](\.git|node_modules|\.venv|thirdparty|third-party|3rd-party|\.agent-logs)[/\\]' } |
+        Where-Object { $_.FullName -notmatch '[/\\](\.git|node_modules|\.venv|thirdparty|third-party|3rd-party|\.agent-logs|generated)[/\\]' } |
         ForEach-Object {
             $raw = [System.IO.File]::ReadAllText($_.FullName)
             $fixed = $raw.Replace("`r`n", "`n")
@@ -67,12 +62,6 @@ function Normalize-YamlLineEndings {
             }
         }
 }
-
-# ==============================================================================
-# AUTO-FIX
-# Applies all auto-fixers with progress output. Never fails — applies what it can and
-# exits 0 so agents do not react to any output as a problem to solve.
-# ==============================================================================
 
 # --- YAML Auto-Fix ---
 Write-Host "Fixing: YAML..."
@@ -84,15 +73,15 @@ Normalize-YamlLineEndings
 
 # --- Markdown Auto-Fix ---
 Write-Host "Fixing: markdown..."
-$env:PUPPETEER_SKIP_DOWNLOAD = "true"
-npm install --silent 2>$null
+dotnet tool restore > $null 2>&1
 if ($LASTEXITCODE -eq 0) {
-    npx markdownlint-cli2 --fix "**/*.md" 2>$null
+    dotnet lintmark --fix 2>$null
 }
 
 # [PROJECT-SPECIFIC] Add additional auto-fixers here.
-# Example (Prettier for TypeScript/JSON):
-#   npx prettier --write "src/**/*.{ts,json}" 2>$null
+# C/C++ example:
+#   Get-ChildItem -Recurse -Include "*.cpp","*.hpp","*.h" |
+#       ForEach-Object { clang-format -i $_.FullName } 2>$null
 
 # --- .NET Auto-Format ---
 Write-Host "Fixing: dotnet format..."
@@ -101,11 +90,6 @@ $slnFiles = @(Get-ChildItem -Filter "*.sln" -ErrorAction SilentlyContinue) +
 if ($slnFiles.Count -gt 0) {
     dotnet format 2>$null
 }
-
-# [PROJECT-SPECIFIC] Add additional language-specific auto-formatters here.
-# Example (C/C++ with clang-format):
-#   Get-ChildItem -Recurse -Include "*.cpp","*.hpp","*.h" |
-#       ForEach-Object { clang-format -i $_.FullName } 2>$null
 
 Write-Host "Auto-fix complete."
 exit 0

@@ -75,7 +75,7 @@ real material exists.
 
 ### Dependencies
 
-- **ISummarizer** — Required collaborator; see _Summarizer Unit Design_.
+- **ISummarizer** — Required collaborator; see *Summarizer Unit Design*.
 - **ContextLayout** — Defines the internal 0.70 rotation threshold.
 - **Microsoft.Extensions.AI.Abstractions** — Supplies `AIFunction`.
 

@@ -19,13 +19,13 @@ That is why there is no markdown read or replace tool.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member             | Type     | Invariant                                               |
-| ------------------ | -------- | ------------------------------------------------------- |
-| `ToolName`         | `string` | `markdown_outline`; public constant; carries the prefix |
-| `MaxHeadingLevel`  | `int`    | `6`; greatest ATX heading level Markdown defines        |
-| `MaxHeadingIndent` | `int`    | `3`; four spaces begins an indented code block          |
-| `HeadingMarker`    | `char`   | `#`; marker for ATX headings                            |
-| Structured result  | object   | Path, section count, and section list                   |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `markdown_outline`; public constant; carries the prefix |
+| `MaxHeadingLevel` | `int` | `6`; greatest ATX heading level Markdown defines |
+| `MaxHeadingIndent` | `int` | `3`; four spaces begins an indented code block |
+| `HeadingMarker` | `char` | `#`; marker for ATX headings |
+| Structured result | object | Path, section count, and section list |
 
 The structured result has `path`, `sectionCount`, and `sections`. Each section has `level`, `title`,
 `startLine`, and `endLine`. The result is bounded by `PathPolicy.Limits.MaxResultCharacters` after it
@@ -70,13 +70,11 @@ exists.
 
 ##### ParseHeadings(TextReader reader, out int totalLines)
 
-Streams the Markdown text line by line through `TextLines.EnumerateLines`, so a document larger than
-the read ceiling is still outlined while only the heading list and the running line count are held. A
-fence line beginning with
-
-``` or ~~~ toggles a fenced code block. Lines inside a fence are ignored for heading detection. A
-line indented four or more spaces is also ignored as an indented code block. Outside those contexts,
-`TryReadHeading` recognizes ATX headings.
+Streams the Markdown text line by line through `TextLines.EnumerateLines`, so a document larger than the read ceiling is
+still outlined while only the heading list and the running line count are held. A fence line beginning with three
+backticks or three tildes toggles a fenced code block. Lines inside a fence are ignored for heading detection. A line
+indented four or more spaces is also ignored as an indented code block. Outside those contexts, `TryReadHeading`
+recognizes ATX headings.
 
 ##### BuildSections(...)
 

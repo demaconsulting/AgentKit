@@ -55,7 +55,7 @@
     <!-- ApiMark turns this project's XML doc comments into gradually-disclosed Markdown API
          reference (index -> namespace -> type -> member) for a coding agent to read.
          - Output is redirected under 'generated/' so it is already covered by the repository's
-           .gitignore, markdownlint, and cspell ignore rules, and by the standing rule that
+           .gitignore, LintMark, and TextLint ignore rules, and by the standing rule that
            agents never read, lint, or modify generated content.
          - The targets run once per build, for the first target framework only, which is the
            correct behavior for a multi-targeted project whose public surface is identical.

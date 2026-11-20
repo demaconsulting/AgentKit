@@ -1,0 +1,152 @@
+---
+# Spell-Checking with TextLint
+#
+# PURPOSE:
+# - Maintain professional documentation and code quality
+# - Catch spelling errors before publication
+# - Support consistent technical terminology usage
+# - NEVER add a misspelled word - fix the typo in the source instead
+# - NEVER add a British-English spelling - correct to US-English in the source
+# - PROPOSE only genuine technical terms/names as needed
+#
+# Run from the repository root (the pinned tool is restored by 'dotnet tool restore'):
+#   dotnet textlint
+#
+# WHERE AN EXCEPTION BELONGS:
+# - Never ours (vendored, generated, build output): 'ignorePaths'. It always wins and cannot use '!'.
+# - What is permanently in scope: 'files', with '!' excludes. Patterns apply in order and the last match wins.
+# - Ours, but skipped for a stated reason: an override with 'enabled: false' and a comment giving the reason.
+# - Different rules for some files (fixtures, test data, a folder in another dialect): an override with settings.
+#
+# OVERRIDES (examples; add real entries under 'overrides:' at the end of this file):
+# - List settings ('words', 'ignoreWords', 'flagWords', 'ignoreRegExpList', 'patterns') add to the top-level
+#   values; single values ('language', 'minWordLength', 'ignoreRandomStrings', 'minRandomLength', 'enabled')
+#   replace them. Matching entries apply in the order written, so put general entries first.
+# - An 'enabled: false' entry must not hold other settings.
+#
+# overrides:
+#   # Test fixtures contain ticket numbers that are not words
+#   - filename: test/**/Fixtures/**
+#     ignoreRegExpList:
+#       - /\bticket-\d+\b/
+#   # Skipped: the sample transcripts are captured from a third-party service in another language
+#   - filename: docs/samples/transcripts/**
+#     enabled: false
+version: '0.2'
+language: en
+
+# Also check hidden paths such as .github/ and .*.yaml
+enableGlobDot: true
+
+# The files lint.ps1 spell-checks
+files:
+  - "**/*.{md,yaml,yml,json,cs,cpp,hpp,h,txt}"
+words:
+  - Dema
+  - demaconsulting
+  - fileshare
+  - lintmark
+  - SARIF
+  - slnx
+  - thirdparty
+  - venv
+  - yamlfix
+  - apimark
+  - docstats
+  - inspectable
+  - metacharacter
+  - metacharacters
+  - ordinally
+  - pageable
+  - pasteable
+  - setext
+  - unranged
+  - upsert
+  - upserts
+  - wordcount
+  - buildmark
+  - FileAssert
+  - fileassert
+  - GHCP
+  - xunit
+  - mklink
+  - Pandoc
+  - Qube
+  - reqstream
+  - reviewmark
+  - sarifmark
+  - sonarmark
+  - svgz
+  - sysml
+  - ungranted
+  - versionmark
+  - Weasy
+  - WeasyPrint
+  - weasyprint
+  - webp
+  - netstandard
+  - NTFS
+  - APFS
+  - Ollama
+  - ollamasharp
+  - ONNX
+  - qwen
+  - nomic
+  - postconditions
+  - unserialized
+  - Landlock
+  - inodes
+  - TOCTOU
+  - canvasnet
+  - grayscale
+  - truecolor
+  - RGBA
+  - scanline
+  - scanlines
+  - palettized
+  - IHDR
+  - IDAT
+  - PLTE
+  - zlib
+  - Adler
+  - Deflate
+  - croppable
+  - uncroppable
+  - trimmable
+  - untrimmable
+  - assertable
+  - extensionless
+  - gridline
+  - coprime
+  - Chebyshev
+  - triaging
+  - Skia
+  - Magick
+  - subsampling
+  - IEND
+  - unwritable
+  - sonarscanner
+  - snupkg
+  - ncipollo
+  - DEMACONSULTINGNUGETKEY
+  - shopt
+  - unidirectionality
+  - nestings
+  - unconfigured
+  - marshalled
+
+ignorePaths:
+  - '**/.git/**'
+  - '**/node_modules/**'
+  - '**/.venv/**'
+  - '**/thirdparty/**'
+  - '**/third-party/**'
+  - '**/3rd-party/**'
+  - '**/.agent-logs/**'
+  - '**/bin/**'
+  - '**/obj/**'
+  - '**/generated/**'
+  # Payloads captured verbatim from a live server and embedded as test fixtures. Their wording is
+  # the provider's, not ours - spell-checking it would only invite edits that make a fixture stop
+  # being a faithful record of what the server sent.
+  - 'test/**/Fixtures/**'

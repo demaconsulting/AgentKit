@@ -25,11 +25,11 @@ rules; see *FileMoveDirectoryTool Design*.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                   |
-| ----------------- | -------- | ----------------------------------------------------------- |
-| `ToolName`        | `string` | `file_move`; public constant; carries the family prefix     |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_move`; public constant; carries the family prefix |
 | `ToolDescription` | `string` | Non-empty; names writable source, destination and overwrite |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy    |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `source`, `destination`, and optional `overwrite`. `overwrite` defaults to
 `false`.

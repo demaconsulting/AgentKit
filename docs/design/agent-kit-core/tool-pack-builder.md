@@ -32,11 +32,11 @@ policy, so an author cannot widen one pack's reach by configuring it separately.
 
 ### Data Model
 
-| Member              | Type               | Description                                           |
-|---------------------|--------------------|-------------------------------------------------------|
-| `_policy`           | `PathPolicy`       | The policy handed to every pack asked for its tools.  |
-| `_packs`            | `List<IToolPack>`  | The packs added so far, in the order they were added. |
-| `_hostCapabilities` | `HostCapabilities` | What the host has declared; initially `None`.         |
+| Member | Type | Description |
+| --- | --- | --- |
+| `_policy` | `PathPolicy` | The policy handed to every pack asked for its tools. |
+| `_packs` | `List<IToolPack>` | The packs added so far, in the order they were added. |
+| `_hostCapabilities` | `HostCapabilities` | What the host has declared; initially `None`. |
 
 The initial value of `_hostCapabilities` is deliberately the closed one. A host that forgets to
 declare what it supports is offered fewer tools, never more.
@@ -85,13 +85,13 @@ Creates the tools of every pack the host can support.
 
 **Algorithm**, for each pack in the order it was added:
 
-| #   | Step                                                     | Failure                     |
-|-----|----------------------------------------------------------|-----------------------------|
-| 1   | Skip the pack unless `(declared & required) == required` | none; the pack is skipped   |
-| 2   | Ask the pack for its tools, rejecting a null collection  | `InvalidOperationException` |
-| 3   | Reject a null element                                    | `InvalidOperationException` |
-| 4   | Reject a name outside the pack's declared family         | `InvalidOperationException` |
-| 5   | Append the tool to the composed list                     | none                        |
+| # | Step | Failure |
+| --- | --- | --- |
+| 1 | Skip the pack unless `(declared & required) == required` | none; the pack is skipped |
+| 2 | Ask the pack for its tools, rejecting a null collection | `InvalidOperationException` |
+| 3 | Reject a null element | `InvalidOperationException` |
+| 4 | Reject a name outside the pack's declared family | `InvalidOperationException` |
+| 5 | Append the tool to the composed list | none |
 
 Step 1 is evaluated **before** step 2, which is the whole point: an unsupported pack is never
 asked for its tools, so no tool it would have produced can exist at all.
@@ -109,12 +109,12 @@ outside its declared family.
 
 ### Error Handling
 
-| Condition                                     | Handling                               |
-|-----------------------------------------------|----------------------------------------|
-| Null policy, null pack                        | `ArgumentNullException` propagates     |
-| Empty family prefix, colliding family prefix  | `ArgumentException` propagates         |
+| Condition | Handling |
+| --- | --- |
+| Null policy, null pack | `ArgumentNullException` propagates |
+| Empty family prefix, colliding family prefix | `ArgumentException` propagates |
 | Null tool collection, null tool, foreign name | `InvalidOperationException` propagates |
-| A pack the host cannot support                | Skipped silently; no tools created     |
+| A pack the host cannot support | Skipped silently; no tools created |
 
 **Composition-time programming errors throw; only runtime policy decisions are returned.** This is
 the same line `PathPolicy`, `ToolName` and `GuardedToolFactory` draw, and it holds here without

@@ -1,4 +1,6 @@
 package AgentKitAgentsCopilot {
+    private import SoftwareItemMetadata::*;
+
     doc
     /*
      * AgentKitAgentsCopilot builds a Microsoft Agent Framework agent from a GitHub Copilot
@@ -22,10 +24,12 @@ package AgentKitAgentsCopilot {
     part def AgentKitAgentsCopilotSystem {
         doc /* The AgentKit Copilot Agents system as a whole. */
 
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-agents-copilot.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-agents-copilot.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-agents-copilot.yaml */
+        metadata info : SoftwareInfo {
+            testFiles = ("test/DemaConsulting.AgentKit.Agents.Copilot.Tests/AgentKitAgentsCopilotTests.cs");
+            designFiles = ("docs/design/agent-kit-agents-copilot.md");
+            verificationFiles = ("docs/verification/agent-kit-agents-copilot.md");
+            requirementFiles = ("docs/reqstream/agent-kit-agents-copilot.yaml");
+        }
 
         part copilotAgentFactory : CopilotAgentFactory;
         part copilotProviderSession : CopilotProviderSession;

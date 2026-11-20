@@ -91,17 +91,17 @@ a family whose required capability the host has not declared, such as the image 
 non-vision host or the agent family on a host that will not delegate, contributes no tools because
 the composition never asks its pack for them.
 
-| Interface         | Direction        | Format                     | Constraints                          |
-|-------------------|------------------|----------------------------|--------------------------------------|
-| `IToolPack`       | Outbound         | AgentKitCore pack contract | Implemented by each family           |
-| `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition   | Governed by one `PathPolicy`         |
-| `TextFilePack`    | Outbound         | AgentKitCore pack contract | Prefix `text_file`; no capability    |
-| `FilePack`        | Outbound         | AgentKitCore pack contract | Prefix `file`; no capability         |
-| `MarkdownPack`    | Outbound         | AgentKitCore pack contract | Prefix `markdown`; no capability     |
-| `TodoPack`        | Outbound         | AgentKitCore pack contract | Prefix `todo`; no capability         |
-| `MemoryPack`      | Outbound         | AgentKitCore pack contract | Prefix `memory`; needs a generator   |
-| `ImagePack`       | Outbound         | AgentKitCore pack contract | Prefix `image`; requires Vision      |
-| `AgentPack`       | Outbound         | AgentKitCore pack contract | Prefix `agent`; requires Delegation  |
+| Interface | Direction | Format | Constraints |
+| --- | --- | --- | --- |
+| `IToolPack` | Outbound | AgentKitCore pack contract | Implemented by each family |
+| `ToolPackBuilder` | Inbound/Outbound | AgentKitCore composition | Governed by one `PathPolicy` |
+| `TextFilePack` | Outbound | AgentKitCore pack contract | Prefix `text_file`; no capability |
+| `FilePack` | Outbound | AgentKitCore pack contract | Prefix `file`; no capability |
+| `MarkdownPack` | Outbound | AgentKitCore pack contract | Prefix `markdown`; no capability |
+| `TodoPack` | Outbound | AgentKitCore pack contract | Prefix `todo`; no capability |
+| `MemoryPack` | Outbound | AgentKitCore pack contract | Prefix `memory`; needs a generator |
+| `ImagePack` | Outbound | AgentKitCore pack contract | Prefix `image`; requires Vision |
+| `AgentPack` | Outbound | AgentKitCore pack contract | Prefix `agent`; requires Delegation |
 
 ## Dependencies
 
@@ -111,9 +111,9 @@ path, the result constructors and the pack contract every family in this package
 `Microsoft.Extensions.AI.Abstractions` — the package that defines the `AIFunction` a tool is —
 reaches this package transitively through Core rather than as a direct dependency, so a tool
 family composes through the same currency Core publishes without this package choosing a provider
-or restating a dependency Core already owns. Its integration is recorded in _OTS Integration
-Design_ (`docs/design/ots.md`) and its dedicated
-_Microsoft.Extensions.AI.Abstractions Design_, where the transitive path through Core is
+or restating a dependency Core already owns. Its integration is recorded in *OTS Integration
+Design* (`docs/design/ots.md`) and its dedicated
+*Microsoft.Extensions.AI.Abstractions Design*, where the transitive path through Core is
 documented.
 
 The one direct runtime NuGet dependency is `CanvasNet`, which the image family uses to read what
@@ -122,7 +122,7 @@ rather than through Core because it serves one family in this package and nothin
 is taken **without** `PrivateAssets` because it is needed at run time by any application that
 attaches that family. It was chosen on the property that it is fully safe managed code carrying no
 native binaries, which is what makes parsing hostile image input consistent with this library's
-thesis; see _CanvasNet Design_.
+thesis; see *CanvasNet Design*.
 
 The memory family consumes a second abstraction from that same package —
 `IEmbeddingGenerator<string, Embedding<float>>` — as a constructor argument the application
@@ -135,43 +135,39 @@ other capability package depends on Tools. The package is a peer of the other pa
 attaches.
 
 The following OTS items are used for building and verifying this system and are not consumed at
-runtime; see _OTS Integration Design_ (`docs/design/ots.md`) and each item's dedicated design
+runtime; see *OTS Integration Design* (`docs/design/ots.md`) and each item's dedicated design
 document for details:
 
-- **BuildMark** — generates build-notes documentation; see _BuildMark Design_
+- **BuildMark** — generates build-notes documentation; see *BuildMark Design*
 - **FileAssert** — validates generated documents against acceptance criteria; see
-  _FileAssert Design_
-- **Pandoc** — converts Markdown documentation to HTML; see _Pandoc Design_
-- **ReqStream** — enforces requirements-to-test traceability; see _ReqStream Design_
-- **ReviewMark** — enforces file review coverage and currency; see _ReviewMark Design_
-- **SarifMark** — converts CodeQL SARIF results to markdown; see _SarifMark Design_
-- **SonarMark** — generates SonarCloud quality reports; see _SonarMark Design_
-- **SysML2Tools** — lints the architecture model and renders its diagrams; see _SysML2Tools Design_
-- **VersionMark** — captures and publishes tool-version information; see _VersionMark Design_
-- **WeasyPrint** — converts HTML documentation to PDF; see _WeasyPrint Design_
-- **xUnit** — executes unit and integration tests; see _xUnit Design_
+  *FileAssert Design*
+- **Pandoc** — converts Markdown documentation to HTML; see *Pandoc Design*
+- **ReqStream** — enforces requirements-to-test traceability; see *ReqStream Design*
+- **ReviewMark** — enforces file review coverage and currency; see *ReviewMark Design*
+- **SarifMark** — converts CodeQL SARIF results to markdown; see *SarifMark Design*
+- **SonarMark** — generates SonarCloud quality reports; see *SonarMark Design*
+- **SysML2Tools** — lints the architecture model and renders its diagrams; see *SysML2Tools Design*
+- **VersionMark** — captures and publishes tool-version information; see *VersionMark Design*
+- **WeasyPrint** — converts HTML documentation to PDF; see *WeasyPrint Design*
+- **xUnit** — executes unit and integration tests; see *xUnit Design*
 
 ## Risk Control Measures
 
-This system defines no risk control measures of its own at this stage. Every path-containment
-control an agent relies on — path normalization to an absolute location with relative segments
-collapsed, the one required working directory
-paired with zero-or-more read-only or read-write access grants, the single containment decision,
-the disclosing returned denial that echoes the request and enumerates the permitted locations, and
-the unrepresentable unguarded policy — lives in AgentKitCore, which this package composes through unchanged. Each tool family
-this package adds will inherit those controls by constructing its tools through Core's single
-guarded construction path and governing them with the one access policy the composing application
-supplies; the risk controls specific to a family are described in that family's design when the
-family is introduced. For the TextFile family, that containment control is the `PathPolicy`
-decision applied to every read, every write and every enumeration it performs — the read decision
-for reads and listings, the write decision for writes — with enumeration going through the policy
-so a listing can never advertise a file a read would refuse. For the Image family, the containment
-control is that same `PathPolicy` read decision applied to every read and the same write decision
-applied to every destination a crop names, judged independently of one another exactly as in the
-TextFile family, and it adds a second control
-of its own: the Vision capability gate, which withholds the family from a host that has not declared
-it can present visual content — withholding it by never asking the pack for its tools — so a model
-that cannot see an image is never offered a tool that returns one it could only fabricate a
+This system defines no risk control measures of its own at this stage. Every path-containment control an agent relies on
+— path normalization to an absolute location with relative segments collapsed, the one required working directory paired
+with zero-or-more read-only or read-write access grants, the single containment decision, the disclosing returned denial
+that echoes the request and enumerates the permitted locations, and the unrepresentable unguarded policy — lives in
+AgentKitCore, which this package composes through unchanged. Each tool family this package adds will inherit those
+controls by constructing its tools through Core's single guarded construction path and governing them with the one
+access policy the composing application supplies; the risk controls specific to a family are described in that family's
+design when the family is introduced. For the TextFile family, that containment control is the `PathPolicy` decision
+applied to every read, every write and every enumeration it performs — the read decision for reads and listings, the
+write decision for writes — with enumeration going through the policy so a listing can never advertise a file a read
+would refuse. For the Image family, the containment control is that same `PathPolicy` read decision applied to every
+read and the same write decision applied to every destination a crop names, judged independently of one another exactly
+as in the TextFile family, and it adds a second control of its own: the Vision capability gate, which withholds the
+family from a host that has not declared it can present visual content — withholding it by never asking the pack for its
+tools — so a model that cannot see an image is never offered a tool that returns one it could only fabricate a
 description of.
 
 ## Data Flow
@@ -189,9 +185,9 @@ description of.
 
 ### Policy-derived publication
 
-The registration check above decides _whether a family is asked for its tools_. A second, finer
+The registration check above decides *whether a family is asked for its tools*. A second, finer
 decision then happens inside each family, and the two must not be confused: the policy the family
-is handed decides _which of its tools it returns_. The rule is one sentence:
+is handed decides *which of its tools it returns*. The rule is one sentence:
 
 > A pack withholds a tool whose writes the path policy governs when the policy permits no writing
 > anywhere, and publishes everything else.
@@ -210,7 +206,7 @@ in another form rather than take the path that works. Withholding the tools the 
 disabled turns the tool list into a largely truthful statement of what the agent can do.
 
 **The rule is narrower than "only the tools that could succeed", and deliberately so.** Only
-_writing_ is gated. A policy holding **no grants at all** is a valid policy, and under it the read
+*writing* is gated. A policy holding **no grants at all** is a valid policy, and under it the read
 tools are published as usual — `text_file_search`, `text_file_read`, `text_file_copy_lines` and
 `image_read` — while every one of them refuses every path it is given, because no path resolves
 under a policy that grants nothing. A symmetric read-visibility check was considered and rejected
@@ -249,19 +245,19 @@ Why each non-filtering family does not filter:
   optional `destination` that `image_crop` and `image_auto_crop` both carry does need a write
   grant, but the rule gates a tool on the writes it can only perform, not on whether every
   argument can be used;
-  see _Image Pack Design_, _Image Crop Tool Design_ and _Image Auto Crop Tool Design_.
+  see *Image Pack Design*, *Image Crop Tool Design* and *Image Auto Crop Tool Design*.
 - **Markdown** — `markdown_outline` consults only the read decision.
 - **Memory** and **Todo** — both families accept the policy and ignore it. Their state is the
-  pack's own store, not a location the policy governs, so a read-only _path_ policy narrows
+  pack's own store, not a location the policy governs, so a read-only *path* policy narrows
   nothing they do.
 - **Agent** — `agent_run` writes no file. Its use of the policy is to bound what a child may be
-  granted. A child is composed through a fresh builder over the _child's_ own policy, so
+  granted. A child is composed through a fresh builder over the *child's* own policy, so
   policy-derived publication reaches every depth automatically; a profile's allow-list is then
   intersected with what that composition published, so a write tool a profile names for a
   read-only child is simply absent rather than an error.
 
 Nothing reports which tools were withheld. That is the same decision `ToolPackBuilder` makes about
-skipped packs, and for the same reason; see _Tool Pack Builder Design_.
+skipped packs, and for the same reason; see *Tool Pack Builder Design*.
 
 ## Design Constraints
 
@@ -281,10 +277,10 @@ The library targets the following frameworks, enabling broad compatibility acros
 runtimes:
 
 | Target Framework | Runtime / Environment |
-|------------------|-----------------------|
-| `net8.0`         | .NET 8 LTS            |
-| `net9.0`         | .NET 9                |
-| `net10.0`        | .NET 10               |
+| --- | --- |
+| `net8.0` | .NET 8 LTS |
+| `net9.0` | .NET 9 |
+| `net10.0` | .NET 10 |
 
 The library is supported on the following operating systems:
 
@@ -296,7 +292,7 @@ Portability is achieved by restricting the implementation to Base Class Library 
 available across all target frameworks, to the provider-neutral
 `Microsoft.Extensions.AI.Abstractions` surface reached through AgentKitCore, and to one runtime
 imaging dependency that is itself fully safe managed code carrying no native binaries and that
-targets exactly the frameworks listed above; see _CanvasNet Design_. No platform-specific native
+targets exactly the frameworks listed above; see *CanvasNet Design*. No platform-specific native
 interop, OS-specific APIs, or framework-version-specific features are used.
 
 ### Integration Patterns

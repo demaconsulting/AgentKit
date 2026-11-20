@@ -17,11 +17,11 @@ The source is not changed. The destination is refused when it already exists unl
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                |
-| ----------------- | -------- | -------------------------------------------------------- |
-| `ToolName`        | `string` | `file_copy`; public constant; carries the prefix         |
-| `ToolDescription` | `string` | Non-empty; names source, destination and overwrite       |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_copy`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; names source, destination and overwrite |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `source`, `destination`, and optional `overwrite`. `overwrite` defaults to
 `false`.

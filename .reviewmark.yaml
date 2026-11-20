@@ -16,6 +16,7 @@ needs-review:
   - "docs/sysml2/**/*.sysml"     # SysML2 architecture model
   - "!**/obj/**"                  # Exclude build output
   - "!**/bin/**"                  # Exclude build output
+  - "!**/generated/**"            # Exclude generated output
   - "!node_modules/**"           # Exclude npm dependencies
   - "!**/.venv/**"                # Exclude Python virtual environment
   # The samples are demonstration applications, not deliverables: no sample is packed,

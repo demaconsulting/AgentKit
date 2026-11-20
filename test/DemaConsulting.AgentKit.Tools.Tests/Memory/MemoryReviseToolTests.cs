@@ -24,12 +24,12 @@ public class MemoryReviseToolTests
     {
         var token = TestContext.Current.CancellationToken;
         var vector = (await generator
-            .GenerateAsync(["Rear tyre pressure for touring."], options: null, token))[0].Vector;
+            .GenerateAsync(["Rear tire pressure for touring."], options: null, token))[0].Vector;
 
         await store.AddAsync(
             new MemoryRecord(
-                "mem-tyre",
-                "Rear tyre pressure for touring.",
+                "mem-tire",
+                "Rear tire pressure for touring.",
                 "12 psi cold.",
                 "01-initial.md",
                 "Section 4.2",
@@ -96,13 +96,13 @@ public class MemoryReviseToolTests
         var store = new InMemoryMemoryStore();
         var generator = new StubEmbeddingGenerator();
         await GivenOneMemoryAsync(store, generator);
-        var before = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var before = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         var tool = MemoryReviseTool.Create(store, generator);
 
         // Act: revise the memory onto a different subject
         var result = await ReviseAsync(
             tool,
-            "mem-tyre",
+            "mem-tire",
             "Gearbox oil change interval.",
             "Every 20000 km.",
             "02-revision.md",
@@ -111,11 +111,11 @@ public class MemoryReviseToolTests
         // Assert: everything the memory says, and how it is found, has changed
         Assert.True(Assert.IsType<JsonElement>(result).GetProperty("revised").GetBoolean());
 
-        var after = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var after = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.NotNull(after);
         Assert.Equal("Gearbox oil change interval.", after.Descriptor);
         Assert.Equal("Every 20000 km.", after.Details);
-        Assert.Equal("mem-tyre", after.Id);
+        Assert.Equal("mem-tire", after.Id);
         Assert.NotEqual(before!.Embedding.ToArray(), after.Embedding.ToArray());
     }
 
@@ -136,14 +136,14 @@ public class MemoryReviseToolTests
         // Act: revise it from a later document
         var result = await ReviseAsync(
             tool,
-            "mem-tyre",
-            "Rear tyre pressure for touring, revised.",
+            "mem-tire",
+            "Rear tire pressure for touring, revised.",
             "18 psi cold.",
             "02-revision.md",
             "Section 4.2");
 
         // Assert: the memory cites the document it now reflects, in the store and in the result
-        var after = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var after = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.Equal("02-revision.md", after?.SourceDocument);
 
         var element = Assert.IsType<JsonElement>(result);
@@ -167,10 +167,10 @@ public class MemoryReviseToolTests
         var tool = MemoryReviseTool.Create(store, generator);
 
         // Act: revise without stating any source
-        var result = await ReviseAsync(tool, "mem-tyre", "Rear tyre pressure, with no source.", "18 psi cold.");
+        var result = await ReviseAsync(tool, "mem-tire", "Rear tire pressure, with no source.", "18 psi cold.");
 
         // Assert: no stale citation survives, and the absence is reported rather than assumed
-        var after = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var after = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.Null(after?.SourceDocument);
         Assert.Null(after?.SourceLocator);
 
@@ -195,11 +195,11 @@ public class MemoryReviseToolTests
         var tool = MemoryReviseTool.Create(store, generator);
 
         // Act: revise to the identical descriptor with corrected details
-        var result = await ReviseAsync(tool, "mem-tyre", "Rear tyre pressure for touring.", "18 psi cold.");
+        var result = await ReviseAsync(tool, "mem-tire", "Rear tire pressure for touring.", "18 psi cold.");
 
         // Assert: the revision landed rather than being refused against the memory it is revising
         Assert.True(Assert.IsType<JsonElement>(result).GetProperty("revised").GetBoolean());
-        var after = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var after = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.Equal("18 psi cold.", after?.Details);
         Assert.Equal(1, await store.CountAsync(TestContext.Current.CancellationToken));
     }
@@ -243,15 +243,15 @@ public class MemoryReviseToolTests
 
         // Act: omit each required argument in turn
         var noIdentifier = await ReviseAsync(tool, null, "A descriptor.", "Some details.");
-        var noDescriptor = await ReviseAsync(tool, "mem-tyre", null, "Some details.");
-        var noDetails = await ReviseAsync(tool, "mem-tyre", "A descriptor.", null);
+        var noDescriptor = await ReviseAsync(tool, "mem-tire", null, "Some details.");
+        var noDetails = await ReviseAsync(tool, "mem-tire", "A descriptor.", null);
 
         // Assert: all three are refusals and the memory is untouched
         Assert.StartsWith("Denied (", Assert.IsType<string>(noIdentifier), StringComparison.Ordinal);
         Assert.StartsWith("Denied (", Assert.IsType<string>(noDescriptor), StringComparison.Ordinal);
         Assert.StartsWith("Denied (", Assert.IsType<string>(noDetails), StringComparison.Ordinal);
 
-        var unchanged = await store.FindAsync("mem-tyre", TestContext.Current.CancellationToken);
+        var unchanged = await store.FindAsync("mem-tire", TestContext.Current.CancellationToken);
         Assert.Equal("12 psi cold.", unchanged?.Details);
         Assert.Equal("01-initial.md", unchanged?.SourceDocument);
     }

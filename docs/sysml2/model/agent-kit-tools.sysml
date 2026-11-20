@@ -1,4 +1,6 @@
 package AgentKitTools {
+    private import SoftwareItemMetadata::*;
+
     doc
     /*
      * AgentKitTools is a general-purpose capability package of guarded tool families,
@@ -10,10 +12,12 @@ package AgentKitTools {
     part def AgentKitToolsSystem {
         doc /* The AgentKit Tools system as a whole. */
 
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/AgentKitToolsTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-tools.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-tools.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-tools.yaml */
+        metadata info : SoftwareInfo {
+            testFiles = ("test/DemaConsulting.AgentKit.Tools.Tests/AgentKitToolsTests.cs");
+            designFiles = ("docs/design/agent-kit-tools.md");
+            verificationFiles = ("docs/verification/agent-kit-tools.md");
+            requirementFiles = ("docs/reqstream/agent-kit-tools.yaml");
+        }
 
         part textFile : TextFile;
         part file : File;

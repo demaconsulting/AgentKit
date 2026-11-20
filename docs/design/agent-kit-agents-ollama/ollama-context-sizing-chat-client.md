@@ -113,7 +113,7 @@ had already named the context length, in which case nothing needed changing.
 ### Error Handling
 
 | Condition | Handling |
-| ----------- | ---------- |
+| --- | --- |
 | Null inner client | `ArgumentNullException` from the delegating base, at composition |
 | Context length of zero or less | `ArgumentOutOfRangeException`, at composition |
 | Caller already named the context length | Forwarded unchanged; not an error |

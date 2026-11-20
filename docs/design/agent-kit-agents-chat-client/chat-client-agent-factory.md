@@ -76,22 +76,22 @@ duplicate the framework it adapts.
 
 ### Error Handling
 
-| Condition                              | Handling                                   |
-|----------------------------------------|--------------------------------------------|
-| Null `client`                          | `ArgumentNullException` propagates         |
-| Null `tools`, or a null tool entry     | `ArgumentNullException` propagates         |
-| Empty `tools`                          | `ArgumentException` propagates             |
-| Two tools sharing a name               | `ArgumentException` propagates             |
+| Condition | Handling |
+| --- | --- |
+| Null `client` | `ArgumentNullException` propagates |
+| Null `tools`, or a null tool entry | `ArgumentNullException` propagates |
+| Empty `tools` | `ArgumentException` propagates |
+| Two tools sharing a name | `ArgumentException` propagates |
 
 Every rejected condition is a defect in the composing application, surfaced where the host wrote it
 rather than at the first conversation.
 
 ### Dependencies
 
-- **AgentKitCore** — supplies `ImagePromotingChatClient`; see _ImagePromotingChatClient Unit
-  Design_.
-- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`; see _Microsoft.Agents.AI
-  Design_.
+- **AgentKitCore** — supplies `ImagePromotingChatClient`; see *ImagePromotingChatClient Unit
+  Design*.
+- **Microsoft.Agents.AI** — supplies `AIAgent` and `ChatClientAgent`; see *Microsoft.Agents.AI
+  Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `AIFunction`, and `AITool`.
 
 ### Callers

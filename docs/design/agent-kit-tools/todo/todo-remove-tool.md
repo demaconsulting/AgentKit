@@ -19,10 +19,10 @@ document carries the measurements.
 
 The class is static and holds no state. A constructed tool captures only the store it was given.
 
-| Member        | Type       | Invariant                                                |
-| ------------- | ---------- | -------------------------------------------------------- |
-| `ToolName`    | `string`   | `todo_remove`; public constant; carries the prefix       |
-| Text result   | `string`   | `Task '<id>' was removed. The list now has N item(s).`   |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `todo_remove`; public constant; carries the prefix |
+| Text result | `string` | `Task '<id>' was removed. The list now has N item(s).` |
 
 The result's noun agrees with the count, using the same helper as `TodoSetTool`.
 

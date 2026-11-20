@@ -17,11 +17,11 @@ and passes that same policy to every tool factory.
 
 The class is sealed and stateless.
 
-| Member                   | Type               | Invariant                                        |
-| ------------------------ | ------------------ | ------------------------------------------------ |
-| `FamilyPrefix`           | `string`           | `file`; every published tool name starts here    |
-| `IToolPack.FamilyPrefix` | `string`           | Explicit implementation returning `FamilyPrefix` |
-| `RequiredCapabilities`   | `HostCapabilities` | `None`; the family is available to every host    |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` | `string` | `file`; every published tool name starts here |
+| `IToolPack.FamilyPrefix` | `string` | Explicit implementation returning `FamilyPrefix` |
+| `RequiredCapabilities` | `HostCapabilities` | `None`; the family is available to every host |
 
 The returned tool collection contains, in order, `FileListTool`, `FileCopyTool`, `FileMoveTool`,
 `FileDeleteTool`, `FileCreateDirectoryTool`, `FileMoveDirectoryTool` and `FileDeleteDirectoryTool`

@@ -29,7 +29,7 @@ namespace DemaConsulting.AgentKit.Tools.Memory;
 ///     new descriptor's vector is compared against the vectors already held — which are already
 ///     computed, so the check is nearly free — and a nearest match at or above the author's
 ///     configured threshold means the memory is not stored. Every attempt during the spike to have
-///     the <em>model</em> notice a conflict by judgement failed; the arithmetic succeeded, catching
+///     the <em>model</em> notice a conflict by judgment failed; the arithmetic succeeded, catching
 ///     a 12-psi versus 18-psi contradiction at 0.965 cosine.
 ///     </para>
 ///     <para>

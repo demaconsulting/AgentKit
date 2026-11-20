@@ -26,7 +26,7 @@ the direction that does harm: a tool-using agent would conclude its window was f
 and rotate on every turn after it. The prompt of the last request is the conversation, because by
 then the calls and their results are part of what is being sent; a `PromptSizeRecordingChatClient`
 installed beneath the loop sees each request separately and holds that figure. See
-_PromptSizeRecordingChatClient Unit Design_.
+*PromptSizeRecordingChatClient Unit Design*.
 
 The class implements `IProviderSession`. Instances are not safe for concurrent use, consistent with
 that contract: one session serves one conversation, and turns within a conversation are sequential
@@ -75,7 +75,7 @@ The constructor is internal because only the factory can supply a matching pipel
 Its argument checks are therefore a guard on an internal contract rather than a message to an
 application: the factory refuses a null client and a window that is not positive where the
 application configured its provider, and refuses a null seed where a rotation asked for a session.
-See _ChatClientProviderSessionFactory Unit Design_.
+See *ChatClientProviderSessionFactory Unit Design*.
 
 The window is a parameter rather than a reading, because an `IChatClient` publishes none: the
 abstraction exposes a provider name, a provider URI and a default model identifier, and nothing about
@@ -201,14 +201,14 @@ arguments are recorded for what they say about the call rather than to be parsed
 
 ### Error Handling
 
-| Condition                                  | Handling                                    |
-|--------------------------------------------|---------------------------------------------|
-| Null `client` or `seed`                    | `ArgumentNullException` propagates          |
-| `windowTokens` not positive                | `ArgumentOutOfRangeException` propagates    |
-| Null `message`                             | `ArgumentNullException` propagates          |
-| Turn on a released session                 | `ObjectDisposedException` propagates        |
-| Cancellation before the turn               | `OperationCanceledException` propagates     |
-| No request has reported token usage        | `InvalidOperationException` propagates      |
+| Condition | Handling |
+| --- | --- |
+| Null `client` or `seed` | `ArgumentNullException` propagates |
+| `windowTokens` not positive | `ArgumentOutOfRangeException` propagates |
+| Null `message` | `ArgumentNullException` propagates |
+| Turn on a released session | `ObjectDisposedException` propagates |
+| Cancellation before the turn | `OperationCanceledException` propagates |
+| No request has reported token usage | `InvalidOperationException` propagates |
 
 The refusal of a turn that leaves no prompt size recorded is the one condition here that is not a
 programming error, and it is deliberately not softened: knowing when the window is filling is the one
@@ -217,22 +217,22 @@ see and fix. The message names the missing fact and the two remedies — use a c
 usage, or wrap one in an implementation that does. A provider that reports usage on no request at all
 is caught on its first turn, which is the turn an application can act on; a later request that
 reports none leaves the last figure that was true standing rather than failing a turn the session was
-already able to measure. See _PromptSizeRecordingChatClient Unit Design_.
+already able to measure. See *PromptSizeRecordingChatClient Unit Design*.
 
 ### Dependencies
 
 - **AgentKitCore** — supplies `IProviderSession`, `ProviderSessionSeed`, `ProviderTurn`,
-  `TranscriptEntry` and `ContextUsage`; see _ProviderSession Unit Design_ and _ContextUsage Unit
-  Design_.
+  `TranscriptEntry` and `ContextUsage`; see *ProviderSession Unit Design* and *ContextUsage Unit
+  Design*.
 - **PromptSizeRecordingChatClient** — holds the prompt size this session answers for the window
-  with; see _PromptSizeRecordingChatClient Unit Design_.
+  with; see *PromptSizeRecordingChatClient Unit Design*.
 - **Microsoft.Extensions.AI.Abstractions** — supplies `IChatClient`, `ChatMessage`, `ChatOptions`,
   `ChatResponse`, `FunctionCallContent` and `FunctionResultContent`; see
-  _Microsoft.Extensions.AI.Abstractions Design_.
+  *Microsoft.Extensions.AI.Abstractions Design*.
 
 ### Callers
 
 `ChatClientProviderSessionFactory` constructs one at the start of a conversation and again at every
-rotation; see _ChatClientProviderSessionFactory Unit Design_. Because the constructor is internal and
+rotation; see *ChatClientProviderSessionFactory Unit Design*. Because the constructor is internal and
 takes a pipeline only that factory builds, nothing else constructs one — within this system or
 outside it.

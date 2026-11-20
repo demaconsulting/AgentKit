@@ -26,16 +26,16 @@ The class is static and holds no state.
 
 The factory constructs a `SessionConfig` carrying:
 
-| Member                   | Source                                   | Purpose                                       |
-|--------------------------|------------------------------------------|-----------------------------------------------|
-| `Tools`                  | the supplied tools                       | the tools published to the session            |
-| `AvailableTools`         | the names of the **same** supplied tools | the allow-list suppressing the built-in tools |
-| `OnPermissionRequest`    | the host handler, or the safe default    | adjudicates each permission request           |
-| `EnableSkills`           | `false`                                  | withholds the runtime's injected skills       |
-| `SkipCustomInstructions` | `true`                                   | withholds runtime-discovered instructions     |
-| `SystemMessage`          | the supplied instructions, when any      | governs a confined agent as the host intended |
-| `Model`                  | the supplied model name, when any        | backs the session with the chosen model       |
-| `InfiniteSessions`       | raised threshold, **engine paths only**  | stops two compactors fighting                 |
+| Member | Source | Purpose |
+| --- | --- | --- |
+| `Tools` | the supplied tools | the tools published to the session |
+| `AvailableTools` | the names of the **same** supplied tools | the allow-list suppressing the built-in tools |
+| `OnPermissionRequest` | the host handler, or the safe default | adjudicates each permission request |
+| `EnableSkills` | `false` | withholds the runtime's injected skills |
+| `SkipCustomInstructions` | `true` | withholds runtime-discovered instructions |
+| `SystemMessage` | the supplied instructions, when any | governs a confined agent as the host intended |
+| `Model` | the supplied model name, when any | backs the session with the chosen model |
+| `InfiniteSessions` | raised threshold, **engine paths only** | stops two compactors fighting |
 
 ### Key Methods
 
@@ -78,7 +78,7 @@ model name is not validated: only the runtime knows which models the signed-in u
 `ArgumentException` when `tools` is empty or two tools share a name.
 
 It leaves `InfiniteSessions` untouched, so a plain agent keeps the runtime's own compaction at the
-runtime's own threshold. See _Session Configuration Is Built on One Path_ below.
+runtime's own threshold. See *Session Configuration Is Built on One Path* below.
 
 #### BuildEngineSessionConfig(IList&lt;AIFunction&gt; tools, string? instructions, string? model)
 
@@ -87,8 +87,8 @@ manages — a compacting conversation, or a consolidation. It applies exactly th
 the agent path, through the same private helper, and then sets one further property: the Copilot
 runtime's background-compaction threshold is raised to **0.95**, a quarter of the window clear of the
 engine's rotation point at 0.70. The infinite-session enablement flag is also set false, but only as
-a statement of intent — the runtime ignores it, and nothing on this path depends on it. See _The
-Runtime's Own Compaction Is Held Clear of Rotation_ in _AgentKitAgentsCopilot System Design_ for the
+a statement of intent — the runtime ignores it, and nothing on this path depends on it. See *The
+Runtime's Own Compaction Is Held Clear of Rotation* in *AgentKitAgentsCopilot System Design* for the
 measurement behind that.
 
 It differs from the agent path in one further respect: it accepts an **empty** tool list. A
@@ -124,7 +124,7 @@ rest — is never a custom-tool request, so it can never match a supplied name a
 #### ValidateTools(IList&lt;AIFunction&gt; tools)
 
 Internal helper rejecting a null, empty, null-containing, or duplicate-named tool list, with ordinal
-name comparison. An empty list would produce an empty allow-list for an _agent_, which is a defect in
+name comparison. An empty list would produce an empty allow-list for an *agent*, which is a defect in
 its host; a duplicate name would make both the published tool set and the derived allow-list
 ambiguous.
 
@@ -155,15 +155,15 @@ each side.
 
 **The threshold is the setting that carries this, not the enablement flag.** Both are set on the
 engine path, but only the threshold is honored by the runtime; the flag states the intent and nothing
-depends on it. The measurement establishing that is recorded in _AgentKitAgentsCopilot System
-Verification Design_.
+depends on it. The measurement establishing that is recorded in *AgentKitAgentsCopilot System
+Verification Design*.
 
 ### Ownership and Disposal Contract
 
 **The host owns the client; the factory owns nothing disposable.** The host constructs and starts
 the `CopilotClient` and therefore disposes it. The factory builds the agent declaring that it does
 **not** own the client, and creates nothing disposable of its own, so the rule is unambiguous:
-_whoever created the client disposes it._ The factory does not return a disposable handle, because it
+*whoever created the client disposes it.* The factory does not return a disposable handle, because it
 has nothing to dispose — a handle would only be warranted if the factory had itself constructed the
 client. This is the reason the public entry point returns a bare `AIAgent` rather than an agent
 paired with an ownership handle.
@@ -189,7 +189,7 @@ with its own policy governs the session itself.
 
 **Model selection is reachable through the factory, not around it.** Which Copilot model backs a
 session materially changes how reliably a confined agent uses its tools and how accurately it reads
-an image, so the host must be able to choose one. It must be able to choose it _here_: a host that
+an image, so the host must be able to choose one. It must be able to choose it *here*: a host that
 built a session configuration itself to reach the setting would forfeit the derived allow-list, the
 withheld skills and custom instructions, and the default-safe permission handler — producing an
 agent that looks configured but denies every tool call. Exposing the setting on the factory removes
@@ -197,17 +197,17 @@ the incentive to bypass it.
 
 **Deployment consequence.** `Microsoft.Agents.AI.GitHub.Copilot` carries a RID-specific native
 runtime through its SDK dependency; a self-contained or RID-targeted publish resolves and ships the
-native component for the target runtime identifier. See the _AgentKitAgentsCopilot System Design_
-and the _Microsoft.Agents.AI.GitHub.Copilot Design_.
+native component for the target runtime identifier. See the *AgentKitAgentsCopilot System Design*
+and the *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ### Error Handling
 
-| Condition                              | Handling                                   |
-|----------------------------------------|--------------------------------------------|
-| Null `client`                          | `ArgumentNullException` propagates         |
-| Null `tools`, or a null tool entry     | `ArgumentNullException` propagates         |
-| Empty `tools`                          | `ArgumentException` propagates             |
-| Two tools sharing a name               | `ArgumentException` propagates             |
+| Condition | Handling |
+| --- | --- |
+| Null `client` | `ArgumentNullException` propagates |
+| Null `tools`, or a null tool entry | `ArgumentNullException` propagates |
+| Empty `tools` | `ArgumentException` propagates |
+| Two tools sharing a name | `ArgumentException` propagates |
 
 ### Dependencies
 
@@ -222,4 +222,4 @@ and the _Microsoft.Agents.AI.GitHub.Copilot Design_.
 constructing and starting its own `CopilotClient`, to obtain a Copilot agent confined to a supplied
 tool set. Within this system, `CopilotProviderSessionFactory` and `CopilotSummarizer` call
 `BuildEngineSessionConfig` — which is what keeps every session in the package on one confinement
-path; see _CopilotProviderSessionFactory Unit Design_ and _CopilotSummarizer Unit Design_.
+path; see *CopilotProviderSessionFactory Unit Design* and *CopilotSummarizer Unit Design*.

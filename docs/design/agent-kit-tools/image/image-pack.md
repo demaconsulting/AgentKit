@@ -21,12 +21,12 @@ requires, the composition can withhold the family from a host that cannot presen
 
 The class is sealed and holds no state; it is safe for concurrent use.
 
-| Member                    | Type                      | Invariant                                     |
-|---------------------------|---------------------------|-----------------------------------------------|
-| `FamilyPrefix` (constant) | `string`                  | `image`; leads every tool name it creates     |
-| `IToolPack.FamilyPrefix`  | `string`                  | Reports the constant above                    |
-| `RequiredCapabilities`    | `HostCapabilities`        | `Vision`; the family is gated on it           |
-| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; every tool         |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `FamilyPrefix` (constant) | `string` | `image`; leads every tool name it creates |
+| `IToolPack.FamilyPrefix` | `string` | Reports the constant above |
+| `RequiredCapabilities` | `HostCapabilities` | `Vision`; the family is gated on it |
+| `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; every tool |
 
 The prefix is published both as a constant and through the contract. The constant lets a test or a
 composing application name the family without repeating a string literal that could drift from the

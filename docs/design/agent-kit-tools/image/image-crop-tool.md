@@ -56,12 +56,12 @@ policy, asks the media-type map, and shapes the answer into something a model ca
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                      |
-| ----------------- | -------- | -------------------------------------------------------------- |
-| `ToolName`        | `string` | `image_crop`; public constant; carries the family prefix       |
-| `ToolDescription` | `string` | Non-empty; names the coordinate space and both outcomes        |
-| Croppable set     | `string` | Held by `ImageMediaTypes`; interpolated into its refusals      |
-| Denial messages   | `string` | Tool-composed; interpolate only integers and the media type    |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `image_crop`; public constant; carries the family prefix |
+| `ToolDescription` | `string` | Non-empty; names the coordinate space and both outcomes |
+| Croppable set | `string` | Held by `ImageMediaTypes`; interpolated into its refusals |
+| Denial messages | `string` | Tool-composed; interpolate only integers and the media type |
 
 Five of those denial messages concern the destination. **Four of the five now live in the shared
 `ImageDestination` helper**, unchanged in wording, because both region tools ask the same
@@ -69,13 +69,13 @@ destination questions in the same order and a second copy would be a second plac
 has to reach. The fifth stays here, because it names *what* could not be written and only the tool
 that produced it knows that:
 
-| Constant                              | Reason           | Why that reason                                       |
-| ------------------------------------- | ---------------- | ----------------------------------------------------- |
-| `ImageDestination.MustBePng`          | `InvalidRequest` | No file exists yet whose type could be unsupported    |
-| `ImageDestination.IsDirectory`        | `InvalidRequest` | Matches `TextFileCreateTool.PathIsDirectory`          |
-| `ImageDestination.Exists`             | `InvalidRequest` | Matches `TextFileCreateTool.FileExists`               |
-| `ImageDestination.ParentMissing`      | `TargetNotFound` | Matches `TextFileCreateTool.ParentMissing`            |
-| `DestinationUnwritable` (this unit)   | `InvalidRequest` | Matches `ImageAdmission.FileUnreadable`               |
+| Constant | Reason | Why that reason |
+| --- | --- | --- |
+| `ImageDestination.MustBePng` | `InvalidRequest` | No file exists yet whose type could be unsupported |
+| `ImageDestination.IsDirectory` | `InvalidRequest` | Matches `TextFileCreateTool.PathIsDirectory` |
+| `ImageDestination.Exists` | `InvalidRequest` | Matches `TextFileCreateTool.FileExists` |
+| `ImageDestination.ParentMissing` | `TargetNotFound` | Matches `TextFileCreateTool.ParentMissing` |
+| `DestinationUnwritable` (this unit) | `InvalidRequest` | Matches `ImageAdmission.FileUnreadable` |
 
 The `Destination` record that carries a permitted destination together with the form a confirmation
 reports it in likewise belongs to `ImageDestination` rather than to this unit, for the same reason:

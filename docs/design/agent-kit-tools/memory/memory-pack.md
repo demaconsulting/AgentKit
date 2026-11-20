@@ -13,11 +13,11 @@ decisions — which embedding backend, which controls, which persistence — ent
 
 The class is sealed and immutable after construction.
 
-| Member       | Type                  | Invariant                                  |
-| ------------ | --------------------- | ------------------------------------------ |
-| `_generator` | `IEmbeddingGenerator` | Non-null; never inspected                  |
-| `_options`   | `MemoryOptions`       | Non-null; supplied controls or the default |
-| `_store`     | `IMemoryStore?`       | Null when the application supplied none    |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `_generator` | `IEmbeddingGenerator` | Non-null; never inspected |
+| `_options` | `MemoryOptions` | Non-null; supplied controls or the default |
+| `_store` | `IMemoryStore?` | Null when the application supplied none |
 
 Two constants are published: `FamilyPrefix`, `memory`, and `SuggestedInstruction`, the instruction
 an application should give an agent that carries the family. That instruction states three things a

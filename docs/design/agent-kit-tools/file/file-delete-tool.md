@@ -26,11 +26,11 @@ cannot be deleted.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                |
-| ----------------- | -------- | -------------------------------------------------------- |
-| `ToolName`        | `string` | `file_delete`; public constant; carries the prefix       |
-| `ToolDescription` | `string` | Non-empty; states single-file, non-recursive deletion    |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_delete`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; states single-file, non-recursive deletion |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies only `path`. The file family prefix is part of the public name because a bare
 `delete` collides with reserved framework naming.

@@ -52,7 +52,7 @@ this unit publishes only what discovery can report, and presentation stays with 
 produce:
 
 | Member | Meaning |
-| -------- | --------- |
+| --- | --- |
 | `Stated` | The application supplied it. |
 | `LoadedModel` | Read from the running instance; this is what the server will enforce. |
 | `Assumed` | No instance was described; Ollama's own default is assumed. |
@@ -121,7 +121,7 @@ a server that never answers is precisely the case this tolerance exists for.
 ### Error Handling
 
 | Condition | Handling |
-| ----------- | ---------- |
+| --- | --- |
 | Null or empty `client` or `model` | `ArgumentException` family propagates to the caller |
 | Construction with a window of zero or less | `ArgumentOutOfRangeException` propagates to the caller |
 | The server query fails | Treated as "not reported"; the conservative default is used |

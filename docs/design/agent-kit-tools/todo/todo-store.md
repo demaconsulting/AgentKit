@@ -22,9 +22,9 @@ run, not a document; when the composition is discarded, so is the list.
 The class is sealed and internal. One instance is allocated by `TodoPack.CreateTools` for each
 composition and shared by that composition's list, set and remove tools.
 
-| Member   | Type             | Invariant                                                     |
-| -------- | ---------------- | ------------------------------------------------------------- |
-| `_gate`  | `object`         | Lock guarding all access to `_items`                          |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `_gate` | `object` | Lock guarding all access to `_items` |
 | `_items` | `List<TodoItem>` | Insertion order preserved; identifiers unique inside the list |
 
 The `TodoItem` record carries the identifier, title, status and note. It is a record rather than a

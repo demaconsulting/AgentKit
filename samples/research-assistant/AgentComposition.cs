@@ -178,7 +178,7 @@ public static class AgentComposition
     ///             matches found" when two weak matches were in fact returned, which is the same
     ///             confusion in the opposite direction. The agent is told to read each returned
     ///             descriptor and judge it, rather than treat the top match as an answer or an empty
-    ///             judgement as an empty result.
+    ///             judgment as an empty result.
     ///             </description>
     ///         </item>
     ///         <item>

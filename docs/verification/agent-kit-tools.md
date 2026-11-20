@@ -15,14 +15,14 @@ its tool families are composed through the AgentKitCore `ToolPackBuilder` under 
 that a composition to which no family has been attached is well defined and contributes no tools,
 and that attaching a family contributes exactly that family's tools — or, where the family declares
 a host capability, contributes them only when the host provides it. The first such family, the
-TextFile family, has its own subsystem and unit verification; see _TextFile Subsystem Verification
-Design_. The File family and the Markdown family each likewise have their own subsystem and unit
-verification; see _File Subsystem Verification Design_ and _Markdown Subsystem Verification Design_.
-The Image family, gated on the Vision capability, likewise has its own; see _Image
-Subsystem Verification Design_. The Todo family and the Agent family — the latter gated on the
-Delegation capability — likewise have their own; see _Todo Subsystem Verification Design_ and
-_Agent Subsystem Verification Design_. The Memory family likewise has its own; see _Memory
-Subsystem Verification Design_. The families introduced in subsequent increments are
+TextFile family, has its own subsystem and unit verification; see *TextFile Subsystem Verification
+Design*. The File family and the Markdown family each likewise have their own subsystem and unit
+verification; see *File Subsystem Verification Design* and *Markdown Subsystem Verification Design*.
+The Image family, gated on the Vision capability, likewise has its own; see *Image
+Subsystem Verification Design*. The Todo family and the Agent family — the latter gated on the
+Delegation capability — likewise have their own; see *Todo Subsystem Verification Design* and
+*Agent Subsystem Verification Design*. The Memory family likewise has its own; see *Memory
+Subsystem Verification Design*. The families introduced in subsequent increments are
 verified the same way.
 
 One scenario at this level is genuinely cross-family rather than compositional: a delegated agent

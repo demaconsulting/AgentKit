@@ -20,11 +20,11 @@ there instead.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                       |
-| ----------------- | -------- | --------------------------------------------------------------- |
-| `ToolName`        | `string` | `text_file_replace`; public constant; carries the family prefix |
-| `ToolDescription` | `string` | Non-empty; warns that line-number prefixes are not raw content  |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy        |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_replace`; public constant; carries the family prefix |
+| `ToolDescription` | `string` | Non-empty; warns that line-number prefixes are not raw content |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `path`, `oldText` and `newText`. `oldText` must be non-empty and must appear
 exactly once. `newText` may be empty, because an empty replacement is deletion.

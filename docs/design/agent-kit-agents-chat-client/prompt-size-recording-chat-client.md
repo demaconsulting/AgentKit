@@ -97,11 +97,11 @@ recorded figure is the most recent reported input-token count.
 
 ### Error Handling
 
-| Condition                                  | Handling                                    |
-|--------------------------------------------|---------------------------------------------|
-| Inner client fails a request               | The exception propagates unchanged          |
-| Answer reports no usage                    | The previously recorded figure is kept      |
-| No request has reported usage              | The recorded figure remains null            |
+| Condition | Handling |
+| --- | --- |
+| Inner client fails a request | The exception propagates unchanged |
+| Answer reports no usage | The previously recorded figure is kept |
+| No request has reported usage | The recorded figure remains null |
 
 Nothing is caught here. This class reports what a provider said and adds no failure mode of its own;
 a request that failed reports nothing about a prompt, and a session reading an unchanged figure after

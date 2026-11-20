@@ -157,13 +157,13 @@ forgets to take the lock.
 
 ### Error Handling
 
-| Condition                                    | Handling                                       |
-|----------------------------------------------|------------------------------------------------|
-| Event kind this adapter has no use for       | Ignored                                        |
-| Tool event with no usable call identifier    | Skipped; nothing recorded                      |
-| Assistant message with no text               | Skipped; nothing recorded                      |
-| Event belonging to a nested agent            | Skipped; nothing recorded                      |
-| Tool reported neither result nor error       | Recorded as an empty result                    |
+| Condition | Handling |
+| --- | --- |
+| Event kind this adapter has no use for | Ignored |
+| Tool event with no usable call identifier | Skipped; nothing recorded |
+| Assistant message with no text | Skipped; nothing recorded |
+| Event belonging to a nested agent | Skipped; nothing recorded |
+| Tool reported neither result nor error | Recorded as an empty result |
 
 Nothing here throws, by design. This class runs on the runtime's own dispatch thread, and an
 exception raised there would surface as an SDK fault rather than as an AgentKit one — so every

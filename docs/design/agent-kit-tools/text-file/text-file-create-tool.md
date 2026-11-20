@@ -18,11 +18,11 @@ performs only the single creation the model requested.
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                      |
-| ----------------- | -------- | -------------------------------------------------------------- |
-| `ToolName`        | `string` | `text_file_create`; public constant; carries the family prefix |
-| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool        |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy       |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `text_file_create`; public constant; carries the family prefix |
+| `ToolDescription` | `string` | Non-empty; the basis on which a model chooses this tool |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
 
 The model supplies `path` and `content`. A null `content` is malformed, but empty content is a valid
 request and creates an empty file.

@@ -34,8 +34,8 @@ simply do not carry the reference, so they produce no API documentation.
 Each shipped project sets four properties:
 
 - **`ApiMarkOutputDir`** — `$(MSBuildProjectDirectory)\generated\api`. Places the output inside
-  `generated/`, which is already excluded by `.gitignore`, `.markdownlint-cli2.yaml`, and
-  `.cspell.yaml`, and is covered by the standing rule that agents never read, lint, or modify
+  `generated/`, which is already excluded by `.gitignore`, `.lintmark.yaml`, and
+  `.textlint.yaml`, and is covered by the standing rule that agents never read, lint, or modify
   generated content. No new ignore rule is needed anywhere.
 - **`ApiMarkPackDocs`** — `true`. Ships the generated `api/` tree inside the `.nupkg`, which is the
   delivery mechanism for the consuming-agent audience. Verified to work with

@@ -1,11 +1,15 @@
 package AgentKitTools {
+    private import SoftwareItemMetadata::*;
+
     part def MarkdownPack {
         doc /* Publishes the markdown tool family as one pack: the single outline tool, governed by the supplied policy, requiring no host capability. */
 
-        comment sourceRef /* Source: src/DemaConsulting.AgentKit.Tools/Markdown/MarkdownPack.cs */
-        comment testRef /* Test: test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownPackTests.cs */
-        comment designRef /* Design: docs/design/agent-kit-tools/markdown/markdown-pack.md */
-        comment verificationRef /* Verification: docs/verification/agent-kit-tools/markdown/markdown-pack.md */
-        comment reqRef /* Requirements: docs/reqstream/agent-kit-tools/markdown/markdown-pack.yaml */
+        metadata info : SoftwareInfo {
+            sourceFiles = ("src/DemaConsulting.AgentKit.Tools/Markdown/MarkdownPack.cs");
+            testFiles = ("test/DemaConsulting.AgentKit.Tools.Tests/Markdown/MarkdownPackTests.cs");
+            designFiles = ("docs/design/agent-kit-tools/markdown/markdown-pack.md");
+            verificationFiles = ("docs/verification/agent-kit-tools/markdown/markdown-pack.md");
+            requirementFiles = ("docs/reqstream/agent-kit-tools/markdown/markdown-pack.yaml");
+        }
     }
 }

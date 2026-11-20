@@ -10,7 +10,7 @@ no dependencies to substitute — the unit depends only on the base class librar
 Every failing scenario asserts an **exception** rather than a returned result, because a
 malformed tool name is a construction-time programming error discovered by the developer who
 wrote it. The non-throwing discipline this library observes elsewhere applies to runtime policy
-refusals, not to argument validation; see _ToolName Unit Design_.
+refusals, not to argument validation; see *ToolName Unit Design*.
 
 The reserved-name scenario asserts on the **message text**, not merely on the exception type, so
 that the rule cannot be quietly folded into the generic family-prefix rule without the loss being

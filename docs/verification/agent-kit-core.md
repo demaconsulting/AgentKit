@@ -53,7 +53,7 @@ System tests reside in `AgentKitCoreTests.cs`, `AgentKitSessionsTests.cs`,
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: No external services, databases, or network access required. The image
   promotion scenario uses a scripted `IChatClient` that contacts nothing; see
-  _ImagePromotingChatClient Unit Verification Design_ for why a real provider would not observe
+  *ImagePromotingChatClient Unit Verification Design* for why a real provider would not observe
   the behavior under test
 - **File system**: The path-containment scenarios require a writable temporary directory. The
   session scenarios need none; transcripts and provider sessions are held in memory
@@ -90,8 +90,8 @@ permitted location and one in a sibling directory, and lists the permitted locat
 public API. Asserts the contained file appears and the sibling file does not. The scenario states
 the containment boundary of a listing only; the narrower guarantee that a file **inside** the
 permitted location which a read would refuse is also excluded is pinned by
-`PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed`, described in _PathPolicy Unit
-Verification Design_, because a sibling directory is never walked and so cannot exercise the
+`PathPolicy_EnumerateFiles_DeniedPatternFile_IsNotListed`, described in *PathPolicy Unit
+Verification Design*, because a sibling directory is never walked and so cannot exercise the
 per-candidate decision.
 
 ### Path Policy: Reading Widely While Writing Narrowly
@@ -176,7 +176,7 @@ list — caption then image — rather than serialized JSON. The declared return
 a strongly-typed declaration would pass without the result-delivery guard and would prove
 nothing. The guard is selective rather than a blanket passthrough — text and content are
 preserved while structured data is serialized — and the unit-level scenarios that pin both edges
-of that selection are described in _GuardedToolFactory Unit Verification Design_.
+of that selection are described in *GuardedToolFactory Unit Verification Design*.
 
 ### Guarded Tool: A Denied Path Returns a Refusal Rather Than Throwing
 

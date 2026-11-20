@@ -43,7 +43,7 @@ reference and the model name.
 ### Data Model
 
 - **`_opener`** (`CopilotChannelOpener`) — Opens one short-lived runtime session per consolidation.
-  See _CopilotTurnChannel Unit Design_.
+  See *CopilotTurnChannel Unit Design*.
 - **`_model`** (`string?`) — The model performing each consolidation, or null to leave the choice to
   the runtime.
 
@@ -59,7 +59,7 @@ which models the signed-in user may use.
 
 The model is named separately from the conversation's because consolidation is summarization rather
 than reasoning, so a smaller and cheaper model is usually the right choice — and because it is a
-different _conversation_, so changing it alters nothing the agent can observe.
+different *conversation*, so changing it alters nothing the agent can observe.
 
 **Preconditions:** `client` is not null and has been started.
 
@@ -67,7 +67,7 @@ different _conversation_, so changing it alters nothing the agent can observe.
 
 #### The CopilotSummarizer Constructor (CopilotChannelOpener, string?)
 
-**Purpose:** The test seam, for the reason _CopilotTurnChannel Unit Design_ gives.
+**Purpose:** The test seam, for the reason *CopilotTurnChannel Unit Design* gives.
 
 **Algorithm:** Reject a null opener and record it.
 
@@ -100,25 +100,25 @@ for.
 
 ### Error Handling
 
-| Condition                     | Handling                                             |
-|-------------------------------|------------------------------------------------------|
-| Null `client` or `opener`     | `ArgumentNullException` propagates                   |
-| Null `request`                | `ArgumentNullException` propagates                   |
-| Cancellation before opening   | `OperationCanceledException`; nothing is opened      |
-| Opener returned null          | `InvalidOperationException` propagates               |
-| Session answered nothing      | Empty record returned                                |
-| Failure during the turn       | Propagates; the session is released first            |
+| Condition | Handling |
+| --- | --- |
+| Null `client` or `opener` | `ArgumentNullException` propagates |
+| Null `request` | `ArgumentNullException` propagates |
+| Cancellation before opening | `OperationCanceledException`; nothing is opened |
+| Opener returned null | `InvalidOperationException` propagates |
+| Session answered nothing | Empty record returned |
+| Failure during the turn | Propagates; the session is released first |
 
 ### Dependencies
 
 - **AgentKitCore** — supplies `ISummarizer`, `ConsolidationRequest` and `ConsolidationPrompt`; see
-  _Summarizer Unit Design_.
+  *Summarizer Unit Design*.
 - **CopilotAgentFactory** — supplies the tool-free engine session configuration; see
-  _CopilotAgentFactory Unit Design_.
-- **CopilotTurnChannel** — opens and owns each short-lived runtime session; see _CopilotTurnChannel
-  Unit Design_.
+  *CopilotAgentFactory Unit Design*.
+- **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
+  Unit Design*.
 - **Microsoft.Agents.AI.GitHub.Copilot** — supplies `CopilotClient`; see
-  _Microsoft.Agents.AI.GitHub.Copilot Design_.
+  *Microsoft.Agents.AI.GitHub.Copilot Design*.
 
 ### Callers
 

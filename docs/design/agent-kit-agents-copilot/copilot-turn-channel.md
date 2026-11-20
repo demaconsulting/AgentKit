@@ -113,12 +113,12 @@ if a maintainer judges the extra request not worth it.
 
 ### Error Handling
 
-| Condition                          | Handling                                          |
-|------------------------------------|---------------------------------------------------|
-| Turn canceled by the caller        | `OperationCanceledException` propagates           |
-| Runtime failure during a turn      | Propagates to the provider session                |
-| Session release fails in transit   | Swallowed; the session is abandoned either way    |
-| Session deletion fails on release  | Swallowed; the session is already released        |
+| Condition | Handling |
+| --- | --- |
+| Turn canceled by the caller | `OperationCanceledException` propagates |
+| Runtime failure during a turn | Propagates to the provider session |
+| Session release fails in transit | Swallowed; the session is abandoned either way |
+| Session deletion fails on release | Swallowed; the session is already released |
 
 Both swallowed failures are discarded for the reason `CompactingAgentSession` discards a failed
 release during a rotation: by that point the operation the caller asked for has already succeeded,

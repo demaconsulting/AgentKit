@@ -20,22 +20,22 @@ tool executed correctly). Each item's individual verification document
 
 ## OTS Items
 
-| OTS Item                             | Verification Approach                                                       |
-|--------------------------------------|-----------------------------------------------------------------------------|
-| ApiMark                              | Pipeline evidence: FileAssert assertions on the generated API reference     |
-| BuildMark                            | Self-validation CLI suite plus pipeline evidence via build-notes document   |
-| CanvasNet                            | AgentKit tests: images built in-test, read, cropped and compared            |
-| FileAssert                           | Self-validation CLI suite plus transitive evidence from document assertions |
-| Microsoft.Agents.AI                  | AgentKit integration tests building an agent from an IChatClient            |
-| Microsoft.Agents.AI.GitHub.Copilot   | AgentKit integration tests building the session config and handler          |
-| Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools              |
-| OllamaSharp                          | AgentKit tests: real client on loopback; reports read, num_ctx on the wire  |
-| Pandoc                               | Pipeline evidence: FileAssert assertions on each generated HTML document    |
-| ReqStream                            | Self-validation CLI suite plus pipeline evidence via --enforce traceability |
-| ReviewMark                           | Self-validation CLI suite plus pipeline evidence via review plan/report     |
-| SarifMark                            | Self-validation CLI suite plus pipeline evidence via SARIF markdown report  |
-| SonarMark                            | Self-validation CLI suite plus pipeline evidence via SonarCloud report      |
-| SysML2Tools                          | Self-validation CLI suite plus pipeline evidence via lint and rendered SVGs |
-| VersionMark                          | Self-validation CLI suite plus pipeline evidence via version data           |
-| WeasyPrint                           | Pipeline evidence: FileAssert assertions on each generated PDF document     |
-| xUnit                                | Self-validation via discovery, execution, and TRX reporting of tests        |
+| OTS Item | Verification Approach |
+| --- | --- |
+| ApiMark | Pipeline evidence: FileAssert assertions on the generated API reference |
+| BuildMark | Self-validation CLI suite plus pipeline evidence via build-notes document |
+| CanvasNet | AgentKit tests: images built in-test, read, cropped and compared |
+| FileAssert | Self-validation CLI suite plus transitive evidence from document assertions |
+| Microsoft.Agents.AI | AgentKit integration tests building an agent from an IChatClient |
+| Microsoft.Agents.AI.GitHub.Copilot | AgentKit integration tests building the session config and handler |
+| Microsoft.Extensions.AI.Abstractions | AgentKit integration tests building and invoking guarded tools |
+| OllamaSharp | AgentKit tests: real client on loopback; reports read, num_ctx on the wire |
+| Pandoc | Pipeline evidence: FileAssert assertions on each generated HTML document |
+| ReqStream | Self-validation CLI suite plus pipeline evidence via --enforce traceability |
+| ReviewMark | Self-validation CLI suite plus pipeline evidence via review plan/report |
+| SarifMark | Self-validation CLI suite plus pipeline evidence via SARIF markdown report |
+| SonarMark | Self-validation CLI suite plus pipeline evidence via SonarCloud report |
+| SysML2Tools | Self-validation CLI suite plus pipeline evidence via lint and rendered SVGs |
+| VersionMark | Self-validation CLI suite plus pipeline evidence via version data |
+| WeasyPrint | Pipeline evidence: FileAssert assertions on each generated PDF document |
+| xUnit | Self-validation via discovery, execution, and TRX reporting of tests |

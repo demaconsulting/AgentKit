@@ -18,12 +18,12 @@ cannot receive one. The write decision alone governs the tool; read access never
 The class is static and holds no state. A constructed tool holds exactly one captured value — the
 `PathPolicy` supplied at construction — and that value is immutable.
 
-| Member            | Type     | Invariant                                                     |
-| ----------------- | -------- | ------------------------------------------------------------- |
-| `ToolName`        | `string` | `file_create_directory`; public constant; carries the prefix  |
-| `ToolDescription` | `string` | Non-empty; states both outcomes and the parent boundary       |
-| Denial messages   | `string` | Tool-composed constants; policy denials come from policy      |
-| Success messages  | `string` | Two constants; created and already-present are never the same |
+| Member | Type | Invariant |
+| --- | --- | --- |
+| `ToolName` | `string` | `file_create_directory`; public constant; carries the prefix |
+| `ToolDescription` | `string` | Non-empty; states both outcomes and the parent boundary |
+| Denial messages | `string` | Tool-composed constants; policy denials come from policy |
+| Success messages | `string` | Two constants; created and already-present are never the same |
 
 The model supplies only `path`.
 

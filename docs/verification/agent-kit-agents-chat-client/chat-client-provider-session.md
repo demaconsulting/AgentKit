@@ -138,7 +138,7 @@ message is asserted rather than only the exception type, because a refusal an ap
 on is no better than the guess this class declines to make. The refusal is reached on the first turn,
 which is where a misconfigured client is worth catching; the boundary on the other side — one request
 within a turn reporting none, when an earlier one reported a figure — belongs to the recorder and is
-covered in _PromptSizeRecordingChatClient Unit Verification Design_.
+covered in *PromptSizeRecordingChatClient Unit Verification Design*.
 
 #### AgentKitAgentsChatClient-ChatClientProviderSession-RecordsToolTraffic: Paired Entries, Answer Recorded Once
 
@@ -163,9 +163,9 @@ Scripting the call message last instead would pass either way, because `Provider
 append an answer already standing as the final entry — so the scenario is arranged precisely to
 distinguish them. The third is the boundary: a call taking no arguments is recorded as the bare call.
 
-A tool that is actually _run_, rather than one whose result is scripted, is exercised in
+A tool that is actually *run*, rather than one whose result is scripted, is exercised in
 `ChatClientProviderSessionFactory_CreateAsync_SeededTool_IsInvokedAndItsResultReachesTheTranscript`;
-see _ChatClientProviderSessionFactory Unit Verification Design_. The placement that makes it run is
+see *ChatClientProviderSessionFactory Unit Verification Design*. The placement that makes it run is
 the factory's, so that is where it is proven.
 
 #### AgentKitAgentsChatClient-ChatClientProviderSession-ReleasesWithoutDisposingTheClient: Release Ends the Session
@@ -195,8 +195,8 @@ asserts not only the `OperationCanceledException` but that the client received n
 a canceled turn costs no call and leaves no message the provider saw but the transcript does not
 record.
 
-The arguments a session is _constructed_ from are refused by the factory rather than here, and are
-covered in _ChatClientProviderSessionFactory Unit Verification Design_. An application supplies a
+The arguments a session is *constructed* from are refused by the factory rather than here, and are
+covered in *ChatClientProviderSessionFactory Unit Verification Design*. An application supplies a
 client and a window there and reaches this constructor through nothing else, so a scenario asserting
 the same refusals twice would describe a path no application can take.
 
