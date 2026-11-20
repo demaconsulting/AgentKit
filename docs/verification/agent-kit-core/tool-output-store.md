@@ -93,6 +93,7 @@ Exhaustive boundary analysis: for every output of up to eight characters drawn f
 and LF, and every ceiling from one to five, an output the raw-length check refuses normalizes to
 more than the ceiling; and for each ceiling the CRLF output of exactly the bound is not refused and
 normalizes to exactly the ceiling, proving the bound tight.
+
 #### AgentKitCore-ToolOutputStore-OldestEvictedFirst: The Count Ceiling Evicts the Oldest
 
 **Test**: `ToolOutputStore_Add_BeyondTheCountCeiling_EvictsTheOldestFirst`
