@@ -37,6 +37,7 @@ policy, so an author cannot widen one pack's reach by configuring it separately.
 | `_policy` | `PathPolicy` | The policy handed to every pack asked for its tools. |
 | `_packs` | `List<IToolPack>` | The packs added so far, in the order they were added. |
 | `_hostCapabilities` | `HostCapabilities` | What the host has declared; initially `None`. |
+| `_toolOutput` | `ToolOutputOptions?` | Retention options for large outputs; `null` until requested. |
 
 The initial value of `_hostCapabilities` is deliberately the closed one. A host that forgets to
 declare what it supports is offered fewer tools, never more.
@@ -65,6 +66,15 @@ Declares what the host provides, and returns the builder so calls can be chained
 
 A later call **replaces** the declaration rather than adding to it, and the declaration is
 evaluated at `Build`, so its position relative to `Add` does not matter.
+
+#### WithToolOutputSpill(ToolOutputOptions? options)
+
+Requests retention of large tool outputs, and returns the builder so calls can be chained. A null
+argument means `ToolOutputOptions.Default`.
+
+Like `WithHostCapabilities`, a later call **replaces** the options and the request is evaluated at
+`Build`, so its position relative to `Add` does not matter. Without the request `Build` is
+byte-for-byte what it was.
 
 #### Add(IToolPack pack)
 
@@ -104,8 +114,39 @@ was rejected: it is equally deterministic but scatters a family across the list.
 `Build` neither resets nor caches. Calling it twice reports the builder's state as it is at each
 call and creates a fresh set of tools each time.
 
+**When retention was requested**, `Build` additionally:
+
+1. before asking any pack for tools, rejects a policy whose `Limits.MaxResultCharacters` is below
+   `ToolOutputSpill.MinimumResultCharacters` (1,000), and a pack whose `FamilyPrefix` is the
+   reserved `tool_output`;
+2. after composing, rejects any composed tool whose name starts with `tool_output_` (a pack with a
+   shorter prefix such as `tool` could otherwise publish one);
+3. rejects two composed tools of one name, naming the tool, before calling `Apply`. A pack can
+   return a name twice, and two packs whose prefixes overlap (such as `file` and `file_list`) can
+   both publish it;
+4. rejects a composed tool whose name is longer than `ToolName.MaxLength` (64), naming the tool.
+   Only a pack returning a hand-built function can publish one;
+5. returns `ToolOutputSpill.Apply(composed, policy.Limits, options)`, which wraps every tool and
+   appends `tool_output_read` and `tool_output_search`. A fresh store is allocated per `Build`, so
+   two built lists never share references.
+
+The reserved-prefix checks run at `Build` rather than at `Add` because the request may be made
+after the packs are added; without the request nothing is reserved. The ceiling check likewise
+runs only with the request, so a composition that never opts in accepts every ceiling `ToolLimits`
+accepts, zero included.
+
+The duplicate-name, name-length and ceiling checks are made by `Build` itself rather than left to
+`Apply`, which reports each as an `ArgumentException` because the list and the limits are its own
+arguments. For `Build` each is a mistake in the composition — a pack added earlier, or the policy
+the builder was given — so it is reported with the `InvalidOperationException` `Build` documents
+for every other composition mistake. Without the request the checks are not made and the composed
+tools are returned as the packs produced them, so a composition that never opts in is unchanged;
+the agent factories already refuse a tool list holding two tools of one name.
+
 **Throws:** `InvalidOperationException` when a pack returns no collection, a null tool, or a tool
-outside its declared family.
+outside its declared family; or, with retention requested, when the policy's result ceiling is
+below the retention minimum, when a pack claims or publishes under the reserved prefix, when two
+composed tools share a name, or when a composed tool's name is longer than 64 characters.
 
 ### Error Handling
 
@@ -114,6 +155,11 @@ outside its declared family.
 | Null policy, null pack | `ArgumentNullException` propagates |
 | Empty family prefix, colliding family prefix | `ArgumentException` propagates |
 | Null tool collection, null tool, foreign name | `InvalidOperationException` propagates |
+| Ceiling below the retention minimum (retention requested) | `InvalidOperationException` propagates |
+| Reserved `tool_output` prefix claimed or used (retention requested) | `InvalidOperationException` propagates |
+| Two composed tools of one name (retention requested) | `InvalidOperationException` propagates |
+| Composed tool name over 64 characters (retention requested) | `InvalidOperationException` propagates |
+| Two composed tools of one name (retention not requested) | Returned unchanged; the agent factories refuse them |
 | A pack the host cannot support | Skipped silently; no tools created |
 
 **Composition-time programming errors throw; only runtime policy decisions are returned.** This is
@@ -170,8 +216,9 @@ without a breaking change.
 ### Dependencies
 
 `ToolPackBuilder` depends on `IToolPack` and `HostCapabilities` (see *ToolPack Unit Design*), on
-`PathPolicy`, which it holds and hands to every pack, and on `AIFunction` from
-`Microsoft.Extensions.AI.Abstractions`, which is the form a tool takes.
+`PathPolicy`, which it holds and hands to every pack, on `ToolOutputOptions` and `ToolOutputSpill`
+(see their unit designs), which compose retention of large outputs when requested, and on
+`AIFunction` from `Microsoft.Extensions.AI.Abstractions`, which is the form a tool takes.
 
 ### Callers
 

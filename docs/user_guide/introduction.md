@@ -14,6 +14,7 @@ This user guide covers:
 - Installation of the library
 - What the library provides today, and how each part is used
 - The path policy, tool limits, naming, result and tool pack contracts
+- Opt-in retention of tool outputs too large to return, paged through by reference
 - The session engine: how a conversation outlives the provider's context window
 - Three runnable samples: consuming the shipped tools (*document assistant*), an agent whose work
   spans turns and compacts its own context (*research assistant*), and writing your own guarded
@@ -222,6 +223,114 @@ provider in the form the tool produced them rather than as serialized JSON, whic
 returned image to be recognized as an image; a structured result is serialized to JSON on the way
 out, because JSON is the form in which a provider can read structured data.
 
+`ToolResult.Oversized` is the one result that is not delivered as constructed. A tool whose whole
+output exceeds the result ceiling returns it together with the refusal it would give, and the
+composition decides which the model sees; see *Large Tool Outputs* below.
+
+## Large Tool Outputs
+
+Every tool result is bounded by `ToolLimits.MaxResultCharacters` (32,000 characters by default),
+because everything a tool returns is spent from the same context window the conversation needs.
+Without anything further, a result over that ceiling is **refused**, never truncated — a truncated
+listing or search would silently hide what the model never knew to ask for. That is safe, but it
+loses work: a broad search, a full listing of a large tree, the outline of a long document, or a
+delegated agent's whole report becomes a refusal the model can only answer by guessing how to
+narrow the request. And a custom tool that measures nothing hands its whole output to the provider.
+
+An application can opt in to **retaining** such outputs instead:
+
+```csharp
+IReadOnlyList<AIFunction> tools = new ToolPackBuilder(policy)
+    .Add(new TextFilePack())
+    .Add(new FilePack())
+    .WithToolOutputSpill()
+    .Build();
+```
+
+With retention composed, a result over the ceiling is kept whole in memory and the model receives
+a bounded preview in its place — a header naming an opaque reference, the output's size and the two
+reader tools, then the first and last lines numbered exactly as `text_file_read` numbers a file:
+
+```text
+[Output output-3 from text_file_search: 184233 characters in 3012 lines, larger than the
+32000-character result limit. Showing lines 1-58 and 2990-3012. The full output is retained:
+read it with tool_output_read (id 'output-3', startLine, lineCount) or find text in it with
+tool_output_search.]
+   1| notes/a.md:12:...
+[... lines 59-2989 omitted ...]
+3012| notes/z.md:4:...
+```
+
+The model then reads exactly what it needs:
+
+- **`tool_output_read`** takes the reference and an optional `startLine` and `lineCount`, and
+  returns that range under an `output-3 lines A-B of N` header. Omit `lineCount` to receive as many
+  whole lines as fit the result ceiling.
+- **`tool_output_search`** takes the reference and a pattern of at most 1,000 characters — literal by default, a regular
+  expression with `literal: false` — with optional `ignoreCase`, `contextLines` and `maxMatches`, and reports matching
+  lines as `line:content` using the same numbers.
+
+**The readers cannot reach the file system.** They accept a reference and paging or search
+arguments, and no path, and they read only the outputs of the composition that offered them.
+Retention adds no reach to an agent, which is why it is held in memory rather than written to a
+temporary file the confined tools could not read anyway.
+
+**What is retained.** Every tool in the composition is covered, including the application's own
+tools — even an `AIFunction` written by hand rather than built with `GuardedToolFactory`. Text, JSON
+and text content longer than the ceiling are retained, and JSON is indented so it can be paged one
+value per line. Any other value a tool returns that is not content — a record, an anonymous object,
+a collection, a number, a byte array — is first serialized to JSON with the tool's own serializer
+options, exactly as `GuardedToolFactory` serializes it, and is then delivered, or retained, as that
+JSON; a value that cannot be serialized fails the call with the serializer's exception, as it would
+from the factory. The listing, searching, outlining and delegating tools — `file_list`,
+`text_file_search`, `markdown_outline` and `agent_run` — are retained exactly where they would
+otherwise refuse. Images, other binary content and any other content that is not text are never
+retained and are delivered as the tool returned them; AgentKit's own tools bound binary content by
+its own ceiling. `text_file_read` keeps refusing an oversized read, because the file is already
+pageable with `startLine` and `lineCount`.
+
+**Retention is bounded.** `ToolOutputOptions` sets the preview size (4,000 characters), the largest
+single output retained (4,194,304 characters), the total retained (16,777,216 characters, about
+32 MiB) and the number of outputs retained (256); pass one to `WithToolOutputSpill` to change any of
+them. When a new output would exceed a ceiling the **oldest** outputs are released first, and a
+reference to a released output is answered with the fact that it is no longer retained, so the model
+re-runs the tool rather than guessing. A single output larger than the per-output ceiling is never
+truncated; it is refused. A tool that reports its output as oversized gives its usual refusal: the
+built-in `file_list`, `markdown_outline`, `text_file_search` and `agent_run` do this, as does your
+own tool if it returns `ToolResult.Oversized`. Any other tool, including your own tools returning
+text, JSON or a structured value, gets a refusal stating the output's size and the retention limit.
+
+**Retention needs a result ceiling of at least 1,000 characters**
+(`ToolOutputSpill.MinimumResultCharacters`). The preview's header names the reference, and the
+reference is the result, so the ceiling must leave room for it. `Build` throws
+`InvalidOperationException` for a smaller ceiling, before any pack is asked for its tools;
+`ToolOutputSpill.Apply` throws `ArgumentException`; and an `AgentPack` given `childToolOutput`
+throws `InvalidOperationException` from its `CreateTools` — that is, from the `Build` that composes
+it — because every delegated agent inherits the ceiling. Tool names must also be no longer than 64
+characters, which every guarded tool already is; only a hand-built `AIFunction` can be longer.
+For a delegated agent composed with `childToolOutput`, such a name — like a child tool under the
+reserved `tool_output_` prefix, or one name published by two child packs with overlapping
+prefixes — makes `agent_run` refuse that delegation as a composition failure rather than start
+the child. With that, every result a retaining composition writes itself — a preview, a page, a
+search listing — fits within the ceiling. A composition without retention accepts any ceiling, zero
+included.
+
+**Lifetime and isolation.** Retained outputs live exactly as long as the tool list they were
+composed into. A session carries that list unchanged across compaction, so a reference survives a
+rotation. Each `Build` has its own store, and so does each delegated agent: pass `childToolOutput`
+to `AgentPack`, after `hostCapabilities`, to compose children (and their children) with retention,
+each with its own store and its own two readers. A child whose profile admits no tools stays
+tool-less. A child's final answer that is too large for the *parent's* ceiling is retained by the
+parent whenever the parent's composition retains outputs. A host that hands one composed tool list
+to several conversations shares the retained outputs between them, exactly as it would share a task
+list; compose per conversation to keep them apart.
+
+**Without the opt-in nothing changes.** Every refusal is the same text it always was, no reader is
+offered, and a custom tool's oversized result still reaches the provider unbounded. Retention works
+the same way on every provider, because it lives in the tools themselves; on GitHub Copilot the
+readers are published, allow-listed and approved like any other supplied tool. A list assembled
+without a builder can be composed the same way with `ToolOutputSpill.Apply(tools, limits)`.
+
 ## Delivering Images to Any Provider
 
 Providers differ in where they accept image content, and the difference is silent. Some deliver an
@@ -308,12 +417,19 @@ row.
 | Memory | `memory_revise` | Replaces a memory's subject, details and source | None | No |
 | Memory | `memory_forget` | Removes one memory permanently | None | No |
 | Agent | `agent_run` | Delegates a task to a named child agent profile | `Delegation` | No |
+| Tool output | `tool_output_read` | Reads a line range of a retained large tool output | None | No |
+| Tool output | `tool_output_search` | Finds a pattern in a retained large tool output | None | No |
+
+The two **Tool output** rows are not a family a pack contributes. They ship in
+`DemaConsulting.AgentKit.Core` and are appended to a composition only when it retains large tool
+outputs; see *Large Tool Outputs* above. Everything below about the seven families' tools excludes
+them.
 
 The **Capability** column is the host capability the family requires; the **Write grant** column
 says whether the tool is published only when the access policy permits writing somewhere.
 
 **A tool marked `Yes` is not published at all unless the policy permits writing somewhere.** Eleven
-of the twenty-eight tools are marked `Yes`: five in the text file family and six in the file
+of the twenty-eight family tools are marked `Yes`: five in the text file family and six in the file
 family. If every grant an application configures is read-only — or it configures no grants at all —
 those eleven are absent from the composed list, and the seven families together publish seventeen
 tools rather than twenty-eight. The text file family offers `text_file_search`, `text_file_read` and
@@ -492,6 +608,10 @@ its agent to edit must grant it somewhere to write.
 The todo, memory and agent packs are added the same way, but take constructor arguments of their
 own — a supplied store, an embedding generator, or the profiles, runner and child packs a delegated
 agent is built from. *Sample: Research Assistant* below shows all three composed onto one policy.
+
+Adding `.WithToolOutputSpill()` to the builder composes retention of large tool outputs over the
+same list and appends `tool_output_read` and `tool_output_search` after every pack's tools; see
+*Large Tool Outputs* above. Without it the list is exactly the packs' tools.
 
 # Building an Agent
 
@@ -685,6 +805,9 @@ var agent = CopilotAgentFactory.Create(
 #pragma warning restore MCPSDK001
 ```
 
+With retention composed, `tools` includes the two readers, so a handler built from it approves them
+too.
+
 A session the session engine drives through `CopilotProviderSessionFactory` always takes the
 default handler; a host that wants a policy of its own composes an agent, where that choice is
 offered.
@@ -706,6 +829,12 @@ hand the model the file's path instead — a file no confined tool can read. The
 diversion, so every tool result reaches the model inline. AgentKit's tools bound their own output
 through the policy's tool limits, which is where the size of a result belongs; a tool you write
 yourself should bound its output the same way.
+
+To keep a result too large for the limit instead of having it refused, compose the tool list with
+retention (see *Large Tool Outputs*). AgentKit's retention is the large-output mechanism on Copilot
+as on every other provider: the output stays in memory, the model receives a bounded preview inline,
+and `tool_output_read` and `tool_output_search` are published, allow-listed and approved like your
+other tools. The runtime's diversion stays off either way.
 
 ### Running a Conversation
 

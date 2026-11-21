@@ -135,10 +135,22 @@ sections:
 
               - id: AgentKitTools-TextFile-SearchTool-BoundedResult
                 title: >-
-                  The search tool shall refuse a result exceeding the policy's result ceiling, naming
-                  the ceiling rather than truncating.
+                  When the composition does not retain large outputs, the search tool shall refuse a
+                  result exceeding the policy's result ceiling, naming the ceiling rather than
+                  truncating.
                 justification: |
                   A truncated search result hides matches the model would then never see; naming the
                   ceiling lets it narrow the search instead.
                 tests:
                   - TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-TextFile-SearchTool-OversizedResultRetainable
+                title: >-
+                  When the composition retains large outputs, the search tool shall have a result
+                  exceeding the policy's result ceiling retained whole for paging rather than refused.
+                justification: |
+                  A broad search is the result most likely to outgrow the ceiling, and refusing it loses
+                  every match it found. Retained, the model can page through the matches or search
+                  within them.
+                tests:
+                  - TextFileSearchTool_Search_ResultBeyondTheResultCeilingWithRetention_IsRetainedForPaging

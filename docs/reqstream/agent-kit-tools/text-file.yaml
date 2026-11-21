@@ -237,7 +237,8 @@ sections:
             title: >-
               The text file family shall observe the ceilings the access policy carries, refusing an
               oversized read or search result and naming the ceiling rather than returning truncated
-              content.
+              content, except that an oversized search result is retained for paging when the
+              composition retains large outputs.
             justification: |
               Everything a tool returns is spent out of the same finite context window the
               conversation must share, so the ceilings have to be honored. Truncating instead of
@@ -248,6 +249,7 @@ sections:
               - AgentKitTools-TextFile-ReadTool-ResultCeiling
               - AgentKitTools-TextFile-SearchTool-LargeFileSearchable
               - AgentKitTools-TextFile-SearchTool-BoundedResult
+              - AgentKitTools-TextFile-SearchTool-OversizedResultRetainable
             tests:
               - TextFileSearchTool_Search_ResultBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
               - TextFileReadTool_Read_LineLargerThanTheReadCeiling_ReturnsDenialNamingRecourse

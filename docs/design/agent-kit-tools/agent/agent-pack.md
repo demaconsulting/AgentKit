@@ -30,6 +30,7 @@ The class is sealed and immutable after construction; it is safe for concurrent 
 | `_childPacks` | `List<IToolPack>` | Packs, not tools; no `AgentPack`; unique prefixes |
 | `_runner` | Host runner delegate | The host's means of starting an agent |
 | `_hostCapabilities` | `HostCapabilities` | Applied when composing a child |
+| `_childToolOutput` | `ToolOutputOptions?` | Retention options for a child; `null` for none |
 | `_depth` | `int` | Depth of the agent this pack is composed for |
 | `CreateTools(PathPolicy)` | `IEnumerable<AIFunction>` | Non-null; no null element; exactly the run tool |
 
@@ -56,8 +57,9 @@ would publish the `agent` prefix twice.
 
 ##### AgentPack(profiles, runner, childPacks, hostCapabilities)
 
-The public constructor. Registers the profiles and packs the application supplies, at the root
-depth of zero.
+The original public constructor, kept with exactly the signature it had before retention existed.
+Registers the profiles and packs the application supplies, at the root depth of zero, for
+delegated agents that do not retain large tool outputs.
 
 **Preconditions:** `profiles`, `runner` and `childPacks` are non-null; `profiles` contains no
 null entry and no duplicate name; `childPacks` contains no null entry, no `AgentPack`, and no two
@@ -65,12 +67,31 @@ packs claiming one family prefix. `hostCapabilities` defaults to `HostCapabiliti
 a child whose profile admits `agent_run` can delegate in turn; a host whose children may also
 see, for example, passes `HostCapabilities.Delegation | HostCapabilities.Vision`.
 
-**Algorithm:** delegates to the private depth-aware constructor with `depth: 0`.
+**Algorithm:** delegates to the overload below with `childToolOutput: null`.
 
 **Postconditions:** the pack is immutable, ready to be added to a `ToolPackBuilder`, and can be
 added any number of times.
 
-##### private AgentPack(..., int depth)
+##### AgentPack(profiles, runner, childPacks, hostCapabilities, childToolOutput)
+
+The public constructor for delegated agents that retain large tool outputs. Its preconditions on
+`profiles`, `runner`, `childPacks` and `hostCapabilities` are those of the original constructor.
+`childToolOutput` may be `null`, which composes children without retention; when supplied, every
+delegated agent holding at least one tool is composed with retention of large tool outputs using
+those options, and the policy later given to `CreateTools` must have a result ceiling of at least
+`ToolOutputSpill.MinimumResultCharacters`, because every child inherits it.
+
+**Algorithm:** delegates to the private depth-aware constructor with `depth: 0`.
+
+**Postconditions:** as for the original constructor.
+
+**Rationale:** this is an overload rather than an optional parameter appended to the original
+constructor, because appending a parameter would remove the original signature from the compiled
+assembly and a host built against the earlier release would no longer bind. None of its
+parameters is optional, so no call is ambiguous: a call of three or four arguments binds the
+original constructor, and a call of five binds this one.
+
+##### private AgentPack(..., ToolOutputOptions? childToolOutput, int depth)
 
 The private depth-aware constructor. Called only by `ComposeChild`, one level deeper than the
 composing pack. Depth is private because a public depth parameter would let a composing
@@ -80,7 +101,7 @@ family exists to keep.
 **Algorithm:** validates the arguments, materializes `profiles` and `childPacks` into internal
 lists — a lazily evaluated sequence could yield a different set each time it was enumerated,
 which would make a child's composition unrepeatable — validates the materialized collections, and
-captures `runner`, `hostCapabilities` and `depth`.
+captures `runner`, `hostCapabilities`, `childToolOutput` and `depth`.
 
 ##### RequiredCapabilities
 
@@ -96,10 +117,14 @@ Creates the family's tools, governed by the supplied access policy.
 
 **Preconditions:** `policy` is non-null; it is the policy the composition was built with.
 
-**Algorithm:** validates `policy`, iterates the registered profiles and runs `ValidateNarrowing`
-against each so a widening profile fails at composition rather than at run time, then returns
-`AgentRunTool.Create` of `policy`, the profile list, the runner, a `ChildToolComposer` closure
-over `this` and the policy, and `_depth`.
+**Algorithm:** validates `policy`; when `_childToolOutput` is set, rejects a policy whose
+`Limits.MaxResultCharacters` is below `ToolOutputSpill.MinimumResultCharacters` with
+`InvalidOperationException` — every child inherits the policy's limits, so checking here reports
+the mistake once, at the application's composition, for every depth, rather than as an exception
+in the middle of a run when a child is composed; iterates the registered profiles and runs
+`ValidateNarrowing` against each so a widening profile fails at composition rather than at run
+time; then returns `AgentRunTool.Create` of `policy`, the profile list, the runner, a
+`ChildToolComposer` closure over `this` and the policy, and `_depth`.
 
 **Postconditions:** exactly the run tool, non-null, named `agent_`-prefixed and governed by the
 supplied policy. Called once per `ToolPackBuilder.Build`, and only for a host that provides the
@@ -118,9 +143,26 @@ The `ChildToolComposer` implementation; the whole isolation mechanism.
 **Algorithm:** builds the child's policy from `BuildChildPolicy`, constructs a fresh
 `ToolPackBuilder` on that policy under `_hostCapabilities`, adds every pack in `_childPacks` to
 it, adds a new `AgentPack` one depth deeper — carrying the runner, the child packs, the host
-capabilities and the profiles `Reachable` reports for the child's own policy, so a child whose
-profile admits `agent_run` can delegate in turn — calls `Build`, and returns the composed tools
-filtered by the profile's declared names.
+capabilities, the child retention options and the profiles `Reachable` reports for the child's own
+policy, so a child whose profile admits `agent_run` can delegate in turn and a grandchild retains as
+its parent does — calls `Build`, and filters the composed tools by the profile's declared names.
+When `_childToolOutput` is set and the filtered list is non-empty, it returns
+`ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput)` and rethrows any
+`ArgumentException` from it as `InvalidOperationException`; otherwise the filtered list. The
+child's own builder runs without retention, so only this composition sees a list retention cannot
+be composed over: a hand-built function from a registered pack with a name longer than
+`ToolName.MaxLength`, a child pack publishing under the reserved `tool_output` prefix, or one name
+published twice by child packs with overlapping prefixes. `AgentRunTool` turns the exception into a
+"could not be composed" refusal rather than ending the agent's turn. Only the `Apply` call is
+guarded, so an `ArgumentException` from building the child's policy or its tools is not converted.
+The result ceiling needs no check here: `CreateTools` already checked the limits the child
+inherits.
+
+**Retention is applied after the filter.** The readers are infrastructure for the tools a child
+holds rather than a capability a profile grants, so a retaining child can always read what it
+retained without its profile naming them. A child holding no tools produces nothing to read back,
+so a tool-less profile stays tool-less. Each child gets its own store, exactly as it gets its own
+task list.
 
 **Every tool here is new.** The packs are asked for tools again rather than reusing the parent's,
 so each child gets its own per-composition state. The parent's tools are not consulted, filtered,
@@ -200,11 +242,26 @@ widen the parent's policy. Its message names the profile so the developer knows 
 fix. The exception belongs to the application's own composition; a child never raises it over a
 sibling profile, because a child carries only the profiles its own policy covers.
 
-The pack is not reachable from a model's tool call, so no runtime refusal arises here.
+`InvalidOperationException` is also raised in `CreateTools` when retention options for children
+were supplied and the policy's result ceiling is below `ToolOutputSpill.MinimumResultCharacters`.
+Its message names the minimum and the ceiling. Every child inherits the ceiling, so no child
+composition can meet it later.
+
+The pack's own methods are not reachable from a model's tool call; `ComposeChild`, called by
+`agent_run` when a model delegates, is. When retention options for children were supplied and
+`ToolOutputSpill.Apply` cannot compose retention over a child's admitted tools — a name longer
+than 64 characters, a name under the reserved `tool_output` prefix, or a name two child packs both
+publish — `ComposeChild` rethrows its `ArgumentException` as `InvalidOperationException`, and
+`AgentRunTool` returns it to the model as a "could not be composed" refusal without starting the
+child. Only that `Apply` call is converted: an exception raised earlier, while the child's policy
+or tool list is built, propagates as raised, and `AgentRunTool` turns it into a refusal only when
+it is an `InvalidOperationException`. A result ceiling below the minimum never reaches this path,
+because `CreateTools` rejects it when the application composes the pack.
 
 #### Dependencies
 
-`IToolPack`, `HostCapabilities`, `PathPolicy`, `PathRule`, `AccessLevel` and `ToolPackBuilder`
+`IToolPack`, `HostCapabilities`, `PathPolicy`, `PathRule`, `AccessLevel`, `ToolPackBuilder`,
+`ToolName`, `ToolLimits`, `ToolOutputOptions` and `ToolOutputSpill`
 from AgentKitCore. `AgentProfile`, `ChildAgentRequest`, `AgentRunTool` and `ChildToolComposer`
 from this subsystem. `AIFunction` from `Microsoft.Extensions.AI.Abstractions`, as the type the
 created tools take.

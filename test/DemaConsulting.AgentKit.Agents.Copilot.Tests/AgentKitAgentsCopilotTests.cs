@@ -462,6 +462,91 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
+    ///     Proves a tool list composed with retention of large outputs reaches the Copilot runtime
+    ///     whole on every session the package builds: the two reader tools are published, are in
+    ///     the source-qualified allow-list that suppresses the runtime's own tools, and are approved
+    ///     by the default permission handler, while the runtime's own diversion of large results
+    ///     stays switched off.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_ToolOutput_ReadersArePublishedAllowListedAndApproved()
+    {
+        // Arrange: a tool list composed with retention
+        var tools = ToolOutputSpill.Apply([MakeTool("doc_read")], ToolLimits.Default).ToList();
+        string[] expected = ["doc_read", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName];
+
+        // Act: build the options of an agent's created and resumed sessions and of an engine session
+        SessionOptionsBase[] configs =
+        [
+            CopilotAgentFactory.BuildSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildResumeSessionConfig(tools, instructions: null, onPermissionRequest: null),
+            CopilotAgentFactory.BuildEngineSessionConfig(tools, instructions: null, model: null),
+        ];
+
+        foreach (var config in configs)
+        {
+            var handler = config.Permissions.OnRequest;
+            Assert.NotNull(handler);
+            var readDecision = await handler(MakeCustomToolRequest(ToolOutputReadTool.ToolName), null!);
+            var searchDecision = await handler(MakeCustomToolRequest(ToolOutputSearchTool.ToolName), null!);
+
+            // Assert: both readers published, allow-listed and approved; no runtime diversion
+            Assert.Equal(expected, config.Tools.Definitions!.Select(tool => tool.Name));
+            Assert.Equal(expected.Select(name => "custom:" + name), config.Tools.AvailableTools);
+            Assert.Equal(PermissionDecision.ApproveOnce().Kind, readDecision.Kind);
+            Assert.Equal(PermissionDecision.ApproveOnce().Kind, searchDecision.Kind);
+            Assert.False(config.Tools.LargeOutput!.Enabled);
+        }
+    }
+
+    /// <summary>
+    ///     Proves the tools the Copilot runtime is handed retain an oversized result and page it
+    ///     back when invoked as the runtime invokes them, across the runs of one conversation.
+    /// </summary>
+    /// <remarks>
+    ///     The scripted runtime replays events but does not invoke tools, so the tools are taken from
+    ///     the very options the runtime was handed and invoked directly - the same instances, through
+    ///     the same entry point, the runtime would call. The report is invoked from the session the
+    ///     first run created and the reader from the session the second run resumed, so the
+    ///     reference is shown to survive a run boundary.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_ToolOutput_ConfiguredToolsDeliverPreviewAndPage()
+    {
+        // Arrange: an oversized tool composed with retention, behind an agent on a scripted runtime
+        var report = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(ToolResult.Text(string.Join(
+                "\n",
+                Enumerable.Range(1, 5000).Select(n => "row " + n))))),
+            "report_build",
+            "Builds the full report.");
+        var tools = ToolOutputSpill.Apply([report], ToolLimits.Default).ToList();
+        var runtime = new FakeCopilotRuntime(_ => [new ScriptedTurn([CopilotEvents.Usage(100, 64_000), CopilotEvents.Assistant("ok")], CopilotEvents.Assistant("ok"))]);
+        var agent = CopilotAgentFactory.CreateAgent(
+            tools, null, null, null, null, null, runtime.Opener, runtime.Resumer);
+        var conversation = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+        await agent.RunAsync("first", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("second", conversation, cancellationToken: TestContext.Current.CancellationToken);
+        var created = Assert.Single(runtime.Configs).Tools.Definitions!.OfType<AIFunction>().ToList();
+        var resumed = Assert.Single(runtime.Resumes).Config.Tools.Definitions!.OfType<AIFunction>().ToList();
+
+        // Act: invoke the report from the created session, then the reader from the resumed one
+        var preview = await created.Single(tool => tool.Name == "report_build")
+            .InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var page = await resumed.Single(tool => tool.Name == ToolOutputReadTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 1, ["lineCount"] = 2 },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a bounded preview naming the reference, and the page it names
+        var previewText = Assert.IsType<string>(preview);
+        Assert.StartsWith("[Output output-1 from report_build", previewText, StringComparison.Ordinal);
+        Assert.True(previewText.Length <= ToolLimits.DefaultMaxResultCharacters);
+        Assert.Equal("output-1 lines 1-2 of 5000\n   1| row 1\n   2| row 2", Assert.IsType<string>(page));
+    }
+
+    /// <summary>
     ///     Builds a scripted turn that answers and reports the runtime's occupancy.
     /// </summary>
     /// <param name="answer">The answer the turn produces.</param>

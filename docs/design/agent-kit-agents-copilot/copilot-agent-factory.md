@@ -108,7 +108,10 @@ the runtime's read tool is suppressed and the application's tools are confined t
 measured against the live runtime, a model handed such a path failed the task. AgentKit's tools bound
 their own output through Core's tool limits, so a result reaching the runtime is already the size the
 application chose to deliver. See *Tool Results Are Delivered Inline* in *AgentKitAgentsCopilot System
-Design*.
+Design*. A composition that retains large outputs hands the runtime the tool's bounded preview
+instead, and its readers are published, allow-listed and approved like any supplied tool; nothing in
+the factory changes for it. See *Large Tool Outputs Are Retained in the Tools, Not by the Runtime* in
+*AgentKitAgentsCopilot System Design*.
 
 **The host's settings**, each assigned only when the host supplied a non-blank value, so that leaving
 it unset preserves the runtime's own default:

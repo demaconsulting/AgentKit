@@ -61,8 +61,11 @@ governed by the supplied policy for the rest of its life.
    document's size does not gate the outline; only the small heading list and a running line count
    are held.
 7. The reported path mirrors the caller's dialect.
-8. The structured result is serialized to measure it against `MaxResultCharacters`.
-9. An oversized outline is refused with advice to limit depth; otherwise the structured result is
+8. The structured result is serialized compactly to measure it against `MaxResultCharacters`.
+9. An oversized outline is returned as `ToolResult.Oversized` carrying the outline serialized
+   **indented** — compact JSON is one line a retained output could not be paged by — and the
+   unchanged refusal message. Without retention of large outputs the model receives exactly that
+   refusal; with it, the outline is retained and previewed. Otherwise the structured result is
    returned.
 
 The policy decision precedes file-system observations, so a refused path never discloses whether it
@@ -100,13 +103,15 @@ File system failures are caught by explicit classification — `IOException`,
 **The outline streams the source and bounds only the result.** The document is streamed heading by
 heading, so its size never gates the outline; the serialized structured result is checked against
 `MaxResultCharacters` before return. A partial outline would hide sections and make line ranges unsafe
-to act on, so an oversized outline is refused with advice to limit depth rather than truncated.
+to act on, so an oversized outline is refused rather than truncated — or retained whole when the
+composition retains large tool outputs.
 
 #### Dependencies
 
-`PathPolicy` and `ToolLimits` for the read decision and result ceiling, `ToolResult` for structured
-and denied results, and `GuardedToolFactory` for construction. It streams lines through `TextLines`
-and uses `JsonSerializer` only to measure the result against the character ceiling. From the Base
+`PathPolicy` and `ToolLimits` for the read decision and result ceiling, `ToolResult` for structured,
+denied and oversized results, and `GuardedToolFactory` for construction. It streams lines through `TextLines`
+and uses `JsonSerializer` to measure the result against the character ceiling and to indent an
+oversized outline. From the Base
 Class Library it uses `Directory`, `File`, `FileStream`, `StreamReader`, `Encoding`, and string
 operations. `AIFunction`, from `Microsoft.Extensions.AI.Abstractions`, is the constructed tool type.
 

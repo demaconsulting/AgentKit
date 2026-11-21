@@ -105,12 +105,23 @@ the conversational one, the marked record reached the provider as seeded history
 the replacement session reports occupying nothing of the window because it has not yet been sent
 anything. Nothing but the provider's reported usage drives any of it.
 
+### Large Tool Outputs: The Preview and the Page Travel Unchanged
+
+**Test**: `AgentKitAgentsChatClient_ToolOutput_PreviewReachesTheProviderAndTheReaderPagesIt`
+
+Composes a five-thousand-line tool with retention of large outputs and seeds it into a session over a
+recording client that calls the tool, then calls `tool_output_read` for the last line, then answers.
+Asserts the follow-up requests carried the bounded preview and then the exact page as the function
+results, and that the turn's transcript records exactly those two results — never the oversized
+output — so retention behaves through this adapter's function-invocation loop as it does anywhere.
+
 ## Acceptance Criteria
 
-A system-level test run passes when all five scenarios above pass without error or exception beyond
+A system-level test run passes when all six scenarios above pass without error or exception beyond
 those explicitly asserted. Any agent that fails to build, any wrong name, any agent built without the
 image-promoting decorator in its client chain, any tool-returned image that fails to reach the
 provider on a user message, any content instance copied rather than carried, any session occupancy
 that is not the provider's own figure against the stated window, any conversation that fails to
 rotate when the provider reports a filling window, any consolidation sent through the conversational
-client, or any replacement session that fails to carry the consolidated record constitutes a failure.
+client, any replacement session that fails to carry the consolidated record, or any retained output's preview or page
+altered on its way to the provider or the transcript constitutes a failure.

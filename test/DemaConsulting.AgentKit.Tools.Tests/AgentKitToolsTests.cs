@@ -514,4 +514,100 @@ public class AgentKitToolsTests
             childList.GetProperty("items").EnumerateArray()
                 .Select(item => item.GetProperty("id").GetString()));
     }
+
+    /// <summary>
+    ///     Proves that a composition retaining large outputs retains the built-in families'
+    ///     oversized results for paging, while <c>text_file_read</c> - whose source is already
+    ///     pageable - keeps refusing.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained()
+    {
+        // Arrange: a workspace of many files, the smallest result ceiling retention accepts, and
+        // three families composed with retention
+        using var fixture = new TextFile.TempDirectoryFixture();
+        for (var index = 1; index <= 200; index++)
+        {
+            TextFile.TempDirectoryFixture.WriteFile(fixture.Root, "note-" + index + ".md", "# Note " + index + "\nhit\n");
+        }
+
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
+        var tools = new ToolPackBuilder(policy)
+            .Add(new TextFilePack())
+            .Add(new FilePack())
+            .Add(new MarkdownPack())
+            .WithToolOutputSpill()
+            .Build();
+        TextFile.TempDirectoryFixture.WriteFile(fixture.Root, "long.txt", string.Concat(Enumerable.Repeat("a line of text\n", 300)));
+
+        // Act: list, search, and read a long file; then search the retained search result
+        var listing = await Invoke(tools, FileListTool.ToolName, new() { ["directory"] = fixture.Root });
+        var search = await Invoke(tools, TextFileSearchTool.ToolName, new() { ["pattern"] = "hit" });
+        var read = await Invoke(tools, TextFileReadTool.ToolName, new() { ["path"] = "long.txt" });
+        var found = await Invoke(tools, ToolOutputSearchTool.ToolName, new() { ["id"] = "output-2", ["pattern"] = "note-200.md" });
+
+        // Assert: listing and search are retained, the read keeps refusing, and the retained
+        // search holds the last file's match
+        Assert.StartsWith("[Output output-1 from " + FileListTool.ToolName, listing, StringComparison.Ordinal);
+        Assert.StartsWith("[Output output-2 from " + TextFileSearchTool.ToolName, search, StringComparison.Ordinal);
+        Assert.StartsWith("Denied (ResourceTooLarge)", read, StringComparison.Ordinal);
+        Assert.Contains("note-200.md:2:hit", found, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a delegated agent's answer too large for the parent's ceiling is retained by
+    ///     a parent composed with retention, and that a child composed with retention is handed the
+    ///     reader tools.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent()
+    {
+        // Arrange: a parent retaining large outputs, and children composed with retention too
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
+        var profile = new AgentProfile("worker", "You work.", ["todo_list"]);
+        IReadOnlyList<AIFunction>? childTools = null;
+        Func<ChildAgentRequest, CancellationToken, Task<string?>> runner = (request, _) =>
+        {
+            childTools = request.Tools;
+            return Task.FromResult<string?>(string.Join("\n", Enumerable.Range(1, 300).Select(n => "finding " + n)));
+        };
+        var tools = new ToolPackBuilder(policy)
+            .WithHostCapabilities(HostCapabilities.Delegation)
+            .Add(new AgentPack([profile], runner, [new TodoPack()], HostCapabilities.Delegation, childToolOutput: ToolOutputOptions.Default))
+            .WithToolOutputSpill()
+            .Build();
+
+        // Act: delegate, then read the end of the child's answer
+        var answer = await Invoke(tools, AgentRunTool.ToolName, new() { ["profile"] = "worker", ["task"] = "Report." });
+        var page = await Invoke(tools, ToolOutputReadTool.ToolName, new() { ["id"] = "output-1", ["startLine"] = 300, ["lineCount"] = 1 });
+
+        // Assert: the parent retained the whole answer, and the child had readers of its own
+        Assert.StartsWith("[Output output-1 from " + AgentRunTool.ToolName, answer, StringComparison.Ordinal);
+        Assert.Equal("output-1 lines 300-300 of 300\n300| finding 300", page);
+        Assert.NotNull(childTools);
+        Assert.Equal(
+            ["todo_list", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            childTools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Invokes the named tool from a composed list and returns its text result.
+    /// </summary>
+    /// <param name="tools">The composed list.</param>
+    /// <param name="name">The tool to invoke.</param>
+    /// <param name="arguments">The arguments to supply.</param>
+    /// <returns>The text the tool returned.</returns>
+    private static async Task<string> Invoke(IReadOnlyList<AIFunction> tools, string name, AIFunctionArguments arguments)
+    {
+        var result = await tools.Single(tool => tool.Name == name).InvokeAsync(arguments, TestContext.Current.CancellationToken);
+        return Assert.IsType<string>(result);
+    }
 }

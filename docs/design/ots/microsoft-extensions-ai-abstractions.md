@@ -19,6 +19,10 @@ NuGet dependency AgentKit Core carries.
   string and typed content passes through intact
 - The `AIContent` type hierarchy — `AIContent`, `TextContent`, and `DataContent` — which carries
   binary and image results to the provider in a typed form rather than as serialized JSON
+- `DelegatingAIFunction` — the transparent wrapper `GuardedToolFactory` returns every tool as, which
+  forwards the name, description, schemas, serializer options, underlying method, additional
+  properties and service lookup to the inner function while letting the wrapper resolve an
+  oversized-output marker and, when retention of large outputs is composed, retain the output
 
 ### Integration Pattern
 

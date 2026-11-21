@@ -192,3 +192,53 @@ sections:
                 tests:
                   - AgentPack_CreateTools_ProfileNarrowingTheGrants_IsAcceptedAndReachesTheChild
                   - AgentPack_CreateTools_ProfileWithoutGrants_InheritsTheParentPolicy
+
+              - id: AgentKitTools-Agent-Pack-ChildToolOutputOptIn
+                title: >-
+                  When the application supplies retention options for children, the agent pack
+                  shall compose each delegated agent holding at least one tool with retention of
+                  large outputs, giving it its own store and the read and search tools after the
+                  tools its profile admits, shall carry that choice to every deeper level, and shall
+                  leave a profile admitting no tools tool-less; without those options a child's tools
+                  shall be unchanged, and the constructor that predates those options shall remain
+                  available with its exact signature.
+                justification: |
+                  A child's tool list is composed separately from its parent's, so the parent's choice
+                  cannot reach it unless the application states it for children too. The readers are
+                  infrastructure for the tools a child holds rather than a capability a profile
+                  grants, so they follow the profile filter; a child holding nothing produces nothing
+                  to read back. Each child's own store keeps one child's outputs out of another's,
+                  exactly as each child's own task list does. The options are taken by a new
+                  constructor overload rather than an appended optional parameter, so a host compiled
+                  against the earlier release keeps binding to the constructor it was built against.
+                tests:
+                  - AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools
+                  - AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless
+                  - AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild
+                  - AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore
+                  - AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached
+                  - AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature
+
+              - id: AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling
+                title: >-
+                  When the application supplies retention options for children, the agent pack shall
+                  reject, when its tools are created, a policy whose result ceiling is below 1,000
+                  characters, and agent_run shall refuse to start a child whose admitted tools
+                  retention cannot be composed over — a tool whose name is longer than 64
+                  characters, a tool under the reserved tool_output prefix, or two tools of one
+                  name — reporting it as a composition failure.
+                tags: [reliability]
+                justification: |
+                  Every child inherits the policy's limits, so a ceiling too small for retention
+                  would otherwise surface only when a child is composed, in the middle of a run.
+                  Checking it when the application composes the pack reports the mistake once, to the
+                  developer who made it, for every depth. The child's own composition runs without
+                  retention and only then applies it to the profile-filtered list, so a hand-built
+                  tool with an over-long name, a child pack publishing under the reserved reader
+                  prefix, or child packs with overlapping prefixes publishing one name are seen only
+                  there; a refusal the model can act on is better than an exception ending the turn.
+                tests:
+                  - AgentPack_CreateTools_ChildToolOutputWithResultCeilingBelowMinimum_ThrowsInvalidOperationException
+                  - AgentPack_CreateTools_ChildToolOutputWithOverlongToolName_IsRefused
+                  - AgentPack_CreateTools_ChildToolOutputWithReservedToolName_IsRefused
+                  - AgentPack_CreateTools_ChildToolOutputWithDuplicateToolName_IsRefused

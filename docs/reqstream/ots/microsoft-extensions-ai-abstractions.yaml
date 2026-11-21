@@ -54,3 +54,17 @@ sections:
             tests:
               - GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString
               - AIFunctionFactory_UnguardedObjectReturn_FlattensDataContentToJsonElement
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall provide DelegatingAIFunction, a function
+              that forwards its metadata and invocation to an inner function.
+            justification: |
+              GuardedToolFactory returns every tool wrapped in a DelegatingAIFunction so that an
+              oversized-output marker is resolved before the runtime sees a result. The wrapper is
+              only acceptable if it is transparent: every provider reads a tool's name, description
+              and schema to publish it. AgentKit's test that compares a guarded tool's name,
+              description, schemas, serializer options, method and properties with those of the
+              same delegate built directly proves the forwarding is complete.
+            tags: [ots]
+            tests:
+              - GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata

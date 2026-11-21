@@ -40,6 +40,11 @@ Framework and to Core, on both of which it depends. It does decide *where* the t
 sits, because that placement is what makes the occupancy figure honest, and an application asked to
 get it right would sometimes get it wrong silently.
 
+**Retention of large tool outputs needs nothing from this system.** Core retains an oversized output
+inside the tool itself (see *ToolOutputSpill Unit Design*), so the function-invocation loop this
+system installs carries the bounded preview and every page a reader returns as ordinary tool results,
+and the transcript records exactly those. No adapter code is involved, and none was added.
+
 ## Dependency Isolation
 
 This system carries `Microsoft.Agents.AI`, the Microsoft Agent Framework runtime, whose size and

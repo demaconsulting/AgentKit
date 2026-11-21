@@ -47,9 +47,10 @@ namespace DemaConsulting.AgentKit.Tools.TextFile;
 ///     search. A file whose leading bytes are binary is skipped rather than searched into garbled
 ///     text, detected from a leading sniff that never materializes the whole file. The assembled
 ///     result is bounded by <see cref="ToolLimits.MaxResultCharacters"/>: an oversized result is
-///     refused with the ceiling named, never silently
-///     truncated. An empty result is a fact reported plainly, because a search that found nothing
-///     is not a failed request.
+///     refused with the ceiling named, never silently truncated — or, when the composition retains
+///     large outputs (see <see cref="ToolOutputSpill"/>), retained whole and previewed with a
+///     reference the model can page through. An empty result is a fact reported plainly, because a
+///     search that found nothing is not a failed request.
 ///     </para>
 ///     <para>
 ///     The delegate is declared to return <c>Task&lt;object&gt;</c> deliberately — see the remarks on
@@ -241,11 +242,13 @@ public static class TextFileSearchTool
             return ToolResult.Text(NoMatches);
         }
 
-        // The return budget bounds a search result exactly as it bounds a file's text.
+        // The return budget bounds a search result exactly as it bounds a file's text. The whole
+        // result is handed over with the refusal, so a composition retaining large outputs can
+        // offer it for paging; any other composition gives exactly this refusal.
         if (result.Length > policy.Limits.MaxResultCharacters)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
+            return ToolResult.Oversized(
+                result,
                 "The search result exceeds the "
                 + policy.Limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
                 + "-character result limit.");

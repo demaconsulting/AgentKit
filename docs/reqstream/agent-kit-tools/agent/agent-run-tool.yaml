@@ -101,8 +101,9 @@ sections:
               - id: AgentKitTools-Agent-RunTool-ChildResultReporting
                 title: >-
                   The run tool shall report a child that produced no text as having finished
-                  without reporting anything, and shall refuse rather than truncate an answer
-                  longer than the policy's result ceiling.
+                  without reporting anything, and, when the composition does not retain large
+                  outputs, shall refuse rather than truncate an answer longer than the policy's
+                  result ceiling.
                 justification: |
                   An agent can legitimately finish having found there was nothing to report,
                   and telling the parent it failed would invite it to retry work that was
@@ -163,3 +164,15 @@ sections:
                   to the child the model chose.
                 tests:
                   - AgentRunTool_Run_ComposesTheNamedProfileOnly
+
+              - id: AgentKitTools-Agent-RunTool-OversizedAnswerRetainable
+                title: >-
+                  When the parent's composition retains large outputs, the run tool shall have a
+                  child's answer exceeding the policy's result ceiling retained whole for paging
+                  rather than refused.
+                justification: |
+                  A delegated agent's report is the whole product of its work, and refusing it
+                  discards that work. Retained, the parent pages through the report or searches it
+                  for what it needs.
+                tests:
+                  - AgentRunTool_Run_OversizedAnswerWithRetention_IsRetainedForPaging

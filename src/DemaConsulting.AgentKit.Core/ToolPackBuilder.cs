@@ -31,6 +31,13 @@ namespace DemaConsulting.AgentKit.Core;
 ///     application's code, discovered by the developer who wrote them.
 ///     </para>
 ///     <para>
+///     <b>Retention of large outputs is a composition choice.</b>
+///     <see cref="WithToolOutputSpill"/> asks the builder to wrap what it composes so an output
+///     too large to return is retained and previewed rather than refused, and to append the two
+///     reader tools that page through and search it. A builder that is not asked composes exactly
+///     what it always did.
+///     </para>
+///     <para>
 ///     Instances are mutable and are not safe for concurrent use. A builder is a short-lived
 ///     object assembled on one thread during application start-up.
 ///     </para>
@@ -84,6 +91,12 @@ public sealed class ToolPackBuilder
     private HostCapabilities _hostCapabilities = HostCapabilities.None;
 
     /// <summary>
+    ///     The retention options for large tool outputs, or <see langword="null"/> when the
+    ///     composition does not retain them.
+    /// </summary>
+    private ToolOutputOptions? _toolOutput;
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ToolPackBuilder"/> class.
     /// </summary>
     /// <remarks>
@@ -121,6 +134,43 @@ public sealed class ToolPackBuilder
     public ToolPackBuilder WithHostCapabilities(HostCapabilities capabilities)
     {
         _hostCapabilities = capabilities;
+        return this;
+    }
+
+    /// <summary>
+    ///     Composes retention of large tool outputs: an output too large to return is retained, the
+    ///     model is handed a bounded preview and a reference, and the reader tools
+    ///     <c>tool_output_read</c> and <c>tool_output_search</c> are appended to the composed list.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Without this call the composition is exactly what it was: a tool whose output exceeds
+    ///     <see cref="ToolLimits.MaxResultCharacters"/> refuses as it always did. With it, every
+    ///     composed tool is wrapped as <see cref="ToolOutputSpill.Apply"/> describes, against the
+    ///     builder's policy limits.
+    ///     </para>
+    ///     <para>
+    ///     A later call <b>replaces</b> the options, as <see cref="WithHostCapabilities"/> does, and
+    ///     the choice applies at <see cref="Build"/>, so it may be made before or after
+    ///     <see cref="Add"/>. Each <see cref="Build"/> allocates a fresh store, so two built lists
+    ///     never share references.
+    ///     </para>
+    ///     <para>
+    ///     The <c>tool_output</c> name prefix is reserved while retention is composed: a pack
+    ///     claiming it, or publishing a tool under it, is reported at <see cref="Build"/>. So is a
+    ///     policy whose <see cref="ToolLimits.MaxResultCharacters"/> is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>, too small for a preview naming its
+    ///     reference to fit.
+    ///     </para>
+    /// </remarks>
+    /// <param name="options">
+    ///     The preview size and retention ceilings, or <see langword="null"/> for
+    ///     <see cref="ToolOutputOptions.Default"/>.
+    /// </param>
+    /// <returns>This builder, so calls can be chained.</returns>
+    public ToolPackBuilder WithToolOutputSpill(ToolOutputOptions? options = null)
+    {
+        _toolOutput = options ?? ToolOutputOptions.Default;
         return this;
     }
 
@@ -194,14 +244,47 @@ public sealed class ToolPackBuilder
     ///     This method neither resets nor caches. Calling it twice reports the builder's state
     ///     as it is at each call, and creates a fresh set of tools each time.
     ///     </para>
+    ///     <para>
+    ///     When <see cref="WithToolOutputSpill"/> was called, the composed tools are wrapped so
+    ///     oversized outputs are retained, and the two reader tools are appended after every
+    ///     pack's tools. Because a model selects a tool by its name, two composed tools of one name
+    ///     are then rejected, as is a tool whose name is longer than <see cref="ToolName.MaxLength"/>
+    ///     and a policy whose result ceiling is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/> — the ceiling before any pack is
+    ///     asked for its tools. Without retention the composed tools are returned as the packs
+    ///     produced them, and the agent factories refuse a list holding two tools of one name.
+    ///     </para>
     /// </remarks>
     /// <returns>The composed tools.</returns>
     /// <exception cref="InvalidOperationException">
     ///     Thrown when a pack returns no tool collection, returns a null tool, or returns a tool
-    ///     whose name does not carry the pack's declared family prefix.
+    ///     whose name does not carry the pack's declared family prefix; or, when retention of large
+    ///     outputs is composed, when the policy's result ceiling is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>, when a pack claims the reserved
+    ///     <c>tool_output</c> prefix or publishes a tool under it, when two composed tools share a
+    ///     name, or when a composed tool's name is longer than <see cref="ToolName.MaxLength"/>.
     /// </exception>
     public IReadOnlyList<AIFunction> Build()
     {
+        // A ceiling too small for a preview's header is a composition mistake, reported before any
+        // pack is asked for tools. Checked only when retention is chosen, so a composition that
+        // never opts in accepts every ceiling it always did.
+        if (_toolOutput is not null && !ToolOutputSpill.AdmitsCeiling(_policy.Limits))
+        {
+            throw new InvalidOperationException(ToolOutputSpill.DescribeCeilingTooSmall(_policy.Limits));
+        }
+
+        // The reader prefix is reserved only once retention is chosen, so a composition that never
+        // opts in behaves exactly as it did. Checked here rather than at Add because the choice may
+        // be made after the packs are added.
+        if (_toolOutput is not null
+            && _packs.Any(pack => string.Equals(pack.FamilyPrefix, ToolOutputSpill.ReservedPrefix, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "A pack claims the '" + ToolOutputSpill.ReservedPrefix + "' family prefix, which is "
+                + "reserved for the reader tools a composition retaining large outputs appends.");
+        }
+
         var tools = new List<AIFunction>();
 
         foreach (var pack in _packs)
@@ -217,7 +300,46 @@ public sealed class ToolPackBuilder
             AddToolsOf(pack, tools);
         }
 
-        return tools;
+        if (_toolOutput is null)
+        {
+            return tools;
+        }
+
+        // A tool published under the reserved prefix by a pack with a shorter prefix (for example
+        // 'tool') would be indistinguishable from the readers, so it is reported as the pack's
+        // mistake rather than as an argument error from the composition below.
+        var reserved = tools.Find(tool => ToolOutputSpill.IsReservedName(tool.Name));
+        if (reserved is not null)
+        {
+            throw new InvalidOperationException(
+                "A pack published the tool '" + reserved.Name + "', whose name carries the '"
+                + ToolOutputSpill.ReservedPrefix + "' prefix reserved for the reader tools a "
+                + "composition retaining large outputs appends.");
+        }
+
+        // Two tools of one name would make Apply raise an ArgumentException, which is not what this
+        // method documents. A pack returning a name twice, or two packs with overlapping prefixes,
+        // is a composition mistake, so it is reported like the others. Checked only here so that a
+        // composition that never opts in behaves exactly as it did.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicate = tools.Find(tool => !seen.Add(tool.Name));
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException(
+                "The composition publishes the tool '" + duplicate.Name + "' twice, because a pack "
+                + "returned it twice or two packs with overlapping prefixes both published it, and "
+                + "a model selects a tool by its name.");
+        }
+
+        // A name longer than any provider accepts would make Apply raise an ArgumentException; it
+        // can only come from a pack returning a hand-built function, so it is the pack's mistake.
+        var overlong = tools.Find(tool => ToolOutputSpill.IsNameTooLong(tool.Name));
+        if (overlong is not null)
+        {
+            throw new InvalidOperationException(ToolOutputSpill.DescribeNameTooLong(overlong.Name));
+        }
+
+        return ToolOutputSpill.Apply(tools, _policy.Limits, _toolOutput);
     }
 
     /// <summary>

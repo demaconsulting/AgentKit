@@ -22,6 +22,11 @@ includes:
   - docs/reqstream/agent-kit-core/tool-pack-builder.yaml
   - docs/reqstream/agent-kit-core/tool-pack.yaml
   - docs/reqstream/agent-kit-core/tool-result.yaml
+  - docs/reqstream/agent-kit-core/tool-output-options.yaml
+  - docs/reqstream/agent-kit-core/tool-output-store.yaml
+  - docs/reqstream/agent-kit-core/tool-output-spill.yaml
+  - docs/reqstream/agent-kit-core/tool-output-read-tool.yaml
+  - docs/reqstream/agent-kit-core/tool-output-search-tool.yaml
   - docs/reqstream/agent-kit-core/agent-session.yaml
   - docs/reqstream/agent-kit-core/agent-session-options.yaml
   - docs/reqstream/agent-kit-core/context-usage.yaml

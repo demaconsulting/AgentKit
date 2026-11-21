@@ -17,6 +17,11 @@ input-files:
   - docs/verification/agent-kit-core/tool-pack-builder.md
   - docs/verification/agent-kit-core/tool-pack.md
   - docs/verification/agent-kit-core/tool-result.md
+  - docs/verification/agent-kit-core/tool-output-options.md
+  - docs/verification/agent-kit-core/tool-output-store.md
+  - docs/verification/agent-kit-core/tool-output-spill.md
+  - docs/verification/agent-kit-core/tool-output-read-tool.md
+  - docs/verification/agent-kit-core/tool-output-search-tool.md
   - docs/verification/agent-kit-core/agent-session.md
   - docs/verification/agent-kit-core/agent-session-options.md
   - docs/verification/agent-kit-core/context-usage.md

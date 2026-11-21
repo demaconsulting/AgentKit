@@ -59,7 +59,9 @@ namespace DemaConsulting.AgentKit.Tools.File;
 ///     <b>An empty listing is a fact, not a refusal.</b> A directory that matches nothing is
 ///     reported as such, because refusing would tell the model its request was wrong when it was
 ///     merely unproductive. An oversized listing, by contrast, is refused with the ceiling named
-///     rather than truncated, for the same reason a partial file is refused.
+///     rather than truncated, for the same reason a partial file is refused — or, when the
+///     composition retains large outputs (see <see cref="ToolOutputSpill"/>), retained whole and
+///     previewed with a reference the model can page through.
 ///     </para>
 ///     <para>
 ///     The delegate is synchronous and declared to return <see cref="object"/> deliberately —
@@ -231,11 +233,13 @@ public static class FileListTool
         }
 
         // The return budget applies to a listing exactly as it applies to a file's text: a
-        // truncated listing would silently hide files the model would then never ask for.
+        // truncated listing would silently hide files the model would then never ask for. The
+        // whole listing is handed over with the refusal, so a composition retaining large outputs
+        // can offer it for paging; any other composition gives exactly this refusal.
         if (text.Length > policy.Limits.MaxResultCharacters)
         {
-            return ToolResult.Denied(
-                DenialReason.ResourceTooLarge,
+            return ToolResult.Oversized(
+                text,
                 "The listing exceeds the "
                 + policy.Limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
                 + "-character result limit.");

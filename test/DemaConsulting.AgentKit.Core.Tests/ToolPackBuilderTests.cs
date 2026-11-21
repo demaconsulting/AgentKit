@@ -461,4 +461,240 @@ public class ToolPackBuilderTests
         // Assert: attaching a pack costs the consumer one line
         Assert.Same(builder, result);
     }
+
+    /// <summary>
+    ///     Proves that composing retention appends the two reader tools after every pack's tools,
+    ///     whether it is chosen before or after the packs are added.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_AppendsTheReadersAfterEveryPack()
+    {
+        // Arrange: retention chosen after one pack and before another
+        var builder = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("text_file", tools: [StubToolPack.Tool("text_file_read")]));
+        var returned = builder.WithToolOutputSpill();
+        builder.Add(new StubToolPack("image", tools: [StubToolPack.Tool("image_read")]));
+
+        // Act: compose
+        var tools = builder.Build();
+
+        // Assert: the packs' tools in order, then the readers, and the call chains
+        Assert.Same(builder, returned);
+        Assert.Equal(
+            ["text_file_read", "image_read", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that the composition retains with the builder's policy limits and the last options
+    ///     supplied.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolPackBuilder_WithToolOutputSpill_CalledTwice_TheLastOptionsWin()
+    {
+        // Arrange: a policy at the minimum result ceiling and a tool exceeding it
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
+        var big = GuardedToolFactory.Create(
+            (Func<object>)(() => ToolResult.Text(new string('x', 5_000))),
+            "text_file_read",
+            "Returns a large text.");
+        var builder = new ToolPackBuilder(policy)
+            .Add(new StubToolPack("text_file", tools: [big]))
+            .WithToolOutputSpill()
+            .WithToolOutputSpill(new ToolOutputOptions(maxOutputCharacters: 2_000, maxRetainedCharacters: 2_000));
+
+        // Act: compose and invoke the oversized tool
+        var tools = builder.Build();
+        var result = await tools[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: the second options applied - the output is above their retention ceiling
+        Assert.Contains("2000-character retention limit", Assert.IsType<string>(result), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that while retention is composed, a policy whose result ceiling is below the
+    ///     retention minimum is reported at build, before any pack is asked for its tools.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_ResultCeilingBelowMinimum_ThrowsInvalidOperationException()
+    {
+        // Arrange: a ceiling one below the minimum, and a pack that records whether it was asked
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters - 1));
+        var pack = new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read")]);
+        var builder = new ToolPackBuilder(policy).Add(pack).WithToolOutputSpill();
+
+        // Act: compose
+        var error = Assert.Throws<InvalidOperationException>(() => builder.Build());
+
+        // Assert: the minimum and the ceiling are named, and no pack was asked for tools
+        Assert.Contains("at least 1000 characters", error.Message, StringComparison.Ordinal);
+        Assert.Contains("999 characters", error.Message, StringComparison.Ordinal);
+        Assert.Equal(0, pack.CreateToolsCallCount);
+    }
+
+    /// <summary>
+    ///     Proves that without retention a result ceiling below the retention minimum - zero
+    ///     included - composes exactly as it always did.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_Build_WithoutToolOutputSpill_SmallResultCeiling_IsAccepted()
+    {
+        // Arrange: a zero result ceiling, with retention never chosen
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: 0));
+        var builder = new ToolPackBuilder(policy)
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read")]));
+
+        // Act: compose
+        var tools = builder.Build();
+
+        // Assert: composed as it always was
+        Assert.Equal(["notes_read"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that while retention is composed, a pack publishing a hand-built tool whose name
+    ///     is longer than any provider accepts is reported at build, naming the tool.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_ToolNameLongerThanTheLimit_ThrowsInvalidOperationException()
+    {
+        // Arrange: a pack publishing a hand-built tool one character over the limit
+        var name = "notes_" + new string('a', ToolName.MaxLength - 5);
+        var builder = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [AIFunctionFactory.Create(() => "a", name)]))
+            .WithToolOutputSpill();
+
+        // Act: compose
+        var error = Assert.Throws<InvalidOperationException>(() => builder.Build());
+
+        // Assert: the tool and the limit are named
+        Assert.Contains("'" + name + "'", error.Message, StringComparison.Ordinal);
+        Assert.Contains("longer than 64 characters", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that two builds of one builder never share retained references.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolPackBuilder_WithToolOutputSpill_EachBuild_HasItsOwnStore()
+    {
+        // Arrange: a builder retaining outputs, built twice
+        var big = GuardedToolFactory.Create(
+            (Func<object>)(() => ToolResult.Text(new string('x', ToolLimits.DefaultMaxResultCharacters + 1))),
+            "text_file_read",
+            "Returns a large text.");
+        var builder = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("text_file", tools: [big]))
+            .WithToolOutputSpill();
+        var first = builder.Build();
+        var second = builder.Build();
+
+        // Act: retain through the first build, then read through the second
+        await first[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var read = await second.Single(tool => tool.Name == ToolOutputReadTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["id"] = "output-1" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the second build never issued the reference
+        Assert.Contains("never retained", Assert.IsType<string>(read), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that the reader prefix is reserved while retention is composed: a pack claiming it
+    ///     or publishing under it is reported at build.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_ReservedPrefix_ThrowsInvalidOperationException()
+    {
+        // Arrange: a pack claiming the reserved prefix, and one publishing a reserved name
+        var claiming = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("tool_output", tools: [StubToolPack.Tool("tool_output_peek")]))
+            .WithToolOutputSpill();
+        var publishing = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("tool", tools: [StubToolPack.Tool("tool_output_peek")]))
+            .WithToolOutputSpill();
+
+        // Act & Assert: both are composition mistakes reported where the list is built
+        Assert.Throws<InvalidOperationException>(() => claiming.Build());
+        Assert.Throws<InvalidOperationException>(() => publishing.Build());
+    }
+
+    /// <summary>
+    ///     Proves that without retention the reader prefix is not reserved, so no existing
+    ///     composition changes.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_Build_WithoutToolOutputSpill_DoesNotReserveThePrefix()
+    {
+        // Arrange: a pack claiming the prefix, with retention never chosen
+        var builder = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("tool_output", tools: [StubToolPack.Tool("tool_output_peek")]));
+
+        // Act: compose
+        var tools = builder.Build();
+
+        // Assert: composed as it always was
+        Assert.Equal(["tool_output_peek"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that while retention is composed, two composed tools of one name are reported
+    ///     with the exception every other composition mistake is reported with, naming the tool,
+    ///     whether one pack returned the name twice or two packs with overlapping prefixes both
+    ///     published it.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_DuplicateToolName_ThrowsInvalidOperationException()
+    {
+        // Arrange: one pack returning a name twice, and two packs whose prefixes overlap
+        var twice = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read"), StubToolPack.Tool("notes_read")]))
+            .WithToolOutputSpill();
+        var overlapping = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("file", tools: [StubToolPack.Tool("file_list_x")]))
+            .Add(new StubToolPack("file_list", tools: [StubToolPack.Tool("file_list_x")]))
+            .WithToolOutputSpill();
+
+        // Act: compose both
+        var twiceError = Assert.Throws<InvalidOperationException>(() => twice.Build());
+        var overlappingError = Assert.Throws<InvalidOperationException>(() => overlapping.Build());
+
+        // Assert: each error names the tool that was published twice
+        Assert.Contains("'notes_read'", twiceError.Message, StringComparison.Ordinal);
+        Assert.Contains("'file_list_x'", overlappingError.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that without retention a composition holding two tools of one name is returned
+    ///     exactly as it always was, so a composition that never opts in does not change.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_Build_WithoutToolOutputSpill_DuplicateToolNames_AreReturnedUnchanged()
+    {
+        // Arrange: the same two duplicate compositions, with retention never chosen
+        var twice = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read"), StubToolPack.Tool("notes_read")]));
+        var overlapping = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("file", tools: [StubToolPack.Tool("file_list_x")]))
+            .Add(new StubToolPack("file_list", tools: [StubToolPack.Tool("file_list_x")]));
+
+        // Act: compose both
+        var twiceTools = twice.Build();
+        var overlappingTools = overlapping.Build();
+
+        // Assert: both duplicates are returned, in order, with nothing appended
+        Assert.Equal(["notes_read", "notes_read"], twiceTools.Select(tool => tool.Name));
+        Assert.Equal(["file_list_x", "file_list_x"], overlappingTools.Select(tool => tool.Name));
+    }
 }

@@ -34,7 +34,18 @@ software items, specifically:
   and makes the single containment decision used by both direct access and directory enumeration
 - **ToolLimits (Unit)** — The ceilings every governed tool observes when reading, returning and
   attaching content
-- **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals
+- **ToolResult (Unit)** — The results a guarded tool returns to the model, including refusals and
+  the declaration that an output is too large to return
+- **ToolOutputOptions (Unit)** — The preview size and retention ceilings observed when large tool
+  outputs are retained
+- **ToolOutputStore (Unit)** — The in-memory, per-composition store of retained tool outputs, named
+  by opaque references and bounded by count and size
+- **ToolOutputSpill (Unit)** — Opt-in composition of retention into a tool list: an oversized output
+  is retained and replaced by a bounded preview and a reference
+- **ToolOutputReadTool (Unit)** — Publishes the `tool_output_read` tool, which pages through a
+  retained output by line number
+- **ToolOutputSearchTool (Unit)** — Publishes the `tool_output_search` tool, which finds a pattern
+  in a retained output
 - **ToolName (Unit)** — The family-prefix naming convention and its validation
 - **GuardedToolFactory (Unit)** — The only supported way to construct a tool, applying the
   result-delivery guard and the naming rules to every tool it creates
@@ -373,6 +384,11 @@ src/DemaConsulting.AgentKit.Core/
 ├── Summarizer.cs               — the consolidation contract and the documented default prompt
 ├── ToolLimits.cs               — the ceilings every governed tool observes
 ├── ToolName.cs                 — the family-prefix naming convention
+├── ToolOutputOptions.cs        — preview size and retention ceilings for large outputs
+├── ToolOutputReadTool.cs       — the tool_output_read tool
+├── ToolOutputSearchTool.cs     — the tool_output_search tool
+├── ToolOutputSpill.cs          — opt-in retention of large outputs, and the preview
+├── ToolOutputStore.cs          — the per-composition store of retained outputs
 ├── ToolPack.cs                 — the pack contract and host capabilities
 ├── ToolPackBuilder.cs          — capability-gated composition
 └── ToolResult.cs               — text, content, structured data and denial results

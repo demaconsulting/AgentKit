@@ -1,0 +1,108 @@
+---
+# Software Unit Requirements for ToolOutputSearchTool
+#
+# These requirements describe the design-level behavior of the tool_output_search tool, which
+# finds a pattern in a retained tool output.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputSearchTool Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputSearchTool-ToolNameNoPath
+            title: >-
+              The output search tool shall be published under the name tool_output_search, exposed
+              as a constant, and shall accept no path.
+            tags: [security]
+            justification: |
+              The preview names this tool, so its name must be fixed; accepting no path makes it
+              impossible for the tool to reach the file system.
+            tests:
+              - ToolOutputSearchTool_Create_PublishesTheDocumentedNameWithNoPathParameter
+
+          - id: AgentKitCore-ToolOutputSearchTool-LiteralByDefault
+            title: >-
+              The output search tool shall treat its pattern literally and case-sensitively by
+              default, reporting each matching line as its line number and content.
+            justification: |
+              Most searches are for a fixed string, and a stray regular-expression metacharacter
+              should not match by surprise. The line numbers are the ones the read tool pages by.
+            tests:
+              - ToolOutputSearchTool_Search_Literal_ReportsMatchingLinesByNumber
+              - ToolOutputSearchTool_Search_WhitespacePattern_IsSearchedLiterally
+
+          - id: AgentKitCore-ToolOutputSearchTool-RegularExpression
+            title: >-
+              The output search tool shall interpret its pattern as a regular expression when asked,
+              and shall match case-insensitively when asked.
+            justification: |
+              A structured output is often searched for a shape rather than a fixed string.
+            tests:
+              - ToolOutputSearchTool_Search_RegexIgnoringCase_FindsEveryMatch
+
+          - id: AgentKitCore-ToolOutputSearchTool-ContextAndCap
+            title: >-
+              The output search tool shall show requested context lines around each match, separate
+              distinct runs of matches, honor a match cap, and report no matches plainly.
+            justification: |
+              Context lets a model judge a match without a second call, a cap keeps a broad pattern
+              affordable, and a search that found nothing is a fact rather than a failure.
+            tests:
+              - ToolOutputSearchTool_Search_ContextLines_AreShownGrepStyle
+              - ToolOutputSearchTool_Search_MaxMatchesAndNoMatches_AreHonored
+              - ToolOutputSearchTool_Search_HugeContextAndCap_AreBoundedByTheOutput
+
+          - id: AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused
+            title: >-
+              The output search tool shall refuse a regular expression that does not finish
+              evaluating a line within one second, and shall refuse a search whose total time
+              exceeds a one-second budget, checked between lines.
+            tags: [reliability]
+            justification: |
+              A pathological expression must not stall the agent's turn. A per-line timeout alone
+              would let an expression that takes just under it on every line run for one timeout per
+              line, so the whole search is bounded too.
+            tests:
+              - ToolOutputSearchTool_Search_PathologicalRegex_IsRefusedOnTimeout
+              - ToolOutputSearchTool_SearchEntry_SpentSearchBudget_IsRefusedOnTimeout
+
+          - id: AgentKitCore-ToolOutputSearchTool-PatternLengthBounded
+            title: >-
+              The output search tool shall refuse a pattern longer than 1,000 characters, literal or
+              regular expression, as a returned result that does not echo the pattern, before
+              building a matcher.
+            tags: [reliability]
+            justification: |
+              Building a matcher costs time that grows with the pattern's length, and the match
+              timeout does not cover construction, so the model must not choose how long
+              construction runs. Refusing before the matcher is built bounds that cost, and not
+              echoing the pattern keeps the refusal small.
+            tests:
+              - ToolOutputSearchTool_Search_PatternOverLengthLimit_IsRefused
+
+          - id: AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused
+            title: >-
+              The output search tool shall refuse a missing or empty pattern, an invalid regular
+              expression, negative context or cap, and an identifier that names no retained output,
+              as returned results.
+            justification: |
+              Each is something a model supplied, so it is answered rather than thrown.
+            tests:
+              - ToolOutputSearchTool_Search_InvalidRequests_AreRefused
+              - ToolOutputSearchTool_Search_UnknownId_IsRefused
+
+          - id: AgentKitCore-ToolOutputSearchTool-BoundedResult
+            title: >-
+              The output search tool shall refuse a result exceeding the result ceiling, naming the
+              ceiling, rather than truncating it, and shall stop searching as soon as the result is
+              known to exceed the ceiling, holding no more than the ceiling's worth of result.
+            tags: [reliability]
+            justification: |
+              A truncated search result hides matches the model would then never see. A broad
+              pattern may match every line of a large output; stopping as soon as the result is
+              known to be over the ceiling bounds the work and memory of the refusal by the ceiling
+              rather than by the retained output, so repeated broad searches cannot stall the host.
+            tests:
+              - ToolOutputSearchTool_Search_ResultOverCeiling_IsRefused
+              - ToolOutputSearchTool_SearchEntry_ResultOverCeiling_ReadsOnlyWhatTheCeilingAdmits
+              - ToolOutputSearchTool_Search_ResultExactlyAtCeiling_IsReturnedAndOneOverIsRefused

@@ -351,6 +351,91 @@ public class GuardedToolFactoryTests
     }
 
     /// <summary>
+    ///     Proves that an oversized-output marker never reaches the runtime from a tool composed
+    ///     without retention: it becomes exactly the refusal the tool always gave.
+    /// </summary>
+    /// <remarks>
+    ///     This is what makes retention opt-in without changing any existing refusal: a tool that
+    ///     now returns <see cref="ToolResult.Oversized"/> instead of a refusal is observed by a host
+    ///     that did not opt in to give the identical text.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_Create_OversizedMarkerWithoutRetention_ReturnsTheIdenticalRefusal()
+    {
+        // Arrange: a tool declaring its output oversized
+        const string message = "The listing exceeds the 32000-character result limit.";
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(ToolResult.Oversized(new string('x', 40_000), message))),
+            "oversized_probe",
+            "Returns an oversized output.");
+
+        // Act: invoke the tool as the runtime would
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: byte-for-byte the refusal composed directly
+        Assert.Equal(
+            Assert.IsType<string>(ToolResult.Denied(DenialReason.ResourceTooLarge, message)),
+            Assert.IsType<string>(result));
+    }
+
+    /// <summary>
+    ///     Proves that a tool composed without retention still delivers an oversized ordinary
+    ///     result unchanged, exactly as before retention existed.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_Create_OversizedTextWithoutRetention_IsPassedThroughUnchanged()
+    {
+        // Arrange: a tool returning text well above the default result ceiling
+        var text = new string('x', ToolLimits.DefaultMaxResultCharacters * 2);
+        var function = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(ToolResult.Text(text))),
+            "large_probe",
+            "Returns a large text.");
+
+        // Act: invoke the tool as the runtime would
+        var result = await function.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.Current.CancellationToken);
+
+        // Assert: the same text, neither refused nor retained
+        Assert.Same(text, result);
+    }
+
+    /// <summary>
+    ///     Proves that the constructed tool carries exactly the metadata the underlying factory
+    ///     would have given it, so every consumer that reads a tool's description, schema or
+    ///     method sees the same thing it saw before the tool was wrapped.
+    /// </summary>
+    [Fact]
+    public void GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata()
+    {
+        // Arrange: the same delegate built guarded and built directly by the underlying factory
+        var method = (Func<string, int, Task<object>>)((path, count) =>
+            Task.FromResult(ToolResult.Text(path + count)));
+        const string description = "Reads a number of lines from a file.";
+        var guarded = GuardedToolFactory.Create(method, "text_file_read", description);
+        var direct = AIFunctionFactory.Create(
+            method,
+            new AIFunctionFactoryOptions { Name = "text_file_read", Description = description });
+
+        // Act / Assert: name, description, schemas, options, method and properties all match, and
+        // a service lookup for the function type answers with the tool itself
+        Assert.Equal(direct.Name, guarded.Name);
+        Assert.Equal(direct.Description, guarded.Description);
+        Assert.Equal(direct.JsonSchema.GetRawText(), guarded.JsonSchema.GetRawText());
+        Assert.Equal(direct.ReturnJsonSchema?.GetRawText(), guarded.ReturnJsonSchema?.GetRawText());
+        Assert.Same(direct.JsonSerializerOptions, guarded.JsonSerializerOptions);
+        Assert.Equal(direct.UnderlyingMethod, guarded.UnderlyingMethod);
+        Assert.Equal(direct.AdditionalProperties, guarded.AdditionalProperties);
+        Assert.Same(guarded, guarded.GetService(typeof(AIFunction)));
+        Assert.Equal(direct.ToString(), guarded.ToString());
+    }
+
+    /// <summary>
     ///     Proves that a tool cannot be created without an implementation.
     /// </summary>
     [Fact]

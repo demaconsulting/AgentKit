@@ -67,6 +67,20 @@ internal sealed class StubToolPack : IToolPack
     public IReadOnlyList<PathPolicy> Policies => _policies;
 
     /// <summary>
+    ///     Gets the text every published tool returns, or null for the tool's own verb.
+    /// </summary>
+    /// <remarks>
+    ///     Lets a test make a child's tool output exceed a result ceiling without a real family.
+    /// </remarks>
+    public string? Output { get; init; }
+
+    /// <summary>
+    ///     Gets a value indicating whether the tools are hand-built functions rather than guarded
+    ///     tools, so their names escape the naming convention's validation.
+    /// </summary>
+    public bool HandBuilt { get; init; }
+
+    /// <summary>
     ///     Creates one do-nothing tool per published verb, governed by the supplied policy.
     /// </summary>
     /// <param name="policy">The access policy of the composition, recorded for inspection.</param>
@@ -75,10 +89,15 @@ internal sealed class StubToolPack : IToolPack
     {
         _policies.Add(policy);
 
+        if (HandBuilt)
+        {
+            return [.. _verbs.Select(verb => AIFunctionFactory.Create(() => Output ?? verb, FamilyPrefix + "_" + verb))];
+        }
+
         return
         [
             .. _verbs.Select(verb => GuardedToolFactory.Create(
-                () => ToolResult.Text(verb),
+                () => ToolResult.Text(Output ?? verb),
                 ToolName.Create(FamilyPrefix, verb),
                 "A stub tool that reports its own verb."))
         ];

@@ -55,6 +55,10 @@ public class PublicSurfaceTests
             "RealPathResolver",
             "ToolLimits",
             "ToolName",
+            "ToolOutputOptions",
+            "ToolOutputReadTool",
+            "ToolOutputSearchTool",
+            "ToolOutputSpill",
             "ToolPackBuilder",
             "ToolResult",
             "TranscriptEntry",
@@ -76,7 +80,10 @@ public class PublicSurfaceTests
     ///     level; the token estimator and the usage origin that went with it, now that every provider
     ///     session answers for its own window; the compaction policy, folded into the session options
     ///     as one number; and the creation exception, which existed to hand back a provider session
-    ///     whose disposal had just failed.
+    ///     whose disposal had just failed. The retained-output store, its entries and lookup outcome,
+    ///     the composition's retention attachment, the oversized-output marker and the guarded tool
+    ///     wrapper are internal so that no application can construct, share or inspect another
+    ///     composition's retained outputs or deliver a marker unresolved.
     /// </remarks>
     [Fact]
     public void AgentKitCore_PublicSurface_ExcludesDeletedAndInternalTypes()
@@ -95,7 +102,9 @@ public class PublicSurfaceTests
             "ContextLayout",
             "ContextTier",
             "ContextUsageOrigin",
+            "GuardedFunction",
             "IContextUsageReporter",
+            "OversizedResult",
             "RotationEngine",
             "RotationOutcome",
             "SaturationReason",
@@ -103,8 +112,12 @@ public class PublicSurfaceTests
             "SessionTranscript",
             "SessionTurn",
             "Slot",
+            "SpillAttachment",
             "Tier",
             "TokenEstimator",
+            "ToolOutputEntry",
+            "ToolOutputLookup",
+            "ToolOutputStore",
         ];
 
         Assert.All(gone, name => Assert.DoesNotContain(name, exported));

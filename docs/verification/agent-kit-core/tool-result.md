@@ -32,7 +32,7 @@ Unit tests reside in `ToolResultTests.cs` within the `DemaConsulting.AgentKit.Co
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond
+A unit test run passes when all eighteen scenarios below pass without error or exception beyond
 those explicitly asserted. Any result returned in the wrong shape, any caption and content
 returned in the wrong order, any refusal expressed by throwing, and any host detail contributed
 by the library to a refusal constitutes a failure.
@@ -147,3 +147,16 @@ and contains no directory separator at all. This is the `ToolResult`-level guara
 library adds no host detail of its own; whether any host detail appears is entirely the caller's
 choice of `message`. `PathPolicy` exercises that choice by deliberately disclosing host paths —
 see *PathPolicy Unit Verification Design*.
+
+#### AgentKitCore-ToolResult-Oversized: An Oversized Result Is a Marker, Not Text
+
+**Test**: `ToolResult_Oversized_ValidArguments_ReturnsAMarkerThatIsNotText`
+
+Normal operation: the result is not a string a runtime could deliver as-is, and carries both the
+whole output and the refusal message.
+
+#### AgentKitCore-ToolResult-Oversized: A Missing Output or Refusal Is Refused
+
+**Test**: `ToolResult_Oversized_InvalidArguments_Throw`
+
+Error path: a null output, a null refusal and an empty refusal each throw.

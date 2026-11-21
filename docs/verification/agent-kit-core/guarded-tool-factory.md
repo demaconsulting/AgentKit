@@ -53,7 +53,7 @@ Unit tests reside in `GuardedToolFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass without error or exception beyond
+A unit test run passes when all eighteen scenarios below pass without error or exception beyond
 those explicitly asserted. Any content result arriving as a `JsonElement` from a guarded tool, any
 structured result arriving as a raw object, any
 invalid name or empty description accepted, and any name or description not carried by the
@@ -175,3 +175,27 @@ Builds the same tool **without** options and therefore without the guard, and as
 intentionally linked to no requirement; see *Verification Approach* above for why. It is the
 evidence that the guard is necessary rather than ceremonial, and it will be the first and only
 scenario to fail if the underlying package changes this behavior.
+
+#### AgentKitCore-GuardedToolFactory-OversizedResolvedWithoutRetention: A Declared-Oversized Output Is the Identical Refusal
+
+**Test**: `GuardedToolFactory_Create_OversizedMarkerWithoutRetention_ReturnsTheIdenticalRefusal`
+
+Declared `Task<object>`. A tool returning `ToolResult.Oversized` and composed without retention
+delivers exactly the string `ToolResult.Denied(ResourceTooLarge, message)` composes, so a host that
+has not opted in observes the refusal it always did and no marker reaches the runtime.
+
+#### AgentKitCore-GuardedToolFactory-OversizedResolvedWithoutRetention: An Oversized Ordinary Result Is Unchanged
+
+**Test**: `GuardedToolFactory_Create_OversizedTextWithoutRetention_IsPassedThroughUnchanged`
+
+Declared `Task<object>`. Text twice the default result ceiling arrives as the same instance: the
+wrapper neither refuses nor retains anything when retention is not composed.
+
+#### AgentKitCore-GuardedToolFactory-MetadataPreserved: The Wrapper Preserves Every Piece of Metadata
+
+**Test**: `GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata`
+
+Builds the same parameterized delegate guarded and directly through the underlying factory, and
+asserts the name, description, parameter schema, return schema, serializer options, underlying
+method, additional properties and string form match, and that a service lookup for the function
+type answers with the tool itself — the members every provider adapter reads to publish a tool.

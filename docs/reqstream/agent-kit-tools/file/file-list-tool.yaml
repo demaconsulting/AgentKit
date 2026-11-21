@@ -73,3 +73,24 @@ sections:
                   A refused directory must be reported so the model learns where it may read.
                 tests:
                   - FileListTool_List_DirectoryOutsideGrants_ReturnsDenial
+
+              - id: AgentKitTools-File-ListTool-BoundedResult
+                title: >-
+                  When the composition does not retain large outputs, the list tool shall refuse a
+                  listing exceeding the policy's result ceiling, naming the ceiling rather than
+                  truncating.
+                justification: |
+                  A truncated listing would silently hide files the model would then never ask for;
+                  naming the ceiling lets it narrow the listing instead.
+                tests:
+                  - FileListTool_List_ListingBeyondTheResultCeiling_ReturnsDenialNamingTheCeiling
+
+              - id: AgentKitTools-File-ListTool-OversizedResultRetainable
+                title: >-
+                  When the composition retains large outputs, the list tool shall have a listing
+                  exceeding the policy's result ceiling retained whole for paging rather than refused.
+                justification: |
+                  A full listing of a large tree is the result most likely to outgrow the ceiling.
+                  Retained, every file stays discoverable by paging or searching the listing.
+                tests:
+                  - FileListTool_List_ListingBeyondTheResultCeilingWithRetention_IsRetainedForPaging

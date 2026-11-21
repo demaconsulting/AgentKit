@@ -229,6 +229,44 @@ prefix, a situation in which which of two identically prefixed tools a model inv
 Asserts the refusal occurs where the application composed its packs rather than in a model's
 behavior later.
 
+### Large Tool Outputs: An Oversized Custom Result Is Previewed and Read Back
+
+**Test**: `AgentKitCore_SystemToolOutput_OversizedCustomTool_PreviewReferenceReadsBackTheFullOutput`
+
+Composes a custom tool producing a five-thousand-line report through `ToolPackBuilder` with
+`WithToolOutputSpill`. Asserts the tool's result is a bounded preview naming `output-1`, that
+`tool_output_read` returns the last two lines numbered exactly, and that `tool_output_search` finds
+a line in the middle by number — so the whole output is reachable through the reference alone.
+
+### Large Tool Outputs: A Reference Survives Session Rotation
+
+**Test**: `AgentKitCore_SystemToolOutput_ReferenceSurvivesSessionRotation`
+
+Retains an output, then runs a `CompactingAgentSession` over a narrow in-memory window carrying the
+same tool list until it rotates. Reads the reference through the reader in the tool list the
+replacement provider session was seeded with, and asserts the retained line is returned.
+
+### Large Tool Outputs: The Readers Accept No Path
+
+**Test**: `AgentKitCore_SystemToolOutput_Readers_AcceptNoPath`
+
+Builds a retaining composition and asserts it offers exactly the two readers, neither of whose
+parameter schemas has a `path` property — retention adds no way to reach the file system.
+
+### Large Tool Outputs: Without the Opt-In Nothing Changes
+
+**Test**: `AgentKitCore_SystemToolOutput_WithoutRetention_OversizedOutputIsRefusedAsBefore`
+
+Composes a tool declaring its output oversized without retention, and asserts the result is
+byte-for-byte the `ResourceTooLarge` refusal the tool supplied and that no reader is offered.
+
+### Large Tool Outputs: An Evicted Reference Is Answered Honestly
+
+**Test**: `AgentKitCore_SystemToolOutput_EvictedReference_IsAnsweredNoLongerRetained`
+
+Composes retention holding one output, retains two, and asserts reading the first is a
+`TargetNotFound` refusal stating it is no longer retained.
+
 ### Long Conversation: The Session Outlives the Provider's Window
 
 **Test**: `AgentKitSessions_LongConversation_RotatesRepeatedlyAndKeepsAnswering`
@@ -341,14 +379,18 @@ removed member or omits the new response signals fails here before a consumer fo
 
 ## Acceptance Criteria
 
-A system-level test run passes when all twenty-eight scenarios above pass without error or exception
+A system-level test run passes when all thirty-three scenarios above pass without error or exception
 beyond those explicitly asserted. Any unexpected exception, wrong exception type, wrong return
 value, permitted path that should have been refused, relative path resolved against the process
 working directory, escaped file appearing in a listing, denial message that fails to echo the
 request, name the permitted locations, or otherwise offer a way forward, tool
 result arriving as serialized JSON rather than as the content the tool produced, tool-returned
 image failing to reach the provider, or tool offered
-to a host that cannot support it constitutes a failure. For the session scenarios, any session that
+to a host that cannot support it constitutes a failure. For the large-tool-output scenarios, any
+preview exceeding the result ceiling, any retained line unreachable through its reference, any
+reference lost across rotation, any reader accepting a path, any change to a refusal without the
+opt-in, or any evicted reference answered as anything but no longer retained constitutes a failure.
+For the session scenarios, any session that
 stops answering as the conversation grows, any rotation that leaks a superseded provider session, any
 comparison that mixes a figure one party counted with a figure another did, any pathological
 compaction that fails to terminate, any missing dropped-material signal, any lost early detail, or

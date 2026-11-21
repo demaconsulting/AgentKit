@@ -42,6 +42,13 @@ shows how it *proceeds*.
 - **Delegation that cannot reach back.** A child agent reads one document and reports what it says.
   It has no task list, no memories, and no ability to write anything — by composition, not by
   convention. See [Safe delegation](#safe-delegation).
+- **Large tool outputs that are paged, not refused.** The composition calls
+  `WithToolOutputSpill()`, and the reader child is composed the same way through `AgentPack`'s
+  `childToolOutput`. A search, listing, outline or child report too large for the result ceiling is
+  kept whole and answered with a preview naming a reference such as `output-1`, which the agent
+  reads with `tool_output_read` or searches with `tool_output_search`. Neither reader takes a path,
+  so retention gives the agent no new reach. The bundled corpus is small, so this sample will not
+  normally trigger retention; point `--corpus` at a large folder to see it.
 - **A conversation that outlives the context window.** On either provider the conversation runs
   on an AgentKit `CompactingAgentSession`: when the window fills, older history is consolidated into
   tiered records, a fresh provider session is seeded with them, and the turn loop carries on. Every

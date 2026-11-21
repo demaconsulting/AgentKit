@@ -44,6 +44,7 @@ sections:
           - AgentKitAgentsCopilot-Agent-RunsConversations
           - AgentKitAgentsCopilot-ToolResults-DeliveredInline
           - AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
+          - AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions
           - AgentKit-OTS-MicrosoftCopilotSDK-PermissionRpc
           - AgentKit-OTS-MicrosoftCopilotSDK-SessionLifecycle
@@ -83,6 +84,7 @@ sections:
           - AgentKitAgentsChatClient-SessionAdapter-CarriesACoreSession
           - AgentKitAgentsChatClient-SessionAdapter-OccupancyFromTheProvider
           - AgentKitAgentsChatClient-Consolidation-ThroughASeparateChatClient
+          - AgentKitAgentsChatClient-ToolOutput-DeliveredUnchanged
           - AgentKit-OTS-MicrosoftAgentsAI-Agent
           - AgentKit-OTS-MicrosoftAgentsAI-ChatClientAgent
         tests:

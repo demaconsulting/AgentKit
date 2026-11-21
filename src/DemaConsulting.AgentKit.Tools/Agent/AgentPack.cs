@@ -1,3 +1,4 @@
+using System.Globalization;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 
@@ -41,6 +42,17 @@ namespace DemaConsulting.AgentKit.Tools.Agent;
 ///     itself given this family when its profile admits <c>agent_run</c>, so chains are possible and
 ///     are budgeted: at the ceiling the tool is offered and refuses, stating the ceiling and the
 ///     current level.
+///     </para>
+///     <para>
+///     <b>A delegated agent retains large tool outputs only when the application says so.</b>
+///     Passing <c>childToolOutput</c> composes every child — and every deeper child — with
+///     retention, each with its own store and its own reader tools, exactly as
+///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> composes the parent. Independently of
+///     that choice, a child's final answer too large for the parent's result ceiling is retained
+///     by the parent whenever the <em>parent's</em> composition retains large outputs. A child
+///     inherits its parent's result ceiling, so retention for children requires a policy whose
+///     ceiling is at least <see cref="ToolOutputSpill.MinimumResultCharacters"/>, checked by
+///     <see cref="CreateTools"/>.
 ///     </para>
 ///     <para>
 ///     The class is immutable after construction and is safe for concurrent use.
@@ -120,6 +132,12 @@ public sealed class AgentPack : IToolPack
     private readonly HostCapabilities _hostCapabilities;
 
     /// <summary>
+    ///     The retention options a delegated agent's tool list is composed with, or
+    ///     <see langword="null"/> when a child does not retain large outputs.
+    /// </summary>
+    private readonly ToolOutputOptions? _childToolOutput;
+
+    /// <summary>
     ///     The depth of the agent this pack is being composed for, counting a root agent as zero.
     /// </summary>
     private readonly int _depth;
@@ -141,6 +159,13 @@ public sealed class AgentPack : IToolPack
     ///     This pack must not appear in <paramref name="childPacks"/>. A delegated agent is given
     ///     this family automatically, one level deeper, whenever its profile admits
     ///     <c>agent_run</c>; listing it as well would publish the <c>agent</c> prefix twice.
+    ///     </para>
+    ///     <para>
+    ///     A delegated agent composed by this constructor does not retain large tool outputs; it is
+    ///     equivalent to passing <see langword="null"/> as <c>childToolOutput</c> to
+    ///     <see cref="AgentPack(IEnumerable{AgentProfile}, Func{ChildAgentRequest, CancellationToken, Task{string}}, IEnumerable{IToolPack}, HostCapabilities, ToolOutputOptions)"/>.
+    ///     This signature is kept exactly as it was before retention existed, so a host compiled
+    ///     against an earlier release keeps binding to it.
     ///     </para>
     /// </remarks>
     /// <param name="profiles">
@@ -179,7 +204,76 @@ public sealed class AgentPack : IToolPack
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
         IEnumerable<IToolPack> childPacks,
         HostCapabilities hostCapabilities = HostCapabilities.Delegation)
-        : this(profiles, runner, childPacks, hostCapabilities, depth: 0)
+        : this(profiles, runner, childPacks, hostCapabilities, childToolOutput: null)
+    {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AgentPack"/> class whose delegated agents
+    ///     retain large tool outputs as the application states.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Everything said of
+    ///     <see cref="AgentPack(IEnumerable{AgentProfile}, Func{ChildAgentRequest, CancellationToken, Task{string}}, IEnumerable{IToolPack}, HostCapabilities)"/>
+    ///     applies here; this overload adds only <paramref name="childToolOutput"/>.
+    ///     </para>
+    ///     <para>
+    ///     It is an overload rather than an optional parameter appended to the earlier constructor,
+    ///     because appending a parameter would remove the earlier signature from the compiled
+    ///     assembly. None of its parameters is optional, so no call binds to both constructors: a
+    ///     call of three or four arguments binds the earlier one, a call of five binds this one.
+    ///     </para>
+    /// </remarks>
+    /// <param name="profiles">
+    ///     The agents the application is willing to have started, in the order the model should see
+    ///     them. Must be non-null, must contain no null entry, and must carry no two profiles of the
+    ///     same name. May be empty, which registers the tool with nothing to delegate to.
+    /// </param>
+    /// <param name="runner">
+    ///     The host's means of starting an agent. Must be non-null; see
+    ///     <see cref="ChildAgentRequest"/> for what a runner must do with it.
+    /// </param>
+    /// <param name="childPacks">
+    ///     The packs a delegated agent may draw its tools from — normally the same packs the
+    ///     application attached to the parent. Must be non-null, must contain no null entry, must
+    ///     not contain an <see cref="AgentPack"/>, and must carry no two packs of the same family
+    ///     prefix. May be empty, which registers profiles whose children have no tools.
+    /// </param>
+    /// <param name="hostCapabilities">
+    ///     The capabilities the host provides to a delegated agent, applied when composing a child
+    ///     exactly as <see cref="ToolPackBuilder.WithHostCapabilities"/> applies them to the parent.
+    ///     Pass <see cref="HostCapabilities.Delegation"/> so that a child whose profile admits
+    ///     <c>agent_run</c> can delegate in turn.
+    /// </param>
+    /// <param name="childToolOutput">
+    ///     The retention options a delegated agent's tool list is composed with, exactly as
+    ///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> applies them to the parent, or
+    ///     <see langword="null"/> for a child that does not retain large outputs. A child is a
+    ///     separate composition, so it is given its own store and its own
+    ///     <c>tool_output_read</c> and <c>tool_output_search</c>, appended after the profile's
+    ///     names are applied so a retaining child can always read what it retained. A profile that
+    ///     admits no tools stays tool-less. The choice is carried to every deeper level of
+    ///     delegation. A child inherits the result ceiling of the policy given to
+    ///     <see cref="CreateTools"/>, which must therefore be at least
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/> when this is supplied.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
+    ///     <paramref name="childPacks"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when <paramref name="profiles"/> holds a null entry or two profiles of the same
+    ///     name, or when <paramref name="childPacks"/> holds a null entry, an
+    ///     <see cref="AgentPack"/>, or two packs claiming one family prefix.
+    /// </exception>
+    public AgentPack(
+        IEnumerable<AgentProfile> profiles,
+        Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
+        IEnumerable<IToolPack> childPacks,
+        HostCapabilities hostCapabilities,
+        ToolOutputOptions? childToolOutput)
+        : this(profiles, runner, childPacks, hostCapabilities, childToolOutput, depth: 0)
     {
     }
 
@@ -196,6 +290,9 @@ public sealed class AgentPack : IToolPack
     /// <param name="runner">The host's means of starting an agent.</param>
     /// <param name="childPacks">The packs a delegated agent may draw its tools from.</param>
     /// <param name="hostCapabilities">The capabilities the host provides to a delegated agent.</param>
+    /// <param name="childToolOutput">
+    ///     The retention options a delegated agent's tool list is composed with, or null for none.
+    /// </param>
     /// <param name="depth">The depth of the agent this pack is composed for.</param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
@@ -209,6 +306,7 @@ public sealed class AgentPack : IToolPack
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner,
         IEnumerable<IToolPack> childPacks,
         HostCapabilities hostCapabilities,
+        ToolOutputOptions? childToolOutput,
         int depth)
     {
         ArgumentNullException.ThrowIfNull(profiles);
@@ -225,6 +323,7 @@ public sealed class AgentPack : IToolPack
 
         _runner = runner;
         _hostCapabilities = hostCapabilities;
+        _childToolOutput = childToolOutput;
         _depth = depth;
     }
 
@@ -281,13 +380,30 @@ public sealed class AgentPack : IToolPack
     /// <exception cref="InvalidOperationException">
     ///     Thrown when a registered profile's grants would widen this policy — a location it does
     ///     not reach, a write where it holds only a read, or a deny pattern it imposes and the
-    ///     profile drops.
+    ///     profile drops — or when delegated agents retain large outputs and the policy's
+    ///     <see cref="ToolLimits.MaxResultCharacters"/>, which every child inherits, is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>.
     /// </exception>
     public IEnumerable<AIFunction> CreateTools(PathPolicy policy)
     {
         // Validated here rather than left to the tool's factory so that the failure names the
         // composing application's mistake at the point it was made.
         ArgumentNullException.ThrowIfNull(policy);
+
+        // Every child inherits this policy's limits, so a ceiling too small for retention would
+        // otherwise surface only when a child is composed, in the middle of a run. Reported here,
+        // at the application's composition, it is reported once for every depth.
+        if (_childToolOutput is not null
+            && policy.Limits.MaxResultCharacters < ToolOutputSpill.MinimumResultCharacters)
+        {
+            throw new InvalidOperationException(
+                "Delegated agents are composed to retain large tool outputs, which requires a result "
+                + "ceiling of at least "
+                + ToolOutputSpill.MinimumResultCharacters.ToString(CultureInfo.InvariantCulture)
+                + " characters; the policy's ceiling, which every delegated agent inherits, is "
+                + policy.Limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
+                + " characters.");
+        }
 
         // A widening profile is a configuration error, and this is the first moment both halves of
         // it are known. Checking every profile now means no run can widen later.
@@ -339,6 +455,15 @@ public sealed class AgentPack : IToolPack
     ///     covers. A child holds a narrower policy by design, so a sibling profile it can no longer
     ///     reach is absent from it rather than a configuration error reported at run time.
     ///     </para>
+    ///     <para>
+    ///     <b>When the application chose retention for children,</b> the filtered list is composed
+    ///     with it last, giving the child its own store and its own two reader tools. The choice is
+    ///     carried by the pack added one level deeper, so a grandchild retains too. An admitted list
+    ///     retention cannot be composed over — a name longer than <see cref="ToolName.MaxLength"/>,
+    ///     a name under the reserved <c>tool_output</c> prefix, or one name published twice by child
+    ///     packs with overlapping prefixes — is then a composition failure, which <c>agent_run</c>
+    ///     refuses.
+    ///     </para>
     /// </remarks>
     /// <param name="policy">The parent composition's policy, which the child's may only narrow.</param>
     /// <param name="profile">The profile whose grants and declared names shape the child.</param>
@@ -358,13 +483,43 @@ public sealed class AgentPack : IToolPack
         // the greater depth. A sibling profile this child can no longer reach is not a configuration
         // error — the application's own composition already judged it — so it is simply absent, and
         // a model naming it gets the ordinary unknown-profile refusal.
-        builder.Add(new AgentPack(Reachable(childPolicy), _runner, _childPacks, _hostCapabilities, _depth + 1));
+        builder.Add(new AgentPack(
+            Reachable(childPolicy),
+            _runner,
+            _childPacks,
+            _hostCapabilities,
+            _childToolOutput,
+            _depth + 1));
 
         var composed = builder.Build();
 
         // The profile is a filter over what was published, never a source of tools.
         var admitted = new HashSet<string>(profile.Tools, StringComparer.Ordinal);
-        return [.. composed.Where(tool => admitted.Contains(tool.Name))];
+        List<AIFunction> filtered = [.. composed.Where(tool => admitted.Contains(tool.Name))];
+
+        // Retention is applied after the filter, because the readers are infrastructure for the
+        // tools the child holds rather than capabilities a profile grants: a retaining child must
+        // always be able to read what it retained. A child holding no tools has nothing that could
+        // produce an output, so it stays tool-less rather than gaining two readers of nothing.
+        if (_childToolOutput is null || filtered.Count == 0)
+        {
+            return filtered;
+        }
+
+        // The ceiling was checked at CreateTools and every child inherits it. What remains is the list
+        // itself: a hand-built tool with an over-long name, a child pack publishing under the reserved
+        // reader prefix, or two child packs with overlapping prefixes publishing one name. The child's
+        // own builder ran without retention, so only this composition sees them. Each is reported as
+        // a composition failure, which agent_run turns into a refusal rather than ending the agent's
+        // turn.
+        try
+        {
+            return ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException(exception.Message, exception);
+        }
     }
 
     /// <summary>

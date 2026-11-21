@@ -26,18 +26,31 @@ var builder = new ToolPackBuilder(policy)
     .Add(new FilePack())
     .Add(new MarkdownPack())
     .Add(new TodoPack())
-    .Add(new MemoryPack(embeddingGenerator, MemoryOptions.Default, memoryStore));
+    .Add(new MemoryPack(embeddingGenerator, MemoryOptions.Default, memoryStore))
+    .WithToolOutputSpill();
 
 if (delegationEnabled)
 {
     builder = builder
         .WithHostCapabilities(HostCapabilities.Delegation)
-        .Add(new AgentPack(profiles, runner, childPacks, HostCapabilities.None));
+        .Add(new AgentPack(
+            profiles,
+            runner,
+            childPacks,
+            HostCapabilities.None,
+            childToolOutput: ToolOutputOptions.Default));
 }
 ```
 
 Delegation is gated by a host capability exactly as vision is in the document-assistant sample: with
 `--no-delegation`, `agent_run` is not refused at call time, it is never created.
+
+The composition also retains large tool outputs, for the root agent and for every delegated reader.
+A broad search or a full listing of a large corpus is exactly the result that outgrows the result
+ceiling, and so is a reader's report; retained, it arrives as a preview and a reference the model
+pages with `tool_output_read` or searches with `tool_output_search`, instead of a refusal it can only
+answer by guessing how to narrow the request. The tool-less summarizer stays tool-less. See *Large
+Tool Outputs* in the introduction.
 
 ## A Conversation That Outlives the Window
 

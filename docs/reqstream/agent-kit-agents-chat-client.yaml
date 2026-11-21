@@ -136,3 +136,16 @@ sections:
           - AgentKitAgentsChatClient-ChatClientSummarizer-RejectsInvalidArguments
         tests:
           - AgentKitAgentsChatClient_Session_RotatesOnTheProvidersUsage_AndSeedsTheReplacement
+
+      - id: AgentKitAgentsChatClient-ToolOutput-DeliveredUnchanged
+        title: >-
+          The library shall carry a retained output's preview, and each page a reader tool returns,
+          to the provider and into the conversation's transcript exactly as the tools produced them.
+        justification: |
+          Retention of large tool outputs happens inside the tools, so it is provider-neutral by
+          construction; what this package must guarantee is that its function-invocation loop and
+          transcript carry the bounded preview and the reader's pages like any other tool result, so
+          a model on any chat-client provider reads a large output the same way. The oversized
+          output itself never reaches the provider or the transcript.
+        tests:
+          - AgentKitAgentsChatClient_ToolOutput_PreviewReachesTheProviderAndTheReaderPagesIt

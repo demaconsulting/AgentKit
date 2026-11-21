@@ -1,0 +1,83 @@
+---
+# Software Unit Requirements for ToolOutputReadTool
+#
+# These requirements describe the design-level behavior of the tool_output_read tool, which
+# pages through a retained tool output.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputReadTool Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputReadTool-ToolName
+            title: >-
+              The output read tool shall be published under the name tool_output_read, exposed as a
+              constant.
+            justification: |
+              The preview names this tool, so its name must be fixed and discoverable by the host.
+            tests:
+              - ToolOutputReadTool_Create_PublishesTheDocumentedName
+
+          - id: AgentKitCore-ToolOutputReadTool-NoPathParameter
+            title: >-
+              The output read tool shall accept only an output identifier and a line range, and no
+              path.
+            tags: [security]
+            justification: |
+              A reader that took a path would be a new way to reach the file system. Accepting only
+              an identifier makes such a request impossible to express.
+            tests:
+              - ToolOutputReadTool_Create_SchemaHasNoPathParameter
+
+          - id: AgentKitCore-ToolOutputReadTool-NumberedPage
+            title: >-
+              The output read tool shall return a requested range of a retained output under a header
+              naming the range and the output's true line count, numbering each line, and shall
+              answer a range past the end, or a zero line count, with an empty window naming the
+              total.
+            justification: |
+              The shape is the one the file reader uses, so a model already knows how to read a page
+              and how far the output extends beyond it.
+            tests:
+              - ToolOutputReadTool_Read_Range_ReturnsNumberedLinesUnderHeader
+              - ToolOutputReadTool_Read_PastTheEnd_ReturnsEmptyWindowNamingTheTotal
+              - ToolOutputReadTool_Read_ZeroCountAndHugeValues_AreAnsweredWithoutOverflow
+
+          - id: AgentKitCore-ToolOutputReadTool-OmittedCountFitsCeiling
+            title: >-
+              When no line count is supplied, the output read tool shall return as many whole lines
+              from the start line as fit within the result ceiling.
+            justification: |
+              A retained output is by definition larger than the ceiling, so reading it to the end is
+              never possible; returning what fits, under a header stating where it stopped, lets the
+              model page forward without guessing a count.
+            tests:
+              - ToolOutputReadTool_Read_OmittedLineCount_ReturnsWholeLinesWithinCeiling
+
+          - id: AgentKitCore-ToolOutputReadTool-BoundedPage
+            title: >-
+              The output read tool shall refuse an explicit range whose page exceeds the result
+              ceiling, naming the range and the ceiling, rather than truncating it, and shall refuse
+              it as soon as the page is known to exceed the ceiling, reading no more of the output
+              than the ceiling admits.
+            tags: [reliability]
+            justification: |
+              A truncated page would hide lines the model believes it read. A model may request any
+              line count, up to the whole output; refusing as soon as the page is known to be over
+              the ceiling bounds the work and memory of every read by the ceiling rather than by the
+              request or the retained output, so repeated oversized requests cannot stall the host.
+            tests:
+              - ToolOutputReadTool_Read_RangeOverCeiling_IsRefusedNamingTheCeiling
+              - ToolOutputReadTool_ReadEntry_HugeRangeOverCeiling_ReadsOnlyWhatTheCeilingAdmits
+              - ToolOutputReadTool_Read_RangeExactlyAtCeiling_IsReturnedAndOneOverIsRefused
+
+          - id: AgentKitCore-ToolOutputReadTool-InvalidRequestsRefused
+            title: >-
+              The output read tool shall refuse an invalid range and a missing, malformed, unknown or
+              evicted identifier as returned results.
+            justification: |
+              Each is something a model supplied, so it is answered rather than thrown, and an
+              evicted reference is reported as no longer retained.
+            tests:
+              - ToolOutputReadTool_Read_InvalidRange_IsRefused
+              - ToolOutputReadTool_Read_UnresolvableIds_AreRefused

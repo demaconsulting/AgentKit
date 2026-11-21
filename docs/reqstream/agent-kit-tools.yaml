@@ -359,3 +359,34 @@ sections:
           - AgentKitTools_SystemComposition_AgentPack_ContributesTheAgentFamily
           - AgentKitTools_SystemComposition_AgentPackWithoutDelegation_ContributesNoTools
           - AgentKitTools_SystemComposition_DelegatedAgent_KeepsItsOwnTaskList
+
+      - id: AgentKitTools-OversizedResultsRetainable
+        title: >-
+          The library shall bound every oversized result its listing, searching, outlining and
+          delegating tools produce: refusing it and naming the ceiling when the composition does not
+          retain large outputs, and having it retained whole for paging when the composition does,
+          including for a delegated agent the application chose to compose that way; the text file
+          read tool, whose source is already pageable, shall keep refusing.
+        tags: [system]
+        justification: |
+          These are the results that outgrow the result ceiling in practice: a broad search, a full
+          listing, the outline of a long document, and a delegated agent's whole report. Refusing
+          them loses work the model asked for; truncating them hides what it never knew to ask for.
+          An application that composes retention of large outputs gets them retained and paged
+          instead, on the root agent and, by its explicit choice, on every delegated agent. Reading
+          a file is different: the file itself is already paged by line range, so retaining a
+          second copy of it would add nothing.
+        children:
+          - AgentKitTools-TextFile-SearchTool-BoundedResult
+          - AgentKitTools-TextFile-SearchTool-OversizedResultRetainable
+          - AgentKitTools-File-ListTool-BoundedResult
+          - AgentKitTools-File-ListTool-OversizedResultRetainable
+          - AgentKitTools-Markdown-OutlineTool-BoundedResult
+          - AgentKitTools-Markdown-OutlineTool-OversizedResultRetainable
+          - AgentKitTools-Agent-RunTool-ChildResultReporting
+          - AgentKitTools-Agent-RunTool-OversizedAnswerRetainable
+          - AgentKitTools-Agent-Pack-ChildToolOutputOptIn
+          - AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling
+        tests:
+          - AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained
+          - AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent

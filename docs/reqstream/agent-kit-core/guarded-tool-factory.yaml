@@ -81,3 +81,30 @@ sections:
               implementation is a defect in the tool author's code and is surfaced immediately.
             tests:
               - GuardedToolFactory_Create_NullDelegate_ThrowsArgumentNullException
+
+          - id: AgentKitCore-GuardedToolFactory-OversizedResolvedWithoutRetention
+            title: >-
+              A tool built by the guarded factory and composed without retention of large outputs
+              shall replace an output its tool declared oversized with exactly the refusal the tool
+              supplied, and shall deliver every other result unchanged.
+            justification: |
+              Retention of large outputs is opt-in. A host that has not opted in must observe exactly
+              the refusals it always did, and an internal marker must never reach a provider, which
+              could not read it.
+            tests:
+              - GuardedToolFactory_Create_OversizedMarkerWithoutRetention_ReturnsTheIdenticalRefusal
+              - GuardedToolFactory_Create_OversizedTextWithoutRetention_IsPassedThroughUnchanged
+
+          - id: AgentKitCore-GuardedToolFactory-MetadataPreserved
+            title: >-
+              A tool built by the guarded factory shall carry the same name, description, parameter
+              and return schemas, serializer options, underlying method and additional properties
+              the underlying function factory would have given it, and shall answer a service lookup
+              for itself.
+            justification: |
+              Every provider adapter reads a tool's name, description and schema to publish it, and
+              some consumers read its method or properties. The tool returned by the factory resolves
+              oversized outputs on the way out, and that must change nothing a consumer can observe
+              about the tool itself.
+            tests:
+              - GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata

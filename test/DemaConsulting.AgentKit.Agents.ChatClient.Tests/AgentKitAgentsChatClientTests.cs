@@ -172,6 +172,70 @@ public class AgentKitAgentsChatClientTests
     }
 
     /// <summary>
+    ///     Proves retention of large tool outputs works unchanged through a chat client: the model
+    ///     receives a bounded preview in place of the oversized result, a call to the reader pages
+    ///     the retained output back, and the transcript records only what the model was sent.
+    /// </summary>
+    /// <remarks>
+    ///     Retention happens inside the tool, so nothing about it is specific to this adapter; this
+    ///     scenario is the evidence that the function-invocation loop this package installs carries
+    ///     the preview and the reader's page to the provider exactly as it carries any tool result.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsChatClient_ToolOutput_PreviewReachesTheProviderAndTheReaderPagesIt()
+    {
+        // Arrange: an oversized tool composed with retention, and a provider that calls it, then
+        // reads the last line of the retained output, then answers
+        var report = GuardedToolFactory.Create(
+            (Func<Task<object>>)(() => Task.FromResult(ToolResult.Text(string.Join(
+                "\n",
+                Enumerable.Range(1, 5000).Select(n => "row " + n))))),
+            "report_build",
+            "Builds the full report.");
+        var tools = ToolOutputSpill.Apply([report], ToolLimits.Default);
+        var client = new RecordingChatClient()
+            .Queue(RecordingChatClient.Answer(
+                [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "report_build", null)])],
+                inputTokens: 100))
+            .Queue(RecordingChatClient.Answer(
+                [new ChatMessage(ChatRole.Assistant, [new FunctionCallContent(
+                    "call-2",
+                    ToolOutputReadTool.ToolName,
+                    new Dictionary<string, object?> { ["id"] = "output-1", ["startLine"] = 5000, ["lineCount"] = 1 })])],
+                inputTokens: 200))
+            .Queue("the report ends at row 5000", inputTokens: 300);
+        var factory = new ChatClientProviderSessionFactory(client, windowTokens: 100_000);
+        var seed = new ProviderSessionSeed(null, tools, []);
+
+        // Act: take the turn
+        await using var session = await factory.CreateAsync(seed, TestContext.Current.CancellationToken);
+        var turn = await session.SendAsync("how does the report end?", TestContext.Current.CancellationToken);
+
+        // Assert: the provider was sent the bounded preview, then the page, and the transcript holds
+        // exactly those rather than the oversized output
+        var preview = Assert.IsType<string>(ResultOf(client.Requests[1], "call-1"));
+        var page = Assert.IsType<string>(ResultOf(client.Requests[2], "call-2"));
+        Assert.StartsWith("[Output output-1 from report_build", preview, StringComparison.Ordinal);
+        Assert.True(preview.Length <= ToolLimits.DefaultMaxResultCharacters);
+        Assert.Equal("output-1 lines 5000-5000 of 5000\n5000| row 5000", page);
+        var recorded = turn.Entries.Where(entry => entry.Kind == TranscriptEntryKind.ToolResult).Select(entry => entry.Text);
+        Assert.Equal([preview, page], recorded);
+    }
+
+    /// <summary>
+    ///     Finds the result a request carried back for one tool call.
+    /// </summary>
+    /// <param name="request">The recorded request.</param>
+    /// <param name="callId">The tool call's identifier.</param>
+    /// <returns>The result the function-invocation loop sent for that call.</returns>
+    private static object? ResultOf(RecordingChatClient.RecordedRequest request, string callId) =>
+        request.Messages
+            .SelectMany(message => message.Contents)
+            .OfType<FunctionResultContent>()
+            .Single(content => content.CallId == callId)
+            .Result;
+
+    /// <summary>
     ///     Builds a no-op tool carrying the given name, for exercising the factory.
     /// </summary>
     /// <param name="name">The tool name.</param>

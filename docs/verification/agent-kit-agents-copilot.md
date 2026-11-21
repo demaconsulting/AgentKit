@@ -297,6 +297,30 @@ runtime's diversion of a large tool result to a temporary file. A diverted resul
 model as a path that no confined tool may read, which turns a large answer into a failure; checking
 every path at once is what stops one path being missed.
 
+### Large Tool Outputs: The Readers Are Published, Allow-Listed and Approved on Every Session
+
+**Test**: `AgentKitAgentsCopilot_ToolOutput_ReadersArePublishedAllowListedAndApproved`
+
+Builds the options of an agent's created session, its resumed session and an engine session over a
+tool list composed with retention of large outputs. On each it asserts the following:
+`tool_output_read` and `tool_output_search` follow the supplied tool in the published definitions
+and, as `custom:`-qualified entries, in the allow-list; the default permission handler approves a
+custom-tool request for each; and the runtime's own large-output diversion is still switched off.
+Retention is the large-output mechanism on Copilot, so the readers must be reachable on every path,
+and composing it must not turn the runtime's diversion back on.
+
+### Large Tool Outputs: The Configured Tools Retain and Page Across Runs
+
+**Test**: `AgentKitAgentsCopilot_ToolOutput_ConfiguredToolsDeliverPreviewAndPage`
+
+Runs an agent built over an oversized tool composed with retention twice on the scripted runtime, so
+one session is created and then resumed. The scripted runtime replays events but does not invoke
+tools. The scenario therefore takes the tools from the options the runtime was handed and invokes
+them through the same entry point the runtime would: the oversized tool from the created session's
+options, and the reader from the resumed session's. It asserts that the tool returns a bounded
+preview naming `output-1` and that the reader returns its first two lines exactly. The agent hands
+every run the same tool instances, so a reference outlives the run that produced it.
+
 ### Runtime Startup: A Failed Start Is Explained
 
 **Test**: `AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained`
@@ -323,9 +347,12 @@ to seed the consolidated record, any part of a seeded record appearing in a sess
 any rotation that costs more than the one request the engine was already making, any superseded
 session left unreleased, any session created with the runtime's own compaction left at the runtime's
 default threshold, any agent run that is not confined, streamed or released as asserted, any
-resumption under a different confinement, any session that diverts a large tool result, or any failed
+resumption under a different confinement, any session that diverts a large tool result, any failed
 start whose explanation omits the runtime's error or blames `COPILOT_CLI_PATH` for an error that does
-not name its location constitutes a failure.
+not name its location, any reader of a retaining composition missing from a session's published
+tools, its custom-qualified allow-list or the requests its default handler approves, or any
+configured retaining tool that does not deliver its preview and the page it names constitutes a
+failure.
 
 ## Supplementary Live Verification
 

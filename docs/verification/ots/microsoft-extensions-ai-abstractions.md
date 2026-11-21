@@ -8,9 +8,10 @@ OTS software item.
 `Microsoft.Extensions.AI.Abstractions` supplies the provider-neutral currency AgentKit tools are
 built from: `AIFunction` and `AIFunctionFactory.Create` for expressing a tool, the
 `AIFunctionFactoryOptions.MarshalResult` hook through which `GuardedToolFactory` installs its
-result-delivery guard, and the `AIContent` type hierarchy (`AIContent`, `TextContent`,
+result-delivery guard, the `AIContent` type hierarchy (`AIContent`, `TextContent`,
 `DataContent`) that carries binary and image results to the provider in a typed form rather than
-as serialized JSON.
+as serialized JSON, and `DelegatingAIFunction`, the transparent wrapper every guarded tool is
+returned as.
 
 ### Verification Approach
 
@@ -73,6 +74,17 @@ behavior the `MarshalResult` guard is installed to override.
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult`.
 
+#### GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata
+
+**Scenario**: The same delegate is built through `GuardedToolFactory.Create`, which returns a
+`DelegatingAIFunction`, and directly through `AIFunctionFactory.Create`.
+
+**Expected**: The name, description, parameter and return schemas, serializer options, underlying
+method, additional properties and string form are identical, and a service lookup for the function
+type answers with the wrapper — the forwarding `DelegatingAIFunction` is relied on to provide.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction`.
+
 ### Requirements Coverage
 
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-FunctionFactory`**:
@@ -84,3 +96,5 @@ behavior the `MarshalResult` guard is installed to override.
 - **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-MarshalResult`**:
   GuardedToolFactory_Create_DelegateDeclaredReturningObject_DenialSurvivesAsString,
   AIFunctionFactory_UnguardedObjectReturn_FlattensDataContentToJsonElement
+- **`AgentKit-OTS-MicrosoftExtensionsAIAbstractions-DelegatingFunction`**:
+  GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata

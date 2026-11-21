@@ -537,6 +537,320 @@ public class AgentPackTests
     }
 
     /// <summary>
+    ///     Proves a child composed with retention receives the two reader tools after the tools its
+    ///     profile admits, even though the profile does not name them.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_ChildReceivesTheReadersAfterItsTools()
+    {
+        // Arrange: a profile admitting one tool, and children composed with retention
+        var profile = new AgentProfile("reviewer", "You review.", ["notes_read"]);
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [profile],
+                Recording(children),
+                [new StubToolPack("notes", "read", "write")],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        await Delegate(tools[0], "reviewer");
+
+        // Assert: the admitted tool, then the readers, and still not the write tool
+        Assert.Equal(
+            ["notes_read", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],
+            children[0].Tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a profile that admits no tools stays tool-less under retention, because a child
+    ///     with nothing that produces output has nothing to read back.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutputForAToollessProfile_ChildStaysToolless()
+    {
+        // Arrange: a profile admitting nothing, with retention chosen for children
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("summarizer", "You summarize.", [])],
+                Recording(children),
+                [new StubToolPack("notes", "read")],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        await Delegate(tools[0], "summarizer");
+
+        // Assert: no tools at all
+        Assert.Empty(children[0].Tools);
+    }
+
+    /// <summary>
+    ///     Proves the retention choice is carried to a grandchild, so every level of delegation
+    ///     retains.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_IsCarriedToAGrandchild()
+    {
+        // Arrange: a profile that may delegate to itself, with retention chosen for children
+        var profile = new AgentProfile("worker", "You work.", ["notes_read", AgentRunTool.ToolName]);
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [profile],
+                Recording(children),
+                [new StubToolPack("notes", "read")],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate, then have the child delegate in turn
+        await Delegate(tools[0], "worker");
+        await Delegate(children[0].Tools.Single(tool => tool.Name == AgentRunTool.ToolName), "worker");
+
+        // Assert: the grandchild has the readers too
+        Assert.Equal(2, children.Count);
+        Assert.Contains(children[1].Tools, tool => tool.Name == ToolOutputReadTool.ToolName);
+    }
+
+    /// <summary>
+    ///     Proves two children never share retained outputs: each delegated run is its own
+    ///     composition with its own store.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore()
+    {
+        // Arrange: the smallest ceiling retention accepts, and a stub output exceeding it, so each
+        // call is retained
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_read"])],
+                Recording(children),
+                [new StubToolPack("notes", "read") { Output = new string('x', 2 * ToolOutputSpill.MinimumResultCharacters) }],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(policy)
+            .ToList();
+        await Delegate(tools[0], "worker");
+        await Delegate(tools[0], "worker");
+
+        // Act: the first child retains an output; the second child reads that reference
+        var retained = await children[0].Tools[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var read = await children[1].Tools.Single(tool => tool.Name == ToolOutputReadTool.ToolName).InvokeAsync(
+            new AIFunctionArguments { ["id"] = "output-1" },
+            TestContext.Current.CancellationToken);
+
+        // Assert: the first child holds a reference, and the second child's store never issued it
+        Assert.StartsWith("[Output output-1 from notes_read", Assert.IsType<string>(retained), StringComparison.Ordinal);
+        Assert.Contains("never retained", Assert.IsType<string>(read), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that retention for children is rejected at composition when the policy's result
+    ///     ceiling, which every child inherits, is below the retention minimum, and that the same
+    ///     pack without retention for children composes as it always did.
+    /// </summary>
+    [Fact]
+    public void AgentPack_CreateTools_ChildToolOutputWithResultCeilingBelowMinimum_ThrowsInvalidOperationException()
+    {
+        // Arrange: a tiny ceiling, and the same registration with and without retention
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: 2));
+        var profile = new AgentProfile("worker", "You work.", ["notes_read"]);
+        var retaining = new AgentPack(
+            [profile],
+            Recording([]),
+            [new StubToolPack("notes", "read")],
+            HostCapabilities.Delegation,
+            childToolOutput: ToolOutputOptions.Default);
+        var plain = new AgentPack([profile], Recording([]), [new StubToolPack("notes", "read")]);
+
+        // Act: compose both against the tiny ceiling
+        var error = Assert.Throws<InvalidOperationException>(() => retaining.CreateTools(policy));
+        var tools = plain.CreateTools(policy).ToList();
+
+        // Assert: the retaining pack names the minimum and the ceiling; the plain pack composes
+        Assert.Contains("at least 1000 characters", error.Message, StringComparison.Ordinal);
+        Assert.Contains("is 2 characters", error.Message, StringComparison.Ordinal);
+        Assert.Equal([AgentRunTool.ToolName], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves a retaining child admitted a hand-built tool whose name is longer than any provider
+    ///     accepts is refused by <c>agent_run</c> as a composition failure, rather than ending the
+    ///     agent's turn with an exception, and the runner is never started.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutputWithOverlongToolName_IsRefused()
+    {
+        // Arrange: a hand-built tool one character over the limit, admitted by the profile
+        var verb = new string('a', ToolName.MaxLength - 5);
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_" + verb])],
+                Recording(children),
+                [new StubToolPack("notes", verb) { HandBuilt = true }],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        var result = await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "worker", ["task"] = "Do it." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal naming the composition failure, and no child was started
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("could not be composed", text, StringComparison.Ordinal);
+        Assert.Contains("longer than 64 characters", text, StringComparison.Ordinal);
+        Assert.Empty(children);
+    }
+
+    /// <summary>
+    ///     Proves that a retaining child admitted a tool under the reserved reader prefix is refused
+    ///     by <c>agent_run</c> as a composition failure, rather than ending the agent's turn with an
+    ///     exception, and the runner is never started.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutputWithReservedToolName_IsRefused()
+    {
+        // Arrange: a child pack publishing under the reserved prefix, admitted by the profile
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["tool_output_read"])],
+                Recording(children),
+                [new StubToolPack("tool_output", "read")],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        var result = await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "worker", ["task"] = "Do it." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal naming the reserved tool, and no child was started
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("could not be composed", text, StringComparison.Ordinal);
+        Assert.Contains("reserved", text, StringComparison.Ordinal);
+        Assert.Contains("tool_output_read", text, StringComparison.Ordinal);
+        Assert.Empty(children);
+    }
+
+    /// <summary>
+    ///     Proves that a retaining child admitted one name published by two child packs with
+    ///     overlapping prefixes is refused by <c>agent_run</c> as a composition failure, rather than
+    ///     ending the agent's turn with an exception, and the runner is never started.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_CreateTools_ChildToolOutputWithDuplicateToolName_IsRefused()
+    {
+        // Arrange: two distinct prefixes that both publish notes_x_read, admitted by the profile
+        var children = new List<ChildAgentRequest>();
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_x_read"])],
+                Recording(children),
+                [new StubToolPack("notes", "x_read"), new StubToolPack("notes_x", "read")],
+                HostCapabilities.Delegation,
+                childToolOutput: ToolOutputOptions.Default)
+            .CreateTools(Policy())
+            .ToList();
+
+        // Act: delegate
+        var result = await tools[0].InvokeAsync(
+            new AIFunctionArguments { ["profile"] = "worker", ["task"] = "Do it." },
+            TestContext.Current.CancellationToken);
+
+        // Assert: a refusal naming the duplicated tool, and no child was started
+        var text = Assert.IsType<string>(result);
+        Assert.Contains("could not be composed", text, StringComparison.Ordinal);
+        Assert.Contains("Two tools carry the name 'notes_x_read'", text, StringComparison.Ordinal);
+        Assert.Empty(children);
+    }
+
+    /// <summary>
+    ///     Proves the constructor that predates retention is still compiled with its exact
+    ///     signature, so a host built against an earlier release keeps binding, and that a child it
+    ///     composes does not retain large outputs.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature()
+    {
+        // Arrange: the four parameter types of the constructor as it was before retention existed
+        Type[] signature =
+        [
+            typeof(IEnumerable<AgentProfile>),
+            typeof(Func<ChildAgentRequest, CancellationToken, Task<string>>),
+            typeof(IEnumerable<IToolPack>),
+            typeof(HostCapabilities),
+        ];
+        var children = new List<ChildAgentRequest>();
+
+        // Act: look the constructor up, and compose a child through the three-argument call
+        var constructor = typeof(AgentPack).GetConstructor(signature);
+        var tools = new AgentPack(
+                [new AgentProfile("worker", "You work.", ["notes_read"])],
+                Recording(children),
+                [new StubToolPack("notes", "read")])
+            .CreateTools(Policy())
+            .ToList();
+        await Delegate(tools[0], "worker");
+
+        // Assert: the signature exists, its last parameter keeps its default, and the child has no readers
+        Assert.NotNull(constructor);
+        Assert.True(constructor.GetParameters()[3].HasDefaultValue);
+        Assert.Equal(
+            (int)HostCapabilities.Delegation,
+            Convert.ToInt32(constructor.GetParameters()[3].DefaultValue, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(["notes_read"], children[0].Tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Builds a runner that records each child request and answers briefly.
+    /// </summary>
+    /// <param name="children">The list each request is recorded in.</param>
+    /// <returns>The runner.</returns>
+    private static Func<ChildAgentRequest, CancellationToken, Task<string?>> Recording(List<ChildAgentRequest> children) =>
+        (request, _) =>
+        {
+            children.Add(request);
+            return Task.FromResult<string?>("done");
+        };
+
+    /// <summary>
+    ///     Invokes an <c>agent_run</c> tool for a profile, as the runtime would.
+    /// </summary>
+    /// <param name="runTool">The <c>agent_run</c> tool.</param>
+    /// <param name="profile">The profile to delegate to.</param>
+    /// <returns>A task that completes when the delegation has returned.</returns>
+    private static async Task Delegate(AIFunction runTool, string profile)
+    {
+        await runTool.InvokeAsync(
+            new AIFunctionArguments { ["profile"] = profile, ["task"] = "Do it." },
+            TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     ///     Builds a permissive policy for scenarios where containment is not the subject.
     /// </summary>
     /// <returns>A policy granting unrestricted read-write access with default limits.</returns>
