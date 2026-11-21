@@ -214,7 +214,7 @@ required. The sample references `Microsoft.Copilot.SDK` directly, so its first b
 Copilot runtime (about 100 MB, adding about 356 MB to the sample's output), and it authenticates as
 the GitHub user signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`) or with a
 token in `GH_TOKEN`. AgentKit starts the runtime itself, with the shell's `COPILOT_`/`GITHUB_COPILOT_`
-variables withheld apart from an allow-listed credential, proxy and telemetry-off set, so the sample runs from a
+variables withheld apart from an allow-listed credential, network and telemetry-off set, so the sample runs from a
 Copilot CLI shell too. The runtime keeps its state in
 `AgentKit/research-assistant/copilot-runtime` under the user's local application data, a directory AgentKit
 creates and owns. The corpus is passed to the Copilot agent

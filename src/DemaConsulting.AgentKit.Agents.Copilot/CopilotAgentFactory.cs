@@ -70,7 +70,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <b>Runtime ownership.</b> Every agent runs on a <see cref="CopilotRuntime"/>, which AgentKit
 ///     starts itself: in <c>CopilotClientMode.Empty</c>, as a child process whose environment
 ///     withholds the host's <c>COPILOT_</c>/<c>GITHUB_COPILOT_</c> variables apart from an
-///     allow-listed credential, proxy and telemetry-off set, on a data directory
+///     allow-listed credential, network and telemetry-off set, on a data directory
 ///     AgentKit owns. There is no overload that takes a host's own <c>CopilotClient</c>, because
 ///     none of the guarantees below could hold on a client of unknown mode, data directory or
 ///     environment. Whoever starts the runtime disposes it; this factory takes no ownership of it,
@@ -299,7 +299,7 @@ public static class CopilotAgentFactory
     ///         ];
     ///
     ///         // The runtime is AgentKit's: Empty mode, the host's COPILOT_ variables withheld apart
-    ///         // from an allow-listed credential, proxy and telemetry-off set, a data directory
+    ///         // from an allow-listed credential, network and telemetry-off set, a data directory
     ///         // AgentKit owns. The host disposes it; the agent never does.
     ///         return CopilotAgentFactory.Create(
     ///             runtime,

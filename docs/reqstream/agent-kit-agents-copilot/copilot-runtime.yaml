@@ -49,7 +49,7 @@ sections:
               directories of instructions, skills, hooks and plugins, provider rerouting and a runtime
               path override that every Copilot CLI shell sets. Any of them would reach a confined
               session without the composing application having chosen it, so none passes. The
-              pass-through set lets authentication and proxying keep working; none of its members can
+              pass-through set lets authentication and network settings keep working; none of its members can
               add capability to a session. Every other host variable, such as the search path, the
               home and temporary folders and proxy settings, is kept.
             tests:
@@ -101,14 +101,15 @@ sections:
           - id: AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
             title: >-
               The runtime shall, when the Copilot runtime fails to start, report the runtime's own
-              error and that, if the runtime was not found, the host application must reference the
-              Copilot SDK directly so the runtime is provisioned, keeping the original failure as the
-              cause.
+              error, that, if the runtime was not found, the host application must reference the
+              Copilot SDK directly so the runtime is provisioned, and the sources the runtime
+              authenticates from, keeping the original failure as the cause.
             justification: |
               The SDK provisions its runtime only into a project that references it directly, and the
               AgentKit library deliberately ships none, so a host that relies on the library's
               reference alone has no runtime to start. The runtime's own error names a missing file
-              and not the remedy.
+              and not the remedy. Because the host's COPILOT_ variables are withheld, the explanation
+              says which credential sources still apply, so an authentication failure can be traced.
             tests:
               - CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause
               - CopilotRuntime_StartClient_Succeeds_DoesNotThrow

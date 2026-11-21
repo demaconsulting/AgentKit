@@ -804,7 +804,7 @@ public static class AgentComposition
         var token = options.ResolveGitHubToken();
 
         // AgentKit starts the runtime itself - Empty mode, the shell's COPILOT_/GITHUB_COPILOT_
-        // variables withheld apart from an allow-listed credential, proxy and telemetry-off set,
+        // variables withheld apart from an allow-listed credential, network and telemetry-off set,
         // a data directory AgentKit owns - and the host disposes it. A per-user application-data
         // folder keeps that state out of the workspace. An explicit token wins; with none, the
         // runtime falls back to the logged-in user, which is what an interactive developer run uses.

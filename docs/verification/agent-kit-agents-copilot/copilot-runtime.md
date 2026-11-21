@@ -62,7 +62,8 @@ arguments or a child working directory, or with any client-level capability chan
 `COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
 or any other host variable dropped; a pass-through set other than the documented one; a data directory
 accepted when it names a file or is a non-empty directory without the marker, or marked when refused;
-a failed start whose explanation omits the runtime's error or the direct SDK reference, or loses the
+a failed start whose explanation omits the runtime's error, the direct SDK reference or an
+authentication source, or loses the
 original failure; a cancellation that is wrapped; a failed or canceled start that leaves the client
 undisposed; a disposal that is not idempotent or leaves the client usable; an agent, provider-session
 factory, summarizer or production opener built on a disposed runtime that reaches the SDK client; or
@@ -142,7 +143,8 @@ a relative data directory is resolved to a full path when the options are built.
 
 Error path and normal operation. A start failing with the SDK's runtime-not-found error is rethrown as
 an `InvalidOperationException` whose message carries the runtime's error and the remedy — a
-`PackageReference` to `Microsoft.Copilot.SDK` — and whose inner exception is the original, by
+`PackageReference` to `Microsoft.Copilot.SDK` — and names every authentication source,
+`COPILOT_GITHUB_TOKEN` among them, and whose inner exception is the original, by
 reference; a failure whose message is null is explained the same way rather than masked. A start that
 succeeds passes through.
 

@@ -23,7 +23,7 @@ sections:
           which is disabled before any turn runs, the session's installed plugins and the host
           environment context — while running every session on a runtime the library starts in Empty
           mode, on a data directory it owns, with the host's COPILOT_ and GITHUB_COPILOT_ variables
-          withheld apart from an allow-listed credential, proxy and telemetry-off set.
+          withheld apart from an allow-listed credential, network and telemetry-off set.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -372,7 +372,7 @@ sections:
         title: >-
           The library shall start, confine and own the Copilot runtime every agent, provider session
           and summarizer runs on — in Empty mode, as a child process with the host's COPILOT_ and
-          GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, proxy and telemetry-off set, on
+          GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, network and telemetry-off set, on
           a data directory the library owns — and shall accept no client a host built.
         tags: [security]
         justification: |

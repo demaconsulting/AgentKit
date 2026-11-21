@@ -76,7 +76,7 @@ From the repository root, with nothing installed beyond the .NET SDK. On the def
   `Microsoft.Copilot.SDK` directly, so that build fetches it (about 100 MB, adding about 356 MB to the
   sample's output) and later builds reuse it.
 - Any shell will do, a Copilot CLI shell included: AgentKit starts the runtime with the shell's
-  `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, proxy and
+  `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
   telemetry-off set. The runtime keeps its state in `AgentKit/research-assistant/copilot-runtime`
   under the user's local application data.
 

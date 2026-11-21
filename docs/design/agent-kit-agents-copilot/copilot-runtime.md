@@ -161,7 +161,9 @@ and whose `InnerException` is the original.
 `Microsoft.Copilot.SDK` provisions into the application's output, as a child process), and the common
 cause of a runtime that was not found: a host application that does not reference
 `Microsoft.Copilot.SDK` directly, with the remedy of adding that reference. Then the pass-through set
-and the authentication sources, so an authentication or proxy failure can be traced. A runtime path
+and the authentication sources — the token in the options, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`,
+`GITHUB_TOKEN` and the signed-in GitHub CLI user — so an authentication or network failure can be
+traced. A runtime path
 override can no longer be the cause, because `COPILOT_CLI_PATH` is withheld. A null message is
 tolerated.
 

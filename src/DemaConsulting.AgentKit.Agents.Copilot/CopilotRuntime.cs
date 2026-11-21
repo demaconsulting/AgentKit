@@ -7,7 +7,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// <summary>
 ///     The GitHub Copilot runtime AgentKit starts, confines and owns: a runtime process in
 ///     <c>CopilotClientMode.Empty</c> whose environment withholds the host's <c>COPILOT_</c> and
-///     <c>GITHUB_COPILOT_</c> variables apart from an allow-listed credential, proxy and telemetry-off set,
+///     <c>GITHUB_COPILOT_</c> variables apart from an allow-listed credential, network and telemetry-off set,
 ///     on a data directory AgentKit owns.
 /// </summary>
 /// <remarks>
@@ -524,9 +524,9 @@ public sealed class CopilotRuntime : IAsyncDisposable
     ///     The runtime's own error comes first. The common cause of a runtime that was not found is
     ///     named next: the SDK provisions its runtime only into a project that references the package
     ///     directly. Because AgentKit withholds the host's Copilot configuration variables, a runtime
-    ///     path override cannot be the cause, and the explanation says which variables do pass so an
-    ///     authentication or proxy failure can be traced. A failure whose message is null is still
-    ///     explained.
+    ///     path override cannot be the cause, and the explanation says which variables do pass and which
+    ///     sources the runtime authenticates from, so an authentication or network failure can be traced.
+    ///     A failure whose message is null is still explained.
     /// </remarks>
     /// <param name="failure">The failure the start raised.</param>
     /// <returns>The explanation.</returns>
@@ -538,8 +538,8 @@ public sealed class CopilotRuntime : IAsyncDisposable
         + "into a project that references the package itself, so add a PackageReference to Microsoft.Copilot.SDK to "
         + "the host application. The runtime receives none of the host's COPILOT_ or GITHUB_COPILOT_ variables "
         + "except " + string.Join(", ", PassThroughVariables.Order(StringComparer.Ordinal)) + "; it authenticates "
-        + "with the token in CopilotRuntimeOptions, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user. The inner "
-        + "exception carries the runtime's own error.";
+        + "with the token in CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in "
+        + "GitHub CLI user. The inner exception carries the runtime's own error.";
 
     /// <summary>
     ///     Creates a resource, starts it, and disposes it if the start fails or is canceled.

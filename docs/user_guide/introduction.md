@@ -966,7 +966,8 @@ for answer quality across a long conversation, not to save money.
   `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `linux-musl-arm64`, `osx-x64`
   and `osx-arm64`. A Copilot CLI shell's
   `COPILOT_CLI_PATH` is no longer a cause, because the runtime never receives it. If the runtime
-  starts but cannot authenticate, check that a token is supplied, that `GH_TOKEN` or `GITHUB_TOKEN` is
+  starts but cannot authenticate, check that a token is supplied, that `COPILOT_GITHUB_TOKEN`,
+  `GH_TOKEN` or `GITHUB_TOKEN` is
   set, or that `gh auth status` shows a signed-in user and `gh` is on `PATH`; a Copilot CLI sign-in
   is not used. Of the host's `COPILOT_` variables, only the documented
   pass-through set reaches the runtime.

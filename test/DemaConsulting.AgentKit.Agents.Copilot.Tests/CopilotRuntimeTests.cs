@@ -373,8 +373,9 @@ public class CopilotRuntimeTests
 
     /// <summary>
     ///     Proves a start that fails is explained — the runtime's own error first, then the missing
-    ///     direct SDK reference as the common cause of a runtime that was not found — with the original
-    ///     failure kept as the cause, including a failure whose message is null.
+    ///     direct SDK reference as the common cause of a runtime that was not found, then every source
+    ///     the runtime authenticates from — with the original failure kept as the cause, including a
+    ///     failure whose message is null.
     /// </summary>
     [Fact]
     public async Task CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause()
@@ -395,6 +396,10 @@ public class CopilotRuntimeTests
         Assert.Same(cause, failure.InnerException);
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
         Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            "CopilotRuntimeOptions, COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or the signed-in GitHub CLI user",
+            failure.Message,
+            StringComparison.Ordinal);
         Assert.Same(nullMessage, nullFailure.InnerException);
         Assert.Contains("Microsoft.Copilot.SDK", nullFailure.Message, StringComparison.Ordinal);
     }

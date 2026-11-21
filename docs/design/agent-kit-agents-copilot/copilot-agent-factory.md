@@ -413,11 +413,11 @@ its handler reproduces it. The pinned manual mode applies either way.
 
 **Only a runtime AgentKit owns.** `Create` takes a `CopilotRuntime`, which AgentKit started in Empty
 mode, as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
-allow-listed credential, proxy and telemetry-off set, on a data directory AgentKit owns. A client of the host's could be
-in another mode, on a shared data
-directory, or in-process with the host's whole environment, and none of that can be read back, so no
-overload takes one. The factory still sets on each session every capability or context default Empty
-mode supplies, so the confinement does not rest on the mode alone, and the turn channel clears the
+allow-listed credential, network and telemetry-off set, on a data directory AgentKit owns. A client of the host's
+could be in another mode, on a shared data directory, or in-process with the host's whole environment, and
+none of that can be read back, so no overload takes one. The factory still sets on each session every
+capability or context default Empty mode supplies, so the confinement does not rest on the mode alone, and the
+turn channel clears the
 installed plugins and disables every MCP server the session lists, refusing the session if one stays
 enabled. Which MCP sources that prevents and which it only contains is stated per source under
 *Runtime Ownership* in *AgentKitAgentsCopilot System Design*; the class remarks state the same.
