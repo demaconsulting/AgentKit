@@ -49,8 +49,8 @@ dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient
 
 For the GitHub Copilot runtime, add `DemaConsulting.AgentKit.Agents.Copilot` instead of the `IChatClient` adapter, and
 reference `Microsoft.Copilot.SDK` 2.0.1 directly from the host application: the SDK provisions its runtime only into a
-project that references it directly. On Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told
-the context window the instance is actually running.
+project that references it directly, and AgentKit starts and owns that runtime itself. On Ollama, also add
+`DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context window the instance is actually running.
 
 ## Usage
 
@@ -99,7 +99,7 @@ describes.
 
 ## Architecture
 
-![AgentKit architecture: your application adds AgentKit.Tools packs, which are built through the AgentKit.Core tool safety contract that enforces its controls, and builds an agent or session through an AgentKit.Agents adapter, which feeds the Core session lifecycle: Agents.ChatClient builds on Microsoft Agent Framework and any IChatClient provider, Agents.Copilot provides its own AIAgent on the Microsoft Copilot SDK, and Agents.Ollama reads an Ollama server's window, none of which is part of AgentKit][img-architecture]
+![AgentKit architecture: your application adds AgentKit.Tools packs, which are built through the AgentKit.Core tool safety contract that enforces its controls, and builds an agent or session through an AgentKit.Agents adapter, which feeds the Core session lifecycle: Agents.ChatClient builds on Microsoft Agent Framework and any IChatClient provider, Agents.Copilot provides its own AIAgent on a Copilot runtime it starts and owns through the Microsoft Copilot SDK, and Agents.Ollama reads an Ollama server's window, none of which is part of AgentKit][img-architecture]
 
 Your application chooses the tools and sets their controls; `AgentKit.Core` enforces those controls
 for every tool and runs the self-compacting session that each provider adapter plugs into.
