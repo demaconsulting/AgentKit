@@ -296,6 +296,7 @@ sections:
           - AgentKitCore-AgentKitChatReducer-ToolPairsIndivisible
           - AgentKitCore-AgentKitChatReducer-ConsolidatesThroughSummarizer
           - AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord
+          - AgentKitCore-AgentKitChatReducer-RecognizesOnlyItsOwnRecords
           - AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory
           - AgentKitCore-AgentKitChatReducer-NoImageBytesInMaterial
           - AgentKitCore-AgentKitChatReducer-RejectsInvalidArguments
@@ -503,6 +504,7 @@ sections:
           - AgentKitCore-ToolOutputRetention-NumberingContinuesAfterRestore
           - AgentKitCore-ToolOutputRetention-RestoreAppliesCurrentCeilings
           - AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot
+          - AgentKitCore-ToolOutputRetention-SnapshotOwnsItsData
           - AgentKitCore-ToolOutputRetention-Isolated
           - AgentKitCore-ToolOutputStore-SnapshotRestore
         tests:

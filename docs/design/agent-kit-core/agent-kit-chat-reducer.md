@@ -42,7 +42,7 @@ history and wants AgentKit's consolidation in the hook it has.
 | Member | Type | Description |
 | --- | --- | --- |
 | `DefaultVerbatimTurns` | `const int` | 4 — the turns kept word for word when none is specified. |
-| `RecordHeader` | `const string` | The record message's first line; a record is recognized only in the exact shape the reducer writes. |
+| `RecordHeader` | `const string` | The record message's first line; see the exact record shape below. |
 | `_summarizer` | `ISummarizer` | Writes each record; injected, never null. |
 | `ThresholdCharacters` | `int` | The estimated size above which a reduction is attempted; greater than zero. |
 | `VerbatimTurns` | `int` | The most recent turns kept unchanged; one or greater. |

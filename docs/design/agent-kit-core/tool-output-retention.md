@@ -31,7 +31,7 @@ retained outputs through persistence. `ToolOutputSpill.Apply` — and through it
 | `_attachment` | `SpillAttachment` | The attachment every wrapped tool hands results to. |
 | `Limits` | `ToolLimits` | The ceilings the instance was created with. |
 | `Options` | `ToolOutputOptions` | The preview size and retention ceilings. |
-| `ReaderTools` | `IReadOnlyList<AIFunction>` | `tool_output_read` then `tool_output_search`, built once; a read-only wrapper over an owned array. |
+| `ReaderTools` | `IReadOnlyList<AIFunction>` | `tool_output_read` then `tool_output_search`; read-only. |
 
 `ToolOutputRetentionSnapshot` holds `LastIssued` (`long`, the number of the last reference issued) and
 `Outputs` (`IReadOnlyList<RetainedToolOutput>`, oldest first). `RetainedToolOutput` holds `Id`
@@ -47,7 +47,8 @@ safe under trimming and ahead-of-time compilation.
 Invariants:
 
 - Every tool an instance wraps, and both its readers, share its one store; two instances share none.
-- `ReaderTools` returns the same two instances for the life of the retention.
+- `ReaderTools` returns the same two instances, built once, in a read-only wrapper over an owned
+  array, for the life of the retention.
 - A restored retention never issues a reference at or below the snapshot's `LastIssued`, and every
   reference it restores is at or below it.
 
