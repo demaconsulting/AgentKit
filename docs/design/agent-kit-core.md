@@ -484,11 +484,16 @@ The system additionally exposes the large-tool-output retention API:
   or count ceiling, or a total ceiling below the per-output ceiling.
 - **ToolOutputOptions.Default**: The shared options a host receives when it configures nothing.
 - **ToolPackBuilder.WithToolOutputSpill(ToolOutputOptions? options)**: Requests retention of large
-  outputs for the composition, replacing any earlier request, and returns the builder.
+  outputs for the composition, replacing any earlier request, and returns the builder. `Build` then
+  throws `InvalidOperationException` for a policy whose result ceiling is below
+  `ToolOutputSpill.MinimumResultCharacters`, or a composed tool name longer than 64 characters.
+- **ToolOutputSpill.MinimumResultCharacters** (1,000): The smallest result ceiling a retaining
+  composition accepts, so the preview naming a retained output's reference always fits.
 - **ToolOutputSpill.Apply(IEnumerable&lt;AIFunction&gt; tools, ToolLimits limits, ToolOutputOptions?
   options)**: Wraps every tool so an oversized output is retained and previewed, and appends the
   two readers. Throws `ArgumentNullException` for missing arguments and `ArgumentException` for a
-  null, duplicate or reserved tool name.
+  result ceiling below `MinimumResultCharacters`, or a null, duplicate, reserved or over-long
+  (more than 64 characters) tool name.
 - **ToolOutputReadTool.ToolName** (`tool_output_read`) and **ToolOutputSearchTool.ToolName**
   (`tool_output_search`): The names the readers are published under, taking an output identifier
   and paging or search arguments, and no path.
@@ -496,8 +501,8 @@ The system additionally exposes the large-tool-output retention API:
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
 | `new ToolOutputOptions(...)` | Inbound | Constructor call | Ceilings positive and consistent |
-| `ToolPackBuilder.WithToolOutputSpill` | Inbound/Outbound | Method call / builder | None; always succeeds |
-| `ToolOutputSpill.Apply` | Inbound/Outbound | Method call / `IReadOnlyList` | Names unique, unreserved |
+| `ToolPackBuilder.WithToolOutputSpill` | Inbound/Outbound | Method call / builder | None; checked at `Build` |
+| `ToolOutputSpill.Apply` | Inbound/Outbound | Method call / `IReadOnlyList` | Valid names; ceiling ≥ 1,000 |
 | `tool_output_read` | Model-facing | Tool call / `string` | Identifier from a preview |
 | `tool_output_search` | Model-facing | Tool call / `string` | Identifier and pattern |
 
@@ -638,7 +643,10 @@ outputs to a temporary file the model is told to read was rejected for exactly t
 would either be unreadable to the confined tools or require widening their grants. The oversized
 marker a tool returns can never reach a provider unresolved, because the guarded wrapper replaces
 it with the identical refusal when retention is not composed. Retained memory is bounded per
-output, in total and by count, with oldest-first eviction; see *ToolOutputStore Unit Design*.
+output, in total and by count, with oldest-first eviction; see *ToolOutputStore Unit Design*. A
+retaining composition also rejects a result ceiling below `ToolOutputSpill.MinimumResultCharacters`,
+so every successful result it returns — preview, page or listing — fits within the ceiling a
+provider was promised, and no refusal it writes itself echoes model-supplied text without bound.
 
 Four further controls belong to the session engine. The first is **segregation between the engine and
 any provider**. The engine never touches a provider API. It produces `ProviderSessionSeed`, consumes
@@ -727,7 +735,8 @@ is released, and the original failure is what the caller learns even when that r
 
 **Large tool output retention path (opt-in):**
 
-1. **Composition**: `ToolOutputSpill.Apply` — directly or from `ToolPackBuilder.Build` — allocates
+1. **Composition**: `ToolOutputSpill.Apply` — directly or from `ToolPackBuilder.Build` — rejects a
+   result ceiling below `MinimumResultCharacters` and a tool name over 64 characters, allocates
    one store, re-wraps every tool so its results pass through the composition's retention, and
    appends `tool_output_read` and `tool_output_search`
 2. **Invocation**: A tool returns its result; a tool that measured its own output against the

@@ -32,15 +32,17 @@ project, and use the shared `StubToolPack` and `TemporaryDirectory` helpers alon
 
 #### Acceptance Criteria
 
-A unit test run passes when all twenty-eight scenarios below pass without error or exception
+A unit test run passes when all thirty-two scenarios below pass without error or exception
 beyond those explicitly asserted. A prefix that differs between the constant and the contract,
 a capability requirement other than delegation, a tool count other than one, a malformed
 registration accepted, a null policy accepted, a child's tools drawn from the parent's list
 rather than composed against the child's policy, a widening profile accepted at the
 application's own composition, a narrowing profile refused, a delegation refused or thrown over
 a sibling profile the child cannot reach, a profile stating no grants that fails to inherit
-the parent's policy, or the constructor that predates retention missing from the compiled
-assembly each constitute a failure.
+the parent's policy, a result ceiling below the retention minimum accepted for retaining
+children, a retaining child admitted an over-long, reserved or duplicate tool name started or
+thrown rather than refused, or the
+constructor that predates retention missing from the compiled assembly each constitute a failure.
 
 #### Test Scenarios
 
@@ -252,7 +254,8 @@ Normal operation: a child delegating in turn composes a grandchild that also hol
 
 **Test**: `AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore`
 
-Isolation: an output retained by the first child is unknown to the second child's reader.
+Isolation: with the result ceiling at the retention minimum and a stub output twice that size, an
+output retained by the first child is unknown to the second child's reader.
 
 ##### AgentKitTools-Agent-Pack-ChildToolOutputOptIn: Without the Option a Child Is Unchanged
 
@@ -269,3 +272,34 @@ Compatibility: reflection finds the public constructor taking the profiles, the 
 packs and the host capabilities, with the capabilities still defaulting to delegation, so a host
 compiled against the earlier release keeps binding. A child composed through the three-argument
 call receives exactly its admitted tool, with no readers.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling: A Ceiling Below the Minimum Is Refused at Composition
+
+**Test**: `AgentPack_CreateTools_ChildToolOutputWithResultCeilingBelowMinimum_ThrowsInvalidOperationException`
+
+Error path and boundary condition: with retention for children and a 2-character ceiling,
+`CreateTools` throws `InvalidOperationException` naming the 1,000-character minimum and the
+ceiling; the same registration without retention for children creates `agent_run` as before.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling: An Over-Long Child Tool Name Is Refused
+
+**Test**: `AgentPack_CreateTools_ChildToolOutputWithOverlongToolName_IsRefused`
+
+Error path: a retaining child admitted a hand-built tool with a 65-character name is not started;
+`agent_run` returns a "could not be composed" refusal naming the 64-character limit.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling: A Reserved Child Tool Name Is Refused
+
+**Test**: `AgentPack_CreateTools_ChildToolOutputWithReservedToolName_IsRefused`
+
+Error path: a retaining child admitted `tool_output_read`, published by a child pack claiming the
+`tool_output` prefix, is not started; `agent_run` returns a "could not be composed" refusal naming
+the reserved prefix.
+
+##### AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling: A Duplicate Child Tool Name Is Refused
+
+**Test**: `AgentPack_CreateTools_ChildToolOutputWithDuplicateToolName_IsRefused`
+
+Error path: child packs `notes` and `notes_x` both publish `notes_x_read`; the retaining child
+admitted it is not started, and `agent_run` returns a "could not be composed" refusal naming the
+tool.

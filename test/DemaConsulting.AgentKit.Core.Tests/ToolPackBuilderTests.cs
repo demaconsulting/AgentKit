@@ -493,26 +493,93 @@ public class ToolPackBuilderTests
     [Fact]
     public async Task ToolPackBuilder_WithToolOutputSpill_CalledTwice_TheLastOptionsWin()
     {
-        // Arrange: a policy with a small result ceiling and a tool exceeding it
+        // Arrange: a policy at the minimum result ceiling and a tool exceeding it
         var policy = new PathPolicy(
             Path.GetTempPath(),
             [PathRule.Unrestricted(AccessLevel.ReadWrite)],
-            new ToolLimits(maxResultCharacters: 100));
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
         var big = GuardedToolFactory.Create(
-            (Func<object>)(() => ToolResult.Text(new string('x', 500))),
+            (Func<object>)(() => ToolResult.Text(new string('x', 5_000))),
             "text_file_read",
             "Returns a large text.");
         var builder = new ToolPackBuilder(policy)
             .Add(new StubToolPack("text_file", tools: [big]))
             .WithToolOutputSpill()
-            .WithToolOutputSpill(new ToolOutputOptions(maxOutputCharacters: 200, maxRetainedCharacters: 200));
+            .WithToolOutputSpill(new ToolOutputOptions(maxOutputCharacters: 2_000, maxRetainedCharacters: 2_000));
 
         // Act: compose and invoke the oversized tool
         var tools = builder.Build();
         var result = await tools[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
 
         // Assert: the second options applied - the output is above their retention ceiling
-        Assert.Contains("200-character retention limit", Assert.IsType<string>(result), StringComparison.Ordinal);
+        Assert.Contains("2000-character retention limit", Assert.IsType<string>(result), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that while retention is composed, a policy whose result ceiling is below the
+    ///     retention minimum is reported at build, before any pack is asked for its tools.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_ResultCeilingBelowMinimum_ThrowsInvalidOperationException()
+    {
+        // Arrange: a ceiling one below the minimum, and a pack that records whether it was asked
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters - 1));
+        var pack = new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read")]);
+        var builder = new ToolPackBuilder(policy).Add(pack).WithToolOutputSpill();
+
+        // Act: compose
+        var error = Assert.Throws<InvalidOperationException>(() => builder.Build());
+
+        // Assert: the minimum and the ceiling are named, and no pack was asked for tools
+        Assert.Contains("at least 1000 characters", error.Message, StringComparison.Ordinal);
+        Assert.Contains("999 characters", error.Message, StringComparison.Ordinal);
+        Assert.Equal(0, pack.CreateToolsCallCount);
+    }
+
+    /// <summary>
+    ///     Proves that without retention a result ceiling below the retention minimum - zero
+    ///     included - composes exactly as it always did.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_Build_WithoutToolOutputSpill_SmallResultCeiling_IsAccepted()
+    {
+        // Arrange: a zero result ceiling, with retention never chosen
+        var policy = new PathPolicy(
+            Path.GetTempPath(),
+            [PathRule.Unrestricted(AccessLevel.ReadWrite)],
+            new ToolLimits(maxResultCharacters: 0));
+        var builder = new ToolPackBuilder(policy)
+            .Add(new StubToolPack("notes", tools: [StubToolPack.Tool("notes_read")]));
+
+        // Act: compose
+        var tools = builder.Build();
+
+        // Assert: composed as it always was
+        Assert.Equal(["notes_read"], tools.Select(tool => tool.Name));
+    }
+
+    /// <summary>
+    ///     Proves that while retention is composed, a pack publishing a hand-built tool whose name
+    ///     is longer than any provider accepts is reported at build, naming the tool.
+    /// </summary>
+    [Fact]
+    public void ToolPackBuilder_WithToolOutputSpill_ToolNameLongerThanTheLimit_ThrowsInvalidOperationException()
+    {
+        // Arrange: a pack publishing a hand-built tool one character over the limit
+        var name = "notes_" + new string('a', ToolName.MaxLength - 5);
+        var builder = new ToolPackBuilder(AnyPolicy())
+            .Add(new StubToolPack("notes", tools: [AIFunctionFactory.Create(() => "a", name)]))
+            .WithToolOutputSpill();
+
+        // Act: compose
+        var error = Assert.Throws<InvalidOperationException>(() => builder.Build());
+
+        // Assert: the tool and the limit are named
+        Assert.Contains("'" + name + "'", error.Message, StringComparison.Ordinal);
+        Assert.Contains("longer than 64 characters", error.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

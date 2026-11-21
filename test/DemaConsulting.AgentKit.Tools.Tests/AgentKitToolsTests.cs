@@ -524,10 +524,10 @@ public class AgentKitToolsTests
     [Fact]
     public async Task AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained()
     {
-        // Arrange: a workspace of many files, a small result ceiling, and three families composed
-        // with retention
+        // Arrange: a workspace of many files, the smallest result ceiling retention accepts, and
+        // three families composed with retention
         using var fixture = new TextFile.TempDirectoryFixture();
-        for (var index = 1; index <= 60; index++)
+        for (var index = 1; index <= 200; index++)
         {
             TextFile.TempDirectoryFixture.WriteFile(fixture.Root, "note-" + index + ".md", "# Note " + index + "\nhit\n");
         }
@@ -535,27 +535,27 @@ public class AgentKitToolsTests
         var policy = new PathPolicy(
             fixture.Root,
             [PathRule.ReadOnly(fixture.Root)],
-            new ToolLimits(maxResultCharacters: 300));
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
         var tools = new ToolPackBuilder(policy)
             .Add(new TextFilePack())
             .Add(new FilePack())
             .Add(new MarkdownPack())
             .WithToolOutputSpill()
             .Build();
-        TextFile.TempDirectoryFixture.WriteFile(fixture.Root, "long.txt", string.Concat(Enumerable.Repeat("a line of text\n", 100)));
+        TextFile.TempDirectoryFixture.WriteFile(fixture.Root, "long.txt", string.Concat(Enumerable.Repeat("a line of text\n", 300)));
 
         // Act: list, search, and read a long file; then search the retained search result
         var listing = await Invoke(tools, FileListTool.ToolName, new() { ["directory"] = fixture.Root });
         var search = await Invoke(tools, TextFileSearchTool.ToolName, new() { ["pattern"] = "hit" });
         var read = await Invoke(tools, TextFileReadTool.ToolName, new() { ["path"] = "long.txt" });
-        var found = await Invoke(tools, ToolOutputSearchTool.ToolName, new() { ["id"] = "output-2", ["pattern"] = "note-60.md" });
+        var found = await Invoke(tools, ToolOutputSearchTool.ToolName, new() { ["id"] = "output-2", ["pattern"] = "note-200.md" });
 
         // Assert: listing and search are retained, the read keeps refusing, and the retained
         // search holds the last file's match
         Assert.StartsWith("[Output output-1 from " + FileListTool.ToolName, listing, StringComparison.Ordinal);
         Assert.StartsWith("[Output output-2 from " + TextFileSearchTool.ToolName, search, StringComparison.Ordinal);
         Assert.StartsWith("Denied (ResourceTooLarge)", read, StringComparison.Ordinal);
-        Assert.Contains("note-60.md:2:hit", found, StringComparison.Ordinal);
+        Assert.Contains("note-200.md:2:hit", found, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -571,13 +571,13 @@ public class AgentKitToolsTests
         var policy = new PathPolicy(
             Path.GetTempPath(),
             [PathRule.Unrestricted(AccessLevel.ReadWrite)],
-            new ToolLimits(maxResultCharacters: 300));
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
         var profile = new AgentProfile("worker", "You work.", ["todo_list"]);
         IReadOnlyList<AIFunction>? childTools = null;
         Func<ChildAgentRequest, CancellationToken, Task<string?>> runner = (request, _) =>
         {
             childTools = request.Tools;
-            return Task.FromResult<string?>(string.Join("\n", Enumerable.Range(1, 80).Select(n => "finding " + n)));
+            return Task.FromResult<string?>(string.Join("\n", Enumerable.Range(1, 300).Select(n => "finding " + n)));
         };
         var tools = new ToolPackBuilder(policy)
             .WithHostCapabilities(HostCapabilities.Delegation)
@@ -587,11 +587,11 @@ public class AgentKitToolsTests
 
         // Act: delegate, then read the end of the child's answer
         var answer = await Invoke(tools, AgentRunTool.ToolName, new() { ["profile"] = "worker", ["task"] = "Report." });
-        var page = await Invoke(tools, ToolOutputReadTool.ToolName, new() { ["id"] = "output-1", ["startLine"] = 80, ["lineCount"] = 1 });
+        var page = await Invoke(tools, ToolOutputReadTool.ToolName, new() { ["id"] = "output-1", ["startLine"] = 300, ["lineCount"] = 1 });
 
         // Assert: the parent retained the whole answer, and the child had readers of its own
         Assert.StartsWith("[Output output-1 from " + AgentRunTool.ToolName, answer, StringComparison.Ordinal);
-        Assert.Equal("output-1 lines 80-80 of 80\n80| finding 80", page);
+        Assert.Equal("output-1 lines 300-300 of 300\n300| finding 300", page);
         Assert.NotNull(childTools);
         Assert.Equal(
             ["todo_list", ToolOutputReadTool.ToolName, ToolOutputSearchTool.ToolName],

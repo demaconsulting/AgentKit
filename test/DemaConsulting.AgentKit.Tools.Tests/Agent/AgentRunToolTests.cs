@@ -337,13 +337,14 @@ public class AgentRunToolTests
     [Fact]
     public async Task AgentRunTool_Run_OversizedAnswerWithRetention_IsRetainedForPaging()
     {
-        // Arrange: a tight result ceiling, a talkative child, and the tool composed with retention
-        var limits = new ToolLimits(maxResultCharacters: 200);
+        // Arrange: the smallest ceiling retention accepts, a talkative child, and the tool composed
+        // with retention
+        var limits = new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters);
         var policy = new PathPolicy(
             Path.GetTempPath(),
             [PathRule.Unrestricted(AccessLevel.ReadWrite)],
             limits);
-        var answer = string.Join("\n", Enumerable.Range(1, 50).Select(n => "finding " + n));
+        var answer = string.Join("\n", Enumerable.Range(1, 300).Select(n => "finding " + n));
         var tools = ToolOutputSpill.Apply(
             [AgentRunTool.Create(
                 policy,
@@ -358,12 +359,12 @@ public class AgentRunToolTests
             new AIFunctionArguments { ["profile"] = "reviewer", ["task"] = "Check it." },
             TestContext.Current.CancellationToken);
         var page = await tools[1].InvokeAsync(
-            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 50, ["lineCount"] = 1 },
+            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 300, ["lineCount"] = 1 },
             TestContext.Current.CancellationToken);
 
         // Assert: a reference rather than a refusal, and the last finding is intact
         Assert.StartsWith("[Output output-1 from " + AgentRunTool.ToolName, Assert.IsType<string>(preview), StringComparison.Ordinal);
-        Assert.Equal("output-1 lines 50-50 of 50\n50| finding 50", Assert.IsType<string>(page));
+        Assert.Equal("output-1 lines 300-300 of 300\n300| finding 300", Assert.IsType<string>(page));
     }
 
     /// <summary>

@@ -191,19 +191,19 @@ public class FileListToolTests
     {
         // Arrange: many files, and the listing composed with retention
         using var fixture = new TempDirectoryFixture();
-        WriteManyFiles(fixture.Root, 40);
-        var limits = new ToolLimits(maxResultCharacters: 100);
+        WriteManyFiles(fixture.Root, 200);
+        var limits = new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters);
         var tools = ToolOutputSpill.Apply([FileListTool.Create(RootedPolicy(fixture.Root, limits))], limits);
 
         // Act: list the workspace, then search the retained listing for the last file
         var preview = Assert.IsType<string>(await InvokeAsync(tools[0], new AIFunctionArguments { ["directory"] = fixture.Root }));
         var found = Assert.IsType<string>(await InvokeAsync(
             tools[2],
-            new AIFunctionArguments { ["id"] = "output-1", ["pattern"] = "file-40.txt" }));
+            new AIFunctionArguments { ["id"] = "output-1", ["pattern"] = "file-200.txt" }));
 
         // Assert: a reference rather than a refusal, and the last file is in what was retained
         Assert.StartsWith("[Output output-1 from " + FileListTool.ToolName, preview, StringComparison.Ordinal);
-        Assert.Contains("file-40.txt", found, StringComparison.Ordinal);
+        Assert.Contains("file-200.txt", found, StringComparison.Ordinal);
     }
 
     /// <summary>

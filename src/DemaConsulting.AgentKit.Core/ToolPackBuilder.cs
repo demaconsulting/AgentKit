@@ -157,7 +157,10 @@ public sealed class ToolPackBuilder
     ///     </para>
     ///     <para>
     ///     The <c>tool_output</c> name prefix is reserved while retention is composed: a pack
-    ///     claiming it, or publishing a tool under it, is reported at <see cref="Build"/>.
+    ///     claiming it, or publishing a tool under it, is reported at <see cref="Build"/>. So is a
+    ///     policy whose <see cref="ToolLimits.MaxResultCharacters"/> is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>, too small for a preview naming its
+    ///     reference to fit.
     ///     </para>
     /// </remarks>
     /// <param name="options">
@@ -245,7 +248,10 @@ public sealed class ToolPackBuilder
     ///     When <see cref="WithToolOutputSpill"/> was called, the composed tools are wrapped so
     ///     oversized outputs are retained, and the two reader tools are appended after every
     ///     pack's tools. Because a model selects a tool by its name, two composed tools of one name
-    ///     are then rejected. Without retention the composed tools are returned as the packs
+    ///     are then rejected, as is a tool whose name is longer than <see cref="ToolName.MaxLength"/>
+    ///     and a policy whose result ceiling is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/> — the ceiling before any pack is
+    ///     asked for its tools. Without retention the composed tools are returned as the packs
     ///     produced them, and the agent factories refuse a list holding two tools of one name.
     ///     </para>
     /// </remarks>
@@ -253,11 +259,21 @@ public sealed class ToolPackBuilder
     /// <exception cref="InvalidOperationException">
     ///     Thrown when a pack returns no tool collection, returns a null tool, or returns a tool
     ///     whose name does not carry the pack's declared family prefix; or, when retention of large
-    ///     outputs is composed, when a pack claims the reserved <c>tool_output</c> prefix or
-    ///     publishes a tool under it, or when two composed tools share a name.
+    ///     outputs is composed, when the policy's result ceiling is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>, when a pack claims the reserved
+    ///     <c>tool_output</c> prefix or publishes a tool under it, when two composed tools share a
+    ///     name, or when a composed tool's name is longer than <see cref="ToolName.MaxLength"/>.
     /// </exception>
     public IReadOnlyList<AIFunction> Build()
     {
+        // A ceiling too small for a preview's header is a composition mistake, reported before any
+        // pack is asked for tools. Checked only when retention is chosen, so a composition that
+        // never opts in accepts every ceiling it always did.
+        if (_toolOutput is not null && !ToolOutputSpill.AdmitsCeiling(_policy.Limits))
+        {
+            throw new InvalidOperationException(ToolOutputSpill.DescribeCeilingTooSmall(_policy.Limits));
+        }
+
         // The reader prefix is reserved only once retention is chosen, so a composition that never
         // opts in behaves exactly as it did. Checked here rather than at Add because the choice may
         // be made after the packs are added.
@@ -313,6 +329,14 @@ public sealed class ToolPackBuilder
                 "The composition publishes the tool '" + duplicate.Name + "' twice, because a pack "
                 + "returned it twice or two packs with overlapping prefixes both published it, and "
                 + "a model selects a tool by its name.");
+        }
+
+        // A name longer than any provider accepts would make Apply raise an ArgumentException; it
+        // can only come from a pack returning a hand-built function, so it is the pack's mistake.
+        var overlong = tools.Find(tool => ToolOutputSpill.IsNameTooLong(tool.Name));
+        if (overlong is not null)
+        {
+            throw new InvalidOperationException(ToolOutputSpill.DescribeNameTooLong(overlong.Name));
         }
 
         return ToolOutputSpill.Apply(tools, _policy.Limits, _toolOutput);

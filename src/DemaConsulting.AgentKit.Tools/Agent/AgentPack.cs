@@ -1,3 +1,4 @@
+using System.Globalization;
 using DemaConsulting.AgentKit.Core;
 using Microsoft.Extensions.AI;
 
@@ -48,7 +49,10 @@ namespace DemaConsulting.AgentKit.Tools.Agent;
 ///     retention, each with its own store and its own reader tools, exactly as
 ///     <see cref="ToolPackBuilder.WithToolOutputSpill"/> composes the parent. Independently of
 ///     that choice, a child's final answer too large for the parent's result ceiling is retained
-///     by the parent whenever the <em>parent's</em> composition retains large outputs.
+///     by the parent whenever the <em>parent's</em> composition retains large outputs. A child
+///     inherits its parent's result ceiling, so retention for children requires a policy whose
+///     ceiling is at least <see cref="ToolOutputSpill.MinimumResultCharacters"/>, checked by
+///     <see cref="CreateTools"/>.
 ///     </para>
 ///     <para>
 ///     The class is immutable after construction and is safe for concurrent use.
@@ -250,7 +254,9 @@ public sealed class AgentPack : IToolPack
     ///     <c>tool_output_read</c> and <c>tool_output_search</c>, appended after the profile's
     ///     names are applied so a retaining child can always read what it retained. A profile that
     ///     admits no tools stays tool-less. The choice is carried to every deeper level of
-    ///     delegation.
+    ///     delegation. A child inherits the result ceiling of the policy given to
+    ///     <see cref="CreateTools"/>, which must therefore be at least
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/> when this is supplied.
     /// </param>
     /// <exception cref="ArgumentNullException">
     ///     Thrown when <paramref name="profiles"/>, <paramref name="runner"/> or
@@ -374,13 +380,30 @@ public sealed class AgentPack : IToolPack
     /// <exception cref="InvalidOperationException">
     ///     Thrown when a registered profile's grants would widen this policy — a location it does
     ///     not reach, a write where it holds only a read, or a deny pattern it imposes and the
-    ///     profile drops.
+    ///     profile drops — or when delegated agents retain large outputs and the policy's
+    ///     <see cref="ToolLimits.MaxResultCharacters"/>, which every child inherits, is below
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>.
     /// </exception>
     public IEnumerable<AIFunction> CreateTools(PathPolicy policy)
     {
         // Validated here rather than left to the tool's factory so that the failure names the
         // composing application's mistake at the point it was made.
         ArgumentNullException.ThrowIfNull(policy);
+
+        // Every child inherits this policy's limits, so a ceiling too small for retention would
+        // otherwise surface only when a child is composed, in the middle of a run. Reported here,
+        // at the application's composition, it is reported once for every depth.
+        if (_childToolOutput is not null
+            && policy.Limits.MaxResultCharacters < ToolOutputSpill.MinimumResultCharacters)
+        {
+            throw new InvalidOperationException(
+                "Delegated agents are composed to retain large tool outputs, which requires a result "
+                + "ceiling of at least "
+                + ToolOutputSpill.MinimumResultCharacters.ToString(CultureInfo.InvariantCulture)
+                + " characters; the policy's ceiling, which every delegated agent inherits, is "
+                + policy.Limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture)
+                + " characters.");
+        }
 
         // A widening profile is a configuration error, and this is the first moment both halves of
         // it are known. Checking every profile now means no run can widen later.
@@ -435,7 +458,11 @@ public sealed class AgentPack : IToolPack
     ///     <para>
     ///     <b>When the application chose retention for children,</b> the filtered list is composed
     ///     with it last, giving the child its own store and its own two reader tools. The choice is
-    ///     carried by the pack added one level deeper, so a grandchild retains too.
+    ///     carried by the pack added one level deeper, so a grandchild retains too. An admitted list
+    ///     retention cannot be composed over — a name longer than <see cref="ToolName.MaxLength"/>,
+    ///     a name under the reserved <c>tool_output</c> prefix, or one name published twice by child
+    ///     packs with overlapping prefixes — is then a composition failure, which <c>agent_run</c>
+    ///     refuses.
     ///     </para>
     /// </remarks>
     /// <param name="policy">The parent composition's policy, which the child's may only narrow.</param>
@@ -474,9 +501,25 @@ public sealed class AgentPack : IToolPack
         // tools the child holds rather than capabilities a profile grants: a retaining child must
         // always be able to read what it retained. A child holding no tools has nothing that could
         // produce an output, so it stays tool-less rather than gaining two readers of nothing.
-        return _childToolOutput is null || filtered.Count == 0
-            ? filtered
-            : ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput);
+        if (_childToolOutput is null || filtered.Count == 0)
+        {
+            return filtered;
+        }
+
+        // The ceiling was checked at CreateTools and every child inherits it. What remains is the list
+        // itself: a hand-built tool with an over-long name, a child pack publishing under the reserved
+        // reader prefix, or two child packs with overlapping prefixes publishing one name. The child's
+        // own builder ran without retention, so only this composition sees them. Each is reported as
+        // a composition failure, which agent_run turns into a refusal rather than ending the agent's
+        // turn.
+        try
+        {
+            return ToolOutputSpill.Apply(filtered, childPolicy.Limits, _childToolOutput);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException(exception.Message, exception);
+        }
     }
 
     /// <summary>

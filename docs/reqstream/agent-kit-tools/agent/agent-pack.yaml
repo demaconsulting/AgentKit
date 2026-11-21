@@ -218,3 +218,27 @@ sections:
                   - AgentPack_CreateTools_ChildToolOutput_EachChildHasItsOwnStore
                   - AgentPack_CreateTools_ChildTools_AreASubsetOfWhatWasAttached
                   - AgentPack_Constructor_WithoutChildToolOutput_KeepsThePreRetentionSignature
+
+              - id: AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling
+                title: >-
+                  When the application supplies retention options for children, the agent pack shall
+                  reject, when its tools are created, a policy whose result ceiling is below 1,000
+                  characters, and agent_run shall refuse to start a child whose admitted tools
+                  retention cannot be composed over — a tool whose name is longer than 64
+                  characters, a tool under the reserved tool_output prefix, or two tools of one
+                  name — reporting it as a composition failure.
+                tags: [reliability]
+                justification: |
+                  Every child inherits the policy's limits, so a ceiling too small for retention
+                  would otherwise surface only when a child is composed, in the middle of a run.
+                  Checking it when the application composes the pack reports the mistake once, to the
+                  developer who made it, for every depth. The child's own composition runs without
+                  retention and only then applies it to the profile-filtered list, so a hand-built
+                  tool with an over-long name, a child pack publishing under the reserved reader
+                  prefix, or child packs with overlapping prefixes publishing one name are seen only
+                  there; a refusal the model can act on is better than an exception ending the turn.
+                tests:
+                  - AgentPack_CreateTools_ChildToolOutputWithResultCeilingBelowMinimum_ThrowsInvalidOperationException
+                  - AgentPack_CreateTools_ChildToolOutputWithOverlongToolName_IsRefused
+                  - AgentPack_CreateTools_ChildToolOutputWithReservedToolName_IsRefused
+                  - AgentPack_CreateTools_ChildToolOutputWithDuplicateToolName_IsRefused

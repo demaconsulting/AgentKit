@@ -32,6 +32,17 @@ The class is static and stateless; the tools it returns are safe for concurrent 
 reserved for the readers; it is deliberately not a public family prefix, because the readers are
 infrastructure the composition adds rather than a pack an application attaches.
 
+`MinimumResultCharacters` (public, 1,000) is the smallest `ToolLimits.MaxResultCharacters` a
+retaining composition accepts. Its derivation is the worst-case fixed overhead of a preview: with
+the tool name bounded at `ToolName.MaxLength` (64), a reference numbered at `long.MaxValue`
+(`output-` and 19 digits), every count at `int.MaxValue` (10 digits) and the wrapped-lines note,
+the header is at most 485 characters, the omission marker 45 and its line break 1 — 531 in all.
+The internal `WorstCaseOverheadCharacters()` composes exactly that worst case from the same code
+that composes a real preview, and a unit test asserts it does not exceed the minimum, so lengthening
+the header's wording cannot silently break the guarantee. 1,000 leaves at least 469 characters for
+preview lines in the worst case, and covers every fixed result the readers return (an empty window,
+`No matches.`) and every refusal the composition writes itself.
+
 The internal `SpillAttachment` is one composition's retention. It holds:
 
 | Member | Type | Description |
@@ -45,8 +56,9 @@ The internal `SpillAttachment` is one composition's retention. It holds:
 
 #### Apply(IEnumerable&lt;AIFunction&gt; tools, ToolLimits limits, ToolOutputOptions? options)
 
-1. Materializes the list and rejects a null entry, a duplicate name, or a name carrying the
-   reserved prefix.
+1. Rejects a `limits` whose `MaxResultCharacters` is below `MinimumResultCharacters`, then
+   materializes the list and rejects a null entry, a name longer than `ToolName.MaxLength`, a name
+   carrying the reserved prefix, or a duplicate name. Nothing is allocated for a rejected call.
 2. Allocates one `ToolOutputStore` with the options (or `ToolOutputOptions.Default`) and one
    `SpillAttachment` over it and the limits.
 3. Wraps each tool: a `GuardedFunction` is re-wrapped over the same inner function through
@@ -86,13 +98,29 @@ tool_output_search.]
 3012| ...
 ```
 
-The body budget is `min(PreviewCharacters, MaxResultCharacters − widestHeader − omissionMarker)`,
-computed against a header naming the widest possible ranges so the real header never overruns it.
+The body budget is
+`min(PreviewCharacters, MaxResultCharacters − widestHeader − omissionMarker − 1)`, computed against
+a header naming the widest possible ranges (`1-T and T-T`) so the real header never overruns it.
 Whole numbered lines are taken from the head up to three quarters of the budget, then from the tail
-with what remains. When long lines were wrapped the header says so. When no line fits — a very
-small ceiling or a zero preview — only the header is delivered, because the reference is the
-result. Naming the readers is the designed recourse of a successful result, not a prescription
-attached to a refusal.
+with what remains. The header states the lines shown: both ranges, the head alone, or the tail
+alone when the first line is too long for the head's share. When long lines were wrapped the header
+says so. When no line fits — a zero preview, or lines longer than the budget — only the header is
+delivered, because the reference is the result. Naming the readers is the designed recourse of a
+successful result, not a prescription attached to a refusal.
+
+**The preview always fits the ceiling.** The only header longer than the widest is the no-lines
+form, by at most two characters for an output of fewer than ten lines, and it comes with no body
+and no omission marker, whose reserved room covers it. Because `Apply` rejects any ceiling below
+`MinimumResultCharacters`, which is at least the worst-case overhead, the budget is never clamped
+below zero, so every preview — header, body and marker — is within `MaxResultCharacters`.
+
+**What a retaining composition guarantees.** Every successful result it produces fits within
+`MaxResultCharacters`: previews (including header-only previews), reader pages, empty windows,
+search listings and `No matches.`. A result that already fit is returned unchanged. Every refusal
+the composition writes itself — the retention-limit refusal and the reader refusals, whose
+malformed-identifier echo `ToolOutputStore` bounds — is far shorter than the minimum. A refusal a
+tool writes itself (the message given to `ToolResult.Oversized`, or any `ToolResult.Denied`) is the
+tool's own text, exactly as without retention.
 
 An output whose normalized size exceeds `MaxOutputCharacters` is not retained: the result is the
 marker's own refusal, or `Denied (ResourceTooLarge): The output of '<tool>' is N characters, which
@@ -103,7 +131,8 @@ exceeds the M-character retention limit.` It is never truncated.
 | Condition | Handling |
 | --- | --- |
 | Null `tools` or `limits` | `ArgumentNullException` propagates |
-| Null tool, duplicate name, reserved name | `ArgumentException` propagates |
+| `MaxResultCharacters` below `MinimumResultCharacters` | `ArgumentException` (`limits`) propagates |
+| Null tool, name over 64 characters, reserved name, duplicate name | `ArgumentException` propagates |
 | Output over the retention ceiling | A refusal is returned to the model |
 | Binary or non-textual result | Passed through unchanged |
 

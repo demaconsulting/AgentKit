@@ -189,19 +189,19 @@ public class TextFileSearchToolTests
         // Arrange: a file whose every line matches, and the search composed with retention
         using var fixture = new TempDirectoryFixture();
         TempDirectoryFixture.WriteFile(
-            fixture.Root, "note.txt", string.Concat(Enumerable.Repeat("hit\n", 100)));
-        var limits = new ToolLimits(maxResultCharacters: 200);
+            fixture.Root, "note.txt", string.Concat(Enumerable.Repeat("hit\n", 300)));
+        var limits = new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters);
         var tools = ToolOutputSpill.Apply([TextFileSearchTool.Create(RootedPolicy(fixture.Root, limits))], limits);
 
         // Act: search, then read the last match through the reader
         var preview = Assert.IsType<string>(await InvokeAsync(tools[0], new AIFunctionArguments { ["pattern"] = "hit" }));
         var page = Assert.IsType<string>(await InvokeAsync(
             tools[1],
-            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 100, ["lineCount"] = 1 }));
+            new AIFunctionArguments { ["id"] = "output-1", ["startLine"] = 300, ["lineCount"] = 1 }));
 
-        // Assert: a reference rather than a refusal, and the hundredth match is intact
+        // Assert: a reference rather than a refusal, and the last match is intact
         Assert.StartsWith("[Output output-1 from " + TextFileSearchTool.ToolName, preview, StringComparison.Ordinal);
-        Assert.EndsWith("100| note.txt:100:hit", page, StringComparison.Ordinal);
+        Assert.EndsWith("300| note.txt:300:hit", page, StringComparison.Ordinal);
     }
 
     /// <summary>

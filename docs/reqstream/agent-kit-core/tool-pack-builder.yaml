@@ -182,3 +182,22 @@ sections:
             tests:
               - ToolPackBuilder_WithToolOutputSpill_DuplicateToolName_ThrowsInvalidOperationException
               - ToolPackBuilder_Build_WithoutToolOutputSpill_DuplicateToolNames_AreReturnedUnchanged
+
+          - id: AgentKitCore-ToolPackBuilder-ToolOutputSpillMinimumCeiling
+            title: >-
+              While retention of large outputs is composed, the builder shall reject, before any pack
+              is asked for its tools, a policy whose result ceiling is below 1,000 characters, and
+              shall reject a composed tool whose name is longer than 64 characters, with the
+              exception it reports other composition mistakes with; without retention it shall accept
+              any result ceiling.
+            tags: [reliability]
+            justification: |
+              Retention requires a result ceiling its preview header always fits in, and a bounded
+              tool name for the header to be bounded. Both are composition mistakes, so they are
+              reported where the list is built, in the one exception type the builder documents.
+              Checking only when retention is chosen keeps every existing composition, including one
+              with a zero ceiling, unchanged.
+            tests:
+              - ToolPackBuilder_WithToolOutputSpill_ResultCeilingBelowMinimum_ThrowsInvalidOperationException
+              - ToolPackBuilder_Build_WithoutToolOutputSpill_SmallResultCeiling_IsAccepted
+              - ToolPackBuilder_WithToolOutputSpill_ToolNameLongerThanTheLimit_ThrowsInvalidOperationException

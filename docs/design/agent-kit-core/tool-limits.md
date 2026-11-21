@@ -35,7 +35,10 @@ this equal to `MaxReadBytes` would let one result crowd out every subsequent ste
 The same ceiling is also the threshold above which a composition that retains large tool outputs
 retains an output instead of returning it, and the bound on the preview and on every page the
 reader tools return; see *ToolOutputSpill Unit Design*. A second threshold was rejected: one budget
-keeps one meaning — what fits is returned, and what does not is either refused or retained.
+keeps one meaning — what fits is returned, and what does not is either refused or retained. A
+retaining composition requires this ceiling to be at least `ToolOutputSpill.MinimumResultCharacters`
+(1,000), so the preview naming a retained output's reference always fits; the check belongs to the
+composition, not to this type, so every other composition accepts any ceiling, zero included.
 
 **`MaxBinaryBytes` = 8 MiB.** Images are not charged against the context window by the same route
 as text, so a character ceiling is the wrong control for them and a byte ceiling is the right one.
@@ -179,7 +182,8 @@ is applied.
 
 **Zero is permitted.** A zero ceiling is the expressible way to disable an operation entirely and
 is a meaningful host configuration, not a mistake. Rejecting it alongside a negative value would
-remove the only way to say "this agent may not delegate".
+remove the only way to say "this agent may not delegate". The one exception lies outside this type:
+a composition retaining large tool outputs rejects a `MaxResultCharacters` below 1,000.
 
 **Throws:** `ArgumentOutOfRangeException` when any ceiling is negative.
 

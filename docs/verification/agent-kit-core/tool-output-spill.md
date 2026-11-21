@@ -26,10 +26,11 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all seventeen scenarios below pass. Any result within the ceiling
+A unit test run passes when all twenty-two scenarios below pass. Any result within the ceiling
 altered, any oversized textual result not retained, any preview exceeding the ceiling or omitting
-the reference or the readers, any binary content retained, any output truncated, any reader result
-retained, any store shared between compositions, or any invalid list accepted constitutes a
+the reference or the readers, any header misstating the lines shown, any binary content retained,
+any output truncated, any reader result retained, any store shared between compositions, any
+result ceiling below the retention minimum accepted, or any invalid list accepted constitutes a
 failure.
 
 ### Test Scenarios
@@ -60,12 +61,46 @@ omission marker and a statement of the lines shown.
 
 Boundary value: a single very long line produces a header noting continuation lines.
 
-#### AgentKitCore-ToolOutputSpill-PreviewComposition: The Preview Is Clamped and the Header Always Delivered
+#### AgentKitCore-ToolOutputSpill-PreviewComposition: The Preview Is Clamped and a Zero Preview Delivers the Header
 
-**Test**: `ToolOutputSpill_Apply_SmallCeiling_PreviewIsClampedAndHeaderAlwaysDelivered`
+**Test**: `ToolOutputSpill_Apply_PreviewIsClampedToTheCeilingAndZeroPreviewDeliversTheHeader`
 
-Boundary values: a 500-character ceiling yields a preview within it; a 10-character ceiling yields
-the header alone, stating that no lines fit.
+Boundary values: at the minimum ceiling of 1,000 characters a 500-line output yields numbered lines
+within the ceiling; with a zero preview size the header alone is delivered, stating that no lines
+fit, within the ceiling.
+
+#### AgentKitCore-ToolOutputSpill-PreviewComposition: A Tail-Only Preview Names Its Lines
+
+**Test**: `ToolOutputSpill_Apply_TailOnlyPreview_HeaderNamesTheTailLines`
+
+Boundary value: a first line too long for the head's three quarters of the budget, followed by
+eight short lines, yields a preview of the tail alone whose header states `Showing lines 2-9.`
+rather than that no lines fit, with the omitted first line marked, within the ceiling.
+
+#### AgentKitCore-ToolOutputSpill-MinimumResultCeiling: A Ceiling Below the Minimum Is Rejected
+
+**Test**: `ToolOutputSpill_Apply_ResultCeilingBelowMinimum_ThrowsArgumentException`
+
+Error path and boundary values: ceilings of 0, 10 and 999 each throw `ArgumentException` naming
+`limits` and the 1,000-character minimum; a ceiling of exactly 1,000 composes.
+
+#### AgentKitCore-ToolOutputSpill-MinimumResultCeiling: The Minimum Covers the Worst-Case Header
+
+**Test**: `ToolOutputSpill_MinimumResultCharacters_CoversTheWorstCaseHeader`
+
+Boundary value: the header, omission marker and line break composed at their extremes — a 64-character
+name, a reference numbered at `long.MaxValue`, every count at `int.MaxValue` and the wrapped-lines
+note — come to no more than `MinimumResultCharacters`.
+
+#### AgentKitCore-ToolOutputSpill-MinimumResultCeiling: Every Preview Fits Across Worst-Case Headers
+
+**Test**: `ToolOutputSpill_Apply_MinimumCeiling_EveryPreviewFitsAcrossWorstCaseHeaders`
+
+Boundary values: at the minimum ceiling, seven outputs from tools named at the 64-character limit —
+many short lines, one very long wrapped line, few long wrapped lines, a long first line, nine long
+lines, a wrapped line before many lines, and two tiny lines — are each retained twice, so
+references reach two digits, under preview sizes of 0, 100, the default and 100,000. Every preview
+starts with its reference and is no longer than the ceiling.
 
 #### AgentKitCore-ToolOutputSpill-TextualResultsRetained: Structured Data Is Retained Indented
 
@@ -98,7 +133,7 @@ content.
 
 **Test**: `ToolOutputSpill_Apply_NullResult_PassesThrough`
 
-Boundary value: with a zero ceiling, a null result remains null.
+Boundary value: a null result remains null.
 
 #### AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained: A Declared-Oversized Output Is Retained
 
@@ -145,3 +180,10 @@ tool still refuses.
 **Test**: `ToolOutputSpill_Apply_InvalidLists_Throw`
 
 Error path: a missing list or limits, a null tool, a duplicate name and a reserved name each throw.
+
+#### AgentKitCore-ToolOutputSpill-RejectsInvalidLists: An Over-Long Tool Name Is Rejected
+
+**Test**: `ToolOutputSpill_Apply_ToolNameLongerThanTheLimit_ThrowsArgumentException`
+
+Error path and boundary value: a hand-built tool with a 65-character name throws
+`ArgumentException` naming `tools` and the 64-character limit; a 64-character name composes.

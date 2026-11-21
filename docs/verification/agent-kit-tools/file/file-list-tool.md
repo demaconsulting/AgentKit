@@ -89,5 +89,6 @@ partial listing is returned.
 
 **Test**: `FileListTool_List_ListingBeyondTheResultCeilingWithRetention_IsRetainedForPaging`
 
-The listed tests prove that, composed with retention, the same listing is answered with a preview
-naming `output-1`, and that `tool_output_search` finds the last file in the retained listing.
+The listed tests prove that, composed with retention at the 1,000-character retention minimum, a
+listing of two hundred files is answered with a preview naming `output-1`, and that
+`tool_output_search` finds the last file in the retained listing.

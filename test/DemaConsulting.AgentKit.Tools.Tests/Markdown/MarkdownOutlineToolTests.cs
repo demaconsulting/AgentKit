@@ -213,7 +213,7 @@ public class MarkdownOutlineToolTests
         // Arrange: a document with many headings, and the outline composed with retention
         using var fixture = new TempDirectoryFixture();
         TempDirectoryFixture.WriteFile(fixture.Root, "long.md", ManyHeadings(60));
-        var limits = new ToolLimits(maxResultCharacters: 500);
+        var limits = new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters);
         var tools = ToolOutputSpill.Apply([MarkdownOutlineTool.Create(RootedPolicy(fixture.Root, limits))], limits);
 
         // Act: outline it, then find the last section in what was retained

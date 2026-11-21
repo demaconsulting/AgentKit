@@ -236,19 +236,19 @@ so a named-but-suppressed tool yields absence rather than a composition failure.
 **Test**: `AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained`
 
 Composes the TextFile, File and Markdown families with retention of large outputs over a workspace
-of sixty notes and a 300-character ceiling. Asserts a full listing and a broad search are each
-answered with a preview naming its own reference, that reading a long file with `text_file_read`
-is still refused — its source is already pageable — and that searching the retained search result
-finds the last note's match.
+of two hundred notes and a 1,000-character ceiling, the retention minimum. Asserts a full listing
+and a broad search are each answered with a preview naming its own reference, that reading a long
+file with `text_file_read` is still refused — its source is already pageable — and that searching
+the retained search result finds the last note's match.
 
 ### Large Tool Outputs: A Delegated Agent's Oversized Answer Is Retained by the Parent
 
 **Test**: `AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent`
 
-Composes a retaining parent with the Agent family, passing `childToolOutput` so children retain
-too, and a runner answering eighty lines. Asserts the parent's `agent_run` result is a preview, the
-last line reads back exactly, and the child was handed its admitted tool followed by the two
-readers.
+Composes a retaining parent with the Agent family at the 1,000-character retention minimum, passing
+`childToolOutput` so children retain too, and a runner answering three hundred lines. Asserts the
+parent's `agent_run` result is a preview, the last line reads back exactly, and the child was
+handed its admitted tool followed by the two readers.
 
 ## Acceptance Criteria
 

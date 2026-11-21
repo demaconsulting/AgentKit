@@ -380,8 +380,10 @@ sections:
           - AgentKitCore-ToolPackBuilder-ToolOutputSpill
           - AgentKitCore-ToolPackBuilder-ReservedToolOutputPrefix
           - AgentKitCore-ToolPackBuilder-DuplicateToolNamesWithSpill
+          - AgentKitCore-ToolPackBuilder-ToolOutputSpillMinimumCeiling
           - AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
           - AgentKitCore-ToolOutputSpill-PreviewComposition
+          - AgentKitCore-ToolOutputSpill-MinimumResultCeiling
           - AgentKitCore-ToolOutputSpill-TextualResultsRetained
           - AgentKitCore-ToolOutputSpill-BinaryNeverRetained
           - AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained

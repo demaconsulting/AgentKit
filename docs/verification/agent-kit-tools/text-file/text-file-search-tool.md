@@ -130,6 +130,6 @@ composition does not retain large outputs.
 
 **Test**: `TextFileSearchTool_Search_ResultBeyondTheResultCeilingWithRetention_IsRetainedForPaging`
 
-The listed tests prove that, composed with retention of large outputs, the same oversized result is
-answered with a preview naming `output-1`, and that the hundredth match is read back intact through
-`tool_output_read`.
+The listed tests prove that, composed with retention of large outputs at the 1,000-character
+retention minimum, an oversized result of three hundred matches is answered with a preview naming
+`output-1`, and that the last match is read back intact through `tool_output_read`.

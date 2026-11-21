@@ -171,7 +171,7 @@ public class ToolOutputSpillTests
             (Func<Task<object?>>)(() => Task.FromResult<object?>(null)),
             "probe_empty",
             "Returns nothing.");
-        var tools = ToolOutputSpill.Apply([tool], new ToolLimits(maxResultCharacters: 0));
+        var tools = ToolOutputSpill.Apply([tool], new ToolLimits(maxResultCharacters: Ceiling));
 
         // Act / Assert: an absence, not a reference
         Assert.Null(await InvokeAsync(tools, "probe_empty"));
@@ -240,25 +240,169 @@ public class ToolOutputSpillTests
     }
 
     /// <summary>
-    ///     Proves the preview is clamped so it and its header fit a small ceiling, and that only the
-    ///     header is delivered when no line fits.
+    ///     Proves the preview is clamped so it and its header fit the smallest ceiling retention
+    ///     accepts, and that the header alone is delivered when the preview size admits no line.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
     [Fact]
-    public async Task ToolOutputSpill_Apply_SmallCeiling_PreviewIsClampedAndHeaderAlwaysDelivered()
+    public async Task ToolOutputSpill_Apply_PreviewIsClampedToTheCeilingAndZeroPreviewDeliversTheHeader()
     {
-        // Arrange: one composition whose ceiling leaves room for a few lines, one that leaves none
-        var roomy = ToolOutputSpill.Apply([TextTool("probe_big", Lines(500))], new ToolLimits(maxResultCharacters: 500));
-        var tight = ToolOutputSpill.Apply([TextTool("probe_big", Lines(500))], new ToolLimits(maxResultCharacters: 10));
+        // Arrange: one composition at the minimum ceiling, one whose preview size admits no line
+        var clampedTools = ToolOutputSpill.Apply(
+            [TextTool("probe_big", Lines(500))],
+            new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters));
+        var headerTools = ToolOutputSpill.Apply(
+            [TextTool("probe_big", Lines(500))],
+            new ToolLimits(maxResultCharacters: Ceiling),
+            new ToolOutputOptions(previewCharacters: 0));
 
         // Act: invoke both
-        var clamped = Assert.IsType<string>(await InvokeAsync(roomy, "probe_big"));
-        var headerOnly = Assert.IsType<string>(await InvokeAsync(tight, "probe_big"));
+        var clamped = Assert.IsType<string>(await InvokeAsync(clampedTools, "probe_big"));
+        var headerOnly = Assert.IsType<string>(await InvokeAsync(headerTools, "probe_big"));
 
-        // Assert: the first fits its ceiling; the second is the reference alone
-        Assert.True(clamped.Length <= 500, $"The preview is {clamped.Length} characters.");
+        // Assert: both fit their ceiling; the first shows lines, the second is the reference alone
+        Assert.True(clamped.Length <= ToolOutputSpill.MinimumResultCharacters, $"The preview is {clamped.Length} characters.");
+        Assert.Contains("\n  1| line 1", clamped, StringComparison.Ordinal);
+        Assert.True(headerOnly.Length <= Ceiling, $"The header is {headerOnly.Length} characters.");
         Assert.Contains("No lines fit in the preview.", headerOnly, StringComparison.Ordinal);
         Assert.EndsWith("]", headerOnly, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a preview holding only tail lines - because the first line is too long for the
+    ///     head's share - names the lines it shows rather than claiming none fit.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_TailOnlyPreview_HeaderNamesTheTailLines()
+    {
+        // Arrange: a first line too long for the head's three quarters, then eight short lines
+        var output = new string('x', 700) + "\n" + Lines(8);
+        var tools = ToolOutputSpill.Apply(
+            [MarkerTool("probe_tail", output, "The output exceeds the limit.")],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke it
+        var preview = Assert.IsType<string>(await InvokeAsync(tools, "probe_tail"));
+
+        // Assert: the header names the tail it shows, within the ceiling
+        Assert.Contains("Showing lines 2-9.", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("No lines fit", preview, StringComparison.Ordinal);
+        Assert.Contains("[... lines 1-1 omitted ...]", preview, StringComparison.Ordinal);
+        Assert.EndsWith("9| line 8", preview, StringComparison.Ordinal);
+        Assert.True(preview.Length <= Ceiling, $"The preview is {preview.Length} characters.");
+    }
+
+    /// <summary>
+    ///     Proves retention rejects a result ceiling below the published minimum, which no preview
+    ///     naming its reference could fit within, and accepts the minimum itself.
+    /// </summary>
+    [Fact]
+    public void ToolOutputSpill_Apply_ResultCeilingBelowMinimum_ThrowsArgumentException()
+    {
+        // Arrange: a tool, and ceilings at zero, far below, and one below the minimum
+        var tool = TextTool("probe_one", "a");
+
+        // Act & Assert: each is rejected naming the limits, and the minimum is accepted
+        foreach (var ceiling in new[] { 0, 10, ToolOutputSpill.MinimumResultCharacters - 1 })
+        {
+            var error = Assert.Throws<ArgumentException>(
+                () => ToolOutputSpill.Apply([tool], new ToolLimits(maxResultCharacters: ceiling)));
+            Assert.Equal("limits", error.ParamName);
+            Assert.Contains("at least 1000 characters", error.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(
+            3,
+            ToolOutputSpill.Apply([tool], new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters)).Count);
+    }
+
+    /// <summary>
+    ///     Proves retention rejects a hand-built tool whose name is longer than any provider accepts,
+    ///     because the name is part of every preview header, and accepts a name at the limit.
+    /// </summary>
+    [Fact]
+    public void ToolOutputSpill_Apply_ToolNameLongerThanTheLimit_ThrowsArgumentException()
+    {
+        // Arrange: hand-built tools one character over and exactly at the limit
+        var overlong = AIFunctionFactory.Create(() => "a", "probe_" + new string('a', ToolName.MaxLength - 5));
+        var atLimit = AIFunctionFactory.Create(() => "a", "probe_" + new string('a', ToolName.MaxLength - 6));
+
+        // Act & Assert: the over-long name is rejected; the name at the limit is composed
+        var error = Assert.Throws<ArgumentException>(() => ToolOutputSpill.Apply([overlong], ToolLimits.Default));
+        Assert.Equal("tools", error.ParamName);
+        Assert.Contains("longer than 64 characters", error.Message, StringComparison.Ordinal);
+        Assert.Equal(3, ToolOutputSpill.Apply([atLimit], ToolLimits.Default).Count);
+    }
+
+    /// <summary>
+    ///     Proves the published minimum covers the longest fixed part a preview can have: the header
+    ///     at its widest, the omission marker and its line break.
+    /// </summary>
+    [Fact]
+    public void ToolOutputSpill_MinimumResultCharacters_CoversTheWorstCaseHeader()
+    {
+        // Act: compose the worst case from the code that composes every preview
+        var overhead = ToolOutputSpill.WorstCaseOverheadCharacters();
+
+        // Assert: the minimum leaves room for it
+        Assert.True(
+            overhead <= ToolOutputSpill.MinimumResultCharacters,
+            $"The worst-case overhead is {overhead} characters.");
+    }
+
+    /// <summary>
+    ///     Proves every preview fits the minimum ceiling across the inputs that lengthen its header:
+    ///     a name at the length limit, wrapped lines, multi-digit references, few and many lines,
+    ///     and every preview size.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_MinimumCeiling_EveryPreviewFitsAcrossWorstCaseHeaders()
+    {
+        // Arrange: outputs that stress the header and body, each from a tool named at the limit
+        string[] outputs =
+        [
+            Lines(500),
+            new string('x', 10_000),
+            new string('x', 3_000) + "\n" + new string('y', 3_000) + "\nend",
+            new string('x', 900) + "\n" + Lines(8),
+            string.Join("\n", Enumerable.Range(1, 9).Select(n => new string((char)('a' + n), 300))),
+            new string('z', 2_500) + "\n" + Lines(400),
+            "a\nb",
+        ];
+        var limits = new ToolLimits(maxResultCharacters: ToolOutputSpill.MinimumResultCharacters);
+        var names = outputs.Select((_, index) => "probe_" + (char)('a' + index) + new string('q', ToolName.MaxLength - 7)).ToList();
+        ToolOutputOptions[] options =
+        [
+            ToolOutputOptions.Default,
+            new(previewCharacters: 0),
+            new(previewCharacters: 100),
+            new(previewCharacters: 100_000),
+        ];
+
+        foreach (var option in options)
+        {
+            var tools = ToolOutputSpill.Apply(
+                outputs.Select((output, index) => MarkerTool(names[index], output, "Too large.")),
+                limits,
+                option);
+
+            // Act: invoke every tool repeatedly, so references reach two digits
+            for (var round = 0; round < 2; round++)
+            {
+                for (var index = 0; index < outputs.Length; index++)
+                {
+                    var preview = Assert.IsType<string>(await InvokeAsync(tools, names[index]));
+
+                    // Assert: a reference within the ceiling, whatever the header carries
+                    Assert.StartsWith("[Output output-", preview, StringComparison.Ordinal);
+                    Assert.True(
+                        preview.Length <= ToolOutputSpill.MinimumResultCharacters,
+                        $"The preview of output {index} is {preview.Length} characters.");
+                }
+            }
+        }
     }
 
     /// <summary>

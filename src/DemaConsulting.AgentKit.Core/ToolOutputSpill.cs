@@ -35,8 +35,18 @@ namespace DemaConsulting.AgentKit.Core;
 ///     reference (for example <c>output-3</c>), the output's size, and the reader tools, followed
 ///     by about three quarters of the preview from the head of the output and a quarter from its
 ///     tail, numbered <c>N| </c> exactly as <c>text_file_read</c> numbers a file. The preview and
-///     its header fit within the result ceiling; only the header is delivered when a very small
-///     ceiling leaves no room for any lines, because the reference is the result.
+///     its header always fit within the result ceiling; the header alone is delivered when
+///     <see cref="ToolOutputOptions.PreviewCharacters"/> is zero or the lines are too long for the
+///     preview size, because the reference is the result.
+///     </para>
+///     <para>
+///     <b>Retention requires a result ceiling the reference fits in.</b> A composition whose
+///     <see cref="ToolLimits.MaxResultCharacters"/> is below <see cref="MinimumResultCharacters"/>
+///     is rejected when it is composed, as is a tool whose name is longer than
+///     <see cref="ToolName.MaxLength"/>. Together they bound the header, so every successful result
+///     the composition produces — a preview, a reader page, a search listing — fits within the
+///     ceiling, and every refusal the composition writes itself is far shorter than the minimum. A
+///     refusal a tool writes itself is the tool's own text, exactly as without retention.
 ///     </para>
 ///     <para>
 ///     <b>An output too large even to retain is refused honestly.</b> Above
@@ -85,6 +95,28 @@ namespace DemaConsulting.AgentKit.Core;
 public static class ToolOutputSpill
 {
     /// <summary>
+    ///     The smallest <see cref="ToolLimits.MaxResultCharacters"/> a composition retaining large
+    ///     outputs accepts.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     A retained output is replaced by a preview whose header names the reference, and the
+    ///     reference is the result: a ceiling too small to carry it would make every retained
+    ///     output either an over-ceiling result or a lost one. The header's length is bounded once
+    ///     the tool name is bounded by <see cref="ToolName.MaxLength"/>: with a 64-character name, a
+    ///     19-digit reference, every count at 10 digits and the wrapped-lines note, the header, the
+    ///     omission marker and the line break before it come to 531 characters.
+    ///     </para>
+    ///     <para>
+    ///     1,000 covers that worst case with room left for preview lines, and covers every fixed
+    ///     result the reader tools return — an empty window, <c>No matches.</c> — and every refusal
+    ///     the composition writes itself. A composition that does not retain large outputs is not
+    ///     affected: it accepts any ceiling <see cref="ToolLimits"/> accepts.
+    ///     </para>
+    /// </remarks>
+    public const int MinimumResultCharacters = 1_000;
+
+    /// <summary>
     ///     The name prefix reserved for the reader tools this composition appends.
     /// </summary>
     /// <remarks>
@@ -115,7 +147,7 @@ public static class ToolOutputSpill
     /// <param name="limits">
     ///     The ceilings in force: <see cref="ToolLimits.MaxResultCharacters"/> is the threshold
     ///     above which an output is retained, and bounds every preview and reader result. Must not
-    ///     be null.
+    ///     be null, and the result ceiling must be at least <see cref="MinimumResultCharacters"/>.
     /// </param>
     /// <param name="options">
     ///     The preview size and retention ceilings, or <see langword="null"/> for
@@ -127,8 +159,10 @@ public static class ToolOutputSpill
     ///     <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    ///     Thrown when <paramref name="tools"/> holds a null entry, two tools of one name, or a tool
-    ///     whose name carries the reserved <c>tool_output</c> prefix.
+    ///     Thrown when the result ceiling of <paramref name="limits"/> is below
+    ///     <see cref="MinimumResultCharacters"/>, or when <paramref name="tools"/> holds a null
+    ///     entry, two tools of one name, a tool whose name carries the reserved <c>tool_output</c>
+    ///     prefix, or a tool whose name is longer than <see cref="ToolName.MaxLength"/>.
     /// </exception>
     public static IReadOnlyList<AIFunction> Apply(
         IEnumerable<AIFunction> tools,
@@ -137,6 +171,13 @@ public static class ToolOutputSpill
     {
         ArgumentNullException.ThrowIfNull(tools);
         ArgumentNullException.ThrowIfNull(limits);
+
+        // A ceiling the reference cannot fit in would make every retained output an over-ceiling
+        // result, so it is a configuration mistake reported before anything is allocated.
+        if (!AdmitsCeiling(limits))
+        {
+            throw new ArgumentException(DescribeCeilingTooSmall(limits), nameof(limits));
+        }
 
         // Materialize once and validate before anything is allocated, so a rejected list leaves
         // nothing behind and a lazily evaluated sequence cannot change between checks.
@@ -171,11 +212,96 @@ public static class ToolOutputSpill
         name.StartsWith(ReservedPrefix + "_", StringComparison.Ordinal);
 
     /// <summary>
+    ///     Determines whether a result ceiling is large enough for retention to be composed against.
+    /// </summary>
+    /// <param name="limits">The ceilings in force.</param>
+    /// <returns>
+    ///     <see langword="true"/> when the result ceiling is at least
+    ///     <see cref="MinimumResultCharacters"/>.
+    /// </returns>
+    internal static bool AdmitsCeiling(ToolLimits limits) =>
+        limits.MaxResultCharacters >= MinimumResultCharacters;
+
+    /// <summary>
+    ///     Composes the explanation given when a result ceiling is too small for retention.
+    /// </summary>
+    /// <remarks>
+    ///     Shared by <see cref="Apply"/> and <see cref="ToolPackBuilder.Build"/>, so the mistake is
+    ///     explained in the same words whichever reports it.
+    /// </remarks>
+    /// <param name="limits">The ceilings in force.</param>
+    /// <returns>The explanation.</returns>
+    internal static string DescribeCeilingTooSmall(ToolLimits limits) =>
+        "Retaining large tool outputs requires a result ceiling of at least "
+        + MinimumResultCharacters.ToString(CultureInfo.InvariantCulture)
+        + " characters, so that the preview naming a retained output's reference always fits "
+        + "within it; the ceiling is "
+        + limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture) + " characters.";
+
+    /// <summary>
+    ///     Determines whether a tool name is longer than any name a preview header is sized for.
+    /// </summary>
+    /// <param name="name">The tool name to test.</param>
+    /// <returns><see langword="true"/> when the name is longer than <see cref="ToolName.MaxLength"/>.</returns>
+    internal static bool IsNameTooLong(string name) => name.Length > ToolName.MaxLength;
+
+    /// <summary>
+    ///     Composes the explanation given when a tool name is too long for retention.
+    /// </summary>
+    /// <param name="name">The over-long tool name.</param>
+    /// <returns>The explanation.</returns>
+    internal static string DescribeNameTooLong(string name) =>
+        "The tool '" + name + "' has a name longer than "
+        + ToolName.MaxLength.ToString(CultureInfo.InvariantCulture)
+        + " characters, which no model provider accepts and which a retained output's preview "
+        + "could not name within the result ceiling.";
+
+    /// <summary>
+    ///     Computes the most characters a preview's header, omission marker and line break can
+    ///     occupy, whatever the output, the tool and the ceiling.
+    /// </summary>
+    /// <remarks>
+    ///     Composed from the same code that composes a real preview, at the extremes every part can
+    ///     reach: a name of <see cref="ToolName.MaxLength"/> characters, a reference numbered at
+    ///     <see cref="long.MaxValue"/>, every count at <see cref="int.MaxValue"/>, and the
+    ///     wrapped-lines note. <see cref="MinimumResultCharacters"/> must be at least this, which a
+    ///     test asserts, so lengthening the header's wording cannot silently break the guarantee.
+    /// </remarks>
+    /// <returns>The worst-case fixed overhead of a preview, in characters.</returns>
+    internal static int WorstCaseOverheadCharacters()
+    {
+        var name = new string('a', ToolName.MaxLength);
+        var id = ToolOutputStore.IdPrefix + long.MaxValue.ToString(CultureInfo.InvariantCulture);
+        var showing = SpillAttachment.ComposeHeader(
+            name,
+            originalCharacters: int.MaxValue,
+            id,
+            wrapped: true,
+            ceiling: int.MaxValue,
+            total: int.MaxValue,
+            headCount: int.MaxValue,
+            tailCount: 1);
+        var none = SpillAttachment.ComposeHeader(
+            name,
+            originalCharacters: int.MaxValue,
+            id,
+            wrapped: true,
+            ceiling: int.MaxValue,
+            total: int.MaxValue,
+            headCount: 0,
+            tailCount: 0);
+        return Math.Max(showing.Length, none.Length)
+               + SpillAttachment.ComposeOmission(int.MaxValue, int.MaxValue).Length
+               + 1;
+    }
+
+    /// <summary>
     ///     Rejects a tool list retention could not be composed over.
     /// </summary>
     /// <param name="tools">The tools to validate.</param>
     /// <exception cref="ArgumentException">
-    ///     Thrown when a tool is null, two tools share a name, or a tool carries the reserved prefix.
+    ///     Thrown when a tool is null, two tools share a name, a tool carries the reserved prefix,
+    ///     or a tool's name is longer than <see cref="ToolName.MaxLength"/>.
     /// </exception>
     private static void Validate(List<AIFunction> tools)
     {
@@ -185,6 +311,13 @@ public static class ToolOutputSpill
             if (tool is null)
             {
                 throw new ArgumentException("A tool in the collection is null.", nameof(tools));
+            }
+
+            // A name is part of every preview header, so it must be bounded for the header to be.
+            // Only a hand-built function can carry such a name: the guarded factory refuses one.
+            if (IsNameTooLong(tool.Name))
+            {
+                throw new ArgumentException(DescribeNameTooLong(tool.Name), nameof(tools));
             }
 
             // A tool already named like a reader would be indistinguishable from the readers this
@@ -400,12 +533,18 @@ internal sealed class SpillAttachment
         var width = total.ToString(CultureInfo.InvariantCulture).Length;
 
         // The header's own length depends on which lines are shown, so the budget is computed
-        // against a header naming the widest possible ranges; the real header is never longer.
-        var widestHeader = ComposeHeader(toolName, originalCharacters, entry, total, headCount: total, tailCount: 1);
+        // against a header naming the widest possible ranges; the real header is never longer,
+        // except that the header naming no lines may be two characters longer when the output has
+        // fewer than ten lines - and that header comes with no body and no omission marker, whose
+        // reserved room covers it. The composition rejects any ceiling below
+        // ToolOutputSpill.MinimumResultCharacters, which is at least this overhead, so the clamp
+        // to zero below never discards part of the header's room.
+        var ceiling = _limits.MaxResultCharacters;
+        var widestHeader = ComposeHeader(toolName, originalCharacters, entry.Id, entry.Wrapped, ceiling, total, headCount: total, tailCount: 1);
         var omission = ComposeOmission(total, total);
         var budget = Math.Min(
             _store.Options.PreviewCharacters,
-            Math.Max(0, _limits.MaxResultCharacters - widestHeader.Length - omission.Length - 1));
+            Math.Max(0, ceiling - widestHeader.Length - omission.Length - 1));
 
         // Take the head with three quarters of the budget, then the tail with what remains.
         var headBudget = (int)((long)budget * HeadQuarters / 4);
@@ -427,7 +566,7 @@ internal sealed class SpillAttachment
 
         // Compose the real header and the body.
         var builder = new StringBuilder();
-        builder.Append(ComposeHeader(toolName, originalCharacters, entry, total, headCount, tailCount));
+        builder.Append(ComposeHeader(toolName, originalCharacters, entry.Id, entry.Wrapped, ceiling, total, headCount, tailCount));
         for (var index = 0; index < headCount; index++)
         {
             AppendLine(builder, lines[index], index + 1, width);
@@ -452,28 +591,34 @@ internal sealed class SpillAttachment
     /// </summary>
     /// <param name="toolName">The tool that produced the output.</param>
     /// <param name="originalCharacters">The characters the tool produced.</param>
-    /// <param name="entry">The retained entry.</param>
+    /// <param name="id">The reference the output was retained under.</param>
+    /// <param name="wrapped">Whether long lines were wrapped when the output was retained.</param>
+    /// <param name="ceiling">The result ceiling the output exceeded.</param>
     /// <param name="total">The number of retained lines.</param>
     /// <param name="headCount">The number of head lines shown.</param>
     /// <param name="tailCount">The number of tail lines shown.</param>
     /// <returns>The header text.</returns>
-    private string ComposeHeader(
+    internal static string ComposeHeader(
         string toolName,
         int originalCharacters,
-        ToolOutputEntry entry,
+        string id,
+        bool wrapped,
+        int ceiling,
         int total,
         int headCount,
         int tailCount)
     {
         var builder = new StringBuilder();
-        builder.Append("[Output ").Append(entry.Id)
+        builder.Append("[Output ").Append(id)
             .Append(" from ").Append(toolName).Append(": ")
             .Append(originalCharacters.ToString(CultureInfo.InvariantCulture)).Append(" characters in ")
             .Append(total.ToString(CultureInfo.InvariantCulture)).Append(" lines, larger than the ")
-            .Append(_limits.MaxResultCharacters.ToString(CultureInfo.InvariantCulture))
+            .Append(ceiling.ToString(CultureInfo.InvariantCulture))
             .Append("-character result limit. ");
 
         // State plainly which lines the preview holds, so the model knows what it has not seen.
+        // Every form is no longer than the two-range form the budget is computed against, except
+        // the no-lines form, which comes with no body.
         if (headCount > 0 && tailCount > 0)
         {
             builder.Append("Showing lines 1-").Append(headCount.ToString(CultureInfo.InvariantCulture))
@@ -485,12 +630,18 @@ internal sealed class SpillAttachment
             builder.Append("Showing lines 1-").Append(headCount.ToString(CultureInfo.InvariantCulture))
                 .Append(". ");
         }
+        else if (tailCount > 0)
+        {
+            // A first line too long for the head's share can leave room for the tail alone.
+            builder.Append("Showing lines ").Append((total - tailCount + 1).ToString(CultureInfo.InvariantCulture))
+                .Append('-').Append(total.ToString(CultureInfo.InvariantCulture)).Append(". ");
+        }
         else
         {
             builder.Append("No lines fit in the preview. ");
         }
 
-        if (entry.Wrapped)
+        if (wrapped)
         {
             builder.Append("Lines longer than ")
                 .Append(ToolOutputStore.MaxLineCharacters.ToString(CultureInfo.InvariantCulture))
@@ -498,7 +649,7 @@ internal sealed class SpillAttachment
         }
 
         builder.Append("The full output is retained: read it with ").Append(ToolOutputReadTool.ToolName)
-            .Append(" (id '").Append(entry.Id).Append("', startLine, lineCount) or find text in it with ")
+            .Append(" (id '").Append(id).Append("', startLine, lineCount) or find text in it with ")
             .Append(ToolOutputSearchTool.ToolName).Append(".]");
 
         return builder.ToString();
@@ -510,7 +661,7 @@ internal sealed class SpillAttachment
     /// <param name="first">The first omitted line.</param>
     /// <param name="last">The last omitted line.</param>
     /// <returns>The omission marker.</returns>
-    private static string ComposeOmission(int first, int last) =>
+    internal static string ComposeOmission(int first, int last) =>
         "[... lines " + first.ToString(CultureInfo.InvariantCulture)
         + "-" + last.ToString(CultureInfo.InvariantCulture) + " omitted ...]";
 

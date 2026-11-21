@@ -148,7 +148,9 @@ public sealed class ToolOutputOptions
     /// </summary>
     /// <remarks>
     ///     The preview is further bounded so that it, together with its header, fits within
-    ///     <see cref="ToolLimits.MaxResultCharacters"/>.
+    ///     <see cref="ToolLimits.MaxResultCharacters"/>. The header always fits, because a
+    ///     composition retaining large outputs requires a ceiling of at least
+    ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>; zero delivers the header alone.
     /// </remarks>
     public int PreviewCharacters { get; }
 

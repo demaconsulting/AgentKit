@@ -38,12 +38,14 @@ within the `DemaConsulting.AgentKit.Core.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirty-one scenarios below pass without error or exception beyond
+A unit test run passes when all thirty-four scenarios below pass without error or exception beyond
 those explicitly asserted. A pack registered without its capabilities being satisfied, an
 unsupported pack asked to create tools, a composition in the wrong order, an accepted collision,
-an accepted foreign tool name, any malformed pack that is not refused, and a duplicate tool name
+an accepted foreign tool name, any malformed pack that is not refused, a duplicate tool name
 reported with any exception other than `InvalidOperationException` while retention is requested,
-or rejected at all while it is not, each constitute a failure.
+or rejected at all while it is not, and a result ceiling below the retention minimum or an
+over-long tool name accepted while retention is requested, or a small ceiling rejected while it is
+not, each constitute a failure.
 
 ### Test Scenarios
 
@@ -220,8 +222,8 @@ Requests retention between two `Add` calls and asserts the packs' tools in order
 
 **Test**: `ToolPackBuilder_WithToolOutputSpill_CalledTwice_TheLastOptionsWin`
 
-Requests retention twice over a policy with a small result ceiling, and asserts an oversized output
-is refused naming the second options' retention ceiling.
+Requests retention twice over a policy at the minimum result ceiling, and asserts an oversized
+output is refused naming the second options' retention ceiling.
 
 #### AgentKitCore-ToolPackBuilder-ToolOutputSpill: Each Build Has Its Own Store
 
@@ -257,3 +259,24 @@ overlapping prefixes `file` and `file_list` both publishing `file_list_x`, each 
 
 Boundary: without the request the same two compositions return both duplicates in order with
 nothing appended, so a composition that never opts in behaves as it always did.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpillMinimumCeiling: A Ceiling Below the Minimum Is Reported at Build
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_ResultCeilingBelowMinimum_ThrowsInvalidOperationException`
+
+Error path and boundary value: with retention requested over a 999-character ceiling, `Build`
+throws `InvalidOperationException` naming the 1,000-character minimum and the ceiling, and the pack
+is never asked for its tools.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpillMinimumCeiling: Without the Request a Small Ceiling Is Accepted
+
+**Test**: `ToolPackBuilder_Build_WithoutToolOutputSpill_SmallResultCeiling_IsAccepted`
+
+Boundary: without the request a zero ceiling composes exactly as it always did.
+
+#### AgentKitCore-ToolPackBuilder-ToolOutputSpillMinimumCeiling: An Over-Long Tool Name Is Reported at Build
+
+**Test**: `ToolPackBuilder_WithToolOutputSpill_ToolNameLongerThanTheLimit_ThrowsInvalidOperationException`
+
+Error path: with retention requested, a pack publishing a hand-built tool with a 65-character name
+makes `Build` throw `InvalidOperationException` naming the tool and the 64-character limit.

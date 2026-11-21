@@ -72,14 +72,17 @@ sections:
           - id: AgentKitCore-ToolOutputStore-LookupOutcomes
             title: >-
               The output store shall distinguish a malformed identifier, an identifier never issued,
-              and an identifier whose output was evicted, and shall state each as a refusal.
+              and an identifier whose output was evicted, and shall state each as a refusal, echoing
+              a malformed identifier only when it is no longer than 64 characters.
             justification: |
               Each tells the model a different fact. An evicted reference in particular must be
               reported as no longer retained, so the model knows to re-run the tool rather than to
-              doubt the identifier it was given.
+              doubt the identifier it was given. A near miss is echoed so the model sees its
+              mistake; a long value is not, so no refusal's length is the model's to choose.
             tests:
               - ToolOutputStore_Find_MalformedOrUnissuedIds_AreDistinguished
               - ToolOutputStore_Refusal_EachFailure_StatesItsFact
+              - ToolOutputStore_Refusal_LongMalformedId_IsNotEchoed
 
           - id: AgentKitCore-ToolOutputStore-ThreadSafe
             title: >-

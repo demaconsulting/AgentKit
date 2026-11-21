@@ -41,6 +41,12 @@ model's context budget and a host's memory:
 **Invariants:** `PreviewCharacters >= 0`; `MaxOutputCharacters >= 1`; `MaxRetainedOutputs >= 1`;
 `MaxRetainedCharacters >= MaxOutputCharacters`.
 
+The preview is further bounded at composition so that it, with its header, fits within
+`ToolLimits.MaxResultCharacters`. The header always fits, because a retaining composition rejects a
+ceiling below `ToolOutputSpill.MinimumResultCharacters`; a `PreviewCharacters` of zero therefore
+delivers the header alone. These options do not know the ceiling, so that check is the
+composition's rather than theirs.
+
 ### Key Methods
 
 #### ToolOutputOptions(previewCharacters, maxOutputCharacters, maxRetainedCharacters, maxRetainedOutputs)

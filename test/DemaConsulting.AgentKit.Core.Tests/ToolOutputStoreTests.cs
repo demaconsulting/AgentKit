@@ -275,6 +275,28 @@ public class ToolOutputStoreTests
     }
 
     /// <summary>
+    ///     Proves a malformed identifier longer than any real one is not echoed back, so the model
+    ///     cannot choose a refusal's length, while a short near miss still is.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Refusal_LongMalformedId_IsNotEchoed()
+    {
+        // Arrange: a very long value, and a near miss exactly at the echo limit
+        var longValue = new string('q', 5_000);
+        var nearMiss = new string('q', ToolOutputStore.MaxEchoedIdCharacters);
+
+        // Act: compose the malformed-identifier refusal for each
+        var longRefusal = Assert.IsType<string>(ToolOutputStore.Refusal(ToolOutputLookup.Malformed, longValue));
+        var nearRefusal = Assert.IsType<string>(ToolOutputStore.Refusal(ToolOutputLookup.Malformed, nearMiss));
+
+        // Assert: the long value is absent and the refusal is short; the near miss is echoed
+        Assert.StartsWith("Denied (InvalidRequest)", longRefusal, StringComparison.Ordinal);
+        Assert.DoesNotContain("qqqq", longRefusal, StringComparison.Ordinal);
+        Assert.True(longRefusal.Length < 200, $"The refusal is {longRefusal.Length} characters.");
+        Assert.Contains("'" + nearMiss + "'", nearRefusal, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves concurrent additions each receive a distinct identifier and every one is
     ///     retrievable.
     /// </summary>

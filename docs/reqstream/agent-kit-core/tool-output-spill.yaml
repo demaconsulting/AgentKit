@@ -29,16 +29,37 @@ sections:
               The preview shall show numbered lines from the head and the tail of the output with the
               omitted range marked, shall state which lines it shows and whether lines were wrapped,
               and shall fit with its header within the result ceiling, delivering the header alone
-              when no line fits.
+              when the preview size leaves room for no line.
             justification: |
               The head of an output usually says what it is and the tail how it finished. Numbering
               lines exactly as the file reader does lets the model page without learning a new
-              shape. The reference is the result, so it is always delivered even when a very small
-              ceiling leaves room for nothing else.
+              shape. Stating the lines shown, including a preview holding only tail lines, tells the
+              model exactly what it has not seen. The reference is the result, so it is delivered
+              even when the preview size admits no line.
             tests:
               - ToolOutputSpill_Apply_OversizedText_PreviewShowsNumberedHeadAndTail
               - ToolOutputSpill_Apply_WrappedOutput_HeaderNotesTheWrapping
-              - ToolOutputSpill_Apply_SmallCeiling_PreviewIsClampedAndHeaderAlwaysDelivered
+              - ToolOutputSpill_Apply_PreviewIsClampedToTheCeilingAndZeroPreviewDeliversTheHeader
+              - ToolOutputSpill_Apply_TailOnlyPreview_HeaderNamesTheTailLines
+
+          - id: AgentKitCore-ToolOutputSpill-MinimumResultCeiling
+            title: >-
+              Composing retention shall reject a result ceiling below 1,000 characters, so that every
+              preview a retaining composition returns, whatever the tool name, reference, sizes and
+              wrapping its header carries, fits within the result ceiling.
+            tags: [reliability]
+            justification: |
+              The preview's header names the reference, and the reference is the result. A ceiling
+              too small for the header would make every retained output either an over-ceiling
+              result a provider may refuse or a lost one, so it is a configuration mistake reported
+              when the composition is made. With tool names bounded at 64 characters the header,
+              omission marker and line break are at most 531 characters, which 1,000 covers with room
+              for preview lines and for every fixed reader result. A composition that does not
+              retain is unaffected.
+            tests:
+              - ToolOutputSpill_Apply_ResultCeilingBelowMinimum_ThrowsArgumentException
+              - ToolOutputSpill_MinimumResultCharacters_CoversTheWorstCaseHeader
+              - ToolOutputSpill_Apply_MinimumCeiling_EveryPreviewFitsAcrossWorstCaseHeaders
 
           - id: AgentKitCore-ToolOutputSpill-TextualResultsRetained
             title: >-
@@ -116,9 +137,13 @@ sections:
           - id: AgentKitCore-ToolOutputSpill-RejectsInvalidLists
             title: >-
               Composing retention shall reject a missing list or ceilings, a null tool, two tools of
-              one name, and a tool whose name carries the reserved tool_output prefix.
+              one name, a tool whose name carries the reserved tool_output prefix, and a tool whose
+              name is longer than 64 characters.
             justification: |
               Each is a mistake in the composing application. A tool named like a reader would be
-              indistinguishable from the readers the composition appends.
+              indistinguishable from the readers the composition appends. A name longer than any
+              provider accepts can only come from a hand-built function, and the name is part of
+              every preview header, so it must be bounded for the header to be.
             tests:
               - ToolOutputSpill_Apply_InvalidLists_Throw
+              - ToolOutputSpill_Apply_ToolNameLongerThanTheLimit_ThrowsArgumentException

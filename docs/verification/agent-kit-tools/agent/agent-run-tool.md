@@ -151,9 +151,10 @@ parent cannot tell it is reading half an answer.
 
 **Test**: `AgentRunTool_Run_OversizedAnswerWithRetention_IsRetainedForPaging`
 
-Normal operation under retention: composed with retention of large outputs, a fifty-line answer
-over a 200-character ceiling is answered with a preview naming `output-1`, and the last finding is
-read back exactly through `tool_output_read`, so the child's work is kept rather than lost.
+Normal operation under retention: composed with retention of large outputs, a three-hundred-line
+answer over the 1,000-character retention minimum is answered with a preview naming `output-1`, and
+the last finding is read back exactly through `tool_output_read`, so the child's work is kept
+rather than lost.
 
 ##### AgentKitTools-Agent-RunTool-ComposesNamedProfileOnly: The Named Profile Is the Only One Composed
 

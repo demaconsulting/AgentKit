@@ -109,6 +109,16 @@ internal sealed class ToolOutputStore
     internal const string IdPrefix = "output-";
 
     /// <summary>
+    ///     The longest malformed identifier a refusal echoes back.
+    /// </summary>
+    /// <remarks>
+    ///     A well-formed identifier is at most 26 characters (the prefix and a 19-digit number), so
+    ///     a near miss is always echoed; anything longer is text the model supplied, and echoing it
+    ///     whole would let a refusal grow without bound.
+    /// </remarks>
+    internal const int MaxEchoedIdCharacters = 64;
+
+    /// <summary>
     ///     The writer options used to indent structured data for paging.
     /// </summary>
     /// <remarks>
@@ -278,7 +288,8 @@ internal sealed class ToolOutputStore
     ///     Kept beside the lookup so both readers state the same three facts in the same words. Each
     ///     refusal states what is so and stops: a malformed identifier names the form identifiers
     ///     take, an unknown one says it was never issued, and an evicted one says it is no longer
-    ///     retained and why.
+    ///     retained and why. A malformed identifier is echoed only when it is no longer than
+    ///     <see cref="MaxEchoedIdCharacters"/>, so no refusal's length is the model's to choose.
     /// </remarks>
     /// <param name="outcome">The lookup outcome. Must not be <see cref="ToolOutputLookup.Found"/>.</param>
     /// <param name="id">The identifier the model supplied. May be null.</param>
@@ -291,11 +302,7 @@ internal sealed class ToolOutputStore
         var trimmed = id?.Trim() ?? string.Empty;
         return outcome switch
         {
-            ToolOutputLookup.Malformed => ToolResult.Denied(
-                DenialReason.InvalidRequest,
-                string.IsNullOrEmpty(trimmed)
-                    ? "An output id is required, of the form 'output-3' named in a retained output's preview."
-                    : "'" + trimmed + "' is not an output id; ids have the form 'output-3'."),
+            ToolOutputLookup.Malformed => ToolResult.Denied(DenialReason.InvalidRequest, DescribeMalformed(trimmed)),
             ToolOutputLookup.Unknown => ToolResult.Denied(
                 DenialReason.TargetNotFound,
                 "The output '" + trimmed + "' was never retained."),
@@ -305,6 +312,25 @@ internal sealed class ToolOutputStore
                 + "retained outputs within their ceiling."),
             _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The lookup did not fail."),
         };
+    }
+
+    /// <summary>
+    ///     Composes the explanation of a malformed identifier.
+    /// </summary>
+    /// <param name="trimmed">The identifier the model supplied, trimmed.</param>
+    /// <returns>The explanation, echoing the identifier only when it is short.</returns>
+    private static string DescribeMalformed(string trimmed)
+    {
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return "An output id is required, of the form 'output-3' named in a retained output's preview.";
+        }
+
+        // A near miss is worth echoing so the model sees its mistake; a long value is not, and
+        // echoing it whole would let the model choose the refusal's length.
+        return trimmed.Length <= MaxEchoedIdCharacters
+            ? "'" + trimmed + "' is not an output id; ids have the form 'output-3'."
+            : "The supplied value is not an output id; ids have the form 'output-3'.";
     }
 
     /// <summary>

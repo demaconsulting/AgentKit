@@ -386,6 +386,7 @@ sections:
           - AgentKitTools-Agent-RunTool-ChildResultReporting
           - AgentKitTools-Agent-RunTool-OversizedAnswerRetainable
           - AgentKitTools-Agent-Pack-ChildToolOutputOptIn
+          - AgentKitTools-Agent-Pack-ChildToolOutputMinimumCeiling
         tests:
           - AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained
           - AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent

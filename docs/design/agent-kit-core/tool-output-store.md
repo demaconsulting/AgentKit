@@ -93,6 +93,13 @@ same words: `InvalidRequest` naming the identifier form for a malformed or missi
 `TargetNotFound` stating the output was never retained; `TargetNotFound` stating the output is no
 longer retained because it was evicted.
 
+A malformed identifier is echoed back only when it is no longer than `MaxEchoedIdCharacters` (64),
+so a near miss shows the model its mistake while a long value — text the model chose — cannot grow
+the refusal without bound. A well-formed identifier is at most 26 characters (`output-` and 19
+digits), so the unknown and evicted refusals, which echo only an identifier that parsed, are
+bounded already. Every refusal this method composes is therefore far shorter than
+`ToolOutputSpill.MinimumResultCharacters`.
+
 #### Indent(JsonElement element)
 
 Writes a JSON document indented through a `Utf8JsonWriter` with a relaxed encoder, so compact JSON

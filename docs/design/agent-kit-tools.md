@@ -190,7 +190,10 @@ without retention of large outputs delivers exactly that refusal, as before; a c
 — `ToolPackBuilder.WithToolOutputSpill` — retains the result and delivers a preview and a reference
 (see *ToolOutputSpill Unit Design*). The text file read tool keeps refusing, because the file it
 reads is already pageable by line range. A delegated agent is composed with retention only when the
-application passes `childToolOutput` to `AgentPack`.
+application passes `childToolOutput` to `AgentPack`, whose `CreateTools` then rejects a policy
+whose result ceiling — which every child inherits — is below
+`ToolOutputSpill.MinimumResultCharacters`, and whose `agent_run` refuses to start a child whose
+admitted tools retention cannot be composed over.
 
 ### Policy-derived publication
 

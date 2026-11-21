@@ -294,6 +294,20 @@ built-in `file_list`, `markdown_outline`, `text_file_search` and `agent_run` do 
 own tool if it returns `ToolResult.Oversized`. Any other tool, including your own tools returning
 text or JSON, gets a refusal stating the output's size and the retention limit.
 
+**Retention needs a result ceiling of at least 1,000 characters**
+(`ToolOutputSpill.MinimumResultCharacters`). The preview's header names the reference, and the
+reference is the result, so the ceiling must leave room for it. `Build` throws
+`InvalidOperationException` for a smaller ceiling, before any pack is asked for its tools;
+`ToolOutputSpill.Apply` throws `ArgumentException`; and an `AgentPack` given `childToolOutput`
+throws `InvalidOperationException` from its `CreateTools` — that is, from the `Build` that composes
+it — because every delegated agent inherits the ceiling. Tool names must also be no longer than 64
+characters, which every guarded tool already is; only a hand-built `AIFunction` can be longer.
+For a delegated agent composed with `childToolOutput`, such a name — like a child tool under the
+reserved `tool_output_` prefix, or one name published by two child packs with overlapping
+prefixes — makes `agent_run` refuse that delegation as a composition failure rather than start
+the child. With that, every successful result a retaining composition returns — a preview, a page, a search listing
+— fits within the ceiling. A composition without retention accepts any ceiling, zero included.
+
 **Lifetime and isolation.** Retained outputs live exactly as long as the tool list they were
 composed into. A session carries that list unchanged across compaction, so a reference survives a
 rotation. Each `Build` has its own store, and so does each delegated agent: pass `childToolOutput`

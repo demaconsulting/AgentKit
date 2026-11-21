@@ -97,6 +97,6 @@ the ceiling.
 
 **Test**: `MarkdownOutlineTool_Outline_OutlineBeyondTheResultCeilingWithRetention_IsRetainedIndented`
 
-The listed tests prove that, composed with retention, the outline is answered with a preview naming
-`output-1`, and that searching the retained outline finds the last section's title on a line of its
-own — the indented form a model can page.
+The listed tests prove that, composed with retention at the 1,000-character retention minimum, the
+outline is answered with a preview naming `output-1`, and that searching the retained outline finds
+the last section's title on a line of its own — the indented form a model can page.

@@ -24,10 +24,11 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all fourteen scenarios below pass. Any identifier issued out of order
+A unit test run passes when all fifteen scenarios below pass. Any identifier issued out of order
 or twice, any retained line altered or lost, any output over the per-output ceiling retained, any
 output that fits refused by the early raw-length check, any eviction other than oldest-first, any
-lookup outcome misreported, or any inconsistency under concurrent addition constitutes a failure.
+lookup outcome misreported, any over-long malformed identifier echoed, or any inconsistency under
+concurrent addition constitutes a failure.
 
 ### Test Scenarios
 
@@ -119,6 +120,13 @@ identifier above the last issued is unknown; surrounding whitespace is ignored.
 
 Error path: malformed is `InvalidRequest`; unknown is `TargetNotFound` stating it was never
 retained; evicted is `TargetNotFound` stating it is no longer retained.
+
+#### AgentKitCore-ToolOutputStore-LookupOutcomes: A Long Malformed Identifier Is Not Echoed
+
+**Test**: `ToolOutputStore_Refusal_LongMalformedId_IsNotEchoed`
+
+Error path and boundary value: a 5,000-character malformed identifier yields an `InvalidRequest`
+refusal shorter than 200 characters that does not contain it; a 64-character near miss is echoed.
 
 #### AgentKitCore-ToolOutputStore-ThreadSafe: Concurrent Additions Are Consistent
 
