@@ -19,6 +19,8 @@ package AgentKitCore {
      * content, and only then disposes the one it replaced. Rotation rather than in-place
      * reduction is the only mechanism both provider shapes support - one resends history
      * each turn, the other holds it server-side - so the behavior is identical on either.
+     * For a host that owns its own chat history instead, it offers a chat reducer that applies
+     * the same consolidation prompt to that history, at reduced fidelity.
      */
 
     part def AgentKitCoreSystem {
@@ -57,5 +59,6 @@ package AgentKitCore {
         part providerSession : ProviderSession;
         part inMemoryProviderSession : InMemoryProviderSession;
         part compactingAgentSession : CompactingAgentSession;
+        part agentKitChatReducer : AgentKitChatReducer;
     }
 }

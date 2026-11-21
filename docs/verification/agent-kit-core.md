@@ -190,6 +190,15 @@ Verifies persistence. A retention that retained a 5,000-line report is exported,
 through the published contract, deserialized and restored; the restored readers page line 5,000 of
 `output-1`.
 
+### Chat Reducer: An Over-Threshold History Is Consolidated Keeping the Tail
+
+**Test**: `AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail`
+
+Verifies the host-owned history reducer through the `IChatReducer` contract. A system message, a turn
+establishing a vault code and four long turns exceed a 200-character threshold with one turn kept;
+the result is the same system message, one record carrying the code, and the last turn as the same
+instances, and the material handed to the deterministic summarizer held the code.
+
 ### Path Policy: Construction Without a Working Directory Is Rejected
 
 **Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected`

@@ -70,6 +70,9 @@ The system consists of:
   exercised end to end without a live model
 - **CompactingAgentSession Unit**: The implementation that sequences turns, usage reads, rotations
   and provider-session disposal
+- **AgentKitChatReducer Unit**: A chat reducer for a host that owns its chat history, consolidating
+  older messages through the injected summarizer and consolidation prompt into one record while
+  keeping the system messages and a verbatim tail of whole turns
 
 There are no subsystems. The three path-safety units form one collaboration:
 `PathPolicy` makes a relative request absolute against its `WorkingDirectory`, resolves the
@@ -306,6 +309,18 @@ the session was already at its tersest level and the window filled again, so the
 slot went in the bin, or when a consolidation came back blank and the material it was given could not
 be recorded anywhere. The library reports that fact and leaves any policy decision to the
 application.
+
+### A Reducer for Host-Owned Histories
+
+`AgentKitChatReducer` stands beside the session engine rather than inside it. A host that owns its own
+chat history — an agent framework's chat-client agent with a history provider, or a raw chat-client
+pipeline — offers a reducer hook, and this unit lets that hook apply the library's consolidation
+prompt through the same `ISummarizer`. It depends only on `Summarizer` and `SessionTranscript`'s
+`TranscriptEntry` rendering, and nothing in the engine depends on it. It is a reduced-fidelity option:
+one record re-consolidated each time instead of tiers, one fixed level with no occupancy feedback,
+no rotation, and character estimates instead of provider-reported usage — and no hook exists where
+the runtime owns the history, as on the GitHub Copilot path. `CompactingAgentSession` remains the
+recommended, full-fidelity option; see *AgentKitChatReducer Unit Design* for the full comparison.
 
 ### The Public Surface of the Session Engine
 
@@ -565,6 +580,10 @@ The system additionally exposes the agent session API:
   format: .NET interfaces; constraints: factory is safe for concurrent use, session serves one
   conversation and is disposable, and every session answers `CurrentUsage` — how much of its
   provider's window it occupies and out of how much — without contacting the provider to do so.
+- **`AgentKitChatReducer`** — Direction: inbound, host to system, through the `IChatReducer`
+  contract; format: .NET class;
+  constraints: summarizer non-null, threshold greater than zero, at least one verbatim turn; returns
+  the history unchanged, or the system messages, one record and the verbatim tail.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
@@ -575,6 +594,8 @@ The system additionally exposes the agent session API:
 | `IProviderSession.SendAsync` | Outbound | Method call / `ProviderTurn` | Message non-null, not disposed |
 | `IProviderSession.CurrentUsage` | Outbound | Property read / `ContextUsage` | Answered without a round trip |
 | `IProviderSessionFactory.CreateAsync` | Outbound | Method call / session | Seed non-null |
+| `new AgentKitChatReducer(...)` | Inbound | Constructor call | Summarizer non-null, threshold > 0 |
+| `AgentKitChatReducer.ReduceAsync` | In/Out | `IChatReducer` call / `Task` | Messages non-null |
 
 Tools a session carries are `Microsoft.Extensions.AI` `AIFunction` instances, the same tool currency
 the rest of AgentKit uses, so a session accepts exactly what a tool pack produces with no conversion

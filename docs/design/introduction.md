@@ -79,6 +79,9 @@ software items, specifically:
   be exercised end to end without a live model
 - **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
   rotations and provider-session disposal
+- **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
+  consolidating older messages through the summarizer while keeping the system messages and a
+  verbatim tail
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,
@@ -283,11 +286,12 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is flat: its twenty-six units sit directly under the system with no intervening
+`AgentKitCore` is flat: its twenty-seven units sit directly under the system with no intervening
 subsystems. That is now a decision rather than a consequence of smallness, and the system design
-chapter records what those twenty-six units actually look like: three path-safety units, four
-tool-contract units, two pack-contract units, six tool-output units, ten session units, and
-`ImagePromotingChatClient`, which stands apart from all of them.
+chapter records what those twenty-seven units actually look like: three path-safety units, four
+tool-contract units, two pack-contract units, six tool-output units, ten session units, and two
+provider-compatibility units — `ImagePromotingChatClient` and `AgentKitChatReducer` — which stand apart
+from the rest.
 
 No single boundary divides that into coherent halves. A subsystem layer would therefore not draw one
 line but four or five, and each would cost a requirements file, a design document, a verification
@@ -367,6 +371,7 @@ and descriptions as follows:
 
 ```text
 src/DemaConsulting.AgentKit.Core/
+├── AgentKitChatReducer.cs      — consolidation for a host-owned chat history
 ├── AgentSession.cs             — the session contract and the per-turn response
 ├── AgentSessionOptions.cs      — what an application configures about one session
 ├── CompactingAgentSession.cs   — the implementation that sequences turns and rotations

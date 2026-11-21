@@ -290,6 +290,20 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolOutputStore.cs"  # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputStoreTests.cs"  # unit tests
 
+  # AgentKitCore-AgentKitChatReducer Review (one per unit)
+  - id: AgentKitCore-AgentKitChatReducer
+    title: Review that AgentKitCore AgentKitChatReducer Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+      - "docs/design/agent-kit-core/summarizer.md"
+    paths:
+      - "docs/reqstream/agent-kit-core/agent-kit-chat-reducer.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/agent-kit-chat-reducer.md"  # unit design
+      - "docs/verification/agent-kit-core/agent-kit-chat-reducer.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/AgentKitChatReducer.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/AgentKitChatReducerTests.cs"  # unit tests
+
   # AgentKitCore-ToolOutputRetention Review (one per unit)
   - id: AgentKitCore-ToolOutputRetention
     title: Review that AgentKitCore ToolOutputRetention Implementation is Correct

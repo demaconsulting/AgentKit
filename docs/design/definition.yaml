@@ -33,6 +33,7 @@ input-files:
   - docs/design/agent-kit-core/provider-session.md
   - docs/design/agent-kit-core/in-memory-provider-session.md
   - docs/design/agent-kit-core/compacting-agent-session.md
+  - docs/design/agent-kit-core/agent-kit-chat-reducer.md
   - docs/design/agent-kit-tools.md
   - docs/design/agent-kit-tools/image.md
   - docs/design/agent-kit-tools/image/image-auto-crop-tool.md

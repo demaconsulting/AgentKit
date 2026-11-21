@@ -68,3 +68,15 @@ sections:
             tags: [ots]
             tests:
               - GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata
+          - id: AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer
+            title: >-
+              Microsoft.Extensions.AI.Abstractions shall provide the IChatReducer contract through
+              which a host-owned chat history is reduced.
+            justification: |
+              IChatReducer is the provider-neutral contract a chat history provider or a reducing
+              chat client calls to shrink a history before it is sent. AgentKitChatReducer
+              implements it, and AgentKit's tests that call ReduceAsync through the interface prove
+              the contract carries a history in and the reduced history out.
+            tags: [ots]
+            tests:
+              - AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail

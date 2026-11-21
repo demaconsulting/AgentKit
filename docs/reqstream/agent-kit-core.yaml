@@ -275,6 +275,35 @@ sections:
         tests:
           - AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused
 
+      - id: AgentKitCore-Compaction-HostOwnedHistoryReducer
+        title: >-
+          The library shall let a host that owns its chat history reduce it through the library's
+          consolidation, consolidating older messages through the injected summarizer and
+          consolidation prompt into one record while keeping system messages and the most recent
+          whole turns verbatim.
+        tags: [system]
+        justification: |
+          Not every host adopts the library's session engine: an agent framework's chat-client
+          agent, or a raw chat-client pipeline, owns its history and offers a reducer hook instead.
+          Such a host still needs a long conversation to fit its context window without losing named
+          facts, decisions and outstanding work, which is what the library's consolidation prompt
+          preserves. The reducer is a reduced-fidelity option — one record, one fixed level, no
+          rotation, character estimates rather than provider-reported usage — and the session engine
+          remains the full-fidelity option and the only one where the runtime owns the history.
+        children:
+          - AgentKitCore-AgentKitChatReducer-UnderThresholdUnchanged
+          - AgentKitCore-AgentKitChatReducer-KeepsSystemAndVerbatimTail
+          - AgentKitCore-AgentKitChatReducer-ToolPairsIndivisible
+          - AgentKitCore-AgentKitChatReducer-ConsolidatesThroughSummarizer
+          - AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord
+          - AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory
+          - AgentKitCore-AgentKitChatReducer-NoImageBytesInMaterial
+          - AgentKitCore-AgentKitChatReducer-RejectsInvalidArguments
+          - AgentKitCore-AgentKitChatReducer-HonorsCancellation
+          - AgentKit-OTS-MicrosoftExtensionsAIAbstractions-ChatReducer
+        tests:
+          - AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail
+
       - id: AgentKitCore-ToolResult-RefusalIsAResult
         title: >-
           The library shall express a refused tool operation as a returned tool result that names

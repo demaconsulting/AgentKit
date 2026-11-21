@@ -30,6 +30,7 @@ public class PublicSurfaceTests
         string[] expected =
         [
             "AccessLevel",
+            "AgentKitChatReducer",
             "AgentSessionOptions",
             "AgentSessionResponse",
             "CompactingAgentSession",

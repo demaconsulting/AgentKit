@@ -571,6 +571,38 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that a host-owned history over the threshold is consolidated through the injected
+    ///     summarizer into one record, keeping the system message and the most recent turns verbatim.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemChatReducer_OverThresholdHistory_IsConsolidatedKeepingTheTail()
+    {
+        // Arrange: a reducer over a deterministic summarizer, and a long history with a system message
+        var summarizer = new FakeSummarizer(request => "The vault code is 4417-BRAVO.");
+        IChatReducer reducer = new AgentKitChatReducer(summarizer, thresholdCharacters: 200, verbatimTurns: 1);
+        var system = new ChatMessage(ChatRole.System, "You are concise.");
+        List<ChatMessage> history = [system, new(ChatRole.User, "Remember: the vault code is 4417-BRAVO.")];
+        history.Add(new ChatMessage(ChatRole.Assistant, "Noted."));
+        for (var turn = 1; turn <= 4; turn++)
+        {
+            history.Add(new ChatMessage(ChatRole.User, "Tell me about topic " + turn + "."));
+            history.Add(new ChatMessage(ChatRole.Assistant, new string('x', 100)));
+        }
+
+        // Act: reduce, as a chat history provider would before retrieval
+        var reduced = (await reducer.ReduceAsync(history, TestContext.Current.CancellationToken)).ToList();
+
+        // Assert: system, one record holding the fact, then the last turn; and the material held the fact
+        Assert.Equal(4, reduced.Count);
+        Assert.Same(system, reduced[0]);
+        Assert.Contains("4417-BRAVO", reduced[1].Text, StringComparison.Ordinal);
+        Assert.Same(history[^2], reduced[2]);
+        Assert.Same(history[^1], reduced[3]);
+        Assert.Contains("4417-BRAVO", Assert.Single(summarizer.Requests).Material, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves that a composition retaining large outputs turns an oversized custom tool's result
     ///     into a bounded preview whose reference reads back, and searches, the full output.
     /// </summary>

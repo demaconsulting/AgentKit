@@ -79,6 +79,9 @@ constituent software items, specifically:
   be exercised end to end without a live model
 - **CompactingAgentSession (Unit)** — The implementation that sequences turns, usage reads,
   rotations and provider-session disposal
+- **AgentKitChatReducer (Unit)** — A chat reducer for a host that owns its chat history,
+  consolidating older messages through the summarizer while keeping the system messages and a
+  verbatim tail
 - **AgentKitTools (System)** — A general-purpose capability package of guarded tool families
   built on the AgentKitCore contract, organized as one subsystem per tool family
 - **TextFile (Subsystem)** — The text file tool family: policy-governed searching, reading,

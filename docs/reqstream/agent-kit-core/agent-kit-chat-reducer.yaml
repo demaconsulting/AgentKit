@@ -1,0 +1,116 @@
+---
+# Software Unit Requirements for AgentKitChatReducer
+#
+# These requirements describe the design-level behavior of the AgentKitChatReducer unit, the
+# chat reducer that consolidates the older part of a host-owned history through the injected
+# summarizer and the library's consolidation prompt.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: AgentKitChatReducer Requirements
+        requirements:
+          - id: AgentKitCore-AgentKitChatReducer-UnderThresholdUnchanged
+            title: >-
+              The chat reducer shall return a history whose estimated size is within its threshold
+              unchanged, without consulting the summarizer.
+            justification: |
+              A history-provider hook may run the reducer before every request. A history that fits
+              must cost nothing — no model call and no rewritten messages — or the hook taxes every
+              ordinary turn.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_UnderThreshold_ReturnsMessagesUnchanged
+
+          - id: AgentKitCore-AgentKitChatReducer-KeepsSystemAndVerbatimTail
+            title: >-
+              The chat reducer shall return, for a history over its threshold, the system messages,
+              then one assistant message carrying the consolidated record, then the configured
+              number of most recent turns unchanged, and shall return the history unchanged when no
+              message precedes those turns.
+            justification: |
+              System messages are instructions rather than history and must survive whole. The most
+              recent turns are what the model is working on and must be read word for word, exactly
+              as the session engine keeps a verbatim tail. Consolidating nothing new buys nothing.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_OverThreshold_KeepsSystemMessagesAndVerbatimTail
+              - AgentKitChatReducer_ReduceAsync_NotEnoughTurns_ReturnsMessagesUnchanged
+
+          - id: AgentKitCore-AgentKitChatReducer-ToolPairsIndivisible
+            title: >-
+              The chat reducer shall begin the kept turns at a user message, so a tool call is never
+              separated from its result.
+            justification: |
+              A history holding a tool result without its call, or a call without its result, is
+              rejected by providers or misread by the model. A turn opens at a user message and holds
+              all of its tool traffic, so a boundary at a user message can never split a pair.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_TailBoundary_StartsAtUserMessage_NeverSplitsToolPair
+
+          - id: AgentKitCore-AgentKitChatReducer-ConsolidatesThroughSummarizer
+            title: >-
+              The chat reducer shall consolidate the older messages through the injected summarizer
+              as one tier-one request carrying the library's aggressiveness clause for the configured
+              compaction level and the older messages rendered as labeled transcript lines.
+            justification: |
+              The value of the reducer is AgentKit's consolidation: the prompt that preserves named
+              facts, decisions, errors and outstanding work. Rendering through the same labeled
+              transcript lines the session engine uses means a summarizer behaves identically under
+              either.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_ConsolidationRequest_UsesConsolidationPromptForLevel
+
+          - id: AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord
+            title: >-
+              The chat reducer shall fold a record an earlier reduction produced into the next
+              consolidation's material as a record, leaving one record in the reduced history.
+            justification: |
+              A host-owned history is reduced repeatedly. Keeping every record would let records
+              accumulate without bound; presenting an old record as something the assistant said
+              would misattribute it. Folding it as a record keeps one consolidated account.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_PreviousRecord_IsFoldedIntoMaterial
+
+          - id: AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory
+            title: >-
+              The chat reducer shall return the history unchanged when the summarizer returns a
+              blank record, and shall report a null record as a contract violation.
+            justification: |
+              A blank record is a summarizer declining; replacing the material with nothing would
+              lose it. A null record breaks the summarizer contract and is reported exactly as the
+              session engine reports it, rather than silently treated as either.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_BlankRecord_ReturnsMessagesUnchanged
+              - AgentKitChatReducer_ReduceAsync_NullRecord_ThrowsInvalidOperationException
+
+          - id: AgentKitCore-AgentKitChatReducer-NoImageBytesInMaterial
+            title: >-
+              The chat reducer shall describe image and other binary content in the consolidation
+              material by its media type and size, never by its bytes.
+            justification: |
+              Base64 image data in the material would flood the summarizer's context window and
+              could never be summarized meaningfully; the fact that an image of a given type and size
+              was exchanged is what the record needs.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_ImageContent_RenderedAsPlaceholderInMaterial
+
+          - id: AgentKitCore-AgentKitChatReducer-RejectsInvalidArguments
+            title: >-
+              The chat reducer shall reject a missing summarizer, a threshold of zero or less, fewer
+              than one verbatim turn, or an undefined compaction level as a programming error.
+            justification: |
+              Each is a configuration mistake in the host that would make every reduction wrong or
+              impossible, reported where it was written.
+            tests:
+              - AgentKitChatReducer_Constructor_InvalidArguments_Throw
+
+          - id: AgentKitCore-AgentKitChatReducer-HonorsCancellation
+            title: >-
+              The chat reducer shall stop with a cancellation when its token is canceled before the
+              reduction or by the time the summarizer answers, whether or not the summarizer observes
+              the token.
+            justification: |
+              A host cancels a request it no longer needs. The summarizer contract only permits an
+              implementation to observe cancellation, so the reducer checks the token itself rather
+              than return a reduction nobody asked for.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_Cancelled_Throws
