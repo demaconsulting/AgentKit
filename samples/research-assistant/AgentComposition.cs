@@ -9,7 +9,6 @@ using DemaConsulting.AgentKit.Tools.Memory;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using DemaConsulting.AgentKit.Tools.Todo;
 using Microsoft.Agents.AI;
-using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -796,7 +795,7 @@ public static class AgentComposition
     /// <param name="options">The options carrying the model and any token.</param>
     /// <param name="corpusRoot">The working directory given to every session.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
-    /// <returns>The Copilot agent factory, session planner, and the client as its cleanup handle.</returns>
+    /// <returns>The Copilot agent factory, session planner, and the runtime as its cleanup handle.</returns>
     private static async Task<ProviderBackend> CreateCopilotBackendAsync(
         CommandLineOptions options,
         string corpusRoot,
@@ -804,47 +803,40 @@ public static class AgentComposition
     {
         var token = options.ResolveGitHubToken();
 
-        // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
-        // runtime's own defaults off and its state in that directory, and AgentKit withholds the
-        // ambient channels - plugins, MCP servers, skills, custom instructions, host environment
-        // context - from the model on every session itself. A per-user application-data folder keeps
-        // that state out of the workspace.
-        var client = new CopilotClient(new CopilotClientOptions
-        {
-            Mode = CopilotClientMode.Empty,
-            Runtime = RuntimeConnection.ForDefault(baseDirectory: Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AgentKit",
-                "research-assistant",
-                "copilot")),
+        // AgentKit starts the runtime itself - Empty mode, the shell's COPILOT_/GITHUB_COPILOT_
+        // variables withheld apart from an allow-listed credential, network and telemetry-off set,
+        // a data directory AgentKit owns - and the host disposes it. A per-user application-data
+        // folder keeps that state out of the workspace. An explicit token wins; with none, the
+        // runtime falls back to the logged-in user, which is what an interactive developer run uses.
+        // A start that fails or is canceled has already released the runtime.
+        var runtime = await CopilotRuntime.StartAsync(
+            new CopilotRuntimeOptions(
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "AgentKit",
+                    "research-assistant",
+                    "copilot-runtime"),
+                gitHubToken: token),
+            cancellationToken);
 
-            // An explicit token wins; with none, fall back to the logged-in user, which is what an
-            // interactive developer run uses.
-            GitHub = new ClientGitHubOptions { Token = token, UseLoggedInUser = token is null },
-        });
-
-        // Built before the first awaited call, so a failure starting the runtime releases through the
-        // same handle the caller would have used. Disposing a client assembled in a catch block
-        // instead would be the second path that drifts.
-        var cleanup = new AsyncDisposableAction(client.DisposeAsync);
+        // Built as soon as the runtime exists, so a later failure releases through the same handle
+        // the caller would have used. Disposing a runtime assembled in a catch block instead would be
+        // the second path that drifts.
+        var cleanup = new AsyncDisposableAction(runtime.DisposeAsync);
 
         try
         {
-            // Started through the starter so a runtime that cannot load - most often because a
-            // Copilot CLI shell set COPILOT_CLI_PATH - fails with an error that says so.
-            await CopilotClientStarter.StartAsync(client, cancellationToken);
-
             var providerSessions = new CopilotProviderSessionFactory(
-                client,
+                runtime,
                 options.Model,
                 options.ContextWindow,
                 workingDirectory: corpusRoot);
-            var summarizer = new CopilotSummarizer(client, options.SummaryModel);
+            var summarizer = new CopilotSummarizer(runtime, options.SummaryModel);
 
             return new ProviderBackend(
                 (tools, instructions, name) =>
                     CopilotAgentFactory.Create(
-                        client,
+                        runtime,
                         tools,
                         instructions,
                         name: name,
@@ -866,9 +858,9 @@ public static class AgentComposition
         }
         catch
         {
-            // Everything after the client is started is inside the guard, not just the start itself.
-            // The factory validates its ceiling, so a non-positive window throws here - and a catch
-            // that covered only StartAsync would leave a started client alive with nothing holding it.
+            // Everything after the runtime is started is inside the guard. The factory validates its
+            // ceiling, so a non-positive window throws here - and without the guard a started runtime
+            // would be left alive with nothing holding it.
             await cleanup.DisposeAsync();
             throw;
         }
@@ -1014,7 +1006,7 @@ public static class AgentComposition
     /// </summary>
     /// <remarks>
     ///     Used to present several differently shaped resources — an async-disposable Copilot
-    ///     client, a disposable HTTP client, an embedding generator — through one handle, so the
+    ///     runtime, a disposable HTTP client, an embedding generator — through one handle, so the
     ///     host's cleanup is uniform and provider-neutral.
     /// </remarks>
     private sealed class AsyncDisposableAction : IAsyncDisposable

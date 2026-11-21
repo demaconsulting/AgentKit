@@ -1,4 +1,5 @@
 using DemaConsulting.AgentKit.Core;
+using Microsoft.Copilot;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 
@@ -212,12 +213,54 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
-    ///     Proves a missing client is refused where the application composed its provider.
+    ///     Proves a missing runtime is refused where the application composed its provider.
     /// </summary>
     [Fact]
-    public void CopilotSummarizer_Constructor_NullClient_Throws()
+    public void CopilotSummarizer_Constructor_NullRuntime_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new CopilotSummarizer(null!));
+    }
+
+    /// <summary>
+    ///     Proves a summarizer never starts its runtime again once the host has disposed it. The SDK
+    ///     restarts a disposed client on demand, so a consolidation that reached the client would
+    ///     bring a runtime the host had stopped back to life.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSummarizer_ConsolidateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime()
+    {
+        // Arrange: a summarizer on a runtime whose client can never start, so an attempt to start it
+        // would fail as a start failure rather than as the runtime's disposal
+        var runtime = RuntimeThatCannotStart();
+        var summarizer = new CopilotSummarizer(runtime);
+        await runtime.DisposeAsync();
+
+        // Act
+        var refused = await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => summarizer.ConsolidateAsync(Request(), TestContext.Current.CancellationToken));
+
+        // Assert: refused by the runtime itself, before any start was attempted
+        Assert.Equal(nameof(CopilotRuntime), refused.ObjectName);
+    }
+
+    /// <summary>
+    ///     Builds a runtime over a client that can never start: its runtime path names no file, so
+    ///     an attempt to start it fails, spawning nothing, rather than succeeding unseen.
+    /// </summary>
+    /// <returns>The runtime. Nothing has been started.</returns>
+    private static CopilotRuntime RuntimeThatCannotStart()
+    {
+        var temporary = Path.GetTempPath();
+        var unique = Guid.NewGuid().ToString("N");
+        return new CopilotRuntime(
+            new CopilotClient(new CopilotClientOptions
+            {
+                Mode = CopilotClientMode.Empty,
+                Runtime = RuntimeConnection.ForSpawnedStdio(
+                    path: Path.Combine(temporary, "agentkit-no-such-runtime-" + unique),
+                    baseDirectory: Path.Combine(temporary, unique)),
+            }),
+            Path.Combine(temporary, unique));
     }
 
     /// <summary>

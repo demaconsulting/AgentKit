@@ -374,30 +374,105 @@ public class AgentKitAgentsCopilotTests
     }
 
     /// <summary>
-    ///     Proves a host whose Copilot client cannot start because an ambient runtime path redirects
-    ///     it is told so, by name, with the original failure kept.
+    ///     Proves a host whose Copilot runtime cannot start is told why — the runtime's own error and
+    ///     the missing direct SDK reference that most often causes it — with the original failure kept.
     /// </summary>
     [Fact]
-    public async Task AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained()
+    public async Task AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained()
     {
-        // Arrange: a start that fails the way an in-process runtime does when redirected, naming
-        // the directory the variable points into
-        var cliPath = Path.Combine(Path.GetTempPath(), "copilot-cli", "copilot");
-        var directory = Path.GetDirectoryName(cliPath)!;
+        // Arrange: a start that fails the way the SDK does when no runtime was provisioned
         var cause = new InvalidOperationException(
-            $"FFI runtime library not found. Looked for '{Path.Combine(directory, "copilot_runtime.dll")}'.");
+            $"Copilot runtime wrapper not found at '{Path.Combine(AppContext.BaseDirectory, "runtimes", "native", "copilot-runtime")}'.");
 
         // Act
-        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClientStarter.StartAsync(
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotRuntime.StartClientAsync(
             _ => Task.FromException(cause),
-            name => name == "COPILOT_CLI_PATH" ? cliPath : null,
             TestContext.Current.CancellationToken));
 
         // Assert
         Assert.Contains(cause.Message, failure.Message, StringComparison.Ordinal);
-        Assert.Contains("COPILOT_CLI_PATH", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("PackageReference to Microsoft.Copilot.SDK", failure.Message, StringComparison.Ordinal);
         Assert.Same(cause, failure.InnerException);
+    }
+
+    /// <summary>
+    ///     Proves the runtime AgentKit owns is confined before it starts, whatever the host's
+    ///     environment holds: Empty mode, the bundled runtime spawned over stdio on the prepared data
+    ///     directory, none of the host's Copilot configuration variables beyond the pass-through set,
+    ///     and no client-level channel of injected capability.
+    /// </summary>
+    [Fact]
+    public void AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined()
+    {
+        // Arrange: a hostile host environment and a fresh data directory
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "agentkit-copilot-system-tests", Guid.NewGuid().ToString("N"));
+        var host = new System.Collections.Hashtable
+        {
+            ["COPILOT_CLI_PATH"] = "/elsewhere/copilot",
+            ["COPILOT_ALLOW_ALL"] = "1",
+            ["COPILOT_SKILLS_DIRS"] = "/shared/skills",
+            ["GITHUB_COPILOT_MCP_JSON_FROM_INPUT"] = "{}",
+            ["GH_TOKEN"] = "gh",
+        };
+
+        try
+        {
+            // Act
+            var prepared = CopilotRuntime.PrepareDataDirectory(dataDirectory);
+            var options = CopilotRuntime.BuildClientOptions(new CopilotRuntimeOptions(dataDirectory), prepared, host);
+
+            // Assert
+            var connection = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime);
+            Assert.Equal(CopilotClientMode.Empty, options.Mode);
+            Assert.Null(connection.Path);
+            Assert.Null(connection.Args);
+            Assert.Equal(Path.GetFullPath(dataDirectory), connection.BaseDirectory);
+            Assert.NotNull(connection.Environment);
+            Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("COPILOT_", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(connection.Environment.Keys, name => name.StartsWith("GITHUB_COPILOT_", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("gh", connection.Environment["GH_TOKEN"]);
+            Assert.Empty(options.Plugins.BuiltinDirectories ?? []);
+            Assert.Null(options.SessionFs);
+            Assert.Null(options.Extensions.LaunchProvider);
+        }
+        finally
+        {
+            if (Directory.Exists(dataDirectory))
+            {
+                Directory.Delete(dataDirectory, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Proves a host cannot start the runtime on a data directory another tool populated — such as
+    ///     a Copilot CLI home that configures an MCP server — so no runtime ever reads it.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused()
+    {
+        // Arrange: a non-empty data directory AgentKit did not create
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "agentkit-copilot-system-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(dataDirectory, "mcp-config.json"),
+            "{\"mcpServers\":{\"probe\":{\"type\":\"local\",\"command\":\"probe\"}}}",
+            TestContext.Current.CancellationToken);
+
+        try
+        {
+            // Act
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => CopilotRuntime.StartAsync(new CopilotRuntimeOptions(dataDirectory), TestContext.Current.CancellationToken));
+
+            // Assert
+            Assert.Contains(dataDirectory, failure.Message, StringComparison.Ordinal);
+            Assert.Contains("not created by AgentKit", failure.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dataDirectory, recursive: true);
+        }
     }
 
     /// <summary>

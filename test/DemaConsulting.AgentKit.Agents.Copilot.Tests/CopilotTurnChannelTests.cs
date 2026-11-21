@@ -1,3 +1,4 @@
+using Microsoft.Copilot;
 using Microsoft.Copilot.Rpc;
 
 namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
@@ -8,7 +9,7 @@ namespace DemaConsulting.AgentKit.Agents.Copilot.Tests;
 ///     channel detaches and then deletes, and neither step's failure escapes; every discovered MCP
 ///     server is disabled before a session is created, the session's installed plugins are cleared,
 ///     any server still enabled is disabled and verified, and a session that cannot be sealed is
-///     refused and abandoned.
+///     refused and abandoned; and no production opener starts a runtime the host has disposed.
 /// </summary>
 /// <remarks>
 ///     The production channel wraps the SDK's session type, which cannot be constructed in a test,
@@ -301,6 +302,65 @@ public class CopilotTurnChannelTests
         // Assert
         Assert.NotNull(patch.Installed);
         Assert.Empty(patch.Installed);
+    }
+
+    /// <summary>
+    ///     Proves no production opener starts a runtime the host has disposed. The SDK restarts a
+    ///     disposed client on demand, so each opener holds the runtime and reads its client at every
+    ///     step: an opener made before the disposal, and each confining open, fails with the
+    ///     runtime's disposal rather than as a start failure.
+    /// </summary>
+    [Fact]
+    public async Task CopilotSessionChannel_OpenersOnADisposedRuntime_FailWithoutStartingTheRuntime()
+    {
+        // Arrange: openers on a runtime whose client can never start, so an attempt to start it
+        // would fail as a start failure rather than as the runtime's disposal
+        var runtime = RuntimeThatCannotStart();
+        var open = CopilotSessionChannel.Open(runtime);
+        var openRetained = CopilotSessionChannel.OpenRetained(runtime);
+        var resume = CopilotSessionChannel.Resume(runtime);
+        await runtime.DisposeAsync();
+        var token = TestContext.Current.CancellationToken;
+
+        // Act
+        var refusals = new[]
+        {
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => open(new CreateSessionOptions(), token)),
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => openRetained(new CreateSessionOptions(), token)),
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => resume("session-1", new ResumeSessionOptions(), token)),
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => CopilotSessionChannel.CreateConfinedSessionAsync(runtime, new CreateSessionOptions(), token)),
+            await Assert.ThrowsAsync<ObjectDisposedException>(
+                () => CopilotSessionChannel.ResumeConfinedSessionAsync(
+                    runtime,
+                    "session-1",
+                    new ResumeSessionOptions(),
+                    token)),
+        };
+
+        // Assert: each was refused by the runtime itself, before any start was attempted
+        Assert.All(refusals, refused => Assert.Equal(nameof(CopilotRuntime), refused.ObjectName));
+    }
+
+    /// <summary>
+    ///     Builds a runtime over a client that can never start: its runtime path names no file, so
+    ///     an attempt to start it fails, spawning nothing, rather than succeeding unseen.
+    /// </summary>
+    /// <returns>The runtime. Nothing has been started.</returns>
+    private static CopilotRuntime RuntimeThatCannotStart()
+    {
+        var temporary = Path.GetTempPath();
+        var unique = Guid.NewGuid().ToString("N");
+        return new CopilotRuntime(
+            new CopilotClient(new CopilotClientOptions
+            {
+                Mode = CopilotClientMode.Empty,
+                Runtime = RuntimeConnection.ForSpawnedStdio(
+                    path: Path.Combine(temporary, "agentkit-no-such-runtime-" + unique),
+                    baseDirectory: Path.Combine(temporary, unique)),
+            }),
+            Path.Combine(temporary, unique));
     }
 
     /// <summary>

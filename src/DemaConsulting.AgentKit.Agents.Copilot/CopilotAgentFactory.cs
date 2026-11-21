@@ -7,9 +7,9 @@ using Microsoft.Extensions.AI;
 namespace DemaConsulting.AgentKit.Agents.Copilot;
 
 /// <summary>
-///     Builds a Microsoft Agent Framework <see cref="AIAgent"/> from a GitHub Copilot
-///     <see cref="CopilotClient"/> and a supplied tool list, suppressing the built-in tools the
-///     Copilot runtime would otherwise inject.
+///     Builds a Microsoft Agent Framework <see cref="AIAgent"/> on a GitHub Copilot runtime AgentKit
+///     owns (<see cref="CopilotRuntime"/>) and a supplied tool list, suppressing the built-in tools
+///     the Copilot runtime would otherwise inject.
 /// </summary>
 /// <remarks>
 ///     <para>
@@ -67,40 +67,55 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     as overriding a built-in. See <see cref="ReservedBuiltInToolNames"/>.
 ///     </para>
 ///     <para>
-///     <b>Ownership contract.</b> The host constructs, starts, and disposes the
-///     <see cref="CopilotClient"/>; this factory takes no ownership of it, and nothing it builds
-///     ever disposes it. The rule is unambiguous: <em>whoever created the client disposes it</em>.
+///     <b>Runtime ownership.</b> Every agent runs on a <see cref="CopilotRuntime"/>, which AgentKit
+///     starts itself: in <c>CopilotClientMode.Empty</c>, as a child process whose environment
+///     withholds the host's <c>COPILOT_</c>/<c>GITHUB_COPILOT_</c> variables apart from an
+///     allow-listed credential, network and telemetry-off set, on a data directory
+///     AgentKit owns. There is no overload that takes a host's own <c>CopilotClient</c>, because
+///     none of the guarantees below could hold on a client of unknown mode, data directory or
+///     environment. Whoever starts the runtime disposes it; this factory takes no ownership of it,
+///     and nothing it builds ever disposes it.
 ///     </para>
 ///     <para>
-///     <b>Client precondition: <c>CopilotClientMode.Empty</c> on a data directory the host
-///     owns.</b> The integration requires it, and AgentKit cannot enforce it: the SDK exposes no
-///     way to read a client's mode back. AgentKit therefore does not rely on the mode for anything
-///     that reaches the model. Independently of the mode, it applies on every session each
-///     control that the session's options and the live session can reach: the custom
-///     allow-list and the pinned default-deny permission handling; every runtime option channel
-///     — skills, custom instructions, hooks, memory, sub-agents, git operations and commit
-///     co-author trailers, extensions, the cross-session store; the host environment context in
-///     the system prompt; experimental features; embedding retrieval; the session's installed
-///     plugins; and every MCP server the session lists, disabled and then verified, with the
-///     session refused if one stays enabled. Servers the runtime's MCP discovery returns are named
-///     in the session's disabled servers before the session exists, so the runtime does not start
-///     or authenticate them. The SDK documents that discovery as covering the user, workspace,
-///     plugin and builtin sources. A server from a source it cannot enumerate before creation,
-///     such as a managed catalog or a signed-in account, may start, and authenticate with the host
-///     environment, while the session is created. The seal disables any such server before any
-///     turn runs, and the session is refused if one stays enabled. This guarantees that the model
-///     cannot reach an ambient MCP server; it does not prevent one from running. A host that must
-///     also keep such servers from running supplies a <c>CopilotClientMode.Empty</c> client on a
-///     clean data directory it owns. That removes the sources the directory holds, namely its MCP
-///     configuration and installed plugins. SDK 2.0.1 does not document that Empty mode or a clean
-///     data directory keeps a managed-catalog or account server from starting; an account server
-///     follows the signed-in account and its organization's policy. The client therefore narrows
-///     those sources rather than guaranteeing that none starts. What a client that violates the
-///     precondition can still add is host-side
-///     behavior no session option reaches: settings in a shared data directory such as
-///     user-level hooks, credential storage in the system keychain rather than the data
-///     directory, telemetry and runtime file logging, and anything the host attaches at client
-///     level, such as plugin directories or extensions. Those are the host's to control.
+///     <b>What reaches a session, per source.</b> On every session, AgentKit applies each control
+///     that the session's options and the live session can reach: the custom allow-list and the
+///     pinned default-deny permission handling; every runtime option channel — skills, custom
+///     instructions, hooks, memory, sub-agents, git operations and commit co-author trailers,
+///     extensions, the cross-session store; the host environment context in the system prompt;
+///     experimental features; embedding retrieval; and the session's installed plugins. For MCP
+///     servers, before any session exists:
+///     </para>
+///     <list type="bullet">
+///       <item><description>
+///         <b>The built-in GitHub MCP server</b> is named disabled, so it is not started or
+///         authenticated. Empty mode alone would start it on the first turn.
+///       </description></item>
+///       <item><description>
+///         <b>User-configured servers</b> cannot exist in a fresh data directory, and any added later
+///         are found by the runtime's discovery and disabled before the session is created. Empty
+///         mode alone would run them.
+///       </description></item>
+///       <item><description>
+///         <b>Workspace MCP configuration</b> is not loaded, because configuration discovery is off
+///         and the data directory trusts no folder; a workspace server that discovery reports is
+///         disabled as well.
+///       </description></item>
+///       <item><description>
+///         <b>Plugins</b>: none is installed in a fresh data directory, and plugin directories cannot
+///         be configured.
+///       </description></item>
+///     </list>
+///     <para>
+///     These sources are prevented: the opt-in live suite shows the built-in server never starting,
+///     probe servers in the data directory and in a workspace never executing, and no plugin
+///     installed, while each of those servers does start without its protection. Servers from a managed catalog or a signed-in account follow organization policy and
+///     the account; the SDK cannot enumerate them before a session exists, so one may start, and
+///     authenticate, while the session is created. AgentKit then disables every server the session's
+///     MCP configuration lists, before any turn runs, and refuses the session if one stays enabled.
+///     This contains such a server; it does not prevent it. The session's configuration listing is
+///     not complete — it does not report the built-in GitHub server even while that server runs — so
+///     this post-create seal is defense in depth, not proof of absence. In every case, no MCP tool is
+///     on a session's allow-list.
 ///     </para>
 ///     <para>
 ///     <b>No image-promoting decorator.</b> Unlike the <c>IChatClient</c> adapter, this factory
@@ -188,8 +203,8 @@ public static class CopilotAgentFactory
     .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    ///     Builds an agent from a Copilot client and a supplied tool list, with the runtime's
-    ///     built-in tools suppressed.
+    ///     Builds an agent on a Copilot runtime AgentKit owns and a supplied tool list, with the
+    ///     runtime's built-in tools suppressed.
     /// </summary>
     /// <remarks>
     ///     <paramref name="model"/> is the last parameter rather than sitting beside
@@ -204,12 +219,10 @@ public static class CopilotAgentFactory
     ///     it: the session is refused rather than handed to the model with that server available.
     ///     </para>
     /// </remarks>
-    /// <param name="client">
-    ///     The Copilot client the agent runs on. Must not be <see langword="null"/>. The host owns
-    ///     the client: it constructs, starts, and disposes it, and nothing this factory builds ever
-    ///     disposes it. Must be in <c>CopilotClientMode.Empty</c> on a data directory the host
-    ///     owns — a precondition AgentKit cannot detect; see the remarks on this class. A client not yet
-    ///     started is started by the agent's first run, through <see cref="CopilotClientStarter"/>.
+    /// <param name="runtime">
+    ///     The Copilot runtime the agent runs on, from <see cref="CopilotRuntime.StartAsync"/>. Must
+    ///     not be <see langword="null"/> or disposed. Whoever started it disposes it; nothing this
+    ///     factory builds ever disposes it, and a run made after it was disposed fails.
     /// </param>
     /// <param name="tools">
     ///     The tools the agent may call. Must not be <see langword="null"/> or empty, must contain
@@ -237,17 +250,18 @@ public static class CopilotAgentFactory
     /// <param name="workingDirectory">
     ///     The working directory the runtime gives the agent's sessions — typically the root of the
     ///     workspace the tools are confined to. When <see langword="null"/>, empty, or whitespace,
-    ///     none is set and the runtime uses the host process's working directory. In-process hosting
-    ///     has no client-level working directory, so this is the only place a host can set one
+    ///     none is set and the runtime uses the host process's working directory. AgentKit sets no
+    ///     working directory on the runtime process, so this is the only place a host can set one
     ///     without configuring a session by hand, which would forfeit the confinement. It is not
     ///     validated here: the runtime resolves it when a session is created. It grants nothing —
     ///     what the agent may read or write is decided by the tools' own path policy.
     /// </param>
-    /// <returns>An agent that runs on the supplied client with only the supplied tools available.</returns>
+    /// <returns>An agent that runs on the supplied runtime with only the supplied tools available.</returns>
     /// <exception cref="ArgumentNullException">
-    ///     <paramref name="client"/> or <paramref name="tools"/> is <see langword="null"/>, or a
+    ///     <paramref name="runtime"/> or <paramref name="tools"/> is <see langword="null"/>, or a
     ///     tool in <paramref name="tools"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ObjectDisposedException"><paramref name="runtime"/> has been disposed.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="tools"/> is empty, two tools carry the same name, or a tool carries the
     ///     name of one of the Copilot runtime's built-in tools — <c>view</c>, <c>powershell</c>,
@@ -255,20 +269,20 @@ public static class CopilotAgentFactory
     /// </exception>
     /// <example>
     ///     <para>
-    ///     Assembling a complete agent on the GitHub Copilot runtime. The host constructs and starts
-    ///     the client and keeps ownership of it; this factory derives the session allow-list from
-    ///     the same tool list it publishes, which is what suppresses the runtime's built-in shell,
-    ///     fetch and file tools. In a real application <c>textFiles</c> and
+    ///     Assembling a complete agent on the GitHub Copilot runtime. The host starts the runtime once
+    ///     with <see cref="CopilotRuntime.StartAsync"/> and disposes it when finished; this factory
+    ///     derives the session allow-list from the same tool list it publishes, which is what
+    ///     suppresses the runtime's built-in shell, fetch and file tools. In a real application <c>textFiles</c> and
     ///     <c>images</c> are <c>new TextFilePack()</c> and <c>new ImagePack()</c> from
     ///     the <c>DemaConsulting.AgentKit.Tools</c> package.
     ///     </para>
     ///     <code>
-    ///     public async Task&lt;AIAgent&gt; CreateAgentAsync(
+    ///     public AIAgent CreateAgent(
+    ///         CopilotRuntime runtime,
     ///         string workspace,
     ///         string session,
     ///         IToolPack textFiles,
-    ///         IToolPack images,
-    ///         CancellationToken cancellationToken)
+    ///         IToolPack images)
     ///     {
     ///         // The anchor is the workspace; the grants say what may be read and what may be written.
     ///         var policy = new PathPolicy(
@@ -284,21 +298,11 @@ public static class CopilotAgentFactory
     ///                 .Build()
     ///         ];
     ///
-    ///         // The host owns the client: it constructs, starts, and disposes it. The integration
-    ///         // requires Empty mode on a data directory the host owns; AgentKit withholds the
-    ///         // runtime's ambient channels from the model on every session itself.
-    ///         var client = new CopilotClient(new CopilotClientOptions
-    ///         {
-    ///             Mode = CopilotClientMode.Empty,
-    ///             Runtime = RuntimeConnection.ForInProcess(baseDirectory: session),
-    ///             GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-    ///         });
-    ///
-    ///         // Started through the starter so a runtime that cannot load says why.
-    ///         await CopilotClientStarter.StartAsync(client, cancellationToken);
-    ///
+    ///         // The runtime is AgentKit's: Empty mode, the host's COPILOT_ variables withheld apart
+    ///         // from an allow-listed credential, network and telemetry-off set, a data directory
+    ///         // AgentKit owns. The host disposes it; the agent never does.
     ///         return CopilotAgentFactory.Create(
-    ///             client,
+    ///             runtime,
     ///             tools,
     ///             instructions: "You are a document assistant confined to the permitted locations.",
     ///             name: "document-assistant",
@@ -307,7 +311,7 @@ public static class CopilotAgentFactory
     ///     </code>
     /// </example>
     public static AIAgent Create(
-        CopilotClient client,
+        CopilotRuntime runtime,
         IList<AIFunction> tools,
         string? instructions = null,
         Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? onPermissionRequest = null,
@@ -315,11 +319,14 @@ public static class CopilotAgentFactory
         string? model = null,
         string? workingDirectory = null)
     {
-        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(runtime);
+        runtime.ThrowIfDisposed();
 
         // A conversation's sessions are kept when released, because the conversation continues on
         // the next run; a run made without a conversation deletes its session, because nothing could
-        // ever resume it. The host still owns the client; nothing here disposes it.
+        // ever resume it. The host still owns the runtime; nothing here disposes it. The channels
+        // take the runtime, not its client, and read the client at every open, resume and release,
+        // so a runtime the host has disposed is refused rather than restarted by the SDK.
         return CreateAgent(
             tools,
             instructions,
@@ -327,9 +334,9 @@ public static class CopilotAgentFactory
             name,
             model,
             workingDirectory,
-            CopilotSessionChannel.OpenRetained(client),
-            CopilotSessionChannel.Resume(client),
-            CopilotSessionChannel.Open(client));
+            CopilotSessionChannel.OpenRetained(runtime),
+            CopilotSessionChannel.Resume(runtime),
+            CopilotSessionChannel.Open(runtime));
     }
 
     /// <summary>
@@ -338,8 +345,8 @@ public static class CopilotAgentFactory
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     The test seam behind <see cref="Create"/>: production passes channels over the host's
-    ///     client, a test passes a scripted runtime, and everything else — validation, the snapshot of
+    ///     The test seam behind <see cref="Create"/>: production passes channels over the runtime,
+    ///     a test passes a scripted runtime, and everything else — validation, the snapshot of
     ///     the tool list, and the per-run configuration builders — is shared.
     ///     </para>
     ///     <para>

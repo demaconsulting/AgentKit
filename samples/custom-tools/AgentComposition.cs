@@ -3,7 +3,6 @@ using DemaConsulting.AgentKit.Agents.Copilot;
 using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using Microsoft.Agents.AI;
-using Microsoft.Copilot;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -13,7 +12,7 @@ namespace DemaConsulting.AgentKit.Samples.CustomTools;
 ///     A built agent paired with the handle that releases whatever runtime resources it owns.
 /// </summary>
 /// <remarks>
-///     The two providers own different kinds of resource — a Copilot client is
+///     The two providers own different kinds of resource — a Copilot runtime is
 ///     <see cref="IAsyncDisposable"/>, an Ollama <see cref="System.Net.Http.HttpClient"/> is
 ///     <see cref="IDisposable"/> — so the composition returns a single uniform cleanup handle. That
 ///     is what lets every line after construction be provider-neutral: the host disposes one thing
@@ -127,7 +126,7 @@ public static class AgentComposition
     /// </summary>
     /// <remarks>
     ///     The tool set is composed identically for both branches before the switch, so the only
-    ///     provider-specific work is choosing a factory and, for Copilot, starting the client. Each
+    ///     provider-specific work is choosing a factory and, for Copilot, starting the runtime. Each
     ///     branch returns the built agent together with a cleanup handle, absorbing the lifetime
     ///     difference at the boundary so no caller has to know it.
     /// </remarks>
@@ -163,8 +162,8 @@ public static class AgentComposition
     ///     Builds an agent on the GitHub Copilot runtime, which the host owns and disposes.
     /// </summary>
     /// <remarks>
-    ///     The client is started here and never disposed by the agent the factory builds, so this
-    ///     method returns the client as the cleanup handle. The Copilot adapter
+    ///     The runtime is started here and never disposed by the agent the factory builds, so this
+    ///     method returns the runtime as the cleanup handle. The Copilot adapter
     ///     suppresses the runtime's built-in tools by deriving the session allow-list from exactly
     ///     these tools — so the agent is offered only the shipped and custom tools composed above.
     /// </remarks>
@@ -172,50 +171,42 @@ public static class AgentComposition
     /// <param name="tools">The composed tool set; also the source of the suppression allow-list.</param>
     /// <param name="instructions">The system instructions built for this run.</param>
     /// <param name="cancellationToken">Cancels a slow start.</param>
-    /// <returns>The Copilot agent and the client as its cleanup handle.</returns>
+    /// <returns>The Copilot agent and the runtime as its cleanup handle.</returns>
     private static async Task<AgentSetup> CreateCopilotAgentAsync(
         string workspaceRoot,
         IList<AIFunction> tools,
         string instructions,
         CancellationToken cancellationToken)
     {
-        // The host constructs, starts, and disposes the client; the factory takes no ownership.
-        // AgentKit requires Empty mode on a data directory the host owns: Empty mode keeps the
-        // runtime's own defaults off and its state in that directory, and AgentKit withholds the
-        // ambient channels - plugins, MCP servers, skills, custom instructions, host environment
-        // context - from the model on every session itself. A per-user application-data folder keeps
-        // that state out of the workspace.
-        var client = new CopilotClient(new CopilotClientOptions
-        {
-            Mode = CopilotClientMode.Empty,
-            Runtime = RuntimeConnection.ForDefault(baseDirectory: Path.Combine(
+        // AgentKit starts the runtime itself - Empty mode, the shell's COPILOT_/GITHUB_COPILOT_
+        // variables withheld apart from an allow-listed credential, network and telemetry-off set,
+        // a data directory AgentKit owns - and the host disposes it; the factory takes no
+        // ownership. A per-user application-data folder keeps that state out of the workspace. A
+        // start that fails or is canceled has already released the runtime.
+        var runtime = await CopilotRuntime.StartAsync(
+            new CopilotRuntimeOptions(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "AgentKit",
                 "custom-tools",
-                "copilot")),
-            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-        });
+                "copilot-runtime")),
+            cancellationToken);
 
         try
         {
-            // Started through the starter so a runtime that cannot load - most often because a
-            // Copilot CLI shell set COPILOT_CLI_PATH - fails with an error that says so.
-            await CopilotClientStarter.StartAsync(client, cancellationToken);
+            var agent = CopilotAgentFactory.Create(
+                runtime,
+                tools,
+                instructions,
+                name: AgentName,
+                workingDirectory: workspaceRoot);
+            return new AgentSetup(agent, runtime);
         }
         catch
         {
-            // Do not leak a partially started client if StartAsync (or cancellation) fails.
-            await client.DisposeAsync();
+            // Do not leak a started runtime if the agent cannot be built.
+            await runtime.DisposeAsync();
             throw;
         }
-
-        var agent = CopilotAgentFactory.Create(
-            client,
-            tools,
-            instructions,
-            name: AgentName,
-            workingDirectory: workspaceRoot);
-        return new AgentSetup(agent, client);
     }
 
     /// <summary>
@@ -262,7 +253,7 @@ public static class AgentComposition
     /// </summary>
     /// <remarks>
     ///     Used to present a disposable (the Ollama HTTP client) through the same async-disposable
-    ///     handle the Copilot client already satisfies, so the host's cleanup is uniform across
+    ///     handle the Copilot runtime already satisfies, so the host's cleanup is uniform across
     ///     providers.
     /// </remarks>
     private sealed class AsyncDisposableAction : IAsyncDisposable

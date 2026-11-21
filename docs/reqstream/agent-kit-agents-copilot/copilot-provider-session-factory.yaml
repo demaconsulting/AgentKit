@@ -125,19 +125,19 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotProviderSessionFactory-LeavesNothingUnowned
             title: >-
-              The factory shall reject a missing client, a missing channel opener and a missing seed,
+              The factory shall reject a missing runtime, a missing channel opener and a missing seed,
               shall open no session for a creation that was already canceled, and shall release a
               session it opened but could not hand to a provider session.
             justification: |
               Between the create request returning and the provider session taking ownership there is
               a window in which the runtime holds a session nothing references, and a cancellation
               arriving in that window would otherwise discard the only handle to it — the same window
-              the compacting session guards when it adopts a replacement. A missing client or seed is
+              the compacting session guards when it adopts a replacement. A missing runtime or seed is
               a defect in the composing application, refused where it was written; a creation that was
               already canceled costs no session at all, so a canceled rotation leaves nothing behind
               on the runtime.
             tests:
-              - CopilotProviderSessionFactory_Constructor_NullClient_Throws
+              - CopilotProviderSessionFactory_Constructor_NullRuntime_Throws
               - CopilotProviderSessionFactory_Constructor_NullOpener_Throws
               - CopilotProviderSessionFactory_CreateAsync_NullSeed_Throws
               - CopilotProviderSessionFactory_CreateAsync_Canceled_OpensNothing
@@ -149,7 +149,7 @@ sections:
               when it built the factory, and shall leave the working directory to the runtime when
               the host named none.
             justification: |
-              In-process hosting has no client-level working directory, so a compacting conversation
+              The library sets no working directory on the runtime process, so a compacting conversation
               anchored where its host intends needs the setting here, stated once where the provider
               is configured and carried onto every session a rotation creates.
             tests:

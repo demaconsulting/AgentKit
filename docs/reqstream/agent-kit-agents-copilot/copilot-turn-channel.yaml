@@ -41,8 +41,9 @@ sections:
               Copilot client, and its release shall not fail for a session the runtime declined to
               delete.
             justification: |
-              The ownership contract this package records must not regress: the host constructs,
-              starts and disposes the client, and every session a rotation creates is AgentKit's.
+              The ownership contract this package records must not regress: the host starts and
+              disposes the Copilot runtime, whose client every session shares, and every session a
+              rotation creates is AgentKit's.
               Releasing a session alone is documented to preserve its state on disk so it can be
               resumed later, which is the wrong outcome for a rotated session — a long conversation
               would leave one preserved session behind per rotation — so the runtime is also asked to
@@ -130,12 +131,16 @@ sections:
               before creation is what keeps them from starting at all. Servers the runtime's MCP
               discovery returns are named in the session's disabled servers before the session
               exists, so the runtime does not start or authenticate them. The SDK documents that
-              discovery as covering the user, workspace, plugin and builtin sources. A server from a
-              source it cannot enumerate before creation, such as a managed catalog or a signed-in
-              account, may start, and authenticate with the host environment, while the session is
-              created. The seal disables any such server before any turn runs, and the session is
-              refused if one stays enabled. This guarantees that the model cannot reach an ambient
-              MCP server; it does not prevent one from running. Installed plugins — which can
+              discovery as covering the user, workspace, plugin and builtin sources; measured against
+              the live runtime, a server in the runtime's data directory is reported and kept from
+              executing this way. A server from a source it cannot enumerate before creation, such as a
+              managed catalog or a signed-in account, may start, and authenticate, while the session is
+              created. The seal disables every server the session's MCP configuration lists before any
+              turn runs, and the session is refused if one stays enabled: that contains such a server,
+              it does not prevent it. The listing is not complete — measured against the live runtime,
+              it does not report the built-in GitHub server even while that server is connected — so
+              the seal is defense in depth rather than proof that no server runs, and the built-in
+              server is kept from starting by name instead. Installed plugins — which can
               contribute servers, hooks, skills and agents — can be cleared only once the session
               exists, so the session is sealed afterwards: its
               plugins are cleared, every server it still reports enabled is disabled for that session,

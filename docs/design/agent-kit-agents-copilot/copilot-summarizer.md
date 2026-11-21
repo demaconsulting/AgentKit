@@ -38,11 +38,11 @@ session is configured exactly as a conversation session is.
 a consolidation session offers no tools, so there is nothing a working directory could locate, and the
 runtime's default is left in place.
 
-**Ownership.** The `CopilotClient` is the host's and is disposed by the host; every session this
+**Ownership.** The `CopilotRuntime` is the host's and is disposed by the host; every session this
 summarizer creates is its own and is released and deleted by it.
 
-Safe for concurrent use: each call creates a session of its own and shares nothing but the client
-reference and the model name.
+Safe for concurrent use: each call creates a session of its own and shares nothing but the runtime
+and the model name.
 
 ### Data Model
 
@@ -53,20 +53,23 @@ reference and the model name.
 
 ### Key Methods
 
-#### The CopilotSummarizer Constructor (CopilotClient, string?)
+#### The CopilotSummarizer Constructor (CopilotRuntime, string?)
 
 **Purpose:** Hold what every consolidation needs, and nothing else.
 
-**Algorithm:** Reject a null client and build the production channel opener over it — one that
-deletes each session when it is released, because a consolidation session is finished with once it
-has answered. Record the model name without checking it, for the same reason the session factory
+**Algorithm:** Reject a null runtime, check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), and
+build the production channel opener over the runtime — one that deletes each session when it is
+released, because a consolidation session is finished with once it has answered. The opener is handed
+the runtime, not its client, and reads the client at each open and release: the SDK restarts a
+disposed client on demand, so a summarizer that held the client would bring a runtime the host had
+disposed back to life. Record the model name without checking it, for the same reason the session factory
 does: only the runtime knows which models the signed-in user may use.
 
 The model is named separately from the conversation's because consolidation is summarization rather
 than reasoning, so a smaller and cheaper model is usually the right choice — and because it is a
 different *conversation*, so changing it alters nothing the agent can observe.
 
-**Preconditions:** `client` is not null and has been started.
+**Preconditions:** `runtime` is not null and not disposed.
 
 **Postconditions:** A summarizer ready to consolidate, owning nothing disposable.
 
@@ -108,7 +111,9 @@ for.
 
 | Condition | Handling |
 | --- | --- |
-| Null `client` or `opener` | `ArgumentNullException` propagates |
+| Null `runtime` or `opener` | `ArgumentNullException` propagates |
+| Disposed `runtime` | `ObjectDisposedException` propagates |
+| `runtime` disposed after construction | `ObjectDisposedException` from the next consolidation; nothing started |
 | Null `request` | `ArgumentNullException` propagates |
 | Cancellation before opening | `OperationCanceledException`; nothing is opened |
 | Opener returned null | `InvalidOperationException` propagates |
@@ -123,6 +128,8 @@ for.
   *CopilotAgentFactory Unit Design*.
 - **CopilotTurnChannel** — opens and owns each short-lived runtime session; see *CopilotTurnChannel
   Unit Design*.
+- **CopilotRuntime** — the runtime every consolidation runs on, whose client the opener reads at each
+  open and release; see *CopilotRuntime Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient` and `MessageOptions`; see
   *Microsoft.Copilot.SDK Design*.
 

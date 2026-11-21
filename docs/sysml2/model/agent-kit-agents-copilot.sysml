@@ -3,8 +3,10 @@ package AgentKitAgentsCopilot {
 
     doc
     /*
-     * AgentKitAgentsCopilot builds AgentKit's own Microsoft Agent Framework agent from a
-     * Copilot client and a supplied tool list, suppressing the runtime's built-in tools by
+     * AgentKitAgentsCopilot builds AgentKit's own Microsoft Agent Framework agent on a Copilot
+     * runtime it starts and owns (Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables
+     * withheld apart from an allow-listed credential, network and telemetry-off set, a data directory it owns) and a
+     * supplied tool list, suppressing the runtime's built-in tools by
      * deriving a source-qualified session allow-list from the same collection it publishes as the
      * session's tools, and running a conversation that streams, resumes across runs and agent
      * instances, and is confined identically on every run. It also carries an AgentKit Core
@@ -35,9 +37,9 @@ package AgentKitAgentsCopilot {
 
         part copilotAgent : CopilotAgent;
         part copilotAgentFactory : CopilotAgentFactory;
-        part copilotClientStarter : CopilotClientStarter;
         part copilotProviderSession : CopilotProviderSession;
         part copilotProviderSessionFactory : CopilotProviderSessionFactory;
+        part copilotRuntime : CopilotRuntime;
         part copilotSessionObserver : CopilotSessionObserver;
         part copilotSummarizer : CopilotSummarizer;
         part copilotTurnChannel : CopilotTurnChannel;

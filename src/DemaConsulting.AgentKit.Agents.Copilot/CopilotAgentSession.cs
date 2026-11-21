@@ -18,15 +18,15 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     <b>Serializable, so a conversation can outlive the process.</b>
 ///     <c>AIAgent.SerializeSessionAsync</c> writes the JSON object
 ///     <c>{ "sessionId": …, "stateBag": … }</c>, and <c>AIAgent.DeserializeSessionAsync</c> on any
-///     agent built over the same client data directory reads it back and resumes the same runtime
+///     agent built over the same runtime data directory reads it back and resumes the same runtime
 ///     session. The shape is the one the earlier Agent Framework Copilot adapter wrote, so a session
 ///     serialized by it remains readable.
 ///     </para>
 ///     <para>
 ///     <b>Deleting the conversation is the host's decision.</b> The agent releases the runtime
 ///     session after every run without deleting it, so the conversation stays resumable under the
-///     client's data directory. A host that is finished with it passes <see cref="SessionId"/> to
-///     <c>CopilotClient.DeleteSessionAsync</c>.
+///     runtime's data directory. A host that is finished with it passes <see cref="SessionId"/> to
+///     <see cref="CopilotRuntime.DeleteSessionAsync"/>.
 ///     </para>
 ///     <para>
 ///     Runs on one session are serialized by the agent, and <see cref="SessionId"/> is written only
@@ -75,8 +75,8 @@ public sealed class CopilotAgentSession : AgentSession
     ///     <see langword="null"/> before the first run.
     /// </summary>
     /// <remarks>
-    ///     Pass it to <c>CopilotClient.DeleteSessionAsync</c> to delete the conversation's persisted
-    ///     state once the host is finished with it.
+    ///     Pass it to <see cref="CopilotRuntime.DeleteSessionAsync"/> to delete the conversation's
+    ///     persisted state once the host is finished with it.
     /// </remarks>
     public string? SessionId { get; internal set; }
 

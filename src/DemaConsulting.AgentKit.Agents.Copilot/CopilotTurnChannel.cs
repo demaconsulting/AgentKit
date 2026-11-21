@@ -104,12 +104,16 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
     CancellationToken cancellationToken);
 
 /// <summary>
-///     The production turn channel: one <see cref="CopilotSession"/> on a client the host owns.
+///     The production turn channel: one <see cref="CopilotSession"/> on the client of a
+///     <see cref="CopilotRuntime"/>.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     <b>Ownership is split, and the split is the whole point.</b> The <see cref="CopilotClient"/>
-///     is the host's — it constructs, starts and disposes it — and this channel disposes it never.
+///     belongs to the <see cref="CopilotRuntime"/> the host started and disposes, and this channel
+///     disposes it never. The channel and its openers hold the runtime rather than its client and
+///     read the client at every step, because the SDK restarts a disposed client on demand: what
+///     the host has disposed must fail here, not run again.
 ///     The <see cref="CopilotSession"/> handle is AgentKit's: created or resumed by one of the
 ///     opener factories below and released by <see cref="DisposeAsync"/> on every path.
 ///     </para>
@@ -121,7 +125,7 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 ///     which nothing could resume. An agent's <em>conversation</em> continues on the next run,
 ///     possibly on another agent instance given the serialized session, so its session is released
 ///     and <em>kept</em> (<see cref="OpenRetained"/> and <see cref="Resume"/>): the runtime preserves
-///     its state under the client's data directory until the host deletes it.
+///     its state under the runtime's data directory until the host deletes it.
 ///     </para>
 ///     <para>
 ///     <b>Every production session is opened through one protocol.</b> <see cref="Open"/>,
@@ -133,9 +137,11 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 ///     in which a server stays enabled is refused — a created one released and deleted, a resumed
 ///     one only detached, so a conversation is never destroyed. A server the SDK cannot enumerate
 ///     before creation, such as a managed catalog's or a signed-in account's, may still start
-///     during session creation: the protocol guarantees that the model cannot reach an ambient
-///     MCP server, not that none runs. These steps need the live client and session, which the
-///     factory's configuration builders deliberately do not have, so they live here.
+///     during session creation; the seal then contains it rather than preventing it. The session's
+///     MCP listing does not report the built-in GitHub server even while it runs, so that server is
+///     kept from starting by name, before creation, rather than by the seal. These steps need the
+///     live client and session, which the factory's configuration builders deliberately do not
+///     have, so they live here.
 ///     </para>
 ///     <para>
 ///     Deliberately a forwarded turn, one guarded release and one opening protocol. It is the one
@@ -149,10 +155,10 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 internal sealed class CopilotSessionChannel : ICopilotTurnChannel
 {
     /// <summary>
-    ///     The client the session was created on. Held only to delete the session on release; never
-    ///     disposed here.
+    ///     The runtime the session was created on. Held only to delete the session on release, through
+    ///     the runtime's client read at that moment; never disposed here.
     /// </summary>
-    private readonly CopilotClient _client;
+    private readonly CopilotRuntime _runtime;
 
     /// <summary>
     ///     The session handle this channel owns and releases.
@@ -167,12 +173,12 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotSessionChannel"/> class.
     /// </summary>
-    /// <param name="client">The client the session runs on. Owned by the host, never disposed here.</param>
+    /// <param name="runtime">The runtime the session runs on. Owned by the host, never disposed here.</param>
     /// <param name="session">The session handle this channel owns.</param>
     /// <param name="deleteOnRelease">Whether release also deletes the session's persisted state.</param>
-    private CopilotSessionChannel(CopilotClient client, CopilotSession session, bool deleteOnRelease)
+    private CopilotSessionChannel(CopilotRuntime runtime, CopilotSession session, bool deleteOnRelease)
     {
-        _client = client;
+        _runtime = runtime;
         _session = session;
         _deleteOnRelease = deleteOnRelease;
     }
@@ -181,52 +187,65 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     public string SessionId => _session.SessionId;
 
     /// <summary>
-    ///     Returns an opener that creates sessions on one client and deletes each when it is released.
+    ///     Returns an opener that creates sessions on one runtime and deletes each when it is released.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     For the session engine, the summarizer and an agent's run made without a conversation,
     ///     whose sessions are finished with when released. Produced once per factory rather than per
-    ///     session, so the client reference is captured in exactly one place and every session a
-    ///     rotation creates demonstrably runs on the same client the host started.
+    ///     session, so every session a rotation creates demonstrably runs on the runtime the host
+    ///     started.
+    ///     </para>
+    ///     <para>
+    ///     <b>The runtime is held, never its client.</b> The SDK restarts a disposed client on demand
+    ///     — its start, create, resume and delete calls all reconnect a client that is not running —
+    ///     so an opener that captured the client would bring a runtime the host had disposed back to
+    ///     life. Every step instead reads <see cref="CopilotRuntime.Client"/> when it runs, which
+    ///     fails with <see cref="ObjectDisposedException"/> once the runtime has been disposed.
+    ///     </para>
     /// </remarks>
-    /// <param name="client">The client to create sessions on. Must not be <see langword="null"/>.</param>
-    /// <returns>An opener over <paramref name="client"/>.</returns>
-    internal static CopilotChannelOpener Open(CopilotClient client) =>
+    /// <param name="runtime">The runtime to create sessions on. Must not be <see langword="null"/>.</param>
+    /// <returns>An opener over <paramref name="runtime"/>.</returns>
+    internal static CopilotChannelOpener Open(CopilotRuntime runtime) =>
         async (config, cancellationToken) =>
         {
-            var session = await CreateConfinedSessionAsync(client, config, cancellationToken).ConfigureAwait(false);
-            return new CopilotSessionChannel(client, session, deleteOnRelease: true);
+            var session = await CreateConfinedSessionAsync(runtime, config, cancellationToken).ConfigureAwait(false);
+            return new CopilotSessionChannel(runtime, session, deleteOnRelease: true);
         };
 
     /// <summary>
-    ///     Returns an opener that creates sessions on one client and keeps each when it is released.
+    ///     Returns an opener that creates sessions on one runtime and keeps each when it is released.
     /// </summary>
     /// <remarks>
     ///     For an agent's conversation, which continues on the next run. The session's state stays
-    ///     under the client's data directory, resumable by <see cref="Resume"/>, until the host
-    ///     deletes it.
+    ///     under the runtime's data directory, resumable by <see cref="Resume"/>, until the host
+    ///     deletes it. Like <see cref="Open"/>, it reads the runtime's client at each step.
     /// </remarks>
-    /// <param name="client">The client to create sessions on. Must not be <see langword="null"/>.</param>
-    /// <returns>An opener over <paramref name="client"/>.</returns>
-    internal static CopilotChannelOpener OpenRetained(CopilotClient client) =>
+    /// <param name="runtime">The runtime to create sessions on. Must not be <see langword="null"/>.</param>
+    /// <returns>An opener over <paramref name="runtime"/>.</returns>
+    internal static CopilotChannelOpener OpenRetained(CopilotRuntime runtime) =>
         async (config, cancellationToken) =>
         {
-            var session = await CreateConfinedSessionAsync(client, config, cancellationToken).ConfigureAwait(false);
-            return new CopilotSessionChannel(client, session, deleteOnRelease: false);
+            var session = await CreateConfinedSessionAsync(runtime, config, cancellationToken).ConfigureAwait(false);
+            return new CopilotSessionChannel(runtime, session, deleteOnRelease: false);
         };
 
     /// <summary>
-    ///     Returns a resumer that reopens existing sessions on one client and keeps each when it is
+    ///     Returns a resumer that reopens existing sessions on one runtime and keeps each when it is
     ///     released.
     /// </summary>
-    /// <param name="client">The client to resume sessions on. Must not be <see langword="null"/>.</param>
-    /// <returns>A resumer over <paramref name="client"/>.</returns>
-    internal static CopilotChannelResumer Resume(CopilotClient client) =>
+    /// <remarks>
+    ///     Like <see cref="Open"/>, it reads the runtime's client at each step, so a disposed runtime
+    ///     is never restarted to resume a conversation.
+    /// </remarks>
+    /// <param name="runtime">The runtime to resume sessions on. Must not be <see langword="null"/>.</param>
+    /// <returns>A resumer over <paramref name="runtime"/>.</returns>
+    internal static CopilotChannelResumer Resume(CopilotRuntime runtime) =>
         async (sessionId, config, cancellationToken) =>
         {
-            var session = await ResumeConfinedSessionAsync(client, sessionId, config, cancellationToken)
+            var session = await ResumeConfinedSessionAsync(runtime, sessionId, config, cancellationToken)
                 .ConfigureAwait(false);
-            return new CopilotSessionChannel(client, session, deleteOnRelease: false);
+            return new CopilotSessionChannel(runtime, session, deleteOnRelease: false);
         };
 
     /// <inheritdoc/>
@@ -249,14 +268,16 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// <inheritdoc/>
     /// <remarks>
     ///     Releases the session handle, and for a channel opened by <see cref="Open"/> then asks the
-    ///     runtime to delete the session. See <see cref="ReleaseAsync"/> for why neither step may
-    ///     throw.
+    ///     runtime to delete the session, through the runtime's client read at that moment: on a
+    ///     runtime the host has disposed the read fails, and the failure is swallowed like any other
+    ///     deletion failure, so a disposed runtime is never restarted to delete a session. See
+    ///     <see cref="ReleaseAsync"/> for why neither step may throw.
     /// </remarks>
     public ValueTask DisposeAsync() =>
         ReleaseAsync(
             _session.DisposeAsync,
             _deleteOnRelease
-                ? () => _client.DeleteSessionAsync(_session.SessionId, CancellationToken.None)
+                ? () => _runtime.Client.DeleteSessionAsync(_session.SessionId, CancellationToken.None)
                 : null);
 
     /// <summary>
@@ -298,13 +319,16 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     <b>Why sealing follows anyway.</b> Servers the runtime's MCP discovery returns are named in
     ///     the session's disabled servers before the session exists, so the runtime does not start or
     ///     authenticate them. The SDK documents that discovery as covering the user, workspace, plugin
-    ///     and builtin sources. A server from a source it cannot enumerate before creation, such as a
-    ///     managed catalog or a signed-in account, may start, and authenticate with the host
-    ///     environment, while the session is created. The seal disables any such server before any
-    ///     turn runs, and the session is refused if one stays enabled. This guarantees that the model
-    ///     cannot reach an ambient MCP server; it does not prevent one from running. The session's
-    ///     installed plugins, too, can only be cleared once it exists. A host that needs prevention:
-    ///     see the client precondition on <c>CopilotAgentFactory</c>.
+    ///     and builtin sources; the built-in GitHub server is named by the factory as well. A server
+    ///     from a source it cannot enumerate before creation, such as a managed catalog or a signed-in
+    ///     account, may start, and authenticate, while the session is created. The seal disables every
+    ///     server the session's MCP configuration lists before any turn runs, and the session is
+    ///     refused if one stays enabled: that contains such a server, it does not prevent it. The
+    ///     listing is not complete — it does not report the built-in GitHub server even while that
+    ///     server runs — so the seal is defense in depth, not proof that no server runs. The session's
+    ///     installed plugins, too, can only be cleared once it exists. On a
+    ///     <see cref="CopilotRuntime"/> the user, workspace and plugin sources hold nothing to begin
+    ///     with; see the per-source statement there.
     ///     </para>
     ///     <para>
     ///     <b>An unsealed session never reaches a caller.</b> If the seal fails — a server stays
@@ -399,10 +423,9 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
                 "The Copilot runtime kept the MCP server(s) "
                 + string.Join(", ", stillEnabled.Select(name => $"'{name}'"))
                 + " enabled for this session after AgentKit disabled them, so the session was refused: a "
-                + "confined agent receives no MCP server. Run the Copilot client in CopilotClientMode.Empty on a "
-                + "data directory the host owns and that configures no MCP servers, and check for MCP servers "
-                + "provided by a managed catalog or by the signed-in account or its organization, and for an "
-                + "owned MCP installation, which a session cannot disable by name.");
+                + "confined agent receives no MCP server. Check for MCP servers provided by a managed catalog or "
+                + "by the signed-in account or its organization, and for an owned MCP installation, which a "
+                + "session cannot disable by name.");
         }
     }
 
@@ -417,54 +440,64 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     internal static SessionUpdatePluginOptions CreateNoInstalledPluginsPatch() => new() { Installed = [] };
 
     /// <summary>
-    ///     Creates a session on a client through the confinement's runtime half, deleting it if it
+    ///     Creates a session on a runtime through the confinement's runtime half, deleting it if it
     ///     cannot be sealed.
     /// </summary>
     /// <remarks>
+    ///     <para>
     ///     The one path every production opener shares, and the path the opt-in live suite uses to
     ///     inspect a session opened exactly as production opens one. A session nothing has recorded
     ///     yet is released and deleted when its seal fails.
+    ///     </para>
+    ///     <para>
+    ///     Each step — discovery, creation, the abandoning deletion — reads the runtime's client when
+    ///     it runs rather than once up front, so a runtime disposed before or between the steps fails
+    ///     the step with <see cref="ObjectDisposedException"/> instead of being restarted by the SDK.
+    ///     </para>
     /// </remarks>
-    /// <param name="client">The client to create the session on.</param>
+    /// <param name="runtime">The runtime to create the session on.</param>
     /// <param name="config">The session configuration; updated with the discovered MCP servers.</param>
     /// <param name="cancellationToken">Cancels the creation.</param>
     /// <returns>The created, sealed session. Ownership passes to the caller.</returns>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     internal static Task<CopilotSession> CreateConfinedSessionAsync(
-        CopilotClient client,
+        CopilotRuntime runtime,
         CreateSessionOptions config,
         CancellationToken cancellationToken) =>
         OpenConfinedAsync(
             config,
-            token => DiscoverMcpServerNamesAsync(client, config.WorkingDirectory, token),
-            token => client.CreateSessionAsync(config, token),
+            token => DiscoverMcpServerNamesAsync(runtime, config.WorkingDirectory, token),
+            token => runtime.Client.CreateSessionAsync(config, token),
             SealSessionAsync,
             session => ReleaseAsync(
                 session.DisposeAsync,
-                () => client.DeleteSessionAsync(session.SessionId, CancellationToken.None)),
+                () => runtime.Client.DeleteSessionAsync(session.SessionId, CancellationToken.None)),
             cancellationToken);
 
     /// <summary>
-    ///     Resumes a session on a client through the confinement's runtime half, detaching it — never
+    ///     Resumes a session on a runtime through the confinement's runtime half, detaching it — never
     ///     deleting it — if it cannot be sealed.
     /// </summary>
     /// <remarks>
     ///     A resumed session is the user's conversation: refusing to continue it must not destroy
-    ///     it, so a failed seal only releases the handle.
+    ///     it, so a failed seal only releases the handle. Like
+    ///     <see cref="CreateConfinedSessionAsync"/>, each step reads the runtime's client when it runs.
     /// </remarks>
-    /// <param name="client">The client to resume the session on.</param>
+    /// <param name="runtime">The runtime to resume the session on.</param>
     /// <param name="sessionId">The runtime's identifier for the session.</param>
     /// <param name="config">The resume configuration; updated with the discovered MCP servers.</param>
     /// <param name="cancellationToken">Cancels the resumption.</param>
     /// <returns>The resumed, sealed session. Ownership passes to the caller.</returns>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     internal static Task<CopilotSession> ResumeConfinedSessionAsync(
-        CopilotClient client,
+        CopilotRuntime runtime,
         string sessionId,
         ResumeSessionOptions config,
         CancellationToken cancellationToken) =>
         OpenConfinedAsync(
             config,
-            token => DiscoverMcpServerNamesAsync(client, config.WorkingDirectory, token),
-            token => client.ResumeSessionAsync(sessionId, config, token),
+            token => DiscoverMcpServerNamesAsync(runtime, config.WorkingDirectory, token),
+            token => runtime.Client.ResumeSessionAsync(sessionId, config, token),
             SealSessionAsync,
             session => ReleaseAsync(session.DisposeAsync, delete: null),
             cancellationToken);
@@ -475,21 +508,24 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// </summary>
     /// <remarks>
     ///     The client's RPC surface exists only once the client has started, so the client is
-    ///     started first. Starting is idempotent on a started client, and creating a session would
-    ///     start one not yet started anyway; it goes through <see cref="CopilotClientStarter"/> so a
-    ///     runtime that cannot load still reports why, as it would for a host that started the
-    ///     client itself.
+    ///     started first. Starting is idempotent on a started client — a <see cref="CopilotRuntime"/>
+    ///     hands over a started one — and it reconnects a client whose connection was lost; it goes
+    ///     through <see cref="CopilotRuntime.StartClientAsync"/> so a runtime that cannot start still
+    ///     reports why. The client is read from the runtime first, so a disposed runtime fails here
+    ///     with <see cref="ObjectDisposedException"/> rather than being started again.
     /// </remarks>
-    /// <param name="client">The client to discover on.</param>
+    /// <param name="runtime">The runtime to discover on.</param>
     /// <param name="workingDirectory">The session's working directory, whose workspace configuration is included.</param>
     /// <param name="cancellationToken">Cancels the discovery.</param>
     /// <returns>The discovered server names.</returns>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     private static async Task<IEnumerable<string>> DiscoverMcpServerNamesAsync(
-        CopilotClient client,
+        CopilotRuntime runtime,
         string? workingDirectory,
         CancellationToken cancellationToken)
     {
-        await CopilotClientStarter.StartAsync(client, cancellationToken).ConfigureAwait(false);
+        var client = runtime.Client;
+        await CopilotRuntime.StartClientAsync(client.StartAsync, cancellationToken).ConfigureAwait(false);
 
         var discovered = await client.Rpc.Mcp
             .DiscoverAsync(workingDirectory, cancellationToken: cancellationToken)

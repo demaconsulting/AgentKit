@@ -189,13 +189,13 @@ replaced, with nothing in the conversation to say so.
 
 **Tests**:
 
-- `CopilotProviderSessionFactory_Constructor_NullClient_Throws`
+- `CopilotProviderSessionFactory_Constructor_NullRuntime_Throws`
 - `CopilotProviderSessionFactory_Constructor_NullOpener_Throws`
 - `CopilotProviderSessionFactory_CreateAsync_NullSeed_Throws`
 - `CopilotProviderSessionFactory_CreateAsync_Canceled_OpensNothing`
 - `CopilotProviderSessionFactory_CreateAsync_CanceledWhileOpening_ReleasesTheOpenedSession`
 
-Error paths. A missing client or opener is refused where the application composed its provider; a
+Error paths. A missing runtime or opener is refused where the application composed its provider; a
 missing seed is refused where the rotation asked. The cancellation scenarios assert the two states
 apart: a creation canceled before the request opens **nothing**, so a canceled rotation costs no
 session on the runtime; a cancellation that arrives while the request is in flight leaves a session

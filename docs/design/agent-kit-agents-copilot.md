@@ -2,7 +2,8 @@
 
 ![AgentKit Copilot Agents Structure](AgentKitAgentsCopilotView.svg)
 
-The AgentKitAgentsCopilot system gives a GitHub Copilot `CopilotClient` an agent of AgentKit's own —
+The AgentKitAgentsCopilot system starts a GitHub Copilot runtime of its own and gives it an agent of
+AgentKit's own —
 a Microsoft Agent Framework `AIAgent` confined to a supplied tool list, with the built-in tools the
 Copilot runtime would otherwise inject suppressed — and carries an AgentKit Core session, with its
 tiered context compaction, over the same runtime.
@@ -19,8 +20,12 @@ safety-critical behavior of the whole increment.
 
 The system also wires a permission handler that is safe by default — approving exactly the supplied
 tools and rejecting every other request — while letting a host supply its own; see *Permission
-Handling Is Default-Deny*. And it fixes the ownership contract: the host constructs, starts, and
-disposes the `CopilotClient`; nothing in this system takes ownership of it.
+Handling Is Default-Deny*. And it starts the runtime itself — `CopilotRuntime`, in Empty mode, as a
+child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+allow-listed credential, network and telemetry-off set, on a data directory it owns — because what reaches a session
+depends on the client as much as on the session; see
+*Runtime Ownership*. The host starts and disposes that runtime; nothing else in this system takes
+ownership of it.
 
 **The agent is AgentKit's own.** The Copilot SDK ships no Agent Framework agent, and the adapter
 package that once supplied one does not support the current SDK. So the system carries its own
@@ -182,8 +187,8 @@ conversation is confined afresh rather than trusted to remember. A resume built 
 confinement would hand an existing conversation the runtime's defaults — every built-in tool, and
 permission requests no handler answers.
 
-The block does four things, each set explicitly on every session so the confinement does not depend
-on the client's mode, which AgentKit cannot read:
+The block does four things, each set explicitly on every session so the confinement does not rest on
+the runtime's mode alone:
 
 - **Derives the allow-list.** The tool definitions and the available-tools allow-list are assigned
   from one collection in two adjacent statements. Each allow-list entry is **source-qualified** as
@@ -202,9 +207,11 @@ on the client's mode, which AgentKit cannot read:
   operating system, the git root, a directory listing and the available tools — is removed from the
   system prompt through the system message's section overrides, the same shape Empty mode sends. The
   runtime's built-in GitHub MCP server is disabled by name: measured against the live runtime, it is
-  started and authenticated with the user's GitHub identity on every session even in the client's
-  Empty mode, and while the allow-list already keeps its tools out of reach, a server holding the
-  user's identity is disabled rather than merely filtered. The full list, with the reason for each,
+  started and authenticated with the user's GitHub identity on a session's first turn even in Empty
+  mode, and while the allow-list already keeps its tools out of reach, a server holding the user's
+  identity is disabled rather than merely filtered. Naming it is the only control that reaches it:
+  the session's MCP listing does not report it even while it is connected, so the seal below cannot
+  see it. The full list, with the reason for each,
   is in *CopilotAgentFactory Unit Design*.
 - **Pins the permission mode to manual.** In the runtime's allow-all mode tool, path and URL requests
   are approved without asking the handler, and in its assisted mode a client may approve them
@@ -216,25 +223,25 @@ on the client's mode, which AgentKit cannot read:
 only with the live client and session, which the options builders deliberately do not have, so the
 production turn channel applies them on the one path every opener and resumer shares:
 
-- **Every ambient MCP server is withheld from the model.** The runtime starts MCP servers from ambient
+- **Discovered MCP servers are kept from starting.** The runtime starts MCP servers from ambient
   configuration — the data directory, the workspace, installed plugins, its built-in servers, a
   managed catalog, and a signed-in account — and Empty mode does not stop them. Before a session is
   created or resumed, the channel asks the runtime to discover its MCP servers for the session and
   names every one in the session's disabled servers, so none of those is started at creation or cold
-  resumption. The allow-list already keeps an MCP server's tools from the model; disabling a
-  discovered server before creation also keeps it from running a process with the user's environment
-  and from contributing instructions; a server discovery cannot name is handled by the seal below.
+  resumption. The SDK documents that discovery as covering the user, workspace, plugin and builtin
+  sources. The allow-list already keeps an MCP server's tools from the model; naming a discovered
+  server before creation also keeps it from running a process with the user's environment and from
+  contributing instructions.
 - **The session is sealed.** Once the session exists, its installed plugins — which can contribute
   servers, hooks, skills and agents — are cleared with the same session-options patch Empty mode
-  sends; every MCP server the session still reports enabled, including one from a source discovery
-  does not cover, is disabled for that session only; and the configuration is listed again. Servers
-  the runtime's MCP discovery returns are named in the session's disabled servers before the session
-  exists, so the runtime does not start or authenticate them. The SDK documents that discovery as
-  covering the user, workspace, plugin and builtin sources. A server from a source it cannot
-  enumerate before creation, such as a managed catalog or a signed-in account, may start, and
-  authenticate with the host environment, while the session is created. The seal disables any such
-  server before any turn runs, and the session is refused if one stays enabled. This guarantees that
-  the model cannot reach an ambient MCP server; it does not prevent one from running.
+  sends; every MCP server the session's configuration listing still reports enabled, including one
+  from a source discovery does not cover, is disabled for that session only; and the configuration is
+  listed again. A server from a source the SDK cannot enumerate before creation, such as a managed
+  catalog or a signed-in account, may start, and authenticate, while the session is created; the seal
+  then disables it before any turn runs. That contains such a server; it does not prevent it. The
+  listing is not complete — it does not report the built-in GitHub server even while that server runs
+  — so the seal is defense in depth rather than proof that no server runs. *Runtime Ownership* states
+  which sources are prevented and which only contained.
 - **It refuses rather than continuing.** A server the runtime keeps enabled refuses the session with an
   `InvalidOperationException` naming it, so the run fails rather than continuing with the server
   available. A created session nothing has recorded is released and deleted; a resumed session is
@@ -242,8 +249,9 @@ production turn channel applies them on the one path every opener and resumer sh
   fails opens nothing.
 
 The client's RPC surface exists only once it has started, so the channel starts the client first,
-through `CopilotClientStarter` — idempotent on a started client, and a runtime that cannot load is
-explained exactly as it would be for a host that started the client itself.
+through `CopilotRuntime`'s explained start — idempotent on a started client, reconnecting one whose
+connection was lost, and explaining a runtime that cannot start exactly as the runtime's own start
+does.
 
 **Options are built fresh for every session and every run.** The SDK mutates the options object it
 is handed when it applies its mode defaults, and its clone is shallow — it shares the infinite-session
@@ -378,10 +386,10 @@ mismatched.
 **Only a project that references the SDK directly provisions the runtime.** The SDK's targets ship in
 the package's `build` folder rather than its `buildTransitive` folder, so they run only in a project
 holding a direct reference to `Microsoft.Copilot.SDK`. An application that reaches the SDK
-transitively, through this package, provisions nothing, and its client then fails to start. **A host
+transitively, through this package, provisions nothing, and its runtime then fails to start. **A host
 application must therefore add its own direct reference to `Microsoft.Copilot.SDK`**, at the version
-this package depends on or a later compatible one. `CopilotClientStarter` names this as the likely
-cause when a start fails with `COPILOT_CLI_PATH` unset; see *External Interfaces*.
+this package depends on or a later compatible one. `CopilotRuntime` names this as the likely cause
+when a start fails; see *Runtime Ownership*.
 
 **This package ships no runtime.** Its project sets `CopilotSkipCliDownload`, which the SDK's targets
 honor by skipping the download, the copy to the output and the content registration alike. That
@@ -426,13 +434,13 @@ takes the SDK, its native runtime, or the agent abstractions. The system referen
 
 ## Architecture
 
-The system holds eight units: the agent, its factory and the starter that a host composing a Copilot
+The system holds eight units: the runtime, the agent and its factory that a host composing a Copilot
 agent uses, and the five that carry a Core session over the runtime.
 
 - **CopilotAgentFactory (Unit)** — the static factory that validates its arguments, refuses a tool
   named like a built-in, derives the allow-list from the supplied tools, withholds the runtime's
   injection channels, pins the permission mode, installs a default-deny permission handler, and
-  builds the agent without taking ownership of the client. It is also the **single** place a Copilot
+  builds the agent without taking ownership of the runtime. It is also the **single** place a Copilot
   session's options are built, for an agent's created and resumed sessions and for both
   session-engine paths.
 - **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, and the public
@@ -441,10 +449,11 @@ agent uses, and the five that carry a Core session over the runtime.
   releases a conversation's runtime session without deleting it after every run (deleting only the session of a run made
   without a conversation), serializes a conversation so it can outlive the process, and serializes runs on one
   conversation.
-- **CopilotClientStarter (Unit)** — a host-facing helper that starts the host's client and, when the
-  start fails, reports the runtime's error and, where that error identifies it, the cause — an ambient
-  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
-  connection or the environment.
+- **CopilotRuntime (Unit)** — the runtime AgentKit starts, confines and owns, with its options type:
+  builds the only Copilot client the package runs on — Empty mode, the provisioned runtime spawned as
+  a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+  allow-listed credential, network and telemetry-off set, a data directory it owns — exposes only neutral options,
+  explains a runtime that cannot start, and is disposed by whoever started it.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
   carries the seeded record ahead of the first message it sends, refuses a turn that reported no
   usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
@@ -472,89 +481,105 @@ reads occupancy through the observer and deletes each rotated session.
 
 ## External Interfaces
 
-The system's public API is five types. Four take a `CopilotClient` the host constructed, started and
-will dispose; the fifth, `CopilotAgentSession`, is what the agent hands back for a conversation.
-Everything else in the package is internal.
+The system's public API is six types. `CopilotRuntime` and `CopilotRuntimeOptions` start the runtime;
+the factory, the provider-session factory and the summarizer take that runtime, which the host
+started and will dispose; and `CopilotAgentSession` is what the agent hands back for a conversation.
+Everything else in the package is internal, including the runtime's client.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
-| `CopilotAgentFactory.Create` | Inbound | Client, tools, settings | Tools non-empty, unique, not built-in |
+| `CopilotRuntime.StartAsync` | Inbound | `CopilotRuntimeOptions` | Data directory new, empty or AgentKit's |
+| `CopilotAgentFactory.Create` | Inbound | Runtime, tools, settings | Tools non-empty, unique, not built-in |
 | `CopilotAgentSession` | Outbound | Agent session, JSON | Runtime session kept until deleted |
 | `CopilotProviderSessionFactory` | Outbound | Core session factory | One session per rotation |
 | `CopilotSummarizer` | Outbound | Core summarizer | Separate tool-free session |
-| `CopilotClientStarter.StartAsync` | Inbound | Host's client | Explains a failed start |
-| `CopilotClient` | Inbound/Outbound | Copilot SDK | Host-owned; never disposed here |
+| `CopilotRuntime` | Inbound | Started runtime | Host-owned; never disposed by what uses it |
+| Runtime process | Outbound | Copilot SDK, stdio | Empty mode; Copilot variables withheld |
 | Session event stream | Inbound | Copilot SDK events | Registered before session creation |
 
-`Create` takes the client, the tools, and optionally the instructions, a permission handler, the
+`Create` takes the runtime, the tools, and optionally the instructions, a permission handler, the
 agent's name, the model and the working directory. `CopilotAgentSession` serializes as a JSON object
 carrying `sessionId` and `stateBag`, and its runtime session is kept until the host deletes it.
-`CopilotClientStarter` changes neither the connection nor the environment.
+`CopilotRuntime` never changes the host's process environment; it decides only the runtime process's.
 
 The application supplies no context window: occupancy and limit come from the runtime's own event
 stream, as recorded in *Occupancy Comes From the Runtime*.
 
-### Host Client Construction
+### Runtime Ownership
 
-The host constructs the client, and three of its choices bear on this system:
+**AgentKit starts the runtime itself, and offers no way to supply a client.** A host calls
+`CopilotRuntime.StartAsync` with `CopilotRuntimeOptions` — a data directory, and optionally a GitHub
+token, a log level and a logger — and disposes the runtime when finished. The runtime is in Empty
+mode, runs as a child process whose environment carries none of the host's `COPILOT_` or
+`GITHUB_COPILOT_` configuration variables apart from a credential, network and telemetry-off
+pass-through set, and keeps its state in a data directory AgentKit created and marked; any other
+non-empty directory, including one whose marker is not exactly the bytes AgentKit writes, is
+refused. The marker guards against reusing another tool's directory by mistake; it is not a security
+boundary against a process that can already write to the directory. Each of these closes a channel a
+host-built client could leave open, and none can be detected on such a client, so the overloads that
+took a host's `CopilotClient` were removed rather than kept as a weaker path. *CopilotRuntime Unit
+Design* classifies every client option and records the alternatives rejected.
 
-- **Mode: Empty, on a data directory the host owns, is a precondition.** The integration requires
-  it, and AgentKit cannot detect it: the SDK offers no way to read a client's mode back. AgentKit
-  therefore does not rely on the mode for anything that reaches the model. On any client it applies,
-  per session, the custom allow-list and the pinned default-deny permission handling; every runtime
-  option channel withheld, including host git operations and commit co-author trailers; the host
-  environment context removed; experimental features off and
-  embedding retrieval skipped; the installed plugins cleared; and every MCP server the session lists
-  disabled and verified, with the session refused if one stays enabled — though a server from a
-  source discovery does not cover may start, and authenticate, before the seal disables it, as *The
-  session is sealed* above records. A host that must also keep such servers from running supplies a
-  `CopilotClientMode.Empty` client on a clean data directory it owns. That removes the sources the
-  directory holds, namely its MCP configuration and installed plugins. SDK 2.0.1 does not document
-  that Empty mode or a clean data directory keeps a managed-catalog or account server from starting;
-  an account server follows the signed-in account and its organization's policy. The client
-  therefore narrows those sources rather than guaranteeing that none starts. What a client that
-  violates the
-  precondition can still add is host-side behavior no session option reaches: settings in a shared
-  data directory such as user-level hooks, credential storage in the system keychain rather than the
-  data directory, telemetry and runtime file logging, and anything the host attaches at client level,
-  such as plugin directories or extensions.
-- **Runtime connection.** In-process hosting through `RuntimeConnection.ForInProcess` is the usual
-  choice. Empty mode requires a base directory — the runtime's data directory, under which a kept
-  session's state is preserved — and the host chooses it. A spawned-process connection is the
-  alternative where the in-process runtime cannot be used; see the `COPILOT_CLI_PATH` pitfall below.
-- **Identity.** `ClientGitHubOptions` names the GitHub identity the runtime uses: the logged-in user,
-  in which case the runtime also honors the `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN`
-  environment variables, or an explicit token.
+**What is guaranteed, per MCP source.** On that runtime, before any session exists:
+
+| Source | Mechanism | Guarantee | Live evidence |
+| --- | --- | --- | --- |
+| Built-in GitHub MCP server | Named disabled at create and resume | Prevention | L14a; control L14b |
+| User (data directory `mcp-config.json`) | Fresh directory; discovery and disable | Prevention | L14c; control L14d |
+| Workspace (`.mcp.json`) | Config discovery off; no trusted folder; disable | Prevention | L14e; control L14f |
+| Plugin | Fresh directory; no plugin directories; cleared | Prevention | L15 |
+| Managed catalog | Not enumerable before create; seal | Containment only | Not reproducible |
+| Signed-in account | Not enumerable before create; seal | Containment only | L14a, this account |
+| Host `COPILOT_` environment | Spawned runtime, replacement environment | Prevention, minus pass-through | L11 |
+
+- **Built-in GitHub MCP server.** It is named disabled, so it is not started or authenticated. Empty
+  mode alone starts it on the first turn. The name is the one AgentKit knows; a renamed or added
+  built-in server would not be prevented, and would be caught by the live suite rather than by the
+  seal, because the session's MCP listing does not report built-in servers.
+- **User-configured servers.** None can exist in a fresh data directory, and one added later is
+  found by the runtime's discovery and disabled before the session is created. Empty mode alone runs
+  it.
+- **Workspace MCP configuration.** It is not loaded, because configuration discovery is off and the
+  data directory trusts no folder. A workspace server that discovery reports is disabled as well. The
+  live suite shows a `.mcp.json` server is not executed even when the data directory has been made to
+  trust the folder.
+- **Plugins.** None is installed in a fresh data directory, plugin directories cannot be configured,
+  and the session's installed plugins are cleared after creation.
+- **Managed catalog and signed-in account.** These servers follow organization policy and the
+  account. The SDK cannot enumerate them before a session exists, so one may start, and
+  authenticate, while the session is created. AgentKit then disables every server the session's MCP
+  configuration lists, before any turn runs, and refuses the session if one stays enabled. This
+  contains such a server; it does not prevent it. Neither source can be set up for a test: a managed
+  catalog needs an organization or enterprise policy delivered to the runtime, and an account server
+  needs a connector-enabled account, both behind a staged feature rollout. The only evidence
+  available is that, for the account the live suite runs as, no MCP server reached pending or
+  connected during a turn.
+
+The session's configuration listing is not complete — it does not report the built-in GitHub server
+even while that server is connected — so the post-create seal is defense in depth, not proof of
+absence. In every case, no MCP tool is on a session's allow-list.
+
+Refusing a session or turn when the runtime's MCP status events report any server pending or
+connected would close the listing gap for built-in, managed-catalog and account servers. It is
+deferred to a follow-up, and nothing in this release depends on it. Such a check would still detect a
+server only after it started, so it would contain such a server, not prevent it.
+
+The other ambient channels are absent from a session on this runtime: the live suite lists no
+plugin, skill, instruction source or agent, and the system prompt is smaller than a control session's
+that keeps the host environment context (L15). Hooks have no listing; they are covered by repository
+hooks being off, no installed plugin, and a fresh data directory, which holds no user hook.
+
+**Identity.** The runtime authenticates with the token in `CopilotRuntimeOptions` when one is given;
+otherwise as the signed-in user, from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, from
+credentials stored in its data directory, or from the GitHub CLI.
 
 **There is no client-level working directory.** The runtime takes a working directory per session,
 and only this system builds a session's options, so the working directory is a parameter of
 `CopilotAgentFactory.Create` and of the `CopilotProviderSessionFactory` constructor, applied only when
-supplied — otherwise the runtime uses the host process's working directory. A host that built a
-session by hand to reach the setting would forfeit the confinement. The working directory grants
-nothing: what an agent may read or write is decided by its tools' own path policy. `CopilotSummarizer`
-takes none, because a consolidation session offers no tools.
-
-### The `COPILOT_CLI_PATH` Pitfall
-
-In-process hosting loads the runtime library from the application's output, where the SDK provisioned
-it — unless the `COPILOT_CLI_PATH` environment variable is set, in which case it loads the library
-from beside that path instead. There is no per-client override: the variable is read from the
-process environment. Every shell the Copilot CLI starts sets it to the CLI's own installation, which
-does not ship the in-process runtime library, so an application launched from such a shell fails to
-start with an error about a missing library that names neither the variable nor the remedy. A
-spawned-process connection reads the variable from the replacement environment when one is supplied,
-so an environment that omits it avoids the problem.
-
-`CopilotClientStarter.StartAsync` starts the client and, on a failure, throws an
-`InvalidOperationException` carrying the original failure and the runtime's error, and naming the
-variable, its value and the three remedies — unset it, point it at a runtime that ships the
-in-process library, or connect through a spawned process with an environment that omits it — when
-that error names the location the variable points to. Otherwise it reports the variable's value
-without blaming it, or, when the variable is not set, names the host's missing direct reference to
-the SDK as the likely cause of a runtime-not-found error. The helper never changes the
-connection or the environment: pointing the variable at a valid runtime is a supported configuration,
-and changing the process environment from a library is a global side effect. Cancellation propagates
-unchanged. The helper is optional; a host that starts the client itself loses only the diagnosis.
+supplied — otherwise the runtime uses the host process's working directory, which the runtime process
+inherits. A host that built a session by hand to reach the setting would forfeit the confinement. The
+working directory grants nothing: what an agent may read or write is decided by its tools' own path
+policy. `CopilotSummarizer` takes none, because a consolidation session offers no tools.
 
 ## Data Flow
 
@@ -603,15 +628,17 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
-├── CopilotClientStarter.cs           — starts the host's client, explaining a failed start
 ├── CopilotProviderSession.cs         — an AgentKit session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
+├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
+├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types
 ```
 
-`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit.
+`CopilotAgent.cs` and `CopilotAgentSession.cs` together form the `CopilotAgent` unit;
+`CopilotRuntime.cs` and `CopilotRuntimeOptions.cs` together form the `CopilotRuntime` unit.
 
 ## Dependencies
 
@@ -657,14 +684,16 @@ so no path can acquire capability another path withholds.
   session, the host environment context is removed from the system prompt, the built-in GitHub MCP
   server is disabled, every other MCP server the session lists is disabled and verified, and
   the session's installed plugins are cleared, because each would attach capability, direction or
-  identity the composing application never granted. AgentKit keeps every ambient MCP server from the
-  model. Discovered servers are disabled before the session exists, any other before the first turn,
-  and the session is refused if one stays enabled. A server the SDK cannot enumerate before
+  identity the composing application never granted. Discovered servers and the built-in GitHub
+  server are disabled before the session exists; any other listed server is disabled before the first
+  turn, and the session is refused if one stays enabled. A server the SDK cannot enumerate before
   creation, such as a managed catalog's or a signed-in account's, may still start during session
-  creation.
-- **A documented client precondition.** Empty mode on a host-owned data directory is required and
-  cannot be detected; what a client violating it could still add is host-side behavior no session
-  option reaches, listed under *Host Client Construction*.
+  creation: it is contained, not prevented.
+- **The runtime AgentKit owns.** Every session runs on a runtime AgentKit started in Empty mode, as a
+  child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+  allow-listed credential, network and telemetry-off set, on a data directory AgentKit owns; no client of the
+  host's is accepted. This is what prevents the user, workspace and plugin sources, which Empty mode
+  alone does not; see *Runtime Ownership*.
 - **The refused built-in names.** A supplied tool cannot carry a built-in tool's name, and AgentKit
   never marks a tool as overriding a built-in, so no supplied tool can stand in for one the model
   associates with other behavior.
@@ -680,9 +709,12 @@ for is ended rather than reused. Both are argued above.
 
 ## Design Constraints
 
-- **No ownership of the client**: the host constructs, starts and disposes the `CopilotClient`; this
-  system releases only the session handles it opens, and deletes only the sessions the engine and
-  the summarizer are finished with
+- **No ownership of the runtime by what uses it**: the host starts and disposes the
+  `CopilotRuntime`; the agent, the provider-session factory and the summarizer release only the
+  session handles they open, and delete only the sessions the engine and the summarizer are
+  finished with
+- **No client of the host's**: the runtime's client is built and owned by `CopilotRuntime` and never
+  exposed, so no session can be opened on a client of unknown mode, data directory or environment
 - **One confinement path**: every session — agent created, agent resumed, engine and consolidation —
   is built through one derivation of the allow-list and one confinement block, and opened through one
   confining protocol; a second builder would be the drift this package prevents
@@ -692,8 +724,9 @@ for is ended rather than reused. Both are argued above.
   mutates the options it is handed and its clone is shallow
 - **No window from the application**: occupancy and limit come from the runtime, which is what makes
   the session engine's accounting the runtime's own
-- **No change to the host's environment or connection**: the system diagnoses a runtime that cannot
-  load, and never sets or clears an environment variable or selects a connection on the host's behalf
+- **No change to the host's process environment**: the system decides the runtime process's
+  environment through the SDK's replacement environment, and never sets or clears a variable of the
+  host process
 - **Isolated dependency**: `Microsoft.Copilot.SDK` and `Microsoft.Agents.AI.Abstractions` reach an
   application only through this package; the SDK's native runtime reaches it only through the host
   application's own direct reference to the SDK

@@ -7,20 +7,21 @@ using Microsoft.Extensions.AI;
 namespace DemaConsulting.AgentKit.Agents.Copilot.LiveTests;
 
 /// <summary>
-///     The shared state of one live run: the opt-in gate, a started Copilot client, a sandbox the
+///     The shared state of one live run: the opt-in gate, a started Copilot runtime, a sandbox the
 ///     tools are confined to, the AgentKit tools under test, and a log of what the runtime did.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     <b>Nothing happens unless the run opted in.</b> When <see cref="ModelVariable"/> is unset the
-///     fixture starts no client and every test skips itself, naming the variable, so an accidental
+///     fixture starts no runtime and every test skips itself, naming the variable, so an accidental
 ///     run costs nothing. When it is set it names the model every scenario uses — a cheap one is
 ///     expected.
 ///     </para>
 ///     <para>
-///     One client serves the whole run, in Empty mode on the in-process runtime, authenticated as
-///     the logged-in user (or from <c>GH_TOKEN</c>/<c>GITHUB_TOKEN</c> in CI). It is started through
-///     <see cref="CopilotClientStarter"/>, as a host should, and disposed when the run ends.
+///     One <see cref="CopilotRuntime"/> serves the whole run, started exactly as a host starts one —
+///     Empty mode, the bundled runtime spawned with the host's Copilot variables withheld, a data
+///     directory AgentKit created under the run's root — authenticated as the logged-in user (or
+///     from <c>GH_TOKEN</c>/<c>GITHUB_TOKEN</c> in CI), and disposed when the run ends.
 ///     </para>
 /// </remarks>
 public sealed class CopilotLiveFixture : IAsyncLifetime
@@ -56,9 +57,9 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
     private StreamWriter? _log;
 
     /// <summary>
-    ///     The started client, or <see langword="null"/> when the run did not opt in.
+    ///     The started runtime, or <see langword="null"/> when the run did not opt in.
     /// </summary>
-    private CopilotClient? _client;
+    private CopilotRuntime? _runtime;
 
     /// <summary>
     ///     Gets the model the run uses, or <see langword="null"/> when the run did not opt in.
@@ -81,10 +82,16 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
     internal string Outside => Path.Combine(Root, "outside");
 
     /// <summary>
-    ///     Gets the started client.
+    ///     Gets the started runtime.
     /// </summary>
     /// <exception cref="InvalidOperationException">The run did not opt in.</exception>
-    internal CopilotClient Client => _client ?? throw new InvalidOperationException("The live run did not opt in.");
+    internal CopilotRuntime Runtime => _runtime ?? throw new InvalidOperationException("The live run did not opt in.");
+
+    /// <summary>
+    ///     Gets the started runtime's client, for the scenarios that inspect the runtime directly.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The run did not opt in.</exception>
+    internal CopilotClient Client => Runtime.Client;
 
     /// <summary>
     ///     Gets the AgentKit tools under test: a confined text-file reader and image reader.
@@ -152,18 +159,17 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
                 .Where(tool => tool.Name is "text_file_read" or "image_read"),
         ];
 
-        // One client for the run, in Empty mode, started as a host should start it
-        _client = new CopilotClient(CreateClientOptions(Path.Combine(Root, "copilot-home")));
-        await CopilotClientStarter.StartAsync(_client);
-        Log("Client started.");
+        // One runtime for the run, started exactly as a host starts one
+        _runtime = await CopilotRuntime.StartAsync(new CopilotRuntimeOptions(Path.Combine(Root, "copilot-home")));
+        Log($"Runtime started on {_runtime.DataDirectory}.");
     }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (_client is not null)
+        if (_runtime is not null)
         {
-            await _client.DisposeAsync();
+            await _runtime.DisposeAsync();
         }
 
         if (_log is not null)
@@ -171,20 +177,6 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
             await _log.DisposeAsync();
         }
     }
-
-    /// <summary>
-    ///     Builds the options for a client in Empty mode on the in-process runtime, authenticated as
-    ///     the logged-in user.
-    /// </summary>
-    /// <param name="dataDirectory">The runtime's data directory.</param>
-    /// <returns>The client options.</returns>
-    internal static CopilotClientOptions CreateClientOptions(string dataDirectory) =>
-        new()
-        {
-            Mode = CopilotClientMode.Empty,
-            Runtime = RuntimeConnection.ForInProcess(baseDirectory: dataDirectory),
-            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-        };
 
     /// <summary>
     ///     Normalizes a blank value to <see langword="null"/>.
@@ -199,7 +191,7 @@ public sealed class CopilotLiveFixture : IAsyncLifetime
 /// </summary>
 /// <remarks>
 ///     Sequential on purpose: the run spends model quota, and one scenario changes the process
-///     environment while it checks the client starter.
+///     environment while it checks that the runtime does not inherit it.
 /// </remarks>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class CopilotLiveCollection : ICollectionFixture<CopilotLiveFixture>

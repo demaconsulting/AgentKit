@@ -329,9 +329,9 @@ public sealed class CopilotProviderSession : IProviderSession
     /// <remarks>
     ///     <para>
     ///     Releases the runtime session this instance owns — on the caller's release and on a
-    ///     rotation's failure paths alike — and nothing else. The <c>CopilotClient</c> is the host's:
-    ///     it is shared by every session a rotation creates and outlives all of them, so it is
-    ///     disposed by whoever constructed it and never here.
+    ///     rotation's failure paths alike — and nothing else. The <see cref="CopilotRuntime"/> is the
+    ///     host's: it is shared by every session a rotation creates and outlives all of them, so it
+    ///     is disposed by whoever started it and never here.
     ///     </para>
     ///     <para>
     ///     Repeated disposal is permitted, because a rotation and an application's own release may

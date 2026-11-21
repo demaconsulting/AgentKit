@@ -2,10 +2,9 @@
 
 ![AgentKit Copilot Agents Structure](AgentKitAgentsCopilotView.svg)
 
-The `CopilotAgentFactory` class builds AgentKit's own Microsoft Agent Framework `AIAgent` over a GitHub
-Copilot `CopilotClient` and a supplied tool list, suppressing the runtime's built-in tools by deriving
-the session allow-list from the supplied tools, and is the single place any Copilot session's options
-are built.
+The `CopilotAgentFactory` class builds AgentKit's own Microsoft Agent Framework `AIAgent` on a GitHub Copilot runtime
+AgentKit owns (`CopilotRuntime`) and a supplied tool list, suppressing the runtime's built-in tools by deriving the
+session allow-list from the supplied tools, and is the single place any Copilot session's options are built.
 
 ### Purpose
 
@@ -45,7 +44,7 @@ the refresh of custom instructions — are create-only, and AgentKit sets none o
 | `Permissions.OnRequest` | the host handler, or the default-deny one | adjudicates each permission request |
 
 **Every other channel of injected capability is withheld.** Each is set explicitly on every session,
-so the confinement does not depend on the client's mode, which the factory cannot read:
+so the confinement does not rest on the runtime's Empty mode alone:
 
 | Member | Value | Reason |
 | --- | --- | --- |
@@ -84,7 +83,8 @@ lists no agent at all.
 context names the working directory, the operating system, the git root, a directory listing and the
 available tools. Empty mode removes it client-side; the factory removes it on every session through
 the system message's section overrides, the same shape Empty mode sends, so it is removed whatever
-the client's mode. For an Empty-mode client the wire payload is unchanged. The host's instructions,
+the client's mode. On the Empty-mode runtime AgentKit owns, the wire payload is unchanged. The host's
+instructions,
 if any, are this message's content, which the runtime appends in this mode just as it does in append mode.
 
 **Commit co-author trailers are set off, not left unset.** Off is an Empty-mode default: in Empty
@@ -93,14 +93,16 @@ setting only when it is set, in the options patch it sends after the session ope
 unset would hand a non-Empty client's own default to the session, so the factory sets it off.
 
 **The built-in GitHub MCP server is disabled by name.** Measured against the live runtime, it is
-started and authenticated with the user's GitHub identity on every session, even in the client's
-Empty mode. The source-qualified allow-list already keeps its tools out of reach, but a server
-holding the user's identity is disabled outright rather than merely filtered. Every other MCP server
-— from the user, workspace, plugin, builtin, managed or account source — is disabled before any turn
-by the production turn channel, which adds every server the runtime discovers to this list before
-the session is created, then disables and verifies whatever is still enabled once the session
-exists; a server discovery cannot name may start during creation, but is kept from the model. That
-needs the live client and session, which this builder does not have.
+started on a session's first turn and authenticated with the user's GitHub identity, even in Empty
+mode. The source-qualified allow-list already keeps its tools out of reach, but a server holding the
+user's identity is disabled outright rather than merely filtered. Naming it here is what prevents it:
+the session's MCP listing does not report the built-in server even while it is connected, so the
+turn channel's post-create seal could not see it. Every other MCP server — from the user, workspace,
+plugin, builtin, managed or account source — is handled by the production turn channel, which adds
+every server the runtime discovers to this list before the session is created, then disables and
+verifies whatever the session still lists enabled once it exists; a server discovery cannot name may
+start during creation and is then contained, not prevented. That needs the live client and session,
+which this builder does not have.
 
 **Large-output diversion stays disabled.** The runtime would divert a result larger than about twenty
 kilobytes to a temporary file and hand the model its path. A confined agent cannot read that file —
@@ -142,22 +144,28 @@ type initialization rather than copied. Invariant: a conservative union across p
 
 ### Key Methods
 
-#### Create(CopilotClient client, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name, model, workingDirectory)
+#### Create(CopilotRuntime runtime, IList&lt;AIFunction&gt; tools, instructions, onPermissionRequest, name, model, workingDirectory)
 
-The single public entry point for an agent.
+The single public entry point for an agent. It takes the runtime AgentKit owns; no overload takes a
+client the host built, because none of the runtime's guarantees could hold on one.
 
 **Algorithm:**
 
-1. Reject a null `client`.
-2. Hand the arguments to `CreateAgent` with the production channels over the client: an opener that
+1. Reject a null `runtime`; check it is not disposed (`CopilotRuntime.ThrowIfDisposed`), which throws
+   `ObjectDisposedException` when it has been.
+2. Hand the arguments to `CreateAgent` with the production channels over that runtime: an opener that
    creates a session and **keeps** it on release, a resumer that resumes a recorded session and keeps
    it too, and an opener for a run made without a conversation that **deletes** the session on
    release. A conversation continues on its next run, so its sessions are never deleted by AgentKit.
    A run made without a conversation has nothing that could resume it, so its session is deleted;
-   see *CopilotTurnChannel Unit Design*.
+   see *CopilotTurnChannel Unit Design*. The channels are handed the runtime, not its client, and
+   each open, resume and release reads the client: the SDK restarts a disposed client on demand, so
+   an agent that held the client would bring a runtime the host had disposed back to life. Once the
+   runtime is disposed, every run fails with `ObjectDisposedException` and nothing is started.
 3. Return the agent as an `AIAgent`.
 
-**Throws:** `ArgumentNullException` when `client` or `tools` is null, or a tool is null;
+**Throws:** `ArgumentNullException` when `runtime` or `tools` is null, or a tool is null;
+`ObjectDisposedException` when `runtime` has been disposed;
 `ArgumentException` when `tools` is empty, two tools share a name, or a tool carries a reserved
 built-in name.
 
@@ -168,15 +176,15 @@ compatibility for every positional caller of a released public API. Compatibilit
 awkward position is recorded here so a later maintainer does not "tidy" it.
 
 **The working directory** is the directory the runtime gives the agent's sessions — typically the
-root of the workspace the tools are confined to. In-process hosting has no client-level working
-directory, so this parameter is the only place a host can set one without building a session by
-hand, which would forfeit the confinement. It is not validated here: the runtime resolves it when a
+root of the workspace the tools are confined to. AgentKit sets no working directory on the runtime
+process, so this parameter is the only place a host can set one without building a session by hand,
+which would forfeit the confinement. It is not validated here: the runtime resolves it when a
 session is created. It grants nothing: what the agent may read or write is decided by the tools' own
 path policy.
 
 #### CreateAgent(tools, instructions, onPermissionRequest, name, model, workingDirectory, opener, resumer, ephemeralOpener)
 
-Internal seam behind `Create`: production passes channels over the host's client, a test passes a
+Internal seam behind `Create`: production passes channels over the runtime, a test passes a
 scripted runtime, and everything else is shared.
 
 **Algorithm:**
@@ -374,10 +382,10 @@ Verification Design*.
 
 ### Ownership and Disposal Contract
 
-**The host owns the client; the factory owns nothing disposable.** The host constructs and starts the
-`CopilotClient` and therefore disposes it. Nothing the factory builds ever disposes it, and the
-factory creates nothing disposable of its own, so the rule is unambiguous: *whoever created the client
-disposes it.* The agent it returns releases each runtime session handle after the run that opened it
+**The host owns the runtime; the factory owns nothing disposable.** The host starts the
+`CopilotRuntime` and therefore disposes it. Nothing the factory builds ever disposes it, and the
+factory creates nothing disposable of its own, so the rule is unambiguous: *whoever started the
+runtime disposes it.* The agent it returns releases each runtime session handle after the run that opened it
 and keeps a conversation's session, deleting only the session of a run made without a conversation,
 which nothing could resume. Deleting a finished conversation is the host's decision, through
 `CopilotAgentSession.SessionId`. This is why the public entry point returns a bare `AIAgent` rather
@@ -403,29 +411,20 @@ installs the default-deny handler. When one is supplied it is installed unchange
 default: it is not composed with it, so a host that supplies a handler forfeits default-deny unless
 its handler reproduces it. The pinned manual mode applies either way.
 
-**Client precondition: Empty mode on a data directory the host owns.** The integration requires it
-and cannot enforce it: the SDK offers no way to read a client's mode back. The factory therefore
-relies on the mode for nothing that reaches the model: every capability or context default Empty
-mode supplies is set on each session here, and the turn channel clears the installed plugins and
-disables every MCP server the session lists, refusing the session if one stays enabled. AgentKit
-keeps every ambient MCP server from the model. Discovered servers are disabled before the session
-exists, any other before the first turn, and the session is refused if one stays enabled. A server
-the SDK cannot enumerate before creation, such as a managed catalog's or a signed-in account's, may
-still start during session creation. A host that must also keep such servers from running supplies a
-`CopilotClientMode.Empty` client on a clean data directory it owns. That removes the sources the
-directory holds, namely its MCP configuration and installed plugins. SDK 2.0.1 does not document
-that Empty mode or a clean data directory keeps a managed-catalog or account server from starting;
-an account server follows the signed-in account and its organization's policy. The client therefore
-narrows those sources rather than guaranteeing that none starts. What a client that violates the
-precondition can still add is host-side
-behavior no session option reaches: settings in a shared data directory such as user-level hooks,
-credential storage in the system keychain rather than the data directory, telemetry and runtime
-file logging, and anything the host attaches at client level, such as plugin directories or
-extensions. The `client` parameter's documentation states the precondition.
+**Only a runtime AgentKit owns.** `Create` takes a `CopilotRuntime`, which AgentKit started in Empty
+mode, as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+allow-listed credential, network and telemetry-off set, on a data directory AgentKit owns. A client of the host's
+could be in another mode, on a shared data directory, or in-process with the host's whole environment, and
+none of that can be read back, so no overload takes one. The factory still sets on each session every
+capability or context default Empty mode supplies, so the confinement does not rest on the mode alone, and the
+turn channel clears the
+installed plugins and disables every MCP server the session lists, refusing the session if one stays
+enabled. Which MCP sources that prevents and which it only contains is stated per source under
+*Runtime Ownership* in *AgentKitAgentsCopilot System Design*; the class remarks state the same.
 
 **Model and working directory are reachable through the factory, not around it.** Which Copilot model
 backs a session materially changes how reliably a confined agent uses its tools and how accurately it
-reads an image, and a working directory has no client-level setting at all, so the host must be able
+reads an image, and AgentKit sets no working directory on the runtime process, so the host must be able
 to choose both *here*. A host that built session options itself to reach either setting would forfeit
 the derived allow-list, the withheld channels and the default-deny permission handler — producing an
 agent that looks configured but is not confined. Exposing the settings on the factory removes the
@@ -435,7 +434,9 @@ incentive to bypass it.
 
 | Condition | Handling |
 | --- | --- |
-| Null `client` | `ArgumentNullException` propagates |
+| Null `runtime` | `ArgumentNullException` propagates |
+| Disposed `runtime` | `ObjectDisposedException` propagates |
+| `runtime` disposed after the agent was built | `ObjectDisposedException` on the next run; nothing started |
 | Null `tools`, or a null tool entry | `ArgumentNullException` propagates |
 | Empty `tools` on the agent path | `ArgumentException` propagates |
 | Two tools sharing a name | `ArgumentException` propagates |
@@ -446,6 +447,8 @@ incentive to bypass it.
 ### Dependencies
 
 - **CopilotAgent** — the agent `CreateAgent` constructs; see *CopilotAgent Unit Design*.
+- **CopilotRuntime** — the runtime `Create` takes, whose client the channels read at every open,
+  resume and release; see *CopilotRuntime Unit Design*.
 - **CopilotTurnChannel** — supplies the keeping opener, the resumer and the deleting opener (for a run
   made without a conversation) that `Create` hands the agent; see *CopilotTurnChannel Unit Design*.
 - **Microsoft.Copilot.SDK** — supplies `CopilotClient`, `CreateSessionOptions`, `ResumeSessionOptions`
@@ -459,7 +462,7 @@ incentive to bypass it.
 ### Callers
 
 `CopilotAgentFactory.Create` is a public API entry point. An application calls it once, after
-constructing and starting its own `CopilotClient`, to obtain a Copilot agent confined to a supplied
+starting a `CopilotRuntime`, to obtain a Copilot agent confined to a supplied
 tool set. Within this system, `CopilotAgent` calls the two agent builders on every run through the
 delegates `CreateAgent` gave it, and `CopilotProviderSessionFactory` and `CopilotSummarizer` call
 `BuildEngineSessionConfig` — which is what keeps every session in the package on one confinement path;

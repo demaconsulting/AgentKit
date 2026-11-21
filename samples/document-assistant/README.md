@@ -281,14 +281,14 @@ in exactly the same way.
 
 - The .NET SDK matching the repository's `global.json`.
 - For `--provider copilot`:
-  - A signed-in GitHub user with Copilot access — through `gh auth login` or a Copilot sign-in — or
+  - A GitHub user with Copilot access signed in with the GitHub CLI (`gh auth login`, with `gh` on `PATH`), or
     a token in `GH_TOKEN`. Installing the Copilot CLI is **not** required.
   - Network access on the first build: the sample references `Microsoft.Copilot.SDK` directly, so
     that build downloads the Copilot runtime (about 100 MB, adding about 356 MB to the sample's
     output) and later builds reuse it.
-  - `COPILOT_CLI_PATH` unset in the shell you run from. Every shell the Copilot CLI starts sets it,
-    and in-process hosting then looks for the runtime beside the CLI instead and fails to start; the
-    sample's error says so. Clear it with `Remove-Item Env:COPILOT_CLI_PATH` (PowerShell) or
-    `unset COPILOT_CLI_PATH` (bash).
+  - Nothing about the shell: AgentKit starts the runtime with the shell's `COPILOT_`/`GITHUB_COPILOT_`
+    variables withheld apart from an allow-listed credential, network and telemetry-off set, so the sample
+    runs from a Copilot CLI shell too. The runtime keeps its state in
+    `AgentKit/document-assistant/copilot-runtime` under the user's local application data.
 - For `--provider ollama`: a reachable Ollama server hosting a model with tool-calling (and vision, if
   you want the image demo).

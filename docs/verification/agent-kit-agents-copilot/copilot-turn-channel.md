@@ -41,8 +41,12 @@ reports the server and the channel names it on the create-time disabled list, wi
 afterwards (L12a); a session created without the channel has it enabled (L12b); the seal's
 session-scoped disable turns off a server left enabled at creation, and the re-listing confirms it
 (L12c); and a session resumed through the channel has it named before the resume and no server
-enabled afterwards (L12d). The plugins patch is shown accepted, not shown clearing an installed
-plugin, because no fixture installs one.
+enabled afterwards (L12d). On the runtime AgentKit owns, a data-directory server that discovery
+reports is never executed through the channel while the same server is executed without it (L14c,
+L14d). The seal's listing is also shown to be incomplete: it does not report the built-in GitHub
+server while that server is connected (L14b), so the seal is defense in depth rather than proof that
+no server runs. The plugins patch is shown accepted, not shown clearing an installed plugin, because
+no fixture installs one.
 
 **What is verified through the units above, and what that is worth.** The *contract* this unit
 publishes — that a channel names its session, takes a turn carrying a prompt and any attachments, and
@@ -63,7 +67,8 @@ rather than tested, and each is recorded here rather than implied to be covered:
   the first three on the real runtime, including a conversation released by one agent and resumed by
   another, and shows of the fourth exactly what L12a to L12d cover, as listed above: the create-time
   disabled list, the seal's session-scoped disable and re-listing, and the resume-time disabled list
-  on a session resumed through the channel, with
+  on a session resumed through the channel, plus the L14 scenarios' prevention of data-directory and
+  workspace servers and the listing's omission of the built-in server, with
   the plugins patch accepted but not shown clearing an installed plugin. It is supplementary evidence
   outside the trace matrix, described in *AgentKitAgentsCopilot
   System Verification Design*.

@@ -366,11 +366,11 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves a missing client is refused where the application composed its provider, rather
+    ///     Proves a missing runtime is refused where the application composed its provider, rather
     ///     than at the first rotation.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_Constructor_NullClient_Throws()
+    public void CopilotProviderSessionFactory_Constructor_NullRuntime_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new CopilotProviderSessionFactory(null!));
     }
@@ -384,6 +384,48 @@ public class CopilotProviderSessionFactoryTests
     {
         Assert.Throws<ArgumentNullException>(
             () => new CopilotProviderSessionFactory((CopilotChannelOpener)null!, model: null));
+    }
+
+    /// <summary>
+    ///     Proves a provider-session factory never starts its runtime again once the host has
+    ///     disposed it. The SDK restarts a disposed client on demand, so a rotation that reached the
+    ///     client would bring a runtime the host had stopped back to life.
+    /// </summary>
+    [Fact]
+    public async Task CopilotProviderSessionFactory_CreateAsync_RuntimeDisposedAfterConstruction_FailsWithoutStartingTheRuntime()
+    {
+        // Arrange: a factory on a runtime whose client can never start, so an attempt to start it
+        // would fail as a start failure rather than as the runtime's disposal
+        var runtime = RuntimeThatCannotStart();
+        var factory = new CopilotProviderSessionFactory(runtime);
+        await runtime.DisposeAsync();
+
+        // Act
+        var refused = await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => factory.CreateAsync(new ProviderSessionSeed(null, [], []), TestContext.Current.CancellationToken));
+
+        // Assert: refused by the runtime itself, before any start was attempted
+        Assert.Equal(nameof(CopilotRuntime), refused.ObjectName);
+    }
+
+    /// <summary>
+    ///     Builds a runtime over a client that can never start: its runtime path names no file, so
+    ///     an attempt to start it fails, spawning nothing, rather than succeeding unseen.
+    /// </summary>
+    /// <returns>The runtime. Nothing has been started.</returns>
+    private static CopilotRuntime RuntimeThatCannotStart()
+    {
+        var temporary = Path.GetTempPath();
+        var unique = Guid.NewGuid().ToString("N");
+        return new CopilotRuntime(
+            new CopilotClient(new CopilotClientOptions
+            {
+                Mode = CopilotClientMode.Empty,
+                Runtime = RuntimeConnection.ForSpawnedStdio(
+                    path: Path.Combine(temporary, "agentkit-no-such-runtime-" + unique),
+                    baseDirectory: Path.Combine(temporary, unique)),
+            }),
+            Path.Combine(temporary, unique));
     }
 
     /// <summary>

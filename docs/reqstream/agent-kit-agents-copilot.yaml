@@ -21,8 +21,9 @@ sections:
           every session it builds, every other channel of injected capability that the session's
           options and the live session can reach — including every MCP server the session lists,
           which is disabled before any turn runs, the session's installed plugins and the host
-          environment context — while the channels only a client reaches are left to the required
-          Empty-mode client on a data directory the host owns.
+          environment context — while running every session on a runtime the library starts in Empty
+          mode, on a data directory it owns, with the host's COPILOT_ and GITHUB_COPILOT_ variables
+          withheld apart from an allow-listed credential, network and telemetry-off set.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -39,19 +40,29 @@ sections:
           extensions, installed plugins, MCP servers and the host environment context it writes into
           the system prompt would attach capability and direction the composing application never
           granted, so those channels are withheld on every session for the same reason the built-in
-          tools are suppressed. They are withheld per session because the SDK offers no way to read a
-          client's mode back, so the confinement cannot depend on it; and MCP servers are disabled
-          rather than merely filtered out of the allow-list, because Empty mode does not itself stop
-          ambient MCP servers, and a server that is started runs a process with the user's
-          environment and can contribute instructions even when none of its tools is allowed.
-          Servers the runtime's MCP discovery returns are named in the session's disabled servers
-          before the session exists, so the runtime does not start or authenticate them. The SDK
-          documents that discovery as covering the user, workspace, plugin and builtin sources. A
-          server from a source it cannot enumerate before creation, such as a managed catalog or a
-          signed-in account, may start, and authenticate with the host environment, while the
-          session is created. The seal disables any such server before any turn runs, and the
-          session is refused if one stays enabled. This guarantees that the model cannot reach an
-          ambient MCP server; it does not prevent one from running.
+          tools are suppressed. They are withheld per session as well as by the runtime's mode, so
+          the confinement does not rest on the mode alone; and MCP servers are disabled rather than
+          merely filtered out of the allow-list, because Empty mode does not itself stop ambient MCP
+          servers — measured against the live runtime, it starts the built-in GitHub server on the
+          first turn and runs a server its data directory configures — and a server that is started
+          runs a process with the user's environment and can contribute instructions even when none
+          of its tools is allowed.
+
+          On the runtime the library owns, before any session exists, the built-in GitHub MCP server
+          is named disabled, so it is not started or authenticated; no user-configured server can
+          exist in a fresh data directory, and one added later is found by the runtime's discovery
+          and disabled before the session is created; workspace MCP configuration is not loaded,
+          because configuration discovery is off and the data directory trusts no folder, and a
+          workspace server that discovery reports is disabled as well; and no plugin is installed in
+          a fresh data directory, nor can plugin directories be configured. Those sources are
+          prevented. Servers from a managed catalog or a signed-in account follow organization policy
+          and the account; the SDK cannot enumerate them before a session exists, so one may start,
+          and authenticate, while the session is created. The library then disables every server the
+          session's MCP configuration lists, before any turn runs, and refuses the session if one
+          stays enabled: that contains such a server, it does not prevent it. The session's
+          configuration listing is not complete — it does not report the built-in GitHub server even
+          while that server runs — so this post-create seal is defense in depth, not proof of absence.
+          In every case, no MCP tool is on a session's allow-list.
         children:
           - AgentKitAgentsCopilot-CopilotAgentFactory-DerivesAllowList
           - AgentKitAgentsCopilot-CopilotAgentFactory-WithholdsInjectedCapability
@@ -59,6 +70,7 @@ sections:
           - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesBuiltInToolNames
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-DerivesAllowListFromSeededTools
           - AgentKitAgentsCopilot-CopilotTurnChannel-ClosesAmbientMcpServersAndPlugins
+          - AgentKitAgentsCopilot-Runtime-OwnedAndConfined
         tests:
           - AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools
           - AgentKitAgentsCopilot_Session_BuiltInToolRequest_IsRejectedOnTheSessionPath
@@ -95,26 +107,28 @@ sections:
 
       - id: AgentKitAgentsCopilot-AgentConstruction-Validated
         title: >-
-          The library shall build a Microsoft Agent Framework agent from a Copilot client and a
-          supplied tool list without taking ownership of the client, rejecting a missing client and a
-          malformed tool list — including one naming a tool like a runtime built-in — and carrying the
+          The library shall build a Microsoft Agent Framework agent on a Copilot runtime the library
+          owns and a supplied tool list without taking ownership of the runtime, rejecting a missing
+          runtime and a malformed tool list — including one naming a tool like a runtime built-in — and carrying the
           supplied instructions, the supplied choice of model and the supplied working directory.
         justification: |
-          The host constructs, starts, and disposes the Copilot client, so the library takes no
-          ownership of it and builds the agent with client ownership left to the host — whoever
-          created the client disposes it. A missing client or a malformed tool list is a defect in
-          the host, refused where the host wrote it. Supplied instructions are carried onto the
+          The host starts and disposes the Copilot runtime, so the agent takes no ownership of it —
+          whoever started the runtime disposes it. The agent accepts only a runtime the library
+          started, never a client the host built, because the confinement depends on the client's
+          mode, data directory and environment, none of which can be read back from a client. A
+          missing runtime or a malformed tool list is a defect in the host, refused where the host
+          wrote it. Supplied instructions are carried onto the
           session so a confined agent is governed as the host intended, and so is a supplied choice
           of model: which model backs an agent materially changes how reliably it uses its tools and
           how accurately it reads an image, so the application author must be able to make that
           choice through the library rather than around it — going around it means building a
           session by hand and losing the suppression and the default-safe permission handler. A host
           that expresses no choice gets the runtime's own default, so the capability adds nothing an
-          existing application must account for. In-process hosting has no client-level working
-          directory, so the working directory is offered here for the same reason as the model: a
-          host must not have to go around the library to set it.
+          existing application must account for. The library sets no working directory on the runtime
+          process, so the working directory is offered here for the same reason as the model: a host
+          must not have to go around the library to set it.
         children:
-          - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullRuntime
           - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsInvalidToolList
           - AgentKitAgentsCopilot-CopilotAgentFactory-RefusesBuiltInToolNames
           - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesInstructions
@@ -122,7 +136,7 @@ sections:
           - AgentKitAgentsCopilot-CopilotAgentFactory-CarriesWorkingDirectory
           - AgentKitAgentsCopilot-CopilotProviderSessionFactory-CarriesWorkingDirectory
         tests:
-          - CopilotAgentFactory_Create_NullClient_Throws
+          - CopilotAgentFactory_Create_NullRuntime_Throws
           - AgentKitAgentsCopilot_BuildSessionConfig_BuiltInToolName_IsRefused
 
       - id: AgentKitAgentsCopilot-SessionAdapter-CarriesACoreSession
@@ -131,7 +145,7 @@ sections:
           fresh Copilot session with the instructions, tools and history a rotation produces, sending
           each message as one turn, recording the turn's tool calls and results as identified pairs,
           abandoning a session whose conversation it can no longer account for, and owning and
-          releasing each Copilot session it creates without ever disposing the client.
+          releasing each Copilot session it creates without ever disposing the runtime.
         justification: |
           The compaction engine is the reason a long-running agent behaves the same way on every
           provider, and until now it had one adapter, for the stateless chat-client family. Copilot
@@ -143,7 +157,7 @@ sections:
           the session's first message, prepended to the message the engine was already sending, so a
           rotation still costs exactly one request and a rotated session is briefed rather than
           replayed. Ownership follows the contract the package already records:
-          the host owns the client, and every session a rotation creates is AgentKit's, released on
+          the host owns the runtime, and every session a rotation creates is AgentKit's, released on
           every path including failure. A session that can no longer describe the conversation the
           runtime holds is abandoned rather than reused, because the engine's own answer to such a
           session — seed a replacement from the transcript — is the only recovery that is sound.
@@ -266,7 +280,7 @@ sections:
           The library's agent shall run a conversation on the Copilot runtime that continues across
           runs and across agent instances given the serialized conversation, confined identically on
           every run, streaming what the runtime produces, delivering inline data the caller attaches,
-          and releasing every runtime session it opens without disposing the client.
+          and releasing every runtime session it opens without disposing the runtime.
         justification: |
           The Copilot SDK ships no Agent Framework agent, and the adapter that once supplied one does
           not support the current SDK, so the library supplies the agent itself. An application that
@@ -312,25 +326,21 @@ sections:
 
       - id: AgentKitAgentsCopilot-RuntimeStartup-Diagnosable
         title: >-
-          The library shall let a host start its Copilot client so that a runtime that cannot load
-          is reported with the runtime's own error and, where the error identifies it, its cause
-          and remedy.
+          The library shall report a Copilot runtime that cannot start with the runtime's own error
+          and the likely cause and remedy, and shall pass a canceled start through unchanged.
         justification: |
-          The Copilot runtime is loaded in-process from the application's output — unless an ambient
-          environment variable, set by every Copilot CLI shell, redirects it to an installation that
-          does not ship the in-process runtime, or the host never referenced the SDK that provisions
-          it. Either way the runtime's own error names a missing library and neither the cause nor the
-          remedy, so a host author can lose hours to it. The library cannot change the host's
-          environment or connection without global side effects, but it can explain the failure.
+          The library starts the runtime that the Copilot SDK provisions into the application's
+          output, which happens only when the application references the SDK directly. A host that
+          relied on the library's reference alone has no runtime, and the runtime's own error names a
+          missing file and neither the cause nor the remedy, so a host author can lose hours to it.
+          Because the library withholds the host's Copilot configuration variables from the runtime,
+          an ambient runtime-path override, set by every Copilot CLI shell, can no longer be the
+          cause.
         children:
-          - AgentKitAgentsCopilot-CopilotClientStarter-StartsTheClient
-          - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride
-          - AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride
-          - AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime
-          - AgentKitAgentsCopilot-CopilotClientStarter-PassesCancellationThrough
-          - AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient
+          - AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough
         tests:
-          - AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained
+          - AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained
 
       - id: AgentKitAgentsCopilot-ToolOutput-ReadersPublishedAndPermitted
         title: >-
@@ -357,3 +367,38 @@ sections:
         tests:
           - AgentKitAgentsCopilot_ToolOutput_ReadersArePublishedAllowListedAndApproved
           - AgentKitAgentsCopilot_ToolOutput_ConfiguredToolsDeliverPreviewAndPage
+
+      - id: AgentKitAgentsCopilot-Runtime-OwnedAndConfined
+        title: >-
+          The library shall start, confine and own the Copilot runtime every agent, provider session
+          and summarizer runs on — in Empty mode, as a child process with the host's COPILOT_ and
+          GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, network and telemetry-off set, on
+          a data directory the library owns — and shall accept no client a host built.
+        tags: [security]
+        justification: |
+          The confinement a Copilot session needs is only partly a property of the session. The rest
+          belongs to the client: its mode, its data directory and its runtime's environment decide
+          which MCP servers, plugins and configuration exist before any session option is read, and
+          the SDK offers no way to read any of them back from a client. Measured against the live
+          runtime, Empty mode alone still starts the built-in GitHub MCP server on the first turn and
+          runs an MCP server that its data directory configures, and the SDK's default in-process
+          hosting gives the runtime the host's whole environment, including variables that redirect
+          the runtime or switch on approvals. A guarantee about what reaches the model therefore holds
+          only on a client the library built itself, so the library builds it, offers only options
+          that cannot widen what reaches the model, and removes every way to supply a client of the
+          host's. The opt-in live suite shows the effect per source: probe servers configured in the
+          runtime's data directory or in a trusted workspace are never executed through the library,
+          while the same probes do execute without it.
+        children:
+          - AgentKitAgentsCopilot-CopilotRuntime-ForcesEmptyMode
+          - AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheBundledRuntime
+          - AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment
+          - AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory
+          - AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
+          - AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind
+          - AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation
+          - AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
+          - AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullRuntime
+        tests:
+          - AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
+          - AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused

@@ -90,7 +90,7 @@ input-files:
   - docs/verification/agent-kit-agents-copilot.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent-factory.md
   - docs/verification/agent-kit-agents-copilot/copilot-agent.md
-  - docs/verification/agent-kit-agents-copilot/copilot-client-starter.md
+  - docs/verification/agent-kit-agents-copilot/copilot-runtime.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session.md
   - docs/verification/agent-kit-agents-copilot/copilot-provider-session-factory.md
   - docs/verification/agent-kit-agents-copilot/copilot-session-observer.md

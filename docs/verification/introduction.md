@@ -169,12 +169,13 @@ constituent software items, specifically:
   the same runtime
 - **CopilotAgentFactory (Unit)** — The static factory that derives the allow-list, withholds every
   channel of runtime-injected capability, refuses a tool named like a runtime built-in, installs a
-  default-safe permission handler, and builds the agent without taking ownership of the client
+  default-safe permission handler, and builds the agent without taking ownership of the runtime
 - **CopilotAgent (Unit)** — The agent the factory builds, and its `CopilotAgentSession`: creates a
   confined Copilot session on a conversation's first run and resumes it on every later run, streams
   what the runtime produces, delivers inline data as attachments, and serializes the conversation
-- **CopilotClientStarter (Unit)** — Starts a host's Copilot client and explains a runtime that
-  cannot load, reporting the runtime's error and, where that error identifies it, the cause and remedy
+- **CopilotRuntime (Unit)** — Starts, confines and owns the Copilot runtime — Empty mode, the host's
+  `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, network and
+  telemetry-off set, a data directory AgentKit owns — and explains a runtime that cannot start
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
