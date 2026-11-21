@@ -55,9 +55,11 @@ sections:
               The value of the reducer is AgentKit's consolidation: the prompt that preserves named
               facts, decisions, errors and outstanding work. Rendering through the same labeled
               transcript lines the session engine uses means a summarizer behaves identically under
-              either.
+              either. A tool result supplied as a single-pass sequence is read once, so it reaches the
+              material.
             tests:
               - AgentKitChatReducer_ReduceAsync_ConsolidationRequest_UsesConsolidationPromptForLevel
+              - AgentKitChatReducer_ReduceAsync_SinglePassToolResult_IsMeasuredAndRenderedFromOneEnumeration
 
           - id: AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord
             title: >-

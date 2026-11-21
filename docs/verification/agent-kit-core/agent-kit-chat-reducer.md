@@ -21,14 +21,16 @@ project.
 - **Framework**: xUnit v3 running under the .NET SDK, using asynchronous test methods
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **Dependencies**: `Microsoft.Extensions.AI.Abstractions`; no model, file system or network access
-- **Mocking**: The hand-written `FakeSummarizer` and `InattentiveSummarizer`; no mocking framework
+- **Mocking**: The hand-written `FakeSummarizer` and `InattentiveSummarizer`, and a `SinglePassSequence`
+  tool result that throws when enumerated twice; no mocking framework
 - **Isolation**: Each test constructs its own reducer and summarizer
 
 ### Acceptance Criteria
 
-A unit test run passes when all thirteen scenarios below pass. Any history within the threshold that is
+A unit test run passes when all fourteen scenarios below pass. Any history within the threshold that is
 changed or consolidated, any system message or kept turn lost, altered or reordered, any tool call
-separated from its result, any request with the wrong tier, clause or material, any previous record
+separated from its result, any request with the wrong tier, clause or material, any tool result lost
+from the material, any previous record
 kept beside the new one, any ordinary assistant message treated as a record, any material lost on a
 blank record, any null record accepted, any image bytes in the material, any invalid construction
 accepted, or any cancellation ignored constitutes a failure.
@@ -70,6 +72,15 @@ asserts those four follow the record unchanged.
 At the high level with one turn kept over three turns, asserts one request at tier one with
 `ConsolidationPrompt.HighInstruction` and the material exactly
 `USER: question 1\nASSISTANT: answer 1\nUSER: question 2\nASSISTANT: answer 2`.
+
+#### AgentKitCore-AgentKitChatReducer-ConsolidatesThroughSummarizer: A Single-Pass Tool Result Reaches the Material
+
+**Test**: `AgentKitChatReducer_ReduceAsync_SinglePassToolResult_IsMeasuredAndRenderedFromOneEnumeration`
+
+An older tool result supplied as a `SinglePassSequence` holding `probe output`, which throws if
+enumerated a second time, with one turn kept over a 10-character threshold. Asserts one request whose
+material holds `TOOL RESULT [c1]: probe output`, so the result was measured and rendered from a single
+enumeration.
 
 #### AgentKitCore-AgentKitChatReducer-FoldsPreviousRecord: A Previous Record Folds
 

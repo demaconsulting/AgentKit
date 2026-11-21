@@ -151,7 +151,9 @@ public sealed class AgentKitChatReducer : IChatReducer
     /// </summary>
     /// <remarks>
     ///     The input is enumerated once. When no reduction is made the materialized messages are
-    ///     returned in their original order; the message instances are never modified.
+    ///     returned in their original order; the message instances are never modified. A tool result
+    ///     that is a single-pass sequence of content is enumerated once, and that list is both
+    ///     measured and rendered; the message holding it is not modified.
     /// </remarks>
     /// <param name="messages">The history to reduce. Must not be <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the reduction.</param>
@@ -179,7 +181,8 @@ public sealed class AgentKitChatReducer : IChatReducer
 
         // Materialize once: a history that fits is returned as it is, at no further cost.
         var history = messages.ToList();
-        if (history.Sum(Measure) <= ThresholdCharacters)
+        var results = MaterializeResults(history);
+        if (history.Sum(message => Measure(message, results)) <= ThresholdCharacters)
         {
             return history;
         }
@@ -199,7 +202,9 @@ public sealed class AgentKitChatReducer : IChatReducer
             return history;
         }
 
-        var material = string.Join("\n", older.SelectMany(Render).Select(entry => entry.ToTranscriptLine()));
+        var material = string.Join(
+            "\n",
+            older.SelectMany(message => Render(message, results)).Select(entry => entry.ToTranscriptLine()));
         if (string.IsNullOrWhiteSpace(material))
         {
             return history;
@@ -281,8 +286,11 @@ public sealed class AgentKitChatReducer : IChatReducer
     ///     contributes nothing.
     /// </remarks>
     /// <param name="message">The message to render.</param>
+    /// <param name="results">The materialized function result values, by result content.</param>
     /// <returns>The entries, in order.</returns>
-    private static IEnumerable<TranscriptEntry> Render(ChatMessage message)
+    private static IEnumerable<TranscriptEntry> Render(
+        ChatMessage message,
+        Dictionary<FunctionResultContent, object?> results)
     {
         if (IsRecord(message))
         {
@@ -299,7 +307,7 @@ public sealed class AgentKitChatReducer : IChatReducer
                     break;
 
                 case FunctionResultContent result:
-                    yield return TranscriptEntry.ToolResult(CallId(result.CallId), DescribeValue(result.Result));
+                    yield return TranscriptEntry.ToolResult(CallId(result.CallId), DescribeValue(ResultOf(result, results)));
                     break;
 
                 case TextContent or DataContent or UriContent:
@@ -345,34 +353,77 @@ public sealed class AgentKitChatReducer : IChatReducer
     ///     Estimates the characters one message occupies, counting binary content by its bytes.
     /// </summary>
     /// <param name="message">The message to measure.</param>
+    /// <param name="results">The materialized function result values, by result content.</param>
     /// <returns>The estimate.</returns>
-    private static long Measure(ChatMessage message) => message.Contents.Sum(MeasureContent);
+    private static long Measure(ChatMessage message, Dictionary<FunctionResultContent, object?> results) =>
+        message.Contents.Sum(content => MeasureContent(content, results));
 
     /// <summary>
     ///     Estimates the characters one content item occupies.
     /// </summary>
     /// <param name="content">The content to measure.</param>
+    /// <param name="results">The materialized function result values, by result content.</param>
     /// <returns>The estimate.</returns>
-    private static long MeasureContent(AIContent content) => content switch
-    {
-        TextContent text => text.Text.Length,
-        DataContent data => data.Data.Length,
-        FunctionCallContent call => call.Name.Length + SerializeArguments(call).Length,
-        FunctionResultContent result => MeasureValue(result.Result),
-        _ => 0
-    };
+    private static long MeasureContent(AIContent content, Dictionary<FunctionResultContent, object?> results) =>
+        content switch
+        {
+            TextContent text => text.Text.Length,
+            DataContent data => data.Data.Length,
+            FunctionCallContent call => call.Name.Length + SerializeArguments(call).Length,
+            FunctionResultContent result => MeasureValue(ResultOf(result, results), results),
+            _ => 0
+        };
 
     /// <summary>
     ///     Estimates the characters a function result's value occupies.
     /// </summary>
     /// <param name="value">The value; may be null.</param>
+    /// <param name="results">The materialized function result values, by result content.</param>
     /// <returns>The estimate.</returns>
-    private static long MeasureValue(object? value) => value switch
+    private static long MeasureValue(object? value, Dictionary<FunctionResultContent, object?> results) =>
+        value switch
+        {
+            AIContent content => MeasureContent(content, results),
+            IEnumerable<AIContent> parts => parts.Sum(part => MeasureContent(part, results)),
+            _ => DescribeValue(value).Length
+        };
+
+    /// <summary>
+    ///     Reads, once, every function result in a history whose value is a sequence of content that
+    ///     is not a list.
+    /// </summary>
+    /// <remarks>
+    ///     Such a sequence may be single-pass, so measuring and then rendering it would read it twice
+    ///     and lose it the second time. It is enumerated into a list here, by the same rule
+    ///     <c>ResultMeasure.Normalize</c> applies to a tool's return, and that list stands in for it
+    ///     wherever the value is read. The caller's messages and contents are never modified, so the
+    ///     lists are held by result content, compared by reference.
+    /// </remarks>
+    /// <param name="history">The messages whose function results are read.</param>
+    /// <returns>The materialized values, by the result content that holds them.</returns>
+    private static Dictionary<FunctionResultContent, object?> MaterializeResults(List<ChatMessage> history)
     {
-        AIContent content => MeasureContent(content),
-        IEnumerable<AIContent> parts => parts.Sum(MeasureContent),
-        _ => DescribeValue(value).Length
-    };
+        var results = new Dictionary<FunctionResultContent, object?>(ReferenceEqualityComparer.Instance);
+        foreach (var result in history.SelectMany(message => message.Contents).OfType<FunctionResultContent>())
+        {
+            if (result.Result is IEnumerable<AIContent> sequence and not IReadOnlyList<AIContent>
+                && !results.ContainsKey(result))
+            {
+                results[result] = sequence.ToList();
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    ///     Returns the value of a function result to measure or render.
+    /// </summary>
+    /// <param name="result">The function result content.</param>
+    /// <param name="results">The materialized function result values, by result content.</param>
+    /// <returns>The materialized value when there is one; otherwise the result's own value.</returns>
+    private static object? ResultOf(FunctionResultContent result, Dictionary<FunctionResultContent, object?> results) =>
+        results.TryGetValue(result, out var value) ? value : result.Result;
 
     /// <summary>
     ///     Serializes a call's arguments to JSON, as the provider would see them.

@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
@@ -254,6 +255,34 @@ public class AgentKitChatReducerTests
     }
 
     /// <summary>
+    ///     Proves a tool result supplied as a sequence of content that can be enumerated only once is
+    ///     both measured and rendered from that one enumeration, so it reaches the material.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitChatReducer_ReduceAsync_SinglePassToolResult_IsMeasuredAndRenderedFromOneEnumeration()
+    {
+        // Arrange: an older turn whose tool returned a single-pass sequence of content
+        var summarizer = new FakeSummarizer(_ => "record");
+        var reducer = new AgentKitChatReducer(summarizer, thresholdCharacters: 10, verbatimTurns: 1);
+        List<ChatMessage> history =
+        [
+            new(ChatRole.User, "Run the probe."),
+            new(ChatRole.Assistant, [new FunctionCallContent("c1", "probe")]),
+            new(ChatRole.Tool, [new FunctionResultContent("c1", new SinglePassSequence(new TextContent("probe output")))]),
+            new(ChatRole.User, "Thanks."),
+            new(ChatRole.Assistant, "You are welcome.")
+        ];
+
+        // Act: reduce, keeping only the last turn
+        await reducer.ReduceAsync(history, TestContext.Current.CancellationToken);
+
+        // Assert: one consolidation whose material carries the tool result
+        var material = Assert.Single(summarizer.Requests).Material;
+        Assert.Contains("TOOL RESULT [c1]: probe output", material, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves a history with nothing older than the kept turns is returned unchanged even when it
     ///     exceeds the threshold.
     /// </summary>
@@ -328,4 +357,45 @@ public class AgentKitChatReducerTests
             new ChatMessage(ChatRole.Assistant, "answer " + n)
         })
     ];
+
+    /// <summary>
+    ///     A sequence of content that can be enumerated only once, as a lazily produced sequence
+    ///     may be; a second enumeration throws.
+    /// </summary>
+    private sealed class SinglePassSequence : IEnumerable<AIContent>
+    {
+        /// <summary>
+        ///     The parts the one enumeration yields.
+        /// </summary>
+        private readonly AIContent[] _parts;
+
+        /// <summary>
+        ///     Whether the sequence has been enumerated.
+        /// </summary>
+        private bool _enumerated;
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="SinglePassSequence"/> class.
+        /// </summary>
+        /// <param name="parts">The parts the one enumeration yields.</param>
+        public SinglePassSequence(params AIContent[] parts)
+        {
+            _parts = parts;
+        }
+
+        /// <inheritdoc/>
+        public IEnumerator<AIContent> GetEnumerator()
+        {
+            if (_enumerated)
+            {
+                throw new InvalidOperationException("The sequence was already enumerated.");
+            }
+
+            _enumerated = true;
+            return ((IEnumerable<AIContent>)_parts).GetEnumerator();
+        }
+
+        /// <inheritdoc/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }

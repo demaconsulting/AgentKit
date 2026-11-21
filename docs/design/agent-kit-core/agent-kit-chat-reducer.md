@@ -65,8 +65,10 @@ verbatim turn, or an undefined level (`ArgumentOutOfRangeException`).
 1. Reject null messages; throw if the token is already canceled.
 2. Materialize the messages once. Estimate their size: text characters, a function call's name plus
    its arguments serialized to JSON, a function result's text or JSON (binary content counted by its
-   bytes), and `DataContent` by its bytes. At or under `ThresholdCharacters`, return the materialized
-   list unchanged.
+   bytes), and `DataContent` by its bytes. A function result that is a sequence of content but not
+   a list is enumerated once into a list, as `ResultMeasure.Normalize` does for a tool's return;
+   that list is what is measured here and rendered in step 6, and the message is not modified. At
+   or under `ThresholdCharacters`, return the materialized list unchanged.
 3. Split the system messages from the conversation.
 4. Find the tail: the user message opening the last `VerbatimTurns` turns, a turn starting at each
    user message. A tool call and its result always follow their user message, so the boundary can
