@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620" font-family="Segoe UI, Arial, sans-serif">
+  <!-- README architecture overview: the AgentKit packages, what each builds on, and where the application's
+       controls are set (amber, top) and enforced (amber, inside Core). Derived from the package references in
+       src/*/*.csproj and the SysML2 model under docs/sysml2/; the model wins when they disagree.
+       Regenerate the PNG beside it with docs/images/render-architecture.ps1 and commit both together. -->
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <!-- Transparent canvas; a white rounded card keeps the diagram readable in light and dark themes -->
+  <rect x="14" y="16" width="980" height="596" rx="28" fill="#d5dce6"/>
+  <rect x="10" y="10" width="980" height="596" rx="28" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+
+  <g transform="translate(40,32)">
+    <!-- Host application and the controls it sets -->
+    <rect x="0" y="0" width="920" height="100" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="460" y="28" font-size="16" font-weight="600" fill="#92400e" text-anchor="middle">Your application</text>
+    <text x="460" y="48" font-size="13" fill="#92400e" text-anchor="middle">chooses the tools an agent receives and the controls they carry</text>
+    <g font-size="13" font-weight="600" fill="#92400e" text-anchor="middle">
+      <rect x="151" y="62" width="90" height="26" rx="13" fill="#ffffff" stroke="#d97706"/>
+      <text x="196" y="80">Tool packs</text>
+      <rect x="253" y="62" width="140" height="26" rx="13" fill="#ffffff" stroke="#d97706"/>
+      <text x="323" y="80">PathPolicy grants</text>
+      <rect x="405" y="62" width="90" height="26" rx="13" fill="#ffffff" stroke="#d97706"/>
+      <text x="450" y="80">ToolLimits</text>
+      <rect x="507" y="62" width="130" height="26" rx="13" fill="#ffffff" stroke="#d97706"/>
+      <text x="572" y="80">Host capabilities</text>
+      <rect x="649" y="62" width="120" height="26" rx="13" fill="#ffffff" stroke="#d97706"/>
+      <text x="709" y="80">Verbatim turns</text>
+    </g>
+    <line x1="150" y1="102" x2="150" y2="136" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <text x="160" y="124" font-size="12" fill="#334155">adds tool packs</text>
+    <line x1="470" y1="102" x2="470" y2="136" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <text x="480" y="124" font-size="12" fill="#334155">builds the agent or session</text>
+
+    <!-- Tools package -->
+    <rect x="0" y="140" width="300" height="196" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+    <text x="150" y="168" font-size="15" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a" text-anchor="middle">AgentKit.Tools</text>
+    <text x="150" y="190" font-size="13" fill="#1e40af" text-anchor="middle">guarded tool families, each added as a pack</text>
+    <g font-size="13" fill="#1e3a8a" text-anchor="middle">
+      <rect x="16" y="204" width="70" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="51" y="222">text file</text>
+      <rect x="94" y="204" width="42" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="115" y="222">file</text>
+      <rect x="144" y="204" width="76" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="182" y="222">markdown</text>
+      <rect x="228" y="204" width="56" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="256" y="222">image</text>
+      <rect x="56" y="238" width="50" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="81" y="256">todo</text>
+      <rect x="114" y="238" width="66" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="147" y="256">memory</text>
+      <rect x="188" y="238" width="56" height="26" rx="13" fill="#ffffff" stroke="#2563eb"/>
+      <text x="216" y="256">agent</text>
+    </g>
+    <text x="150" y="296" font-size="12" fill="#334155" text-anchor="middle">image needs Vision; agent needs Delegation</text>
+    <text x="150" y="316" font-size="12" fill="#334155" text-anchor="middle">write tools need a read-write grant</text>
+
+    <!-- Provider adapter packages -->
+    <rect x="320" y="140" width="300" height="196" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+    <text x="470" y="168" font-size="15" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a" text-anchor="middle">AgentKit.Agents.*</text>
+    <text x="470" y="190" font-size="13" fill="#1e40af" text-anchor="middle">build an agent or a provider session</text>
+    <rect x="336" y="202" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
+    <text x="348" y="223" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.ChatClient</text>
+    <text x="592" y="223" font-size="12" fill="#1e40af" text-anchor="end">any IChatClient</text>
+    <rect x="336" y="244" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
+    <text x="348" y="265" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.Copilot</text>
+    <text x="592" y="265" font-size="12" fill="#1e40af" text-anchor="end">its own AIAgent on Copilot</text>
+    <rect x="336" y="286" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
+    <text x="348" y="307" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.Ollama</text>
+    <text x="592" y="307" font-size="12" fill="#1e40af" text-anchor="end">optional: the real window</text>
+
+    <!-- Packages depend on the core -->
+    <line x1="150" y1="338" x2="150" y2="378" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <text x="160" y="362" font-size="12" fill="#334155">built through</text>
+    <line x1="470" y1="338" x2="470" y2="378" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <text x="480" y="362" font-size="12" fill="#334155">provider sessions</text>
+
+    <!-- Core -->
+    <rect x="0" y="382" width="620" height="166" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+    <text x="310" y="410" font-size="16" font-family="Consolas, monospace" font-weight="600" fill="#166534" text-anchor="middle">AgentKit.Core</text>
+    <text x="310" y="429" font-size="13" fill="#166534" text-anchor="middle">the safety contract and the session engine</text>
+    <rect x="16" y="444" width="284" height="88" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="158" y="468" font-size="14" font-weight="600" fill="#92400e" text-anchor="middle">Tool safety: enforces your controls</text>
+    <text x="158" y="490" font-size="12" fill="#92400e" text-anchor="middle">PathPolicy · ToolLimits</text>
+    <text x="158" y="510" font-size="12" fill="#92400e" text-anchor="middle">GuardedToolFactory · ToolPackBuilder</text>
+    <rect x="320" y="444" width="284" height="88" rx="6" fill="#ffffff" stroke="#16a34a"/>
+    <text x="462" y="468" font-size="14" font-weight="600" fill="#14532d" text-anchor="middle">Session lifecycle</text>
+    <text x="462" y="490" font-size="12" fill="#166534" text-anchor="middle">CompactingAgentSession</text>
+    <text x="462" y="510" font-size="12" fill="#166534" text-anchor="middle">tiered context compaction</text>
+
+    <!-- Agent runtime and providers: not part of AgentKit -->
+    <rect x="650" y="140" width="270" height="408" rx="12" fill="#faf5ff" stroke="#7c3aed" stroke-width="2" stroke-dasharray="7 5"/>
+    <g font-size="13" font-weight="600" fill="#4c1d95" text-anchor="middle">
+      <rect x="666" y="150" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="785" y="172">Microsoft Agent Framework</text>
+      <rect x="666" y="201" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="785" y="223">Any IChatClient provider</text>
+      <rect x="666" y="243" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="785" y="265">Microsoft Copilot SDK</text>
+      <rect x="666" y="285" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="785" y="307">Ollama server</text>
+    </g>
+    <text x="785" y="372" font-size="14" font-weight="600" fill="#4c1d95" text-anchor="middle">Agent runtime and providers</text>
+    <text x="785" y="392" font-size="12" fill="#5b21b6" text-anchor="middle">not part of AgentKit</text>
+    <g font-size="12" font-style="italic" fill="#475569" text-anchor="middle">
+      <text x="785" y="436">Tools are plain AIFunction instances,</text>
+      <text x="785" y="454">so they work with any of these.</text>
+      <text x="785" y="490">AgentKit is not an agent runtime: it</text>
+      <text x="785" y="508">supplies safe tools and a session that</text>
+      <text x="785" y="526">behaves the same on every provider.</text>
+    </g>
+
+    <!-- Each adapter builds on its runtime or provider: .ChatClient on Microsoft Agent Framework and any IChatClient,
+         .Copilot on the Microsoft Copilot SDK with an AIAgent of its own, .Ollama on an Ollama server -->
+    <path d="M604,210 H636 V167 H664" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="604" y1="226" x2="664" y2="226" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="604" y1="260" x2="664" y2="260" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="604" y1="302" x2="664" y2="302" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  </g>
+</svg>
