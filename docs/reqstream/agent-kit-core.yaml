@@ -253,6 +253,28 @@ sections:
           - AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage
           - AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult
 
+      - id: AgentKitCore-ForeignTools-BoundedByLimits
+        title: >-
+          The library shall let an application bound a tool it did not build by the library's
+          result-character and binary-byte ceilings, so an oversized result from that tool is
+          refused, or retained when retention is composed, instead of reaching the provider.
+        tags: [system, security]
+        justification: |
+          An application commonly hands an agent tools it wrote itself or took from another library
+          alongside the library's own. Without a way to bound them, the ceilings protect only part of
+          the tool list: a 300-row report tool built with the plain function factory returned 6,350
+          characters against a 1,500-character limit, unchecked. The bound must work on any function,
+          in any agent runtime, without changing what the provider sees of the tool.
+        children:
+          - AgentKitCore-GuardedToolFactory-AsGuardedBoundsText
+          - AgentKitCore-GuardedToolFactory-AsGuardedBoundsBinary
+          - AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured
+          - AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata
+          - AgentKitCore-GuardedToolFactory-AsGuardedDefersToRetention
+          - AgentKitCore-GuardedToolFactory-AsGuardedRejectsMissingArguments
+        tests:
+          - AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused
+
       - id: AgentKitCore-ToolResult-RefusalIsAResult
         title: >-
           The library shall express a refused tool operation as a returned tool result that names

@@ -165,6 +165,15 @@ Verifies that the image is delivered once. Sends a caption-then-image tool resul
 caption followed by a placeholder under 200 characters naming the media type, carries no image
 content, and that the image itself arrived on the following user message.
 
+### Foreign Tools: A Bounded Foreign Tool's Oversized Result Is Refused
+
+**Test**: `AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused`
+
+Verifies that an application can bound a tool the library did not build. A 300-row report tool
+built with the plain function factory is invoked unwrapped — its JSON result exceeds 1,500
+characters — and bounded by a 1,500-character ceiling through `AsGuarded`, which returns a
+`ResourceTooLarge` refusal while keeping the tool's name.
+
 ### Path Policy: Construction Without a Working Directory Is Rejected
 
 **Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected`

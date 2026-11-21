@@ -108,3 +108,84 @@ sections:
               about the tool itself.
             tests:
               - GuardedToolFactory_Create_ConstructedTool_PreservesEveryPieceOfMetadata
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedBoundsText
+            title: >-
+              The guarded factory shall bound any function, including one it did not build, so that
+              a result whose text exceeds the result-character ceiling is refused as too large,
+              naming the tool, the size and the ceiling, rather than delivered.
+            tags: [security]
+            justification: |
+              The library's own tools bound their results internally, so a tool an application
+              wrote itself, or took from another library, reached the provider unbounded: a 300-row
+              report returned 6,350 characters against a 1,500-character limit. An application
+              must be able to apply one set of ceilings to every tool it hands an agent. Refusing
+              rather than truncating keeps the result honest, as the library's own tools do.
+            tests:
+              - GuardedToolFactory_AsGuarded_OversizedTextResult_IsRefusedWithSizeAndLimit
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedBoundsBinary
+            title: >-
+              A function bounded by the guarded factory shall refuse a result whose binary content
+              exceeds the binary-byte ceiling in total, naming the bytes and the ceiling.
+            tags: [security]
+            justification: |
+              An image or document a foreign tool returns is delivered to the provider whole, and its
+              size is a cost the application must be able to cap exactly as it caps the library's
+              own image tools.
+            tests:
+              - GuardedToolFactory_AsGuarded_OversizedBinaryResult_IsRefused
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured
+            title: >-
+              A function bounded by the guarded factory shall measure and deliver a structured result
+              as the JSON document the function's own serializer options produce, shall enumerate a
+              single-pass sequence of content exactly once, and shall deliver a result within the
+              ceilings unchanged.
+            justification: |
+              A structured result reaches the provider as JSON text, so that text is what the ceiling
+              must judge; measuring the object any other way would admit a result the provider then
+              receives oversized. A sequence enumerated once to measure and again by the provider's
+              adapter would arrive empty or altered. A result within the ceilings must be untouched,
+              or bounding a tool would change what a well-behaved tool delivers.
+            tests:
+              - GuardedToolFactory_AsGuarded_OversizedStructuredResult_IsSerializedThenRefused
+              - GuardedToolFactory_AsGuarded_SinglePassSequence_IsEnumeratedOnce
+              - GuardedToolFactory_AsGuarded_ResultWithinLimits_IsUnchanged
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata
+            title: >-
+              A function bounded by the guarded factory shall carry the name, description, schema and
+              serializer options of the function it bounds and shall answer a service lookup through
+              it, and bounding a function the factory already bounded shall replace its ceilings
+              rather than add a second set.
+            justification: |
+              A provider publishes a tool by its name, description and schema, and agent runtimes
+              detect that a call needs approval by looking up the approval wrapper as a service, so
+              bounding must change neither. Re-bounding a tool to adjust its ceilings must take
+              effect; stacking would leave the earlier ceilings in force beneath the new ones.
+            tests:
+              - GuardedToolFactory_AsGuarded_PreservesNameDescriptionSchema
+              - GuardedToolFactory_AsGuarded_ApprovalRequiredInner_DiscoverableThroughGetService
+              - GuardedToolFactory_AsGuarded_OnGuardedFunction_ReplacesLimitsWithoutDoubleWrapping
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedDefersToRetention
+            title: >-
+              A function bounded by the guarded factory and then composed with retention of large
+              outputs shall have an oversized text result retained for paging instead of refused.
+            justification: |
+              Retention exists so oversized output is kept rather than lost. A composition that opts
+              in must get that behavior for a bounded foreign tool exactly as for the library's own
+              tools; the binary ceiling still refuses, because retention keeps text only.
+            tests:
+              - GuardedToolFactory_AsGuarded_ThenRetentionWrap_RetainsInsteadOfRefusing
+
+          - id: AgentKitCore-GuardedToolFactory-AsGuardedRejectsMissingArguments
+            title: >-
+              The guarded factory shall reject bounding a missing function, or bounding by missing
+              ceilings, as a programming error.
+            justification: |
+              Either omission is a defect in the composing application, reported where it was written
+              rather than at the first tool call.
+            tests:
+              - GuardedToolFactory_AsGuarded_NullFunctionOrLimits_Throws

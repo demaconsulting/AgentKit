@@ -194,8 +194,11 @@ the result ceiling judged.
 
 ### Dependencies
 
-- **GuardedToolFactory** — the `GuardedFunction` wrapper that calls the attachment, and
-  `SerializeStructured`, which serializes a structured result; see *GuardedToolFactory Unit Design*.
+- **GuardedToolFactory** — the `GuardedFunction` wrapper that calls the attachment, and the shared
+  `ResultMeasure` helpers (`Normalize`, which serializes a structured result through
+  `SerializeStructured` and enumerates a single-pass sequence once, and `TryGetText`, which measures a
+  textual result), so a result is judged identically by retention and by the ceilings `AsGuarded`
+  enforces; see *GuardedToolFactory Unit Design*.
 - **ToolResult** — the oversized marker and the refusals; see *ToolResult Unit Design*.
 - **ToolLimits** — the result ceiling; see *ToolLimits Unit Design*.
 - **ToolOutputOptions**, **ToolOutputStore**, **ToolOutputReadTool**, **ToolOutputSearchTool** —

@@ -447,6 +447,262 @@ public class GuardedToolFactoryTests
     }
 
     /// <summary>
+    ///     Proves that a function built with the plain factory and bounded by <c>AsGuarded</c> has
+    ///     an oversized text result refused, naming the size and the ceiling.
+    /// </summary>
+    /// <remarks>
+    ///     This is the scenario the extension exists for: a 300-row report built by
+    ///     <see cref="AIFunctionFactory"/> returned about 6,350 characters against a 1,500-character
+    ///     limit, and nothing enforced the limit.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_OversizedTextResult_IsRefusedWithSizeAndLimit()
+    {
+        // Arrange: a foreign tool whose text result is far beyond a small ceiling
+        var report = AIFunctionFactory.Create(
+            () => string.Join("\n", Enumerable.Range(1, 300).Select(n => "row " + n + " value " + (n * n))),
+            "report_rows",
+            "Returns the report rows.");
+        var guarded = report.AsGuarded(new ToolLimits(maxResultCharacters: 1_500));
+
+        // Act: invoke it as the runtime would
+        var result = await guarded.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: a ResourceTooLarge refusal naming the tool, the size and the ceiling
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("'report_rows'", text, StringComparison.Ordinal);
+        Assert.Contains("1500-character result limit", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a structured result is serialized with the function's own options and then
+    ///     measured as that JSON, so an oversized object is refused rather than passed through.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_OversizedStructuredResult_IsSerializedThenRefused()
+    {
+        // Arrange: a foreign tool returning a collection of anonymous objects
+        var report = AIFunctionFactory.Create(
+            () => (object)Enumerable.Range(1, 300).Select(n => new { row = n, square = n * n }).ToList(),
+            "report_json",
+            "Returns the report as JSON.");
+        var guarded = report.AsGuarded(new ToolLimits(maxResultCharacters: 1_500));
+
+        // Act: invoke it as the runtime would
+        var result = await guarded.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: the serialized size exceeded the ceiling and was refused
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that results within the ceilings are delivered unchanged in every shape: text,
+    ///     structured data as its JSON document, text content, and an image within the byte limit.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_ResultWithinLimits_IsUnchanged()
+    {
+        // Arrange: four small foreign tools and generous ceilings
+        var limits = new ToolLimits(maxResultCharacters: 1_500, maxBinaryBytes: 1_024);
+        var image = new DataContent(SampleBytes, "image/png");
+        var text = AIFunctionFactory.Create(() => "short", "probe_text", "Text.").AsGuarded(limits);
+        var structured = AIFunctionFactory.Create(() => (object)new { a = 1 }, "probe_json", "Json.").AsGuarded(limits);
+        var content = AIFunctionFactory.Create(() => new TextContent("hello"), "probe_content", "Content.").AsGuarded(limits);
+        var binary = AIFunctionFactory.Create(() => image, "probe_image", "Image.").AsGuarded(limits);
+
+        // Act: invoke each
+        var token = TestContext.Current.CancellationToken;
+        var textResult = await text.InvokeAsync(new AIFunctionArguments(), token);
+        var structuredResult = await structured.InvokeAsync(new AIFunctionArguments(), token);
+        var contentResult = await content.InvokeAsync(new AIFunctionArguments(), token);
+        var binaryResult = await binary.InvokeAsync(new AIFunctionArguments(), token);
+
+        // Assert: each is delivered as the function produced it, structured data as JSON
+        Assert.Equal("short", Assert.IsType<JsonElement>(textResult).GetString());
+        Assert.Equal(1, Assert.IsType<JsonElement>(structuredResult).GetProperty("a").GetInt32());
+        Assert.Equal("hello", Assert.IsType<TextContent>(contentResult).Text);
+        Assert.Same(image, binaryResult);
+    }
+
+    /// <summary>
+    ///     Proves that binary content beyond the byte ceiling is refused, naming the bytes and the
+    ///     limit.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_OversizedBinaryResult_IsRefused()
+    {
+        // Arrange: a foreign tool returning a caption and an image larger than the byte ceiling
+        var parts = new List<AIContent> { new TextContent("A chart."), new DataContent(new byte[2_048], "image/png") };
+        var chart = AIFunctionFactory.Create(() => parts, "chart_render", "Renders a chart.")
+            .AsGuarded(new ToolLimits(maxBinaryBytes: 1_024));
+
+        // Act: invoke it as the runtime would
+        var result = await chart.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: refused, naming the bytes carried and the limit
+        var text = Assert.IsType<string>(result);
+        Assert.StartsWith("Denied (ResourceTooLarge)", text, StringComparison.Ordinal);
+        Assert.Contains("2048 bytes", text, StringComparison.Ordinal);
+        Assert.Contains("1024-byte limit", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a single-pass sequence of content is enumerated exactly once and delivered as
+    ///     the parts enumerated.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_SinglePassSequence_IsEnumeratedOnce()
+    {
+        // Arrange: a foreign tool returning a sequence that counts its enumerations
+        var enumerations = 0;
+        IEnumerable<AIContent> Parts()
+        {
+            enumerations++;
+            yield return new TextContent("one");
+            yield return new TextContent("two");
+        }
+
+        var tool = new SequenceFunction(Parts).AsGuarded(ToolLimits.Default);
+
+        // Act: invoke it as the runtime would
+        var result = await tool.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: one enumeration, and both parts delivered in order
+        Assert.Equal(1, enumerations);
+        var delivered = Assert.IsAssignableFrom<IReadOnlyList<AIContent>>(result);
+        Assert.Equal(["one", "two"], delivered.Cast<TextContent>().Select(part => part.Text));
+    }
+
+    /// <summary>
+    ///     Proves that the bounded function carries the name, description and schema of the
+    ///     function it wraps.
+    /// </summary>
+    [Fact]
+    public void GuardedToolFactory_AsGuarded_PreservesNameDescriptionSchema()
+    {
+        // Arrange: a foreign tool with a parameter
+        var inner = AIFunctionFactory.Create((int rows) => rows, "report_rows", "Returns rows.");
+
+        // Act: bound it
+        var guarded = inner.AsGuarded(ToolLimits.Default);
+
+        // Assert: every piece of metadata a runtime reads is the inner function's
+        Assert.Equal(inner.Name, guarded.Name);
+        Assert.Equal(inner.Description, guarded.Description);
+        Assert.Equal(inner.JsonSchema.GetRawText(), guarded.JsonSchema.GetRawText());
+        Assert.Same(inner.JsonSerializerOptions, guarded.JsonSerializerOptions);
+    }
+
+    /// <summary>
+    ///     Proves that a wrapped approval-required function is still discovered through service
+    ///     lookup, which is how agent runtimes detect that a call needs approval.
+    /// </summary>
+    [Fact]
+    public void GuardedToolFactory_AsGuarded_ApprovalRequiredInner_DiscoverableThroughGetService()
+    {
+        // Arrange: a foreign tool that requires approval
+        var approval = new ApprovalRequiredAIFunction(
+            AIFunctionFactory.Create(() => "done", "files_purge", "Purges files."));
+
+        // Act: bound it
+        var guarded = approval.AsGuarded(ToolLimits.Default);
+
+        // Assert: the approval requirement is still discoverable
+        Assert.Same(approval, guarded.GetService(typeof(ApprovalRequiredAIFunction)));
+    }
+
+    /// <summary>
+    ///     Proves that a bounded function later composed with retention retains an oversized text
+    ///     result for paging instead of refusing it.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_ThenRetentionWrap_RetainsInsteadOfRefusing()
+    {
+        // Arrange: a bounded foreign tool, composed with retention at the same ceiling
+        var limits = new ToolLimits(maxResultCharacters: 1_500);
+        var report = AIFunctionFactory.Create(
+            () => string.Join("\n", Enumerable.Range(1, 300).Select(n => "row " + n)),
+            "report_rows",
+            "Returns the report rows.").AsGuarded(limits);
+        var composed = ToolOutputSpill.Apply([report], limits);
+
+        // Act: invoke the composed tool
+        var result = await composed[0].InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: a preview naming the reference rather than a refusal
+        Assert.StartsWith("[Output output-1 from report_rows", Assert.IsType<string>(result), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that bounding an already bounded function replaces its ceilings rather than
+    ///     stacking a second wrapper.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task GuardedToolFactory_AsGuarded_OnGuardedFunction_ReplacesLimitsWithoutDoubleWrapping()
+    {
+        // Arrange: a 2,000-character result bounded tightly, then re-bounded generously
+        var inner = AIFunctionFactory.Create(() => new string('x', 2_000), "probe_text", "Text.");
+        var tight = inner.AsGuarded(new ToolLimits(maxResultCharacters: 1_000));
+
+        // Act: re-bound it and invoke
+        var generous = tight.AsGuarded(new ToolLimits(maxResultCharacters: 5_000));
+        var result = await generous.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: the new ceiling alone applies - a stacked wrapper would still hold the tight
+        // ceiling beneath and refuse - so the 2,000-character result (2,002 as JSON) is delivered
+        Assert.Equal(2_002, Assert.IsType<JsonElement>(result).GetRawText().Length);
+    }
+
+    /// <summary>
+    ///     Proves that a missing function or missing ceilings is a programming error.
+    /// </summary>
+    [Fact]
+    public void GuardedToolFactory_AsGuarded_NullFunctionOrLimits_Throws()
+    {
+        // Arrange: a valid function
+        var inner = AIFunctionFactory.Create(() => "x", "probe_text", "Text.");
+
+        // Act & Assert: each missing argument is refused
+        Assert.Throws<ArgumentNullException>(() => ((AIFunction)null!).AsGuarded(ToolLimits.Default));
+        Assert.Throws<ArgumentNullException>(() => inner.AsGuarded(null!));
+    }
+
+    /// <summary>
+    ///     A function returning a sequence produced by a delegate, so a test controls how often the
+    ///     sequence is enumerated.
+    /// </summary>
+    /// <param name="produce">Produces the sequence returned on each invocation.</param>
+    private sealed class SequenceFunction(Func<IEnumerable<AIContent>> produce) : AIFunction
+    {
+        /// <summary>
+        ///     Gets the tool's name.
+        /// </summary>
+        public override string Name => "probe_sequence";
+
+        /// <summary>
+        ///     Returns the produced sequence without enumerating it.
+        /// </summary>
+        /// <param name="arguments">The arguments, ignored.</param>
+        /// <param name="cancellationToken">A token, ignored.</param>
+        /// <returns>The sequence.</returns>
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments,
+            CancellationToken cancellationToken)
+        {
+            return new ValueTask<object?>(produce());
+        }
+    }
+
+    /// <summary>
     ///     Characterizes how the underlying function factory handles an object-declared return
     ///     when no result-delivery guard is supplied.
     /// </summary>

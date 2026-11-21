@@ -273,6 +273,33 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that an application can bound a tool the library did not build by the library's
+    ///     ceilings, so an oversized result from it is refused rather than reaching the provider.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemForeignTool_GuardedOversizedResult_IsRefused()
+    {
+        // Arrange: a tool built with the plain function factory, returning 300 structured rows,
+        // bounded by a 1,500-character result ceiling
+        var report = AIFunctionFactory.Create(
+            (int rows) => Enumerable.Range(1, rows).Select(n => new { row = n, square = n * n }),
+            "report_rows",
+            "Returns one row per number with its square.");
+        var bounded = report.AsGuarded(new ToolLimits(maxResultCharacters: 1_500));
+
+        // Act: invoke both as a runtime would
+        var arguments = new AIFunctionArguments { ["rows"] = 300 };
+        var unbounded = await report.InvokeAsync(arguments, TestContext.Current.CancellationToken);
+        var guarded = await bounded.InvokeAsync(arguments, TestContext.Current.CancellationToken);
+
+        // Assert: unwrapped, the result is far beyond the ceiling; bounded, it is refused
+        Assert.True(Assert.IsType<System.Text.Json.JsonElement>(unbounded).GetRawText().Length > 1_500);
+        Assert.StartsWith("Denied (ResourceTooLarge)", Assert.IsType<string>(guarded), StringComparison.Ordinal);
+        Assert.Equal(report.Name, bounded.Name);
+    }
+
+    /// <summary>
     ///     Proves that the system refuses to create a path access policy without a working directory,
     ///     and rejects a null grant.
     /// </summary>

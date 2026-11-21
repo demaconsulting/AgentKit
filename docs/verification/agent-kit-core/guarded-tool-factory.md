@@ -53,11 +53,12 @@ Unit tests reside in `GuardedToolFactoryTests.cs` within the
 
 ### Acceptance Criteria
 
-A unit test run passes when all eighteen scenarios below pass without error or exception beyond
+A unit test run passes when all twenty-eight scenarios below pass without error or exception beyond
 those explicitly asserted. Any content result arriving as a `JsonElement` from a guarded tool, any
 structured result arriving as a raw object, any
-invalid name or empty description accepted, and any name or description not carried by the
-created tool constitutes a failure.
+invalid name or empty description accepted, any name or description not carried by the
+created tool, any bounded result over a ceiling delivered rather than refused, and any metadata or
+service lookup a bounded function does not carry through constitutes a failure.
 
 ### Test Scenarios
 
@@ -199,3 +200,76 @@ Builds the same parameterized delegate guarded and directly through the underlyi
 asserts the name, description, parameter schema, return schema, serializer options, underlying
 method, additional properties and string form match, and that a service lookup for the function
 type answers with the tool itself — the members every provider adapter reads to publish a tool.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedBoundsText: An Oversized Foreign Text Result Is Refused
+
+**Test**: `GuardedToolFactory_AsGuarded_OversizedTextResult_IsRefusedWithSizeAndLimit`
+
+A tool built with the plain `AIFunctionFactory` returns 300 report rows as one string, and is
+bounded by a 1,500-character ceiling. Asserts the result is a `ResourceTooLarge` refusal naming
+`'report_rows'` and the `1500-character result limit`. This reproduces the foreign tool that
+returned 6,350 characters unchecked.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedBoundsBinary: Oversized Foreign Binary Content Is Refused
+
+**Test**: `GuardedToolFactory_AsGuarded_OversizedBinaryResult_IsRefused`
+
+A caption and a 2,048-byte image under a 1,024-byte ceiling. Asserts the refusal names `2048 bytes`
+and the `1024-byte limit`.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured: A Structured Result Is Measured as JSON
+
+**Test**: `GuardedToolFactory_AsGuarded_OversizedStructuredResult_IsSerializedThenRefused`
+
+A collection of 300 anonymous objects is serialized with the function's options and, being longer
+than the ceiling as JSON, refused.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured: A Single-Pass Sequence Is Enumerated Once
+
+**Test**: `GuardedToolFactory_AsGuarded_SinglePassSequence_IsEnumeratedOnce`
+
+A hand-written `AIFunction` returns an iterator that counts its enumerations. Asserts it was
+enumerated once and both parts were delivered, in order, as a list.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedSerializesStructured: Results Within the Ceilings Are Unchanged
+
+**Test**: `GuardedToolFactory_AsGuarded_ResultWithinLimits_IsUnchanged`
+
+Four small tools — text, an anonymous object, text content and an image within the byte limit.
+Asserts each is delivered as the function produced it (the object as its JSON document) and the
+image as the same instance.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata: Name, Description and Schema Are Carried
+
+**Test**: `GuardedToolFactory_AsGuarded_PreservesNameDescriptionSchema`
+
+Asserts the bounded function's name, description, JSON schema text and serializer options are the
+inner function's.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata: An Approval Requirement Stays Discoverable
+
+**Test**: `GuardedToolFactory_AsGuarded_ApprovalRequiredInner_DiscoverableThroughGetService`
+
+Bounds an `ApprovalRequiredAIFunction` and asserts `GetService(typeof(ApprovalRequiredAIFunction))`
+returns that very instance, which is how agent runtimes detect that a call needs approval.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedPreservesMetadata: Re-Bounding Replaces the Ceilings
+
+**Test**: `GuardedToolFactory_AsGuarded_OnGuardedFunction_ReplacesLimitsWithoutDoubleWrapping`
+
+A 2,000-character result is bounded at 1,000 characters and then re-bounded at 5,000. Asserts the
+result is delivered: a stacked wrapper would still hold the 1,000-character ceiling beneath and
+refuse.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedDefersToRetention: Retention Retains Instead of Refusing
+
+**Test**: `GuardedToolFactory_AsGuarded_ThenRetentionWrap_RetainsInsteadOfRefusing`
+
+A bounded foreign tool composed with retention at the same ceiling. Asserts the oversized result is
+a preview naming `output-1` rather than a refusal.
+
+#### AgentKitCore-GuardedToolFactory-AsGuardedRejectsMissingArguments: Missing Arguments Are Refused
+
+**Test**: `GuardedToolFactory_AsGuarded_NullFunctionOrLimits_Throws`
+
+Asserts a null function and null ceilings each throw `ArgumentNullException`.

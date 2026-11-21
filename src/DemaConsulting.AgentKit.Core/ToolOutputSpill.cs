@@ -475,30 +475,21 @@ internal sealed class SpillAttachment
                 declared: oversized.Text.Length <= _limits.MaxResultCharacters);
         }
 
-        // A tool may return a single-pass sequence of content. Enumerating it here to measure it
-        // and again in the provider's adapter would deliver it empty or altered, so it is
-        // enumerated exactly once and the parts enumerated are what is delivered. A list or an
-        // array is already materialized and is delivered as the very instance the tool returned.
-        if (result is IEnumerable<AIContent> sequence and not IReadOnlyList<AIContent>)
-        {
-            result = sequence.ToList();
-        }
-
-        // A function the guarded factory did not build may return structured data as it is - a
-        // record, an anonymous object, a collection, a number. Serialize it exactly as the factory
-        // would, with the function's own options, so it is measured as the JSON every adapter sends
-        // and, when it fits, delivered as that JSON. A value the serializer cannot handle throws,
-        // failing the invocation just as it would from the factory. A factory-built tool never
-        // reaches this: its result guard has already serialized such values.
-        if (result is not null and not (string or JsonElement or AIContent or IEnumerable<AIContent>))
-        {
-            result = GuardedToolFactory.SerializeStructured(result, serializerOptions);
-        }
+        // A tool may return a single-pass sequence of content, which is enumerated exactly once
+        // and delivered as the list it was enumerated into; a list or an array is delivered as the
+        // very instance the tool returned. A function the guarded factory did not build may return
+        // structured data as it is - a record, an anonymous object, a collection, a number - which
+        // is serialized exactly as the factory would, with the function's own options, so it is
+        // measured as the JSON every adapter sends and, when it fits, delivered as that JSON. A
+        // value the serializer cannot handle throws, failing the invocation just as it would from
+        // the factory. The normalization is shared with the result ceilings, so a result is judged
+        // identically wherever it is bounded.
+        result = ResultMeasure.Normalize(result, serializerOptions);
 
         // Only text is retained, JSON included. Content other than text, a sequence containing it
         // and an absent result pass through, as does any text within the ceiling - measured by the
         // result's own representation.
-        if (!TryGetText(result, out var text, out var delivered)
+        if (!ResultMeasure.TryGetText(result, out var text, out var delivered)
             || delivered <= _limits.MaxResultCharacters)
         {
             return result;
@@ -512,76 +503,6 @@ internal sealed class SpillAttachment
         }
 
         return Retain(toolName, text, delivered, denialMessage: null, declared: false);
-    }
-
-    /// <summary>
-    ///     Extracts the text of a result that is purely textual, and measures the result.
-    /// </summary>
-    /// <remarks>
-    ///     A result is measured by its own representation - a string by its characters, any JSON
-    ///     element by its JSON text, text content by its text - not by any envelope a provider adds
-    ///     around it, which differs from provider to provider. A JSON string is measured by its JSON
-    ///     text, quotes and escapes included, because that is the form the chat adapters send, and
-    ///     it never under-counts an adapter that sends the decoded value instead. It is retained as
-    ///     its decoded value, just as structured data is retained indented: the retained copy is
-    ///     what a model pages by line and searches literally, which an escaped single line defeats.
-    /// </remarks>
-    /// <param name="result">
-    ///     The result to inspect. A sequence of content must already be a list, so it is enumerated
-    ///     only by the caller.
-    /// </param>
-    /// <param name="text">On success, the text the result is retained as.</param>
-    /// <param name="delivered">
-    ///     On success, the characters the result's own representation occupies: what the ceiling
-    ///     judges and the preview header reports.
-    /// </param>
-    /// <returns><see langword="true"/> when the result is purely textual.</returns>
-    private static bool TryGetText(object? result, out string text, out int delivered)
-    {
-        switch (result)
-        {
-            case string value:
-                text = value;
-                delivered = value.Length;
-                return true;
-
-            // An undefined element carries no value at all, so it is not text; it must reach the
-            // runtime exactly as it would without retention.
-            case JsonElement { ValueKind: JsonValueKind.Undefined }:
-                break;
-
-            // A JSON string is text a function serialized: measured by its JSON text, retained
-            // decoded so its lines can be paged and searched.
-            case JsonElement { ValueKind: JsonValueKind.String } element:
-                text = element.GetString() ?? string.Empty;
-                delivered = element.GetRawText().Length;
-                return true;
-
-            case JsonElement element:
-                text = element.GetRawText();
-                delivered = text.Length;
-                return true;
-
-            case TextContent content:
-                text = content.Text;
-                delivered = text.Length;
-                return true;
-
-            // A sequence is textual only when every part is text; a caption beside an image is not.
-            case IReadOnlyList<AIContent> parts:
-                if (parts.Count == 0 || parts.Any(part => part is not TextContent))
-                {
-                    break;
-                }
-
-                text = string.Join("\n", parts.Cast<TextContent>().Select(part => part.Text));
-                delivered = text.Length;
-                return true;
-        }
-
-        text = string.Empty;
-        delivered = 0;
-        return false;
     }
 
     /// <summary>

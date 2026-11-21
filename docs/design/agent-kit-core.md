@@ -38,7 +38,8 @@ The system consists of:
   retained output
 - **ToolName Unit**: Defines the tool naming convention and validates names against it
 - **GuardedToolFactory Unit**: The only supported way to construct a tool, applying the
-  result-delivery guard and the naming rules to every tool it creates
+  result-delivery guard and the naming rules to every tool it creates, and bounding any other
+  function by the result ceilings through `AsGuarded`
 - **ToolPack Unit**: Defines the contract a package implements to publish its tools as one
   capability-gated family, and the set of host capabilities a pack may require
 - **ToolPackBuilder Unit**: Composes tool packs into the tool list an application offers a model,
@@ -430,6 +431,10 @@ The system additionally exposes the tool-contract API:
   JsonSerializerOptions? serializerOptions)**: Creates a tool whose result is delivered to the
   runtime unchanged. Throws `ArgumentNullException` for a missing delegate or description, and
   `ArgumentException` for an empty description or an invalid name.
+- **GuardedToolFactory.AsGuarded(this AIFunction function, ToolLimits limits)**: Bounds any function,
+  including one the library did not build, by the result-character and binary-byte ceilings, refusing
+  an oversized result as `ResourceTooLarge` and forwarding every piece of metadata. Throws
+  `ArgumentNullException` for a null function or limits.
 
 | Interface | Direction | Format | Constraints |
 | --- | --- | --- | --- |
@@ -445,6 +450,7 @@ The system additionally exposes the tool-contract API:
 | `ToolName.Create` | Inbound/Outbound | Method call / `string` return | Family and verb non-empty |
 | `ToolName.Validate` | Inbound | Method call | `name` satisfies the convention |
 | `GuardedToolFactory.Create` | Inbound/Outbound | Method call / `AIFunction` | Delegate, name, description valid |
+| `GuardedToolFactory.AsGuarded` | Inbound/Outbound | Extension method / `AIFunction` | Function and limits non-null |
 
 The system additionally exposes the pack composition API:
 
