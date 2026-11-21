@@ -278,12 +278,23 @@ public class ToolOutputStoreTests
         var store = new ToolOutputStore(ToolOutputOptions.Default);
         store.Add("held");
 
-        // Act / Assert: malformed forms, and a well-formed identifier that was never issued
+        // Act / Assert: malformed forms, and well-formed identifiers that were never issued
         Assert.Equal(ToolOutputLookup.Malformed, store.Find(null, out _));
         Assert.Equal(ToolOutputLookup.Malformed, store.Find("notes.txt", out _));
         Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-01", out _));
         Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find(string.Empty, out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("   ", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("OUTPUT-1", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-0", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-+1", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output--1", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output- 1", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-1.0", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-\u0661", out _));
+        Assert.Equal(ToolOutputLookup.Malformed, store.Find("output-9223372036854775808", out _));
         Assert.Equal(ToolOutputLookup.Unknown, store.Find("output-2", out _));
+        Assert.Equal(ToolOutputLookup.Unknown, store.Find("output-9223372036854775807", out _));
         Assert.Equal(ToolOutputLookup.Found, store.Find(" output-1 ", out _));
     }
 

@@ -405,6 +405,7 @@ sections:
           - AgentKitCore-ToolOutputSearchTool-RegularExpression
           - AgentKitCore-ToolOutputSearchTool-ContextAndCap
           - AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused
+          - AgentKitCore-ToolOutputSearchTool-PatternLengthBounded
           - AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused
           - AgentKitCore-ToolOutputSearchTool-BoundedResult
         tests:

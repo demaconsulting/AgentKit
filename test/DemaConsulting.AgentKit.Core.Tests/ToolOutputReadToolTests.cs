@@ -171,13 +171,40 @@ public class ToolOutputReadToolTests
         // Arrange: a retained output
         var (tool, id) = Retained("a", ToolLimits.Default);
 
-        // Act: a zero start and a negative count
+        // Act: a zero start, a negative start, a negative count, and the most negative count
         var zeroStart = await ReadAsync(tool, id, 0, 1);
+        var negativeStart = await ReadAsync(tool, id, -1, 1);
         var negativeCount = await ReadAsync(tool, id, 1, -1);
+        var minimumCount = await ReadAsync(tool, id, 1, int.MinValue);
 
-        // Assert: both refused as malformed
-        Assert.StartsWith("Denied (InvalidRequest)", zeroStart, StringComparison.Ordinal);
-        Assert.StartsWith("Denied (InvalidRequest)", negativeCount, StringComparison.Ordinal);
+        // Assert: each refused as malformed with the same statement of the valid range
+        Assert.Equal(
+            "Denied (InvalidRequest): startLine must be 1 or greater and lineCount must be 0 or greater.",
+            zeroStart);
+        Assert.Equal(zeroStart, negativeStart);
+        Assert.Equal(zeroStart, negativeCount);
+        Assert.Equal(zeroStart, minimumCount);
+    }
+
+    /// <summary>
+    ///     Proves a zero count and the largest start and count are answered without overflow.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputReadTool_Read_ZeroCountAndHugeValues_AreAnsweredWithoutOverflow()
+    {
+        // Arrange: a three-line output
+        var (tool, id) = Retained("a\nb\nc", ToolLimits.Default);
+
+        // Act: read no lines, start at the largest line number, and ask for the largest count
+        var zeroCount = await ReadAsync(tool, id, 1, 0);
+        var hugeStart = await ReadAsync(tool, id, int.MaxValue, null);
+        var hugeCount = await ReadAsync(tool, id, 2, int.MaxValue);
+
+        // Assert: empty windows naming the total, and a huge count clamped to the end
+        Assert.Equal(id + " lines 1-0 of 3", zeroCount);
+        Assert.Equal(id + " lines 2147483647-2147483646 of 3", hugeStart);
+        Assert.Equal(id + " lines 2-3 of 3\n2| b\n3| c", hugeCount);
     }
 
     /// <summary>

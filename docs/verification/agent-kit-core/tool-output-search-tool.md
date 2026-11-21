@@ -29,10 +29,10 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twelve scenarios below pass. Any match in the wrong shape or with the
-wrong number, any ignored option, any pathological expression that is not refused, any result over
-the ceiling returned, or any malformed request answered other than by a refusal constitutes a
-failure.
+A unit test run passes when all fifteen scenarios below pass. Any match in the wrong shape or with
+the wrong number, any ignored option, any pathological expression that is not refused, any pattern
+over the length limit that is not refused, any result over the ceiling returned, or any malformed
+request answered other than by a refusal constitutes a failure.
 
 ### Test Scenarios
 
@@ -48,6 +48,13 @@ Security: the tool is named `tool_output_search` and has `id` and `pattern` para
 **Test**: `ToolOutputSearchTool_Search_Literal_ReportsMatchingLinesByNumber`
 
 Normal operation: only the exact-case line matches, reported as `2:beta ERROR one`.
+
+#### AgentKitCore-ToolOutputSearchTool-LiteralByDefault: A Whitespace Pattern Is Searched
+
+**Test**: `ToolOutputSearchTool_Search_WhitespacePattern_IsSearchedLiterally`
+
+Normal operation: a pattern of a single space is a legitimate literal search, not a missing
+pattern, and reports exactly the two lines containing a space.
 
 #### AgentKitCore-ToolOutputSearchTool-RegularExpression: An Expression Ignoring Case Finds Every Match
 
@@ -65,7 +72,16 @@ Normal operation: matches use `:`, context uses `-`, and a `--` line separates d
 
 **Test**: `ToolOutputSearchTool_Search_MaxMatchesAndNoMatches_AreHonored`
 
-Boundary values: a cap of one returns the first match only; an absent pattern returns `No matches.`.
+Boundary values: a cap of one returns the first match only; a cap of zero returns `No matches.`, as
+`grep -m 0` prints nothing; an absent pattern returns `No matches.`.
+
+#### AgentKitCore-ToolOutputSearchTool-ContextAndCap: Huge Context and Cap Are Bounded by the Output
+
+**Test**: `ToolOutputSearchTool_Search_HugeContextAndCap_AreBoundedByTheOutput`
+
+Boundary values: a search for one line with `contextLines` and `maxMatches` both at `int.MaxValue`
+returns that match with every other line of the output as context, and nothing more, without
+overflow.
 
 #### AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused: A Timeout Is Refused
 
@@ -87,8 +103,22 @@ though no single line is slow to evaluate.
 
 **Test**: `ToolOutputSearchTool_Search_InvalidRequests_AreRefused`
 
-Error path: an unbalanced expression, a missing pattern and negative context are `InvalidRequest`
-refusals.
+Error path: an unbalanced expression, a missing pattern, an empty pattern, negative context and a
+negative cap are `InvalidRequest` refusals. The unbalanced expression is the exact refusal
+`The search pattern is not a valid regular expression. Fix the expression, or set literal to true
+to search for it as plain text.`, which does not echo the pattern; the empty pattern is refused as
+the missing one is, and the negative cap as negative context is.
+
+#### AgentKitCore-ToolOutputSearchTool-PatternLengthBounded: An Over-Long Pattern Is Refused
+
+**Test**: `ToolOutputSearchTool_Search_PatternOverLengthLimit_IsRefused`
+
+Error path and boundary value: a literal pattern one character over the 1,000-character limit, and
+a case-insensitive regular expression over the limit built from repeated full-range character
+classes, are each the exact `InvalidRequest` refusal `The search pattern exceeds the
+1000-character pattern limit. Search for a shorter pattern.`, which does not contain the pattern.
+A pattern of exactly 1,000 characters is searched and returns `No matches.`. The `pattern`
+parameter's description states the limit.
 
 #### AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused: An Unknown Identifier Is Refused
 

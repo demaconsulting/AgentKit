@@ -33,13 +33,15 @@ sections:
             title: >-
               The output read tool shall return a requested range of a retained output under a header
               naming the range and the output's true line count, numbering each line, and shall
-              answer a range past the end with an empty window naming the total.
+              answer a range past the end, or a zero line count, with an empty window naming the
+              total.
             justification: |
               The shape is the one the file reader uses, so a model already knows how to read a page
               and how far the output extends beyond it.
             tests:
               - ToolOutputReadTool_Read_Range_ReturnsNumberedLinesUnderHeader
               - ToolOutputReadTool_Read_PastTheEnd_ReturnsEmptyWindowNamingTheTotal
+              - ToolOutputReadTool_Read_ZeroCountAndHugeValues_AreAnsweredWithoutOverflow
 
           - id: AgentKitCore-ToolOutputReadTool-OmittedCountFitsCeiling
             title: >-

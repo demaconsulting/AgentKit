@@ -28,9 +28,10 @@ limits and is safe for concurrent use.
 | `GroupSeparator` | `const string` | `--`, separating runs of matches as grep does. |
 | `MatchTimeout` | `TimeSpan` | One second per line, the bound `text_file_search` applies. |
 | `SearchBudget` | `TimeSpan` | One second for the whole search, checked between lines. |
+| `MaxPatternCharacters` | `internal const int` | 1,000, the longest pattern accepted, literal or regular expression. |
 
-Parameters: `id`, `pattern`, `contextLines` (default 0), `ignoreCase` (default false), `literal`
-(default true), `maxMatches` (optional).
+Parameters: `id`, `pattern` (at most 1,000 characters, stated in its description), `contextLines`
+(default 0), `ignoreCase` (default false), `literal` (default true), `maxMatches` (optional).
 
 ### Key Methods
 
@@ -40,12 +41,28 @@ Builds the tool through `GuardedToolFactory.Create` with a delegate declared to 
 
 #### Search
 
-1. Refuses a missing pattern, or negative `contextLines` or `maxMatches`, as `InvalidRequest`.
+1. Refuses a missing or empty pattern as `InvalidRequest`. Then, before any matcher is built,
+   refuses a pattern longer than `MaxPatternCharacters` — measured as supplied, before a literal
+   is escaped — as `InvalidRequest` with
+   `The search pattern exceeds the 1000-character pattern limit. Search for a shorter pattern.`,
+   which does not echo the pattern. Then refuses negative `contextLines` or `maxMatches` as
+   `InvalidRequest`. A whitespace-only pattern is accepted and searched, as `text_file_search`
+   accepts it; a cap of zero reports `No matches.`, as `grep -m 0` prints nothing.
 2. Looks the identifier up; a failure returns `ToolOutputStore.Refusal`.
-3. Passes the entry to `SearchEntry` with `SearchBudget`, which builds the matcher with
-   `RegexOptions.CultureInvariant` (plus `IgnoreCase` when asked) and the one-second per-line
-   timeout; a literal pattern is escaped first. An invalid expression is refused as
-   `InvalidRequest`.
+3. Passes the entry to `SearchEntry` with `SearchBudget`, which builds the matcher with `RegexOptions.CultureInvariant`
+   (plus `IgnoreCase` when asked) and the one-second per-line timeout; a literal pattern is escaped first. An invalid
+   expression is refused as `InvalidRequest` with a fixed message that does not echo the pattern. The option set is a
+   deliberate decision, the same as `text_file_search`: the default backtracking interpreter, with `CultureInvariant` so
+   case-insensitive matching does not depend on the host culture. `Compiled` is not used because each search builds a
+   fresh matcher used once, and compiling emits and JITs code on every call, making construction slower.
+   `NonBacktracking` is not used because it refuses backreferences, look-ahead and look-behind assertions, and large
+   counted repetitions that models write, refuses them with `NotSupportedException` rather than `ArgumentException`,
+   accepts different patterns on different target frameworks, and builds more slowly; its linear-time matching is not
+   needed because the per-line timeout and the search budget already bound matching. The match timeout covers matching
+   only, never parsing and construction, whose cost grows with the pattern's length. That residual risk is bounded by
+   the pattern cap: measured on .NET 8, 9 and 10, a 1,000-character pattern written to be costly builds in tens of
+   milliseconds, where an uncapped one can take over a second. The cap bounds construction; it is not a hard time limit
+   on it.
 4. Makes one pass over the lines in order. Before each line it checks the elapsed time against the
    search budget; a spent budget, like a `RegexMatchTimeoutException` on a line, is refused as
    `InvalidRequest` naming the limit and the output. A line that times out is refused as
@@ -82,7 +99,8 @@ time budget, proving an oversized result and a slow search each stop early witho
 
 | Condition | Handling |
 | --- | --- |
-| Missing pattern, negative context or cap | `InvalidRequest` refusal returned |
+| Missing or empty pattern, negative context or cap | `InvalidRequest` refusal returned |
+| Pattern over 1,000 characters | `InvalidRequest` refusal returned before building a matcher |
 | Invalid regular expression | `InvalidRequest` refusal returned |
 | Expression times out on a line, or the search budget is spent | `InvalidRequest` refusal returned |
 | Missing, malformed, unknown or evicted identifier | Refusal from `ToolOutputStore.Refusal` |

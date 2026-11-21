@@ -266,9 +266,9 @@ The model then reads exactly what it needs:
 - **`tool_output_read`** takes the reference and an optional `startLine` and `lineCount`, and
   returns that range under an `output-3 lines A-B of N` header. Omit `lineCount` to receive as many
   whole lines as fit the result ceiling.
-- **`tool_output_search`** takes the reference and a pattern — literal by default, a regular
-  expression with `literal: false` — with optional `ignoreCase`, `contextLines` and `maxMatches`,
-  and reports matching lines as `line:content` using the same numbers.
+- **`tool_output_search`** takes the reference and a pattern of at most 1,000 characters — literal by default, a regular
+  expression with `literal: false` — with optional `ignoreCase`, `contextLines` and `maxMatches`, and reports matching
+  lines as `line:content` using the same numbers.
 
 **The readers cannot reach the file system.** They accept a reference and paging or search
 arguments, and no path, and they read only the outputs of the composition that offered them.

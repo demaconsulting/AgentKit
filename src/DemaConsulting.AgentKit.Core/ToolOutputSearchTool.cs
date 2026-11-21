@@ -36,6 +36,12 @@ namespace DemaConsulting.AgentKit.Core;
 ///     every line. An invalid expression is a refused request, not a thrown error.
 ///     </para>
 ///     <para>
+///     A pattern longer than <see cref="MaxPatternCharacters"/> is refused before any matcher
+///     is built, because the timeouts bound matching only: building the matcher is not covered
+///     by them and costs time that grows with the pattern. The cap bounds that construction
+///     cost to tens of milliseconds rather than making it a hard time limit.
+///     </para>
+///     <para>
 ///     The result is bounded by <see cref="ToolLimits.MaxResultCharacters"/> and refused with the
 ///     ceiling named when over it; it is never retained. The search is one pass that writes each
 ///     match as it is found and stops as soon as the result is known to exceed the ceiling, so an
@@ -75,6 +81,28 @@ public static class ToolOutputSearchTool
     ///     The separator between one run of matches and the next, matching grep.
     /// </summary>
     private const string GroupSeparator = "--";
+
+    /// <summary>
+    ///     The longest search pattern accepted, in characters.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     It applies to literal and regular-expression patterns alike and is measured on the
+    ///     pattern as supplied, before a literal is escaped; escaping at most doubles it.
+    ///     </para>
+    ///     <para>
+    ///     The cap exists because building a matcher costs time that grows with the pattern's
+    ///     length, and the per-line <see cref="MatchTimeout"/> covers matching only, never the
+    ///     parsing and construction of the expression. Without it the model would choose how long
+    ///     construction runs. Measured on .NET 8, 9 and 10, a pattern at this length builds in tens
+    ///     of milliseconds even when written to be costly, where an uncapped one can take over a
+    ///     second before the first timeout-guarded match begins. The cap bounds construction; it
+    ///     is not a hard time limit on it, and that residual cost is accepted. A thousand
+    ///     characters is far beyond any useful search and half of the longest line a retained
+    ///     output holds.
+    ///     </para>
+    /// </remarks>
+    internal const int MaxPatternCharacters = 1_000;
 
     /// <summary>
     ///     The longest a regular expression may spend on one line before the search is refused.
@@ -120,7 +148,7 @@ public static class ToolOutputSearchTool
         var search = (
                 [Description("The id of the retained output, as named in its preview, for example 'output-3'.")]
                 string? id = null,
-                [Description("The text or regular expression to search for.")]
+                [Description("The text or regular expression to search for, at most 1000 characters.")]
                 string? pattern = null,
                 [Description("The number of context lines to show around each match. Optional: defaults to 0.")]
                 int contextLines = 0,
@@ -171,6 +199,16 @@ public static class ToolOutputSearchTool
                 "A search pattern is required. Supply the text or regular expression to search for.");
         }
 
+        // The length is checked before any matcher is built: construction cost grows with the
+        // pattern and is not covered by the match timeout. The pattern is not echoed back.
+        if (pattern.Length > MaxPatternCharacters)
+        {
+            return ToolResult.Denied(
+                DenialReason.InvalidRequest,
+                "The search pattern exceeds the " + MaxPatternCharacters.ToString(CultureInfo.InvariantCulture)
+                + "-character pattern limit. Search for a shorter pattern.");
+        }
+
         if (contextLines < 0 || maxMatches is < 0)
         {
             return ToolResult.Denied(
@@ -217,7 +255,10 @@ public static class ToolOutputSearchTool
     /// </remarks>
     /// <param name="entry">The retained output.</param>
     /// <param name="limits">The ceilings bounding the result.</param>
-    /// <param name="pattern">The text or expression to search for; not empty.</param>
+    /// <param name="pattern">
+    ///     The text or expression to search for; not empty and at most
+    ///     <see cref="MaxPatternCharacters"/> characters.
+    /// </param>
     /// <param name="contextLines">The number of context lines to show around each match, 0 or greater.</param>
     /// <param name="ignoreCase">Whether to match case-insensitively.</param>
     /// <param name="literal">Whether the pattern is literal rather than a regular expression.</param>
@@ -406,6 +447,29 @@ public static class ToolOutputSearchTool
     /// <summary>
     ///     Builds the matcher from the pattern and its options.
     /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     The options are chosen deliberately and match <c>text_file_search</c>: the default
+    ///     backtracking interpreter with <see cref="RegexOptions.CultureInvariant"/>, plus
+    ///     <see cref="RegexOptions.IgnoreCase"/> when asked, so case-insensitive matching does not
+    ///     depend on the host culture.
+    ///     </para>
+    ///     <para>
+    ///     <see cref="RegexOptions.Compiled"/> is not used: each search builds a fresh matcher used
+    ///     once, and compiling emits and JITs code on every call, making construction strictly
+    ///     slower. <see cref="RegexOptions.NonBacktracking"/> is not used either: it refuses
+    ///     backreferences, look-ahead and look-behind assertions, and large counted repetitions
+    ///     that models write, refuses them with <see cref="NotSupportedException"/> rather than <see cref="ArgumentException"/>,
+    ///     accepts different patterns on different target frameworks, and builds more slowly. Its
+    ///     linear-time matching is not needed because the per-line timeout and the whole-search
+    ///     budget already bound matching.
+    ///     </para>
+    ///     <para>
+    ///     The match timeout does not cover construction. Construction is bounded instead by the
+    ///     caller refusing any pattern over <see cref="MaxPatternCharacters"/>; the cost that
+    ///     remains at that length is tens of milliseconds and is accepted.
+    ///     </para>
+    /// </remarks>
     /// <param name="pattern">The text or expression to search for.</param>
     /// <param name="ignoreCase">Whether to match case-insensitively.</param>
     /// <param name="literal">Whether the pattern is literal rather than a regular expression.</param>

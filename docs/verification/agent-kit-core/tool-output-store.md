@@ -121,8 +121,11 @@ Boundary value: a second output that would exceed the total evicts the first.
 
 **Test**: `ToolOutputStore_Find_MalformedOrUnissuedIds_AreDistinguished`
 
-Error path: null, a file name, a leading zero and a bare prefix are malformed; a well-formed
-identifier above the last issued is unknown; surrounding whitespace is ignored.
+Error path: null, a file name, a leading zero, a bare prefix, the empty string, whitespace alone,
+the prefix in another case, a zero number, a signed number, a decimal number, an inner space, a
+non-ASCII digit and a number one past `long.MaxValue` are malformed; well-formed identifiers above
+the last issued, including `output-9223372036854775807`, are unknown; surrounding whitespace is
+ignored.
 
 #### AgentKitCore-ToolOutputStore-LookupOutcomes: Each Failure States Its Fact
 

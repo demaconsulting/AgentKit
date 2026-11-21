@@ -24,7 +24,7 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all ten scenarios below pass. Any page in the wrong shape, any page
+A unit test run passes when all eleven scenarios below pass. Any page in the wrong shape, any page
 exceeding the ceiling, any truncated page, any path parameter, or any unresolvable request answered
 other than by a refusal constitutes a failure.
 
@@ -54,6 +54,15 @@ width of the total.
 **Test**: `ToolOutputReadTool_Read_PastTheEnd_ReturnsEmptyWindowNamingTheTotal`
 
 Boundary value: reading from line 10 of a three-line output returns the header alone with the total.
+
+#### AgentKitCore-ToolOutputReadTool-NumberedPage: A Zero Count and Huge Values Are Answered Without Overflow
+
+**Test**: `ToolOutputReadTool_Read_ZeroCountAndHugeValues_AreAnsweredWithoutOverflow`
+
+Boundary values: on a three-line output, a count of zero returns the empty window
+`{id} lines 1-0 of 3`; a start of `int.MaxValue` returns the empty window
+`{id} lines 2147483647-2147483646 of 3`; and a count of `int.MaxValue` from line 2 is clamped to
+the end, returning lines 2-3 under `{id} lines 2-3 of 3`.
 
 #### AgentKitCore-ToolOutputReadTool-OmittedCountFitsCeiling: An Omitted Count Fills the Ceiling
 
@@ -87,7 +96,9 @@ the same range is refused when the ceiling is one character less.
 
 **Test**: `ToolOutputReadTool_Read_InvalidRange_IsRefused`
 
-Error path: a zero start and a negative count are `InvalidRequest` refusals.
+Error path: a zero start, a negative start, a negative count and a count of `int.MinValue` are
+each the exact `InvalidRequest` refusal
+`startLine must be 1 or greater and lineCount must be 0 or greater.`.
 
 #### AgentKitCore-ToolOutputReadTool-InvalidRequestsRefused: Unresolvable Identifiers Are Refused
 

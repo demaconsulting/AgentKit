@@ -29,6 +29,7 @@ sections:
               should not match by surprise. The line numbers are the ones the read tool pages by.
             tests:
               - ToolOutputSearchTool_Search_Literal_ReportsMatchingLinesByNumber
+              - ToolOutputSearchTool_Search_WhitespacePattern_IsSearchedLiterally
 
           - id: AgentKitCore-ToolOutputSearchTool-RegularExpression
             title: >-
@@ -49,6 +50,7 @@ sections:
             tests:
               - ToolOutputSearchTool_Search_ContextLines_AreShownGrepStyle
               - ToolOutputSearchTool_Search_MaxMatchesAndNoMatches_AreHonored
+              - ToolOutputSearchTool_Search_HugeContextAndCap_AreBoundedByTheOutput
 
           - id: AgentKitCore-ToolOutputSearchTool-PathologicalPatternRefused
             title: >-
@@ -64,11 +66,25 @@ sections:
               - ToolOutputSearchTool_Search_PathologicalRegex_IsRefusedOnTimeout
               - ToolOutputSearchTool_SearchEntry_SpentSearchBudget_IsRefusedOnTimeout
 
+          - id: AgentKitCore-ToolOutputSearchTool-PatternLengthBounded
+            title: >-
+              The output search tool shall refuse a pattern longer than 1,000 characters, literal or
+              regular expression, as a returned result that does not echo the pattern, before
+              building a matcher.
+            tags: [reliability]
+            justification: |
+              Building a matcher costs time that grows with the pattern's length, and the match
+              timeout does not cover construction, so the model must not choose how long
+              construction runs. Refusing before the matcher is built bounds that cost, and not
+              echoing the pattern keeps the refusal small.
+            tests:
+              - ToolOutputSearchTool_Search_PatternOverLengthLimit_IsRefused
+
           - id: AgentKitCore-ToolOutputSearchTool-InvalidRequestsRefused
             title: >-
-              The output search tool shall refuse a missing pattern, an invalid regular expression,
-              negative context or cap, and an identifier that names no retained output, as returned
-              results.
+              The output search tool shall refuse a missing or empty pattern, an invalid regular
+              expression, negative context or cap, and an identifier that names no retained output,
+              as returned results.
             justification: |
               Each is something a model supplied, so it is answered rather than thrown.
             tests:

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
@@ -103,13 +104,103 @@ public class ToolOutputSearchToolTests
         // Arrange: a retained output
         var (tool, id) = Retained(Output, ToolLimits.Default);
 
-        // Act: cap at one match, and search for something absent
+        // Act: cap at one match, cap at zero matches, and search for something absent
         var capped = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "a", ["maxMatches"] = 1 });
+        var zeroCap = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "a", ["maxMatches"] = 0 });
         var none = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "omega" });
 
-        // Assert: the first match only, and a plain statement of no matches
+        // Assert: the first match only, nothing under a zero cap (as grep -m 0), and a plain
+        // statement of no matches
         Assert.Equal("1:alpha\n", capped);
+        Assert.Equal("No matches.", zeroCap);
         Assert.Equal("No matches.", none);
+    }
+
+    /// <summary>
+    ///     Proves a huge context and a huge cap are bounded by the output rather than overflowing.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSearchTool_Search_HugeContextAndCap_AreBoundedByTheOutput()
+    {
+        // Arrange: a retained output
+        var (tool, id) = Retained(Output, ToolLimits.Default);
+
+        // Act: search one line with the largest context and cap there are
+        var result = await SearchAsync(tool, new()
+        {
+            ["id"] = id,
+            ["pattern"] = "gamma",
+            ["contextLines"] = int.MaxValue,
+            ["maxMatches"] = int.MaxValue,
+        });
+
+        // Assert: the match with every other line of the output as context, and nothing more
+        Assert.Equal("1-alpha\n2-beta ERROR one\n3:gamma\n4-delta\n5-epsilon error two\n6-zeta\n", result);
+    }
+
+    /// <summary>
+    ///     Proves a whitespace-only pattern is a legitimate literal search, not a missing pattern.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSearchTool_Search_WhitespacePattern_IsSearchedLiterally()
+    {
+        // Arrange: a retained output
+        var (tool, id) = Retained(Output, ToolLimits.Default);
+
+        // Act: search for a single space
+        var result = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = " " });
+
+        // Assert: exactly the lines containing a space
+        Assert.Equal("2:beta ERROR one\n5:epsilon error two\n", result);
+    }
+
+    /// <summary>
+    ///     Proves a pattern over the length limit is refused before a matcher is built, literal or
+    ///     regular expression, without echoing the pattern, while one at the limit is searched.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSearchTool_Search_PatternOverLengthLimit_IsRefused()
+    {
+        // Arrange: a retained output, an over-long literal, an over-long expression costly to
+        // build case-insensitively, and a pattern exactly at the limit
+        var (tool, id) = Retained(Output, ToolLimits.Default);
+        var overLiteral = new string('a', ToolOutputSearchTool.MaxPatternCharacters + 1);
+        var overRegex = string.Concat(Enumerable.Repeat(
+            "[\\u0000-\\uFFFF]",
+            (ToolOutputSearchTool.MaxPatternCharacters / 14) + 1));
+        var atLimit = new string('q', ToolOutputSearchTool.MaxPatternCharacters);
+        const string expected =
+            "Denied (InvalidRequest): The search pattern exceeds the 1000-character pattern limit. "
+            + "Search for a shorter pattern.";
+
+        // Act: search with each, and read the pattern parameter's description
+        var literal = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = overLiteral });
+        var regex = await SearchAsync(tool, new()
+        {
+            ["id"] = id,
+            ["pattern"] = overRegex,
+            ["literal"] = false,
+            ["ignoreCase"] = true,
+        });
+        var atLimitResult = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = atLimit });
+        var description = tool.JsonSchema.GetProperty("properties").GetProperty("pattern")
+            .GetProperty("description").GetString();
+
+        // Assert: both over-long patterns refused without echo, the one at the limit searched,
+        // and the limit stated to the model
+        Assert.True(overRegex.Length > ToolOutputSearchTool.MaxPatternCharacters);
+        Assert.Equal(expected, literal);
+        Assert.Equal(expected, regex);
+        Assert.DoesNotContain(overLiteral, literal, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\uFFFF", regex, StringComparison.Ordinal);
+        Assert.Equal("No matches.", atLimitResult);
+        Assert.Contains(
+            ToolOutputSearchTool.MaxPatternCharacters.ToString(CultureInfo.InvariantCulture),
+            description,
+            StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -122,15 +213,23 @@ public class ToolOutputSearchToolTests
         // Arrange: a retained output
         var (tool, id) = Retained(Output, ToolLimits.Default);
 
-        // Act: an unbalanced expression, a missing pattern, and negative context
+        // Act: an unbalanced expression, a missing and an empty pattern, negative context, and a
+        // negative cap
         var invalid = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "(", ["literal"] = false });
         var missing = await SearchAsync(tool, new() { ["id"] = id });
+        var empty = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = string.Empty });
         var negative = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "a", ["contextLines"] = -1 });
+        var negativeCap = await SearchAsync(tool, new() { ["id"] = id, ["pattern"] = "a", ["maxMatches"] = -1 });
 
-        // Assert: each refused as malformed
-        Assert.StartsWith("Denied (InvalidRequest)", invalid, StringComparison.Ordinal);
+        // Assert: each refused as malformed, and the invalid expression is not echoed back
+        Assert.Equal(
+            "Denied (InvalidRequest): The search pattern is not a valid regular expression. Fix the "
+            + "expression, or set literal to true to search for it as plain text.",
+            invalid);
         Assert.StartsWith("Denied (InvalidRequest)", missing, StringComparison.Ordinal);
+        Assert.Equal(missing, empty);
         Assert.StartsWith("Denied (InvalidRequest)", negative, StringComparison.Ordinal);
+        Assert.Equal(negative, negativeCap);
     }
 
     /// <summary>
