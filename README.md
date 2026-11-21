@@ -23,7 +23,7 @@ context, so a long-running agent behaves the same way on every provider.
 
 ## Features
 
-- 🛡️ **Safe by Construction**: Unsafe operations cannot be expressed, not merely refused at call time
+- 🛡️ **Safe by Construction**: Operations the policy forbids cannot be expressed, not merely refused at call time
 - 🎛️ **Application-Set Controls**: Path grants, tool limits, and host capabilities bound every tool
 - 🧰 **Ready-Made Tool Families**: Text file, file, Markdown, image, todo, memory, and agent delegation
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
@@ -54,7 +54,9 @@ the context window the instance is actually running.
 
 ## Usage
 
-Decide what the agent may touch, decide which tools it receives, and hand both to a provider:
+Decide what the agent may touch, decide which tools it receives, and hand both to a provider. The example runs on a
+local Ollama model through `OllamaSharp` (`dotnet add package OllamaSharp`); any other `IChatClient` drops in on the
+same line:
 
 ```csharp
 using DemaConsulting.AgentKit.Agents.ChatClient;
@@ -62,6 +64,7 @@ using DemaConsulting.AgentKit.Core;
 using DemaConsulting.AgentKit.Tools.File;
 using DemaConsulting.AgentKit.Tools.TextFile;
 using Microsoft.Extensions.AI;
+using OllamaSharp;
 
 // What the agent may touch: relative paths anchor to /workspace, which is granted read-write.
 var policy = new PathPolicy("/workspace", [PathRule.ReadWrite("/workspace")]);
@@ -75,7 +78,10 @@ IList<AIFunction> tools =
         .Build()
 ];
 
-// A Microsoft Agent Framework agent over any IChatClient (OpenAI, Azure OpenAI, Ollama, ...).
+// Any IChatClient works (OpenAI, Azure OpenAI, ...); this one is a local Ollama model.
+IChatClient chatClient = new OllamaApiClient(new Uri("http://localhost:11434"), "qwen3.5:9b");
+
+// A Microsoft Agent Framework agent over that client.
 var agent = ChatClientAgentFactory.Create(
     chatClient,
     tools,
@@ -85,9 +91,11 @@ var response = await agent.RunAsync("List the files in the workspace and summari
 Console.WriteLine(response.Text);
 ```
 
-Every tool in that list observes the same policy: a request for a path outside `/workspace` is
-refused with a reason the model can act on, never carried out. To keep a long conversation alive past
-the model's context window, run the agent on a `CompactingAgentSession`, as the User Guide describes.
+Every tool in that list observes the same policy: a request that names a path outside `/workspace` is refused
+with a reason the model can act on. The policy is a path guardrail, not an OS sandbox: a link inside a grant is not a
+boundary, so read *Path Policy* in the [User Guide][link-releases] for the link and race caveats. To keep a long
+conversation alive past the model's context window, run the agent on a `CompactingAgentSession`, as the User Guide
+describes.
 
 ## Architecture
 
