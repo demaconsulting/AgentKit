@@ -239,8 +239,8 @@ public sealed class ToolLimits
     ///     This is also the threshold above which a composition that retains large tool outputs
     ///     retains an output instead of returning it, and the bound on the preview and on every
     ///     page the reader tools return; see <see cref="ToolOutputSpill"/>. One budget keeps one
-    ///     meaning: what fits is returned, and what does not is either refused or retained. A
-    ///     composition that retains large outputs requires this ceiling to be at least
+    ///     meaning: what fits is returned, and text or JSON that does not is either refused or
+    ///     retained. A composition that retains large outputs requires this ceiling to be at least
     ///     <see cref="ToolOutputSpill.MinimumResultCharacters"/>, so a preview naming its reference
     ///     always fits; any other composition accepts any ceiling, zero included.
     /// </remarks>

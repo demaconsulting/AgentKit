@@ -27,11 +27,20 @@ namespace DemaConsulting.AgentKit.Core;
 ///     </para>
 ///     <para>
 ///     <b>What an oversized result becomes.</b> A tool that returns
-///     <see cref="ToolResult.Oversized"/> is always retained; any other result whose text exceeds
-///     the ceiling — a string, a JSON document, or text content — is retained too. Binary and
-///     image content are never retained: they are already bounded by
-///     <see cref="ToolLimits.MaxBinaryBytes"/> and pass through unchanged, as does a result with no
-///     text. A sequence of content that is not already a list is enumerated once and delivered as
+///     <see cref="ToolResult.Oversized"/> is always retained. Any other textual or structured
+///     result is judged by the text a provider receives: a string, a JSON document, text content,
+///     or a sequence made only of text content is measured as it is, and any other value that is
+///     not content — a record, an anonymous object, a collection, a number, a date, a byte array —
+///     is first serialized to a JSON document with the tool's own
+///     <see cref="AIFunction.JsonSerializerOptions"/>, exactly as
+///     <see cref="GuardedToolFactory"/> serializes structured data, and is measured and delivered as
+///     that document. A result longer than the ceiling is retained. A value the serializer cannot
+///     handle fails the invocation with the serializer's exception, as it would from the guarded
+///     factory. Content other than text — binary and image content, and any other
+///     <see cref="AIContent"/> — is never retained and passes through unchanged, as does a sequence
+///     containing it and a result with no value; the library's own tools bound binary content by
+///     <see cref="ToolLimits.MaxBinaryBytes"/>. A sequence of content that is not already a list is
+///     enumerated once and delivered as
 ///     the list it was enumerated into, the same parts in the same order; a list or an array is
 ///     delivered as returned. The model receives a successful result that opens with a bracketed
 ///     header naming the reference (for example <c>output-3</c>), the output's size, and the reader
@@ -135,8 +144,10 @@ public static class ToolOutputSpill
     ///     <para>
     ///     A tool built by <see cref="GuardedToolFactory"/> is re-wrapped over the same inner
     ///     function; any other <see cref="AIFunction"/> is wrapped the same way, so a hand-built
-    ///     tool's oversized results are retained too. The supplied tools are not modified: a list
-    ///     composed without retention keeps behaving as it did.
+    ///     tool's oversized results are retained too, its structured results first serialized with
+    ///     its own serializer options exactly as the guarded factory would have serialized them.
+    ///     The supplied tools are not modified: a list composed without retention keeps behaving as
+    ///     it did.
     ///     </para>
     ///     <para>
     ///     The result holds the supplied tools in their order, followed by
@@ -412,18 +423,43 @@ internal sealed class SpillAttachment
     }
 
     /// <summary>
-    ///     Resolves a tool's result for delivery: retains and previews an oversized output,
-    ///     delivers a sequence of content that is not already a list as the list it was enumerated
-    ///     into — the same parts in the same order — and returns anything else, a list or an array
-    ///     included, as it arrived.
+    ///     Resolves a tool's result for delivery: serializes a value that is not text, JSON or
+    ///     content to a JSON document as the guarded factory would, retains and previews an
+    ///     oversized output, delivers a sequence of content that is not already a list as the list
+    ///     it was enumerated into — the same parts in the same order — and returns anything else, a
+    ///     list or an array included, as it arrived.
     /// </summary>
+    /// <remarks>
+    ///     A structured result is delivered as the JSON document it was serialized to, not as the
+    ///     object the tool returned: that document's JSON text is what was measured and what every
+    ///     adapter sends, whereas each adapter would serialize the object with options of its own.
+    ///     An exception the serializer raises for a value it cannot handle propagates and fails the
+    ///     invocation, exactly as from the guarded factory.
+    /// </remarks>
     /// <param name="toolName">The name of the tool that produced the result, named in the preview.</param>
+    /// <param name="serializerOptions">
+    ///     The options of the tool that produced the result, used to serialize a structured result;
+    ///     <see langword="null"/> for <see cref="AIJsonUtilities.DefaultOptions"/>.
+    /// </param>
     /// <param name="result">The result the tool produced; may be null.</param>
     /// <returns>
-    ///     A preview string, a refusal when the output is too large to retain, the list a sequence
-    ///     of content was enumerated into, or the result itself.
+    ///     A preview string, a refusal when the output is too large to retain, the JSON document a
+    ///     structured result was serialized to, the list a sequence of content was enumerated into,
+    ///     or the result itself.
     /// </returns>
-    public object? Deliver(string toolName, object? result)
+    /// <exception cref="NotSupportedException">
+    ///     Thrown when the serializer options cannot describe or serialize a structured result's type.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the serializer options cannot build a valid contract for a structured
+    ///     result's type, such as one whose JSON property names collide, or when reading a member
+    ///     of the result throws it, as a stream's timeout properties do.
+    /// </exception>
+    /// <exception cref="JsonException">
+    ///     Thrown when a structured result's object graph cannot be written, such as one containing
+    ///     a cycle.
+    /// </exception>
+    public object? Deliver(string toolName, JsonSerializerOptions? serializerOptions, object? result)
     {
         // A tool that declared its output oversized is retained whatever the measured size, and
         // its own refusal is the one given if the output cannot be retained. When the output fits
@@ -448,8 +484,20 @@ internal sealed class SpillAttachment
             result = sequence.ToList();
         }
 
-        // Only text is retained. Binary content, mixed content and absent results pass through, as
-        // does any text within the ceiling - measured by the result's own representation.
+        // A function the guarded factory did not build may return structured data as it is - a
+        // record, an anonymous object, a collection, a number. Serialize it exactly as the factory
+        // would, with the function's own options, so it is measured as the JSON every adapter sends
+        // and, when it fits, delivered as that JSON. A value the serializer cannot handle throws,
+        // failing the invocation just as it would from the factory. A factory-built tool never
+        // reaches this: its result guard has already serialized such values.
+        if (result is not null and not (string or JsonElement or AIContent or IEnumerable<AIContent>))
+        {
+            result = GuardedToolFactory.SerializeStructured(result, serializerOptions);
+        }
+
+        // Only text is retained, JSON included. Content other than text, a sequence containing it
+        // and an absent result pass through, as does any text within the ceiling - measured by the
+        // result's own representation.
         if (!TryGetText(result, out var text, out var delivered)
             || delivered <= _limits.MaxResultCharacters)
         {

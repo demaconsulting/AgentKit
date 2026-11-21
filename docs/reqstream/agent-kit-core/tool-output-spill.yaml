@@ -12,7 +12,8 @@ sections:
           - id: AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
             title: >-
               A composition retaining large outputs shall return a result within the result ceiling
-              with its content unchanged, and shall retain a textual result exceeding it, returning
+              with its content unchanged - a structured result as the JSON document it serializes
+              to - and shall retain a textual result exceeding it, returning
               in its place a preview no longer than the ceiling that names the reference, the source
               tool, the output's size, and both reader tools.
             justification: |
@@ -81,6 +82,33 @@ sections:
               - ToolOutputSpill_Apply_ToolNotBuiltByTheFactory_IsRetainedToo
               - ToolOutputSpill_Apply_JsonString_IsMeasuredByItsJsonTextAndRetainedDecoded
 
+          - id: AgentKitCore-ToolOutputSpill-StructuredResultsSerialized
+            title: >-
+              A composition retaining large outputs shall serialize a result that is not absent,
+              text, a JSON document or content to a JSON document with its tool's serializer options,
+              exactly as the guarded factory does, delivering that document when it fits within the
+              result ceiling and retaining it when it exceeds it, and shall fail the invocation when
+              the result cannot be serialized, as the guarded factory does.
+            tags: [reliability]
+            justification: |
+              A function not built by the guarded factory may return structured data as it is - a
+              record, an anonymous object, a collection, a number, a byte array. Every provider then
+              sends it as JSON text, but each adapter serializes it with options of its own, so
+              without serialization here it would reach the provider unmeasured and unbounded.
+              Serializing it as the guarded factory does measures it as the JSON delivered, retains it
+              when oversized, and delivers a hand-built tool's result in the same form as a
+              factory-built tool's. A byte array is sent as a base64 JSON string, not as an
+              attachment, so it is measured as that string. A value that cannot be serialized is a
+              defect in the tool, reported as the guarded factory reports it rather than passed on
+              unmeasured.
+            tests:
+              - ToolOutputSpill_Apply_OversizedStructuredObjectFromHandBuiltFunction_IsRetained
+              - ToolOutputSpill_Apply_StructuredResultFromHandBuiltFunction_IsDeliveredAsTheJsonTheGuardedFactoryDelivers
+              - ToolOutputSpill_Apply_StructuredResult_IsSerializedWithTheFunctionsOwnOptions
+              - ToolOutputSpill_Apply_ScalarResultsFromHandBuiltFunction_AreDeliveredAsTheirJson
+              - ToolOutputSpill_Apply_ByteArrayFromHandBuiltFunction_IsMeasuredAndRetainedAsItsBase64Json
+              - ToolOutputSpill_Apply_UnserializableResult_FailsTheInvocationAsTheGuardedFactoryDoes
+
           - id: AgentKitCore-ToolOutputSpill-SequenceEnumeratedOnce
             title: >-
               A composition retaining large outputs shall enumerate a tool's sequence of content at
@@ -96,17 +124,20 @@ sections:
 
           - id: AgentKitCore-ToolOutputSpill-BinaryNeverRetained
             title: >-
-              A composition retaining large outputs shall pass binary content, any result containing
-              it, and an absent result - null or an undefined JSON element - through with their
-              content unchanged.
+              A composition retaining large outputs shall pass binary content and any other content
+              that is not text, any sequence of content containing it, and an absent result - null or
+              an undefined JSON element - through with their content unchanged.
             justification: |
-              Binary content is already bounded by its own ceiling and is meaningless as numbered
-              lines; a captioned image must reach the provider as the image it is. An absent result
-              carries nothing to retain and must reach the runtime exactly as without retention.
+              Content other than text has no single text form to measure - each adapter renders it
+              differently - and binary content is meaningless as numbered lines; a captioned image
+              must reach the provider as the image it is. The library's own tools bound binary
+              content by its own ceiling. An absent result carries nothing to retain and must reach
+              the runtime exactly as without retention.
             tests:
               - ToolOutputSpill_Apply_BinaryContent_PassesThroughUnchanged
               - ToolOutputSpill_Apply_NullResult_PassesThrough
               - ToolOutputSpill_Apply_UndefinedJsonElement_PassesThrough
+              - ToolOutputSpill_Apply_NonTextContentFromHandBuiltFunction_PassesThroughUnchanged
 
           - id: AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained
             title: >-

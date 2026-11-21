@@ -10,8 +10,10 @@ invoke the resulting tools exactly as a runtime would, through `AIFunction.Invok
 `GuardedToolFactory`, `ToolResult`, `ToolLimits`, `ToolOutputOptions`, `ToolOutputStore` and the two
 reader tools are used as real dependencies, all documented in *ToolOutputSpill Unit Design*;
 substituting them would remove the very wiring under test. Tool delegates are declared
-`Task<object>`, the shape every real guarded tool has. Results are asserted by their observable
-text, never by inspecting the store.
+`Task<object>`, the shape every real guarded tool has. Results a factory-built tool can never
+produce — a raw record, a number, a byte array, an unserializable graph — are returned by a
+hand-built `FixedFunction`, optionally carrying its own serializer options. Results are asserted by
+their observable text, never by inspecting the store.
 
 Unit tests reside in `ToolOutputSpillTests.cs` within the `DemaConsulting.AgentKit.Core.Tests`
 project.
@@ -26,13 +28,16 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twenty-six scenarios below pass. Any result within the ceiling
-altered, any oversized textual result not retained, any preview exceeding the ceiling or omitting
-the reference or the readers, any header misstating the lines shown or claiming an output exceeds a
-ceiling it fits within, any binary content or absent result retained, any sequence of content
-enumerated twice, any output truncated, any refusal misstating the size it refuses, any reader
-result retained, any store shared between compositions, any result ceiling below the retention
-minimum accepted, or any invalid list accepted constitutes a failure.
+A unit test run passes when all thirty-three scenarios below pass. Any result within the ceiling
+altered other than a structured result serialized to its JSON, any oversized textual result not
+retained, any structured result from a function the factory did not build delivered as anything
+but the JSON its own serializer options produce, any oversized structured result not retained, any
+unserializable result delivered rather than failing the invocation, any preview exceeding the
+ceiling or omitting the reference or the readers, any header misstating the lines shown or claiming
+an output exceeds a ceiling it fits within, any content other than text or absent result retained
+or altered, any sequence of content enumerated twice, any output truncated, any refusal misstating
+the size it refuses, any reader result retained, any store shared between compositions, any result
+ceiling below the retention minimum accepted, or any invalid list accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -132,6 +137,50 @@ decoded and 1,202 as JSON text, against a 1,000-character ceiling. It is retaine
 reports 1,202 characters in 400 lines, and reading the first two lines shows the decoded text
 (`a` on each line), not the escaped form.
 
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: An Oversized Structured Object Is Retained
+
+**Test**: `ToolOutputSpill_Apply_OversizedStructuredObjectFromHandBuiltFunction_IsRetained`
+
+Normal operation: a hand-built function returns an anonymous object whose JSON exceeds the ceiling;
+the preview reports the size of its JSON text, and reading it shows one indented value per line.
+
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: A Structured Result Is Delivered as the Guarded Factory's JSON
+
+**Test**: `ToolOutputSpill_Apply_StructuredResultFromHandBuiltFunction_IsDeliveredAsTheJsonTheGuardedFactoryDelivers`
+
+Normal operation: a small record from a hand-built function arrives as a `JsonElement` whose text
+equals the record serialized with `AIJsonUtilities.DefaultOptions` and the result of a
+factory-built tool returning the same record.
+
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: The Function's Own Serializer Options Are Used
+
+**Test**: `ToolOutputSpill_Apply_StructuredResult_IsSerializedWithTheFunctionsOwnOptions`
+
+Normal operation: a hand-built function carrying snake_case options delivers `item_name`, the text
+its options produce.
+
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: Scalar Results Are Delivered as Their JSON
+
+**Test**: `ToolOutputSpill_Apply_ScalarResultsFromHandBuiltFunction_AreDeliveredAsTheirJson`
+
+Boundary values: a number, a Boolean, a decimal, an enumeration value and a date each arrive as
+the `JsonElement` the default options produce.
+
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: A Byte Array Is Measured and Retained as Its Base64 JSON
+
+**Test**: `ToolOutputSpill_Apply_ByteArrayFromHandBuiltFunction_IsMeasuredAndRetainedAsItsBase64Json`
+
+Boundary values: three bytes arrive as a JSON string holding their base64 encoding; 1,500 bytes —
+2,002 characters of JSON text — are retained and the header reports 2,002 characters.
+
+#### AgentKitCore-ToolOutputSpill-StructuredResultsSerialized: An Unserializable Result Fails the Invocation as the Guarded Factory Does
+
+**Test**: `ToolOutputSpill_Apply_UnserializableResult_FailsTheInvocationAsTheGuardedFactoryDoes`
+
+Error path: a self-referencing object graph throws `JsonException`, and a delegate
+`NotSupportedException`, from both the composed hand-built tool and a factory-built tool returning
+the same value.
+
 #### AgentKitCore-ToolOutputSpill-SequenceEnumeratedOnce: A Single-Pass Sequence Is Enumerated Once
 
 **Test**: `ToolOutputSpill_Apply_SinglePassSequence_IsEnumeratedOnce`
@@ -160,6 +209,13 @@ Boundary value: a null result remains null.
 
 Boundary value: a hand-built function returning an undefined `JsonElement` delivers that element
 unchanged, without an exception.
+
+#### AgentKitCore-ToolOutputSpill-BinaryNeverRetained: Content Other Than Text Passes Through
+
+**Test**: `ToolOutputSpill_Apply_NonTextContentFromHandBuiltFunction_PassesThroughUnchanged`
+
+Boundary values: function-call and usage content from hand-built functions arrive as the very
+instances returned, neither serialized nor retained.
 
 #### AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained: A Declared-Oversized Output Is Retained
 

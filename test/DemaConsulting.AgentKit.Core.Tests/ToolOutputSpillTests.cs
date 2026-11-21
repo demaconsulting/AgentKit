@@ -357,6 +357,206 @@ public class ToolOutputSpillTests
     }
 
     /// <summary>
+    ///     Proves a structured object a hand-built function returns as it is - never serialized by
+    ///     the guarded factory - is measured by its JSON and retained when that exceeds the ceiling.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_OversizedStructuredObjectFromHandBuiltFunction_IsRetained()
+    {
+        // Arrange: a hand-built function returning an anonymous object whose JSON exceeds the ceiling
+        var value = new { Items = Enumerable.Range(1, 200).Select(n => "item " + n).ToArray() };
+        var expected = JsonSerializer.SerializeToElement(value, AIJsonUtilities.DefaultOptions.GetTypeInfo(value.GetType()));
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_object", value)],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke it and read the first three retained lines
+        var preview = Assert.IsType<string>(await InvokeAsync(tools, "probe_object"));
+        var page = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 1,
+            ["lineCount"] = 3,
+        }));
+
+        // Assert: retained, sized by its JSON text, and paged one indented value per line
+        Assert.StartsWith(
+            "[Output output-1 from probe_object: " + expected.GetRawText().Length + " characters",
+            preview,
+            StringComparison.Ordinal);
+        Assert.Contains("\"items\": [", page, StringComparison.Ordinal);
+        Assert.Contains("\"item 1\"", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a structured result a hand-built function returns within the ceiling is delivered
+    ///     as the very JSON a guarded-factory tool returning the same value delivers.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_StructuredResultFromHandBuiltFunction_IsDeliveredAsTheJsonTheGuardedFactoryDelivers()
+    {
+        // Arrange: the same small record from a composed hand-built function and a factory-built tool
+        var value = new Sample("a", 3);
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_small", value)],
+            new ToolLimits(maxResultCharacters: Ceiling));
+        var factoryBuilt = GuardedToolFactory.Create((Func<object>)(() => value), "probe_small", "Returns a record.");
+
+        // Act: invoke both
+        var handBuilt = await InvokeAsync(tools, "probe_small");
+        var fromFactory = await factoryBuilt.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+
+        // Assert: a JSON element serialized with the default options, identical to the factory's
+        var expected = JsonSerializer.SerializeToElement(value, AIJsonUtilities.DefaultOptions.GetTypeInfo(typeof(Sample)));
+        var element = Assert.IsType<JsonElement>(handBuilt);
+        Assert.Equal(expected.GetRawText(), element.GetRawText());
+        Assert.Equal(Assert.IsType<JsonElement>(fromFactory).GetRawText(), element.GetRawText());
+    }
+
+    /// <summary>
+    ///     Proves a structured result is serialized with the serializer options of the function
+    ///     that returned it, not with options of the composition's choosing.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_StructuredResult_IsSerializedWithTheFunctionsOwnOptions()
+    {
+        // Arrange: a hand-built function carrying snake_case serializer options
+        var options = new JsonSerializerOptions(AIJsonUtilities.DefaultOptions)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        };
+        var value = new Sample("a", 3);
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_snake", value, options)],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke it
+        var result = await InvokeAsync(tools, "probe_snake");
+
+        // Assert: the JSON its own options produce
+        var expected = JsonSerializer.SerializeToElement(value, options.GetTypeInfo(typeof(Sample)));
+        var element = Assert.IsType<JsonElement>(result);
+        Assert.Equal(expected.GetRawText(), element.GetRawText());
+        Assert.Contains("\"item_name\"", element.GetRawText(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves scalar results a hand-built function returns - a number, a Boolean, a decimal, an
+    ///     enumeration value and a date - are each delivered as their JSON.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_ScalarResultsFromHandBuiltFunction_AreDeliveredAsTheirJson()
+    {
+        // Arrange: one scalar of each kind
+        object[] values =
+        [
+            42,
+            true,
+            1.10m,
+            DayOfWeek.Monday,
+            new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        ];
+
+        foreach (var value in values)
+        {
+            var tools = ToolOutputSpill.Apply(
+                [new FixedFunction("probe_scalar", value)],
+                new ToolLimits(maxResultCharacters: Ceiling));
+
+            // Act: invoke it
+            var result = await InvokeAsync(tools, "probe_scalar");
+
+            // Assert: the JSON element the default options produce for the value
+            var expected = JsonSerializer.SerializeToElement(value, AIJsonUtilities.DefaultOptions.GetTypeInfo(value.GetType()));
+            Assert.Equal(expected.GetRawText(), Assert.IsType<JsonElement>(result).GetRawText());
+        }
+    }
+
+    /// <summary>
+    ///     Proves a byte array is not binary content: it is measured, delivered and retained as the
+    ///     base64 JSON string every adapter sends.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_ByteArrayFromHandBuiltFunction_IsMeasuredAndRetainedAsItsBase64Json()
+    {
+        // Arrange: three bytes, and 1,500 bytes whose base64 JSON text is 2,002 characters
+        var tools = ToolOutputSpill.Apply(
+            [
+                new FixedFunction("probe_small_bytes", new byte[] { 1, 2, 3 }),
+                new FixedFunction("probe_bytes", Enumerable.Range(0, 1_500).Select(n => (byte)n).ToArray()),
+            ],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke both
+        var small = await InvokeAsync(tools, "probe_small_bytes");
+        var large = await InvokeAsync(tools, "probe_bytes");
+
+        // Assert: the small array as its base64 JSON string, the large one retained at its JSON size
+        var element = Assert.IsType<JsonElement>(small);
+        Assert.Equal(JsonValueKind.String, element.ValueKind);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), element.GetString());
+        Assert.StartsWith("[Output output-1 from probe_bytes: 2002 characters", Assert.IsType<string>(large), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a result the serializer cannot handle fails the invocation with the serializer's
+    ///     exception, exactly as the guarded factory fails for the same value.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_UnserializableResult_FailsTheInvocationAsTheGuardedFactoryDoes()
+    {
+        // Arrange: a self-referencing object graph and a delegate, each from a composed hand-built
+        // function and from a factory-built tool
+        var loop = new Loop();
+        loop.Next = loop;
+        var callback = (Func<int>)(() => 1);
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_loop", loop), new FixedFunction("probe_delegate", callback)],
+            new ToolLimits(maxResultCharacters: Ceiling));
+        var factoryLoop = GuardedToolFactory.Create((Func<object>)(() => loop), "probe_loop", "Returns a cycle.");
+        var factoryDelegate = GuardedToolFactory.Create((Func<object>)(() => callback), "probe_delegate", "Returns a delegate.");
+
+        // Act & Assert: the cycle throws a JSON exception and the delegate a not-supported
+        // exception, from both paths alike
+        await Assert.ThrowsAnyAsync<JsonException>(() => InvokeAsync(tools, "probe_loop"));
+        await Assert.ThrowsAnyAsync<JsonException>(
+            async () => await factoryLoop.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAnyAsync<NotSupportedException>(() => InvokeAsync(tools, "probe_delegate"));
+        await Assert.ThrowsAnyAsync<NotSupportedException>(
+            async () => await factoryDelegate.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    ///     Proves content other than text from a hand-built function is never serialized or
+    ///     retained: it reaches the runtime as the very instance returned.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_NonTextContentFromHandBuiltFunction_PassesThroughUnchanged()
+    {
+        // Arrange: function-call and usage content from hand-built functions
+        var call = new FunctionCallContent("c1", "other");
+        var usage = new UsageContent(new UsageDetails { InputTokenCount = 3 });
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_call", call), new FixedFunction("probe_usage", usage)],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke both
+        var callResult = await InvokeAsync(tools, "probe_call");
+        var usageResult = await InvokeAsync(tools, "probe_usage");
+
+        // Assert: the very instances returned
+        Assert.Same(call, callResult);
+        Assert.Same(usage, usageResult);
+    }
+
+    /// <summary>
     ///     Proves the preview is clamped so it and its header fit the smallest ceiling retention
     ///     accepts, and that the header alone is delivered when the preview size admits no line.
     /// </summary>
@@ -726,23 +926,51 @@ public class ToolOutputSpillTests
         private readonly object? _result;
 
         /// <summary>
+        ///     The function's own serializer options, or null for the default.
+        /// </summary>
+        private readonly JsonSerializerOptions? _serializerOptions;
+
+        /// <summary>
         ///     Initializes a new instance of the <see cref="FixedFunction"/> class.
         /// </summary>
         /// <param name="name">The function's name.</param>
         /// <param name="result">The value every invocation returns.</param>
-        public FixedFunction(string name, object? result)
+        /// <param name="serializerOptions">The function's own serializer options, or null for the default.</param>
+        public FixedFunction(string name, object? result, JsonSerializerOptions? serializerOptions = null)
         {
             _name = name;
             _result = result;
+            _serializerOptions = serializerOptions;
         }
 
         /// <inheritdoc/>
         public override string Name => _name;
 
         /// <inheritdoc/>
+        public override JsonSerializerOptions JsonSerializerOptions => _serializerOptions ?? base.JsonSerializerOptions;
+
+        /// <inheritdoc/>
         protected override ValueTask<object?> InvokeCoreAsync(
             AIFunctionArguments arguments,
             CancellationToken cancellationToken) => new(_result);
+    }
+
+    /// <summary>
+    ///     A small record a hand-built function may return as it is.
+    /// </summary>
+    /// <param name="ItemName">A name, whose casing the serializer options decide.</param>
+    /// <param name="Count">A count.</param>
+    private sealed record Sample(string ItemName, int Count);
+
+    /// <summary>
+    ///     An object that can refer to itself, forming a graph the serializer cannot handle.
+    /// </summary>
+    private sealed class Loop
+    {
+        /// <summary>
+        ///     Gets or sets the next object in the graph.
+        /// </summary>
+        public Loop? Next { get; set; }
     }
 
     /// <summary>

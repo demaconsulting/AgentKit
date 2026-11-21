@@ -276,11 +276,17 @@ Retention adds no reach to an agent, which is why it is held in memory rather th
 temporary file the confined tools could not read anyway.
 
 **What is retained.** Every tool in the composition is covered, including the application's own
-tools: any text, JSON or text content longer than the ceiling is retained, and JSON is indented so
-it can be paged one value per line. The listing, searching, outlining and delegating tools —
-`file_list`, `text_file_search`, `markdown_outline` and `agent_run` — are retained exactly where
-they would otherwise refuse. Images and other binary content are never retained; they are bounded by
-their own ceiling. `text_file_read` keeps refusing an oversized read, because the file is already
+tools — even an `AIFunction` written by hand rather than built with `GuardedToolFactory`. Text, JSON
+and text content longer than the ceiling are retained, and JSON is indented so it can be paged one
+value per line. Any other value a tool returns that is not content — a record, an anonymous object,
+a collection, a number, a byte array — is first serialized to JSON with the tool's own serializer
+options, exactly as `GuardedToolFactory` serializes it, and is then delivered, or retained, as that
+JSON; a value that cannot be serialized fails the call with the serializer's exception, as it would
+from the factory. The listing, searching, outlining and delegating tools — `file_list`,
+`text_file_search`, `markdown_outline` and `agent_run` — are retained exactly where they would
+otherwise refuse. Images, other binary content and any other content that is not text are never
+retained and are delivered as the tool returned them; AgentKit's own tools bound binary content by
+its own ceiling. `text_file_read` keeps refusing an oversized read, because the file is already
 pageable with `startLine` and `lineCount`.
 
 **Retention is bounded.** `ToolOutputOptions` sets the preview size (4,000 characters), the largest
@@ -292,7 +298,7 @@ re-runs the tool rather than guessing. A single output larger than the per-outpu
 truncated; it is refused. A tool that reports its output as oversized gives its usual refusal: the
 built-in `file_list`, `markdown_outline`, `text_file_search` and `agent_run` do this, as does your
 own tool if it returns `ToolResult.Oversized`. Any other tool, including your own tools returning
-text or JSON, gets a refusal stating the output's size and the retention limit.
+text, JSON or a structured value, gets a refusal stating the output's size and the retention limit.
 
 **Retention needs a result ceiling of at least 1,000 characters**
 (`ToolOutputSpill.MinimumResultCharacters`). The preview's header names the reference, and the
@@ -305,8 +311,9 @@ characters, which every guarded tool already is; only a hand-built `AIFunction` 
 For a delegated agent composed with `childToolOutput`, such a name — like a child tool under the
 reserved `tool_output_` prefix, or one name published by two child packs with overlapping
 prefixes — makes `agent_run` refuse that delegation as a composition failure rather than start
-the child. With that, every successful result a retaining composition returns — a preview, a page, a search listing
-— fits within the ceiling. A composition without retention accepts any ceiling, zero included.
+the child. With that, every result a retaining composition writes itself — a preview, a page, a
+search listing — fits within the ceiling. A composition without retention accepts any ceiling, zero
+included.
 
 **Lifetime and isolation.** Retained outputs live exactly as long as the tool list they were
 composed into. A session carries that list unchanged across compaction, so a reference survives a

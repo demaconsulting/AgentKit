@@ -60,8 +60,8 @@ a self-compacting session, and **custom-tools** demonstrates writing your own gu
   each family; this README deliberately does not restate it.
 - **Capability packs**: adapting other libraries, such as document extraction and speech,
   into guarded agent tools (planned)
-- **Large tool outputs, retained rather than lost (opt-in)**: a tool result too large for the result
-  ceiling is normally refused, never truncated. Composed with `WithToolOutputSpill()`, it is kept
+- **Large tool outputs, retained rather than lost (opt-in)**: a textual or structured tool result too large for
+  the result ceiling is normally refused, never truncated. Composed with `WithToolOutputSpill()`, it is kept
   whole in memory instead, and the model receives a bounded preview and an opaque reference it pages
   through with `tool_output_read` or searches with `tool_output_search` — readers that take no path,
   so retention adds no reach. Retention is bounded, survives session compaction, and behaves the

@@ -150,9 +150,11 @@ or `ToolOutputSpill.Apply`. `ToolOutputSpill` then allocates one `ToolOutputStor
 re-wraps every tool's `GuardedFunction` (see *GuardedToolFactory Unit Design*) so that its results
 pass through the composition's retention, and appends `ToolOutputReadTool` and
 `ToolOutputSearchTool` over the same store. A tool whose output is too large either declares it
-with `ToolResult.Oversized` or simply returns it; either way the wrapper retains it and returns a
-bounded preview naming an opaque reference such as `output-3`. Without the opt-in, the wrapper
-turns the declaration back into the identical refusal the tool always gave. Because the behavior
+with `ToolResult.Oversized` or simply returns it as text, JSON or structured data, which is
+serialized to JSON first; either way the wrapper retains it and returns a bounded preview naming an
+opaque reference such as `output-3`. Content other than text is never retained. Without the opt-in,
+the wrapper turns the declaration back into the identical refusal the tool always gave. Because the
+behavior
 lives inside each `AIFunction`, it is identical on every provider, and because the session engine
 carries the tool list unchanged across rotations, a reference survives compaction. The readers take
 an identifier and nothing else, so retention adds no way to reach the file system.
@@ -490,7 +492,8 @@ The system additionally exposes the large-tool-output retention API:
 - **ToolOutputSpill.MinimumResultCharacters** (1,000): The smallest result ceiling a retaining
   composition accepts, so the preview naming a retained output's reference always fits.
 - **ToolOutputSpill.Apply(IEnumerable&lt;AIFunction&gt; tools, ToolLimits limits, ToolOutputOptions?
-  options)**: Wraps every tool so an oversized output is retained and previewed, and appends the
+  options)**: Wraps every tool so an oversized textual, JSON or structured output is retained and
+  previewed, and appends the
   two readers. Throws `ArgumentNullException` for missing arguments and `ArgumentException` for a
   result ceiling below `MinimumResultCharacters`, or a null, duplicate, reserved or over-long
   (more than 64 characters) tool name.
@@ -741,8 +744,10 @@ is released, and the original failure is what the caller learns even when that r
    appends `tool_output_read` and `tool_output_search`
 2. **Invocation**: A tool returns its result; a tool that measured its own output against the
    result ceiling returns `ToolResult.Oversized` with the whole output and its refusal
-3. **Decision**: A declared-oversized output, or a textual result longer than
-   `MaxResultCharacters`, is retained; binary content and results within the ceiling pass through
+3. **Decision**: A result that is not text, JSON or content is first serialized to JSON with the
+   tool's serializer options, as the guarded factory does; a declared-oversized output, or a textual
+   or JSON result longer than `MaxResultCharacters`, is retained; content other than text and
+   results within the ceiling pass through
 4. **Retention**: The output is normalized into lines (structured data indented, long lines
    wrapped) and stored under the next `output-N` identifier, evicting the oldest outputs as needed;
    an output above the per-output ceiling is refused instead

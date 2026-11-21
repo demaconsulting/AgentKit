@@ -74,9 +74,9 @@ The internal `SpillAttachment` is one composition's retention. It holds:
 **Postconditions:** the result holds the supplied tools in order, then `tool_output_read`, then
 `tool_output_search`; every supplied tool keeps its metadata.
 
-#### SpillAttachment.Deliver(string toolName, object? result)
+#### SpillAttachment.Deliver(string toolName, JsonSerializerOptions? serializerOptions, object? result)
 
-Called by the wrapper with every result:
+Called by the wrapper with every result and the tool's serializer options:
 
 - An `OversizedResult` marker (from `ToolResult.Oversized`) is always retained; if it cannot be
   retained the tool's own refusal is returned. When its text fits the result ceiling — the tool
@@ -87,7 +87,28 @@ Called by the wrapper with every result:
   delivered. A tool may return a single-pass or lazily produced sequence; measuring it and then
   letting the provider's adapter enumerate it again would deliver it empty or altered. A list or an
   array is delivered as the very instance the tool returned.
-- A purely textual result — a `string`, a `JsonElement`, a `TextContent`, or a non-empty list
+- A result that is not `null`, a `string`, a `JsonElement`, an `AIContent` or a sequence of
+  `AIContent` — a record, an anonymous object, a collection or dictionary, a number, a date, an
+  enumeration value, a `JsonNode`, a byte array — is serialized to a `JsonElement` with the tool's
+  own `JsonSerializerOptions` (`AIJsonUtilities.DefaultOptions` when none is supplied) through
+  `GuardedToolFactory.SerializeStructured`, the helper the guarded factory's result guard uses. A
+  factory-built tool's guard has already done this, so only a function the factory did not build
+  reaches it, and such a function's structured result is then measured, retained and delivered
+  exactly as a factory-built tool's is. Within the ceiling the `JsonElement` is what is delivered,
+  not the original object: it is the form the Microsoft.Extensions.AI function factory itself
+  returns for structured data, its JSON text is the text measured, and every adapter sends a
+  `JsonElement` as its JSON text — whereas the original object would be serialized by each adapter
+  with options of its own (the OpenAI adapter with `AIJsonUtilities.DefaultOptions`, OllamaSharp
+  with its client's, the Copilot SDK with the function's) and could arrive larger than measured.
+  With the default options the text sent is identical to what the adapter would have produced from
+  the object. A byte array is not binary content: every adapter sends it as a base64 JSON string
+  within the tool's text result, so it is measured, and retained, as that string. A value the
+  serializer cannot handle — a stream, a delegate, an object graph with a cycle — throws, and the
+  exception (`NotSupportedException`, `InvalidOperationException` or `JsonException`, as the
+  serializer raises it) fails the invocation exactly as the guarded factory's would; it is neither
+  passed through unmeasured nor replaced by a refusal the composition composes.
+- A purely textual result — a `string`, a `JsonElement` (including one a structured result was
+  serialized to), a `TextContent`, or a non-empty list
   made only of `TextContent` — is retained when its size exceeds the result ceiling. A result is
   measured by its own representation, not by any envelope a provider adds around it, which differs
   from provider to provider: a string by its characters, any `JsonElement` by its JSON text
@@ -98,10 +119,13 @@ Called by the wrapper with every result:
   decoded value (`GetString()`), and a JSON object or array is indented, only once it is known to
   be retained. Retaining escaped or compact JSON would collapse a multi-line output into one line
   that `tool_output_read` could not page by line and `tool_output_search` could not match literally.
-- Anything else — `null`, an undefined `JsonElement` (which carries no value), `DataContent`, a
-  caption beside an image, any other shape — passes through as it arrived, except that a sequence
-  of content that is not already a list is the list it was enumerated into, the same parts in the
-  same order. Binary content is already bounded by `MaxBinaryBytes`.
+- Anything else — `null`, an undefined `JsonElement` (which carries no value), `DataContent` or any
+  other content that is not text, or a sequence containing such content, such as a caption beside an
+  image — passes through as it arrived, except that a sequence of content that is not already a list
+  is the list it was enumerated into, the same parts in the same order. Content other than text is
+  never retained: each adapter renders it differently, so it has no single text form to measure, and
+  binary content must reach the provider as the attachment it is. The library's own tools bound
+  binary content by `MaxBinaryBytes`; a custom tool's content is delivered as the tool returned it.
 
 #### Preview composition
 
@@ -135,9 +159,11 @@ below zero, so every preview — header, body and marker — is within `MaxResul
 
 **What a retaining composition guarantees.** Every successful result it produces fits within
 `MaxResultCharacters`: previews (including header-only previews), reader pages, empty windows,
-search listings and `No matches.`. A result that already fit is returned as it arrived, or, for a
-sequence of content that is not already a list, as the list it was enumerated into, the same parts
-in the same order. Every refusal the composition writes itself — the retention-limit refusal and
+search listings and `No matches.`. A result that already fit is returned as it arrived; a structured
+result as the JSON document it was serialized to; and a sequence of content that is not already a
+list as the list it was enumerated into, the same parts in the same order. Content other than text
+is not measured and is not covered by this guarantee. Every refusal the composition writes itself —
+the retention-limit refusal and
 the reader refusals, whose malformed-identifier echo `ToolOutputStore` bounds — is far shorter
 than the minimum. A refusal a tool writes itself (the message given to `ToolResult.Oversized`, or
 any `ToolResult.Denied`) is the tool's own text, exactly as without retention.
@@ -160,20 +186,22 @@ the result ceiling judged.
 | `MaxResultCharacters` below `MinimumResultCharacters` | `ArgumentException` (`limits`) propagates |
 | Null tool, name over 64 characters, reserved name, duplicate name | `ArgumentException` propagates |
 | Output over the retention ceiling | A refusal stating the retained size is returned to the model |
-| Binary or non-textual result | Passed through; a single-pass sequence as its enumerated list |
+| Content other than text, or a sequence containing it | Passed through; a single-pass sequence as its enumerated list |
+| Structured result from a hand-built function | Serialized with the function's serializer options, then measured |
+| Unserializable structured result | The serializer's exception fails the invocation, as from the guarded factory |
 | Single-pass sequence of content | Enumerated once; the parts enumerated are delivered |
 | Undefined `JsonElement` | Passed through unchanged; never measured |
 
 ### Dependencies
 
-- **GuardedToolFactory** — the `GuardedFunction` wrapper that calls the attachment; see
-  *GuardedToolFactory Unit Design*.
+- **GuardedToolFactory** — the `GuardedFunction` wrapper that calls the attachment, and
+  `SerializeStructured`, which serializes a structured result; see *GuardedToolFactory Unit Design*.
 - **ToolResult** — the oversized marker and the refusals; see *ToolResult Unit Design*.
 - **ToolLimits** — the result ceiling; see *ToolLimits Unit Design*.
 - **ToolOutputOptions**, **ToolOutputStore**, **ToolOutputReadTool**, **ToolOutputSearchTool** —
   see their unit designs.
-- **Microsoft.Extensions.AI.Abstractions** — `AIFunction`, `TextContent`; **System.Text.Json** —
-  `JsonElement`.
+- **Microsoft.Extensions.AI.Abstractions** — `AIFunction`, `AIContent`, `TextContent`,
+  `AIJsonUtilities`; **System.Text.Json** — `JsonElement`, `JsonSerializerOptions`.
 
 ### Callers
 

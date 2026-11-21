@@ -143,8 +143,12 @@ for an empty description or a name violating the convention.
 
 Private helper implementing the guard. It returns `null`, a `string`, an `AIContent`, an
 `IEnumerable<AIContent>` and the oversized-output marker unchanged, and serializes anything else to
-a `JsonElement`. The marker is passed through so the wrapper can resolve it; serializing it would
-hand a provider a JSON rendering of the whole output the ceiling exists to keep out.
+a `JsonElement`. Serialization is performed by the internal
+`SerializeStructured(object value, JsonSerializerOptions? serializerOptions)`, which
+`ToolOutputSpill` also calls, so a structured result from a function this factory did not build is
+serialized identically when retention is composed. The marker is passed through so the wrapper can
+resolve it; serializing it would hand a provider a JSON rendering of the whole output the ceiling
+exists to keep out.
 
 **Serialization uses a `JsonTypeInfo` obtained from the options** rather than the
 reflection-based `SerializeToElement` overload, so the unit carries no trimming or
@@ -153,7 +157,8 @@ options are the caller's when supplied and `AIJsonUtilities.DefaultOptions` othe
 the same source the underlying factory would have used.
 
 **Postconditions:** the returned value is either the argument itself or a `JsonElement`; the
-helper never throws for a shape reason.
+helper never throws for a shape reason; an exception the serializer raises for a value it cannot
+handle propagates.
 
 #### GuardedFunction.InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
 
@@ -163,10 +168,13 @@ Invokes the inner function and resolves its result for delivery:
   exactly `ToolResult.Denied(DenialReason.ResourceTooLarge, marker.DenialMessage)` — the text the
   tool returned before the marker existed — and every other result passes through untouched. A
   host that has not opted in therefore observes no change, and a marker never reaches a provider.
-- **Retention composed:** every result is handed to `SpillAttachment.Deliver`, which retains an
-  oversized output and returns its preview, delivers a sequence of content that is not already a
-  list as the list it was enumerated into — the same parts in the same order — and returns anything
-  else, a list or an array included, as it arrived; see *ToolOutputSpill Unit Design*.
+- **Retention composed:** every result is handed, with the tool's serializer options, to
+  `SpillAttachment.Deliver`, which serializes a value that is not text, JSON or content to a
+  `JsonElement` as this factory does, retains an oversized output and returns its preview, delivers
+  a sequence of content that is not already a list as the list it was enumerated into — the same
+  parts in the same order — and returns anything else, a list or an array included, as it arrived.
+  A value the serializer cannot handle fails the invocation with the serializer's exception, as it
+  would from this factory; see *ToolOutputSpill Unit Design*.
 
 **The wrapper is transparent.** `DelegatingAIFunction` forwards the name, the description, the
 parameter and return schemas, the serializer options, the underlying method, the additional

@@ -225,9 +225,10 @@ public static class GuardedToolFactory
     ///     produce. Anything else is structured data, and structured data belongs in JSON.
     ///     </para>
     ///     <para>
-    ///     Serialization goes through a <see cref="JsonTypeInfo"/> obtained from the options
-    ///     rather than through the reflection-based overload, so that the unit carries no
-    ///     trimming or ahead-of-time compilation warning into a consumer's build.
+    ///     Serialization goes through <see cref="SerializeStructured"/>, which uses a
+    ///     <see cref="JsonTypeInfo"/> obtained from the options rather than the reflection-based
+    ///     overload, so that the unit carries no trimming or ahead-of-time compilation warning into
+    ///     a consumer's build.
     ///     </para>
     ///     <para>
     ///     The oversized-output marker produced by <see cref="ToolResult.Oversized"/> is passed
@@ -259,8 +260,46 @@ public static class GuardedToolFactory
         // Everything else is structured data. Serialize it exactly as the underlying factory
         // would have done, so that a tool returning a record or an anonymous object reaches the
         // model as readable JSON rather than as an opaque CLR instance.
+        return SerializeStructured(result, serializerOptions);
+    }
+
+    /// <summary>
+    ///     Serializes a structured result to a JSON document exactly as the underlying function
+    ///     factory would.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///     Serialization goes through a <see cref="JsonTypeInfo"/> obtained from the options
+    ///     rather than through the reflection-based overload, so that the unit carries no
+    ///     trimming or ahead-of-time compilation warning into a consumer's build.
+    ///     </para>
+    ///     <para>
+    ///     Shared with <see cref="ToolOutputSpill"/>, so a structured result from a function this
+    ///     factory did not build is serialized identically when retention is composed. Any
+    ///     exception the serializer raises — an unsupported type, a cycle — propagates.
+    ///     </para>
+    /// </remarks>
+    /// <param name="value">The structured value to serialize. Must not be null.</param>
+    /// <param name="serializerOptions">
+    ///     The options to serialize with, or <see langword="null"/> for
+    ///     <see cref="AIJsonUtilities.DefaultOptions"/>.
+    /// </param>
+    /// <returns>The JSON document the value serializes to.</returns>
+    /// <exception cref="NotSupportedException">
+    ///     Thrown when the options cannot describe or serialize the value's type.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the options cannot build a valid contract for the value's type, such as one
+    ///     whose JSON property names collide, or when reading a member of the value throws it, as a
+    ///     stream's timeout properties do.
+    /// </exception>
+    /// <exception cref="JsonException">
+    ///     Thrown when the value's object graph cannot be written, such as one containing a cycle.
+    /// </exception>
+    internal static JsonElement SerializeStructured(object value, JsonSerializerOptions? serializerOptions)
+    {
         var options = serializerOptions ?? AIJsonUtilities.DefaultOptions;
-        return JsonSerializer.SerializeToElement(result, options.GetTypeInfo(result.GetType()));
+        return JsonSerializer.SerializeToElement(value, options.GetTypeInfo(value.GetType()));
     }
 }
 
@@ -286,14 +325,17 @@ public static class GuardedToolFactory
 ///     never reach a provider.
 ///     </para>
 ///     <para>
-///     <b>With retention composed</b>, every result is handed to the composition's attachment,
-///     which retains an oversized output and returns a preview naming its reference, delivers a
-///     sequence of content that is not already a list as the list it was enumerated into — the
-///     same parts in the same order — and returns everything else, a list or an array included,
-///     as it arrived. The attachment is added by <see cref="ToolOutputSpill.Apply"/> through
-///     <see cref="WithSpill"/>, which builds a new wrapper over the same inner function rather
-///     than mutating this one, so a tool list composed without retention is never altered by a
-///     later composition that has it.
+///     <b>With retention composed</b>, every result is handed, with this tool's serializer
+///     options, to the composition's attachment, which serializes a value that is not text, JSON
+///     or content to a JSON document exactly as the guarded factory does — for a tool the factory
+///     built this has already happened — retains an oversized output and returns a preview naming
+///     its reference, delivers a sequence of content that is not already a list as the list it was
+///     enumerated into — the same parts in the same order — and returns everything else, a list or
+///     an array included, as it arrived. A value the serializer cannot handle fails the invocation
+///     with the serializer's exception, as it would from the guarded factory. The attachment is
+///     added by <see cref="ToolOutputSpill.Apply"/> through <see cref="WithSpill"/>, which builds a
+///     new wrapper over the same inner function rather than mutating this one, so a tool list
+///     composed without retention is never altered by a later composition that has it.
 ///     </para>
 ///     <para>
 ///     Instances are immutable and safe for concurrent use; the attachment they may carry is
@@ -354,21 +396,37 @@ internal sealed class GuardedFunction : DelegatingAIFunction
     ///     The wrapped function's result, with an oversized-output marker replaced by its refusal
     ///     or, when retention is composed, an oversized result replaced by its preview and a
     ///     sequence of content that is not already a list delivered as the list it was enumerated
-    ///     into.
+    ///     into, and a structured result from a function the factory did not build delivered as
+    ///     the JSON document it was serialized to.
     /// </returns>
+    /// <exception cref="NotSupportedException">
+    ///     Thrown, when retention is composed, if the serializer options cannot describe or
+    ///     serialize a structured result's type, exactly as the guarded factory throws.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown, when retention is composed, if the serializer options cannot build a valid
+    ///     contract for a structured result's type, such as one whose JSON property names collide,
+    ///     or if reading a member of the result throws it, as a stream's timeout properties do,
+    ///     exactly as the guarded factory throws.
+    /// </exception>
+    /// <exception cref="JsonException">
+    ///     Thrown, when retention is composed, if a structured result's object graph cannot be
+    ///     written, such as one containing a cycle, exactly as the guarded factory throws.
+    /// </exception>
     protected override async ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments,
         CancellationToken cancellationToken)
     {
         var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        // With retention composed, the attachment decides: an oversized output is retained and
-        // previewed, a sequence of content that is not already a list is delivered as the list it
-        // was enumerated into - the same parts in the same order - and anything else is returned
-        // as it arrived.
+        // With retention composed, the attachment decides, using this tool's serializer options
+        // for any structured result: a structured result is serialized as the guarded factory
+        // would, an oversized output is retained and previewed, a sequence of content that is not
+        // already a list is delivered as the list it was enumerated into - the same parts in the
+        // same order - and anything else is returned as it arrived.
         if (_spill is not null)
         {
-            return _spill.Deliver(Name, result);
+            return _spill.Deliver(Name, JsonSerializerOptions, result);
         }
 
         // Without retention, a marker becomes the refusal the tool always gave, so a host that

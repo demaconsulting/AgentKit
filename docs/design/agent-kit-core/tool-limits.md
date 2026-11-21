@@ -35,8 +35,8 @@ this equal to `MaxReadBytes` would let one result crowd out every subsequent ste
 The same ceiling is also the threshold above which a composition that retains large tool outputs
 retains an output instead of returning it, and the bound on the preview and on every page the
 reader tools return; see *ToolOutputSpill Unit Design*. A second threshold was rejected: one budget
-keeps one meaning — what fits is returned, and what does not is either refused or retained. A
-retaining composition requires this ceiling to be at least `ToolOutputSpill.MinimumResultCharacters`
+keeps one meaning — what fits is returned, and text or JSON that does not is either refused or
+retained. A retaining composition requires this ceiling to be at least `ToolOutputSpill.MinimumResultCharacters`
 (1,000), so the preview naming a retained output's reference always fits; the check belongs to the
 composition, not to this type, so every other composition accepts any ceiling, zero included.
 

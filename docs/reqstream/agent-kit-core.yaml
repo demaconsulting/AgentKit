@@ -385,6 +385,7 @@ sections:
           - AgentKitCore-ToolOutputSpill-PreviewComposition
           - AgentKitCore-ToolOutputSpill-MinimumResultCeiling
           - AgentKitCore-ToolOutputSpill-TextualResultsRetained
+          - AgentKitCore-ToolOutputSpill-StructuredResultsSerialized
           - AgentKitCore-ToolOutputSpill-SequenceEnumeratedOnce
           - AgentKitCore-ToolOutputSpill-BinaryNeverRetained
           - AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained
