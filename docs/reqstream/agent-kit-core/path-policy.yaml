@@ -215,14 +215,22 @@ sections:
               path matches a protected pattern, lies inside a permitted location that no grant
               permits this access to, or lies outside every permitted location; shall echo the
               caller's request; shall state the
-              canonical (normalized) absolute location the request was interpreted as, with `.` and
-              `..` collapsed, when and only when the request was relative, and shall enumerate the
-              permitted locations with their access levels, or state that none are permitted.
+              normalized location the request was interpreted as, relative to the working directory
+              with `.` and `..` collapsed, when and only when the request was relative; and shall
+              enumerate the permitted locations with their access levels, each relative to the
+              working directory and absolute only when it has no relative form, or state that none
+              are permitted. It shall state no other host absolute path.
             justification: |
-              The earlier host-path-disclosure rule is deliberately dropped. Telling a confined model
-              the complete, truthful map of where it may work is worth more than concealing paths it
-              is already confined to. A denial therefore states, in order: what was asked for, echoed
-              verbatim; what it was interpreted as, but only when a relative request was actually
+              Telling a confined model the complete, truthful map of where it may work is what lets
+              it re-address a refused request. Stating that map relative to the working directory
+              keeps it complete and directly usable — a relative request is joined to the working
+              directory and normalized before containment is judged, so `../session/x` reaches a
+              grant described as `../session` — while keeping the host's directory layout and user
+              name out of a transcript that leaves the host. An earlier version stated the
+              interpretation and every grant as host absolute paths; that disclosure added nothing
+              the model could use and is reversed. Only a grant on another volume, which has no
+              relative spelling, is named absolutely. A denial therefore states, in order: what was
+              asked for, echoed verbatim; what it was interpreted as, but only when a relative request was actually
               joined to the working directory, so an interpretation that did not occur is never
               reported and the interpretation is never reported on its own; and the permitted
               locations, each with its access level, so the model can re-address a request rather than
@@ -247,6 +255,10 @@ sections:
               - PathPolicy_TryResolveRead_PlainRelativeDenial_InterpretedPathReportedVerbatim
               - PathPolicy_TryResolveRead_InterpretedPathNormalizationThrows_StillDeniesAndDiscloses
               - PathPolicy_TryResolveWrite_AliasToReadOnlyGrant_DeniedWithoutInterpretationClause
+              - PathPolicy_TryResolveRead_RelativeDenial_NeverStatesTheWorkingDirectoryAbsolutely
+              - PathPolicy_TryResolveRead_Denial_DescribesGrantsRelativeToTheWorkingDirectory
+              - PathPolicy_TryResolveRead_RelativeGrantDescription_IsAddressable
+              - PathPolicy_TryResolveRead_AbsoluteDenial_EchoesOnlyTheRequest
 
           - id: AgentKitCore-PathPolicy-DialectMirroring
             title: >-

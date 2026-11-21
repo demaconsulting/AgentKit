@@ -105,8 +105,8 @@ namespace DemaConsulting.AgentKit.Tools.Image;
 ///     <para>
 ///     Every refusal is returned rather than thrown, and every refusal this tool composes itself
 ///     interpolates only integers and the resolved media type — no absolute path, no permitted
-///     location, no directory separator. Only the access policy's own refusal discloses host
-///     paths, and it does so deliberately and unchanged. That rule governs refusals, not results:
+///     location, no directory separator. The access policy's own refusal is passed through
+///     unchanged, and it states locations relative to the working directory. That rule governs refusals, not results:
 ///     the confirmation for a written region names the destination, in the dialect
 ///     <see cref="PathPolicy.EmitRelative"/> decides.
 ///     </para>

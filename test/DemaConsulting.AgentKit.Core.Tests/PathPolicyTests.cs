@@ -230,10 +230,10 @@ public class PathPolicyTests
         // Act: a bare name resolves under the ungranted anchor and is denied
         var permitted = policy.TryResolveRead("notes.txt", out _, out var denial);
 
-        // Assert: the denial enumerates the location that IS permitted
+        // Assert: the denial enumerates the location that IS permitted, relative to the anchor
         Assert.False(permitted);
-        Assert.Contains(outsideReal, denial, StringComparison.Ordinal);
-        Assert.Contains("(read-only)", denial, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside (read-only)", denial, StringComparison.Ordinal);
+        Assert.DoesNotContain(outsideReal, denial, StringComparison.Ordinal);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -720,11 +720,11 @@ public class PathPolicyTests
         var permitted = policy.TryResolveRead("shared", out var realPath, out var denial);
 
         // Assert: denied (it resolved under the anchor, Root\shared is not granted itself), and
-        // both same-named locations are named so the model can address one absolutely
+        // both same-named locations are named, relative to the anchor, so the model can address one
         Assert.False(permitted);
         Assert.Null(realPath);
-        Assert.Contains(RealPathResolver.Resolve(firstShared), denial, StringComparison.Ordinal);
-        Assert.Contains(RealPathResolver.Resolve(secondShared), denial, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside/a/shared (read-only)", denial, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside/b/shared (read-only)", denial, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -845,12 +845,114 @@ public class PathPolicyTests
         Assert.NotNull(denial);
         Assert.Contains("Requested: \"../outside/secret.txt\"", denial, StringComparison.Ordinal);
 
-        // (b) the interpretation is stated because the request was relative
-        Assert.Contains("Interpreted as:", denial, StringComparison.Ordinal);
+        // (b) the interpretation is stated, relative to the anchor, because the request was relative
+        Assert.Contains(
+            "Interpreted as: ../outside/secret.txt (relative to the working directory)",
+            denial,
+            StringComparison.Ordinal);
 
-        // (c) the permitted locations are enumerated with their level
-        Assert.Contains(policy.WorkingDirectory, denial, StringComparison.Ordinal);
-        Assert.Contains("(read-only)", denial, StringComparison.Ordinal);
+        // (c) the permitted locations are enumerated with their level, the anchor itself as "."
+        Assert.Contains("Permitted locations (relative to the working directory):", denial, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-only)", denial, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a denial for a relative request never states the working directory, or any
+    ///     location beneath it, as a host absolute path.
+    /// </summary>
+    /// <remarks>
+    ///     The denial joins the transcript, which leaves this process; the relative map it carries
+    ///     is fully addressable, so the absolute layout of the host adds nothing the model can use.
+    /// </remarks>
+    [Fact]
+    public void PathPolicy_TryResolveRead_RelativeDenial_NeverStatesTheWorkingDirectoryAbsolutely()
+    {
+        // Arrange: a granted anchor and a sibling grant, and a request escaping to a third place
+        using var fixture = new TempDirectoryFixture();
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
+
+        // Act: a relative request that is refused
+        policy.TryResolveRead("../elsewhere/secret.txt", out _, out var denial);
+
+        // Assert: no absolute location of the anchor, the grant or the temporary base appears
+        Assert.NotNull(denial);
+        Assert.DoesNotContain(policy.WorkingDirectory, denial, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(RealPathResolver.Resolve(fixture.Outside), denial, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Path.GetTempPath().TrimEnd('\\', '/'), denial, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     Proves that every rooted grant is described in the form a model addresses it relative to
+    ///     the working directory: <c>.</c> for the anchor, a plain name beneath it, and a
+    ///     <c>..</c> path beside it.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_Denial_DescribesGrantsRelativeToTheWorkingDirectory()
+    {
+        // Arrange: the anchor, a folder inside it, and a folder beside it, each granted
+        using var fixture = new TempDirectoryFixture();
+        var inside = Path.Combine(fixture.Root, "session");
+        var beside = Path.Combine(fixture.Outside, "session");
+        Directory.CreateDirectory(inside);
+        Directory.CreateDirectory(beside);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(inside), PathRule.ReadWrite(beside)]);
+
+        // Act: a write the read-only anchor refuses, so the denial enumerates the map
+        policy.TryResolveWrite("notes.txt", out _, out var denial);
+
+        // Assert: each location appears in its relative, forward-slash form
+        Assert.NotNull(denial);
+        Assert.Contains("  - . (read-only)", denial, StringComparison.Ordinal);
+        Assert.Contains("  - session (read-write)", denial, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside/session (read-write)", denial, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a relative path stated in a denial's grant map is directly usable: a request
+    ///     spelled the way the map spells a sibling grant is permitted.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_RelativeGrantDescription_IsAddressable()
+    {
+        // Arrange: an ungranted anchor and a granted sibling holding a file
+        using var fixture = new TempDirectoryFixture();
+        TempDirectoryFixture.WriteFile(fixture.Outside, "notes.txt", "content");
+        var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Outside)]);
+        policy.TryResolveRead("notes.txt", out _, out var denial);
+
+        // Act: address the file through the relative location the denial named
+        var permitted = policy.TryResolveRead("../outside/notes.txt", out var realPath, out _);
+
+        // Assert: the map named the location the model can actually reach
+        Assert.Contains("  - ../outside (read-only)", denial, StringComparison.Ordinal);
+        Assert.True(permitted);
+        Assert.Equal("content", File.ReadAllText(realPath!));
+    }
+
+    /// <summary>
+    ///     Proves that a denial for an absolute request echoes only the request the model supplied,
+    ///     adding no absolute location of its own.
+    /// </summary>
+    [Fact]
+    public void PathPolicy_TryResolveRead_AbsoluteDenial_EchoesOnlyTheRequest()
+    {
+        // Arrange: a granted anchor and an absolute request outside it
+        using var fixture = new TempDirectoryFixture();
+        var requested = Path.Combine(fixture.Outside, "secret.txt");
+        var policy = CreateRootedPolicy(fixture.Root);
+
+        // Act: an absolute request outside the anchor
+        policy.TryResolveRead(requested, out _, out var denial);
+
+        // Assert: the echo is the only absolute text, and the anchor is described as "."
+        Assert.NotNull(denial);
+        Assert.Contains($"Requested: \"{requested}\"", denial, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, denial, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", denial, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -891,7 +993,7 @@ public class PathPolicyTests
         // Assert: the input, the "work/work" interpretation, and the empty grant set all appear
         Assert.NotNull(denial);
         Assert.Contains("Requested: \"work\"", denial, StringComparison.Ordinal);
-        Assert.Contains(Path.Combine(policy.WorkingDirectory, "work"), denial, StringComparison.Ordinal);
+        Assert.Contains("Interpreted as: work (relative to the working directory)", denial, StringComparison.Ordinal);
         Assert.Contains("No locations are permitted.", denial, StringComparison.Ordinal);
     }
 
@@ -929,10 +1031,9 @@ public class PathPolicyTests
         // Act: a relative request that escapes the anchor via a parent segment
         policy.TryResolveRead("../outside.md", out _, out var denial);
 
-        // Assert: the interpretation is reported, and it carries no un-collapsed ".." segment
+        // Assert: the interpretation is reported relative to the anchor, as the place it names
         Assert.NotNull(denial);
-        Assert.Contains("Interpreted as:", denial, StringComparison.Ordinal);
-        Assert.DoesNotContain("..", InterpretedLine(denial), StringComparison.Ordinal);
+        Assert.Equal("Interpreted as: ../outside.md (relative to the working directory)", InterpretedLine(denial));
     }
 
     /// <summary>
@@ -949,15 +1050,9 @@ public class PathPolicyTests
         // Act: a relative request that begins with "./" and then escapes the anchor
         policy.TryResolveRead("./../outside.md", out _, out var denial);
 
-        // Assert: the interpretation is reported, and neither "." nor ".." navigation survives
+        // Assert: the "./" navigation is collapsed and only the one necessary ".." remains
         Assert.NotNull(denial);
-        Assert.Contains("Interpreted as:", denial, StringComparison.Ordinal);
-        var interpreted = InterpretedLine(denial);
-        Assert.DoesNotContain("..", interpreted, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            Path.DirectorySeparatorChar + "." + Path.DirectorySeparatorChar,
-            interpreted,
-            StringComparison.Ordinal);
+        Assert.Equal("Interpreted as: ../outside.md (relative to the working directory)", InterpretedLine(denial));
     }
 
     /// <summary>
@@ -971,15 +1066,14 @@ public class PathPolicyTests
         using var fixture = new TempDirectoryFixture();
         var policy = new PathPolicy(fixture.Root, [PathRule.ReadOnly(fixture.Root)]);
         const string requested = "a/../../b/outside.md";
-        var expected = Path.GetFullPath(Path.Combine(policy.WorkingDirectory, requested));
 
         // Act: a nested relative traversal request
         policy.TryResolveRead(requested, out _, out var denial);
 
-        // Assert: the reported interpretation equals the lexically normalized location
+        // Assert: the reported interpretation is the lexically normalized location, relative to
+        // the anchor: "a/.." collapses and only the one ".." that leaves the anchor remains
         Assert.NotNull(denial);
-        Assert.Contains("Interpreted as: " + expected, denial, StringComparison.Ordinal);
-        Assert.DoesNotContain("..", InterpretedLine(denial), StringComparison.Ordinal);
+        Assert.Equal("Interpreted as: ../b/outside.md (relative to the working directory)", InterpretedLine(denial));
     }
 
     /// <summary>
@@ -997,12 +1091,9 @@ public class PathPolicyTests
         // Act: the model asks for a plain relative segment
         policy.TryResolveRead("work", out _, out var denial);
 
-        // Assert: the interpretation is the working-directory-combined path, unchanged by normalization
+        // Assert: the interpretation is the request itself, relative to the working directory
         Assert.NotNull(denial);
-        Assert.Contains(
-            "Interpreted as: " + Path.Combine(policy.WorkingDirectory, "work"),
-            denial,
-            StringComparison.Ordinal);
+        Assert.Equal("Interpreted as: work (relative to the working directory)", InterpretedLine(denial));
     }
 
     /// <summary>
@@ -1026,8 +1117,9 @@ public class PathPolicyTests
         Assert.Null(realPath);
         Assert.NotNull(denial);
         Assert.Contains($"Requested: \"{malformed}\"", denial, StringComparison.Ordinal);
-        Assert.Contains("Permitted locations:", denial, StringComparison.Ordinal);
-        Assert.Contains("  - " + policy.WorkingDirectory + " (read-only)", denial, StringComparison.Ordinal);
+        Assert.Contains("Permitted locations (relative to the working directory):", denial, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-only)", denial, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, denial, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -291,21 +291,68 @@ public class PathRuleTests
     }
 
     /// <summary>
-    ///     Proves that a rooted grant describes its location and access level for a denial.
+    ///     Proves that a rooted grant describes its location relative to the working directory, with
+    ///     its access level, and never as the host absolute path.
     /// </summary>
     [Fact]
     public void PathRule_Describe_RootedGrant_NamesLocationAndLevel()
     {
-        // Arrange: a read-only grant over a temporary root
+        // Arrange: a read-only grant over a folder beneath a working directory
         using var fixture = new TempDirectoryFixture();
-        var rule = PathRule.ReadOnly(fixture.Root);
+        var session = Path.Combine(fixture.Root, "session");
+        Directory.CreateDirectory(session);
+        var rule = PathRule.ReadOnly(session);
 
         // Act: describe the grant as a denial would
-        var description = rule.Describe();
+        var description = rule.Describe(Path.GetFullPath(fixture.Root));
 
-        // Assert: both the resolved location and the access level appear
-        Assert.Contains(rule.Root!, description, StringComparison.Ordinal);
-        Assert.Contains("(read-only)", description, StringComparison.Ordinal);
+        // Assert: the relative location and the access level, and no absolute location
+        Assert.Equal("session (read-only)", description);
+        Assert.DoesNotContain(fixture.Root, description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a grant over the working directory itself is described as <c>.</c>, and one
+    ///     beside it by the relative path a model would use to reach it.
+    /// </summary>
+    [Fact]
+    public void PathRule_Describe_WorkingDirectoryAndSibling_AreRelative()
+    {
+        // Arrange: a working directory and a sibling location, both granted
+        using var fixture = new TempDirectoryFixture();
+        Directory.CreateDirectory(fixture.Root);
+        Directory.CreateDirectory(fixture.Outside);
+        var workingDirectory = Path.GetFullPath(fixture.Root);
+        var own = PathRule.ReadWrite(fixture.Root);
+        var sibling = PathRule.ReadOnly(fixture.Outside);
+
+        // Act: describe both against the working directory
+        var ownDescription = own.Describe(workingDirectory);
+        var siblingDescription = sibling.Describe(workingDirectory);
+
+        // Assert: "." for the working directory, a forward-slash relative path for the sibling
+        Assert.Equal(". (read-write)", ownDescription);
+        Assert.Equal("../outside (read-only)", siblingDescription);
+    }
+
+    /// <summary>
+    ///     Proves that a grant on another volume, which has no relative spelling, is described by
+    ///     its absolute location so the map stays complete.
+    /// </summary>
+    [Fact]
+    public void PathRule_Describe_RootOnAnotherVolume_IsAbsolute()
+    {
+        // Only a platform with drive letters has a location with no relative spelling.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Volumes without a relative path exist only on Windows.");
+
+        // Arrange: a working directory on one drive and a grant on another
+        var rule = PathRule.ReadOnly(@"Z:\data");
+
+        // Act: describe the grant against a working directory on a different drive
+        var description = rule.Describe(@"Y:\work");
+
+        // Assert: the absolute location, because there is no other way to name it
+        Assert.Equal(@"Z:\data (read-only)", description);
     }
 
     /// <summary>
@@ -318,7 +365,7 @@ public class PathRuleTests
         var rule = PathRule.Unrestricted(AccessLevel.ReadWrite);
 
         // Act: describe the grant as a denial would
-        var description = rule.Describe();
+        var description = rule.Describe(Path.GetTempPath());
 
         // Assert: an unrestricted grant names no location and states its level
         Assert.Equal("anywhere (read-write)", description);

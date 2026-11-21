@@ -124,25 +124,35 @@ sections:
       - id: AgentKitCore-PathAccess-DenialDisclosure
         title: >-
           The library shall state in a denial the request it received, the location it interpreted
-          a relative request as, and the permitted locations with their access levels, so a
-          confined model learns where it may work instead of guessing.
-        tags: [system]
+          a relative request as, and the permitted locations with their access levels, stating
+          locations relative to the working directory, so a confined model learns where it may work
+          instead of guessing without the denial disclosing a host absolute path the model did not
+          supply, except a permitted location that has no relative form.
+        tags: [system, security]
         justification: |
           A denial that only refuses is useless to the agent receiving it: told nothing but "no",
-          a model re-submits variations of the same path until it abandons the task. The earlier
-          rule that redacted host locations from a denial is deliberately dropped, because telling
-          a confined model the truthful map of where it may work is worth more than concealing
-          paths it is already confined to. A denial therefore echoes the request, states the
-          interpretation when and only when a relative request was interpreted so a silent
-          wrong-target cannot pass unnoticed, and enumerates the permitted locations with their
-          levels. Each grant contributes its own description to that enumeration. A denial states
-          facts and prescribes no remedy.
+          a model re-submits variations of the same path until it abandons the task. A denial
+          therefore echoes the request, states the interpretation when and only when a relative
+          request was interpreted so a silent wrong-target cannot pass unnoticed, and enumerates
+          the permitted locations with their levels. Each grant contributes its own description to
+          that enumeration. A denial states facts and prescribes no remedy.
+
+          An earlier version stated the interpretation and every permitted location as host
+          absolute paths, on the reasoning that the map was worth more than concealment. That is
+          reversed: the transcript a denial joins leaves the host, and an absolute path discloses
+          the host's directory layout and user name while adding nothing the model can use, because
+          a relative request is joined to the working directory and normalized before containment
+          is judged, so the relative map is complete and directly addressable. The working
+          directory is stated as ".", a location beside it as "../name". Only a grant with no
+          relative form at all, such as one on another volume, is named absolutely, because
+          otherwise the map would be incomplete.
         children:
           - AgentKitCore-PathPolicy-DenialDisclosesAndEnumerates
           - AgentKitCore-PathRule-Describe
         tests:
           - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations
           - AgentKitCore_SystemPathPolicy_DenialMessage_StatesHowToRecover
+          - AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath
 
       - id: AgentKitCore-PathAccess-GuardedConstruction
         title: >-

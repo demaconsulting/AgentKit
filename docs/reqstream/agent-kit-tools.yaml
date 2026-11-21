@@ -390,3 +390,18 @@ sections:
         tests:
           - AgentKitTools_SystemComposition_WithToolOutputSpill_OversizedBuiltInResultsAreRetained
           - AgentKitTools_SystemComposition_DelegatedAgentOversizedAnswer_IsRetainedByTheParent
+
+      - id: AgentKitTools-PathDenials-NoHostAbsolutePath
+        title: >-
+          The library's path-taking tools shall refuse a location the access policy does not permit
+          with a result that names the permitted locations relative to the working directory and
+          discloses no host absolute path the model did not supply.
+        tags: [system, security]
+        justification: |
+          Every path-taking tool passes the access policy's denial to the model unchanged, and the
+          transcript the denial joins leaves the host. The denial must remain useful — a model
+          learns where it may work from it — without disclosing the host's directory layout or the
+          user name an absolute path carries. Proving it across the families at system level is the
+          evidence that no family adds an absolute location of its own to the policy's refusal.
+        tests:
+          - AgentKitTools_PathDenials_DiscloseNoHostAbsolutePath

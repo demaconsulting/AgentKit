@@ -110,9 +110,8 @@ public class AgentKitCoreTests
     ///     confined model learns where it may work.
     /// </summary>
     /// <remarks>
-    ///     The host-path-disclosure rule the earlier redaction tests enforced has been deliberately
-    ///     dropped: telling a confined model the map of where it may go is worth more than concealing
-    ///     paths it is already confined to.
+    ///     The map is stated relative to the working directory, the form in which a model addresses
+    ///     it, so it is complete and usable without stating where the host keeps it.
     /// </remarks>
     [Fact]
     public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations()
@@ -128,8 +127,7 @@ public class AgentKitCoreTests
         // Assert: the request is echoed and the permitted location is enumerated with its level
         Assert.NotNull(denialMessage);
         Assert.Contains(requested, denialMessage, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", denialMessage, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", denialMessage, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -170,8 +168,42 @@ public class AgentKitCoreTests
         // Assert: the denial echoes the input, states the interpretation, and names the location
         Assert.NotNull(denialMessage);
         Assert.Contains("Requested: \"../outside/elsewhere.txt\"", denialMessage, StringComparison.Ordinal);
-        Assert.Contains("Interpreted as:", denialMessage, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, denialMessage, StringComparison.Ordinal);
+        Assert.Contains(
+            "Interpreted as: ../outside/elsewhere.txt (relative to the working directory)",
+            denialMessage,
+            StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", denialMessage, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves that a denial the system produces for a relative request discloses no host
+    ///     absolute path: neither the working directory nor any granted location is stated
+    ///     absolutely.
+    /// </summary>
+    /// <remarks>
+    ///     A denial joins the transcript, which leaves this process. Relative requests are joined to
+    ///     the working directory and normalized before containment is judged, so the relative map is
+    ///     fully addressable and the host's absolute layout adds nothing the model needs.
+    /// </remarks>
+    [Fact]
+    public void AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath()
+    {
+        // Arrange: a working directory granted read-only and a sibling granted read-write
+        using var fixture = new TempDirectoryFixture();
+        Directory.CreateDirectory(fixture.Outside);
+        var policy = new PathPolicy(
+            fixture.Root,
+            [PathRule.ReadOnly(fixture.Root), PathRule.ReadWrite(fixture.Outside)]);
+
+        // Act: a relative write the read-only grant refuses
+        policy.TryResolveWrite("notes.txt", out _, out var denialMessage);
+
+        // Assert: the map is complete and relative, and no absolute host location appears
+        Assert.NotNull(denialMessage);
+        Assert.Contains("  - . (read-only)", denialMessage, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside (read-write)", denialMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, denialMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Path.GetTempPath().TrimEnd('\\', '/'), denialMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

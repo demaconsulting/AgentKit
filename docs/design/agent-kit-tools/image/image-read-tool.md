@@ -147,18 +147,16 @@ expects.
 detect; it would then reason confidently about a picture it never wholly saw. Refusing with the
 ceiling named lets it narrow the request instead.
 
-Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the
-`PathPolicy` message unchanged: it states what was requested, how a relative request was
-interpreted, and the permitted locations with their access levels, so a confined model learns where
-it may read instead of guessing. Refusals this unit composes itself — including unsupported media
-types, directory requests, missing or unreadable files, and the oversized-image ceiling — are
-constants or interpolate only a media type, a sibling tool name, or an integer ceiling. **Each
-refusal states a fact and stops** — it does not prescribe a course of action, because a denial that
-suggested one was measured driving a model into a destructive workaround the user had explicitly
-forbidden. The directory and missing-file refusals therefore say only what is so. Naming a sibling
-tool survives that rule in exactly one place — the unsupported-type refusal `ImageMediaTypes`
-composes — because there the naming *is* the statement of what the file is, on the same basis as
-`TextFileReadTool`'s binary-content refusal naming `image_read`.
+Disclosure depends on which unit composes the refusal. A `PathNotPermitted` refusal carries the `PathPolicy` message
+unchanged: it states what was requested, how a relative request was interpreted, and the permitted locations with their
+access levels, relative to the working directory, so a confined model learns where it may read instead of guessing.
+Refusals this unit composes itself — including unsupported media types, directory requests, missing or unreadable files,
+and the oversized-image ceiling — are constants or interpolate only a media type, a sibling tool name, or an integer
+ceiling. **Each refusal states a fact and stops** — it does not prescribe a course of action, because a denial that
+suggested one was measured driving a model into a destructive workaround the user had explicitly forbidden. The
+directory and missing-file refusals therefore say only what is so. Naming a sibling tool survives that rule in exactly
+one place — the unsupported-type refusal `ImageMediaTypes` composes — because there the naming *is* the statement of
+what the file is, on the same basis as `TextFileReadTool`'s binary-content refusal naming `image_read`.
 
 #### Dependencies
 

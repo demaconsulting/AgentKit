@@ -38,9 +38,13 @@ Seven properties shape the whole design of this unit:
   programming errors such as a missing grant collection are.
 - **Denials disclose the truthful permission map.** A denial states, in order, what was asked for,
   how a relative request was interpreted when it was joined to the working directory, and the
-  permitted locations with their access levels. If no locations are permitted, it says so. This
-  deliberately discloses host locations because telling a confined model where it may work is
-  more useful than concealing paths it is already confined to.
+  permitted locations with their access levels. If no locations are permitted, it says so. Both
+  the interpretation and the permitted locations are stated relative to the working directory —
+  `.` for the working directory, `session` or `../session` for others — so the map is complete
+  and directly addressable while the transcript, which leaves the host, never carries the
+  working directory or a resolved target as a host absolute path. Only a grant with no relative
+  form (another volume) is named absolutely. An earlier design stated every location absolutely;
+  that disclosure added nothing the model could use and is reversed.
 - **Tool output mirrors the caller's dialect.** A tool result is a demonstration the model
   imitates. Absolute input produces absolute output. Relative input, including the discovery case
   where no path was supplied, may produce relative output only when the working directory itself
@@ -295,11 +299,34 @@ locations enumerated, rather than silently guessing the wrong target.
 Private helper constructing a denial in the order the model needs to recover:
 
 1. The request, echoed verbatim, or an explicit marker for no path.
-2. The absolute location a relative request was interpreted as, only when the request was joined
-   to the working directory, reported in canonical (lexically normalized) form with `.` and `..`
-   collapsed.
-3. The permitted locations, each with its access level, or a statement that no locations are
-   permitted.
+2. The location a relative request was interpreted as, only when the request was joined to the
+   working directory, reported by `RelativeToWorkingDirectory` relative to the working directory
+   in canonical (lexically normalized) form with `.` and `..` collapsed and forward slashes,
+   followed by `(relative to the working directory)`.
+3. Under `Permitted locations (relative to the working directory):`, the permitted locations, each
+   described by `PathRule.Describe(WorkingDirectory)` with its access level, or a statement that no
+   locations are permitted.
+
+For example, a read of `../outside/secret.txt` under a read-only working directory and a read-write
+sibling `session` folder produces:
+
+```text
+Denied: outside every permitted location.
+Requested: "../outside/secret.txt"
+Interpreted as: ../outside/secret.txt (relative to the working directory)
+Permitted locations (relative to the working directory):
+  - . (read-only)
+  - ../session (read-write)
+```
+
+No host absolute path appears unless the model supplied it in the request, or a grant has no
+relative form.
+
+#### RelativeToWorkingDirectory(string interpretedAbsolute, string requested)
+
+Private helper returning `Path.GetRelativePath(WorkingDirectory, interpretedAbsolute)` with forward
+slashes. The input is caller-controlled, so a value the platform cannot relativize falls back to the
+request as supplied, keeping the non-throwing contract.
 
 **Denials state facts and prescribe no remedy.** The message says what was asked, how it was
 read, and what is permitted; what to do about a refusal is the reader's decision.
@@ -412,7 +439,8 @@ Excluding a name is the author's decision, expressed through a grant's deny patt
 
 **Denials must enumerate the truthful map.** A refusal is reported as `false` with an `out
 string? denialMessage`. The message deliberately includes permitted locations and access levels,
-because a confined model needs the map of where it may work. It must not report an
+because a confined model needs the map of where it may work, and states them relative to the
+working directory so no host absolute path is disclosed beyond what the model supplied. It must not report an
 interpretation-only denial, and it must not add an interpretation line for absolute input or for a
 successful last-segment alias. The interpreted location is reported in canonical form — lexical
 normalization only, with `.` and `..` collapsed — and normalizing the

@@ -115,9 +115,17 @@ with no location and a non-empty reason.
 **Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesPermittedLocations`
 
 Verifies that a denial tells a confined model the truthful map of where it may work. Requests a
-path outside the permitted location and asserts the message echoes the requested path, names the
-permitted location, and marks its access level — the host-path-disclosure rule the earlier
-redaction requirement enforced having been deliberately dropped.
+path outside the permitted location and asserts the message echoes the requested path and names the
+permitted location relative to the working directory, as `. (read-write)`, with its access level.
+
+### Path Policy: A Denial Message Discloses No Host Absolute Path
+
+**Test**: `AgentKitCore_SystemPathPolicy_DenialMessage_DisclosesNoHostAbsolutePath`
+
+Verifies that a denial for a relative request keeps the host's layout out of the transcript.
+Configures a read-only working directory and a read-write sibling, attempts a relative write, and
+asserts the denial lists `. (read-only)` and `../outside (read-write)` while containing neither the
+working directory's absolute location nor the temporary base directory.
 
 ### Path Policy: A Relative Path From a Model Resolves Against the Working Directory
 

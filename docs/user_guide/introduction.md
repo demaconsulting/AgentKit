@@ -188,7 +188,21 @@ A refusal is a returned value, never an exception, so a refused tool call does n
 turn — and no path a caller supplies, including none at all, is reported as an exception. A refusal
 states what was requested, how a relative request was interpreted, and which locations are permitted
 with their access levels, so a confined agent learns where it may work instead of retrying against a
-bare "no".
+bare "no". The interpretation and the permitted locations are stated relative to the working
+directory — the working directory itself as `.`, a sibling folder as `../session` — which is exactly
+how the model can address them, so a refusal never reveals where on the host they live:
+
+```text
+Denied (PathNotPermitted): Denied: outside every permitted location.
+Requested: "../outside/secret.txt"
+Interpreted as: ../outside/secret.txt (relative to the working directory)
+Permitted locations (relative to the working directory):
+  - . (read-only)
+  - ../session (read-write)
+```
+
+Only a granted location with no relative spelling at all, such as one on another drive, is named by
+its absolute path.
 
 > **Transition hazard.** With a single granted working directory, tool output uses the relative
 > dialect — a listing reports bare relative names and the model imitates them. Adding a second

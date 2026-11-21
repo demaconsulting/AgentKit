@@ -145,8 +145,8 @@ Error path: a reason with no explanation leaves the model nothing to act on.
 Asserts the composed text is exactly the fixed prefix, the reason name and the caller's message,
 and contains no directory separator at all. This is the `ToolResult`-level guarantee that the
 library adds no host detail of its own; whether any host detail appears is entirely the caller's
-choice of `message`. `PathPolicy` exercises that choice by deliberately disclosing host paths —
-see *PathPolicy Unit Verification Design*.
+choice of `message`. `PathPolicy` exercises that choice by disclosing the permission map relative
+to the working directory — see *PathPolicy Unit Verification Design*.
 
 #### AgentKitCore-ToolResult-Oversized: An Oversized Result Is a Marker, Not Text
 

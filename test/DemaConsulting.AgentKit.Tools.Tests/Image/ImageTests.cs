@@ -415,7 +415,8 @@ public class ImageTests
         // Assert: the refusal names the permitted location so the model can re-address
         var text = Assert.IsType<string>(result);
         Assert.Contains(outsideFile, text, StringComparison.Ordinal);
-        Assert.Contains(permitted, text, StringComparison.Ordinal);
+        Assert.Contains("  - . (", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(permitted, text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -587,8 +588,7 @@ public class ImageTests
         // nothing left behind in the location that is not
         var text = Assert.IsType<string>(result);
         Assert.Contains("Denied (PathNotPermitted)", text, StringComparison.Ordinal);
-        Assert.Contains(fixture.Outside, text, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.Contains("  - ../outside (read-write)", text, StringComparison.Ordinal);
         Assert.False(System.IO.File.Exists(Path.Combine(fixture.Root, "figure.png")));
     }
 

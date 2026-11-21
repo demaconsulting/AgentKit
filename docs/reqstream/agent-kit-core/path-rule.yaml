@@ -90,14 +90,21 @@ sections:
           - id: AgentKitCore-PathRule-Describe
             title: >-
               A path rule shall describe itself by its location and access level for enumeration in a
-              denial.
+              denial, stating the location relative to a given working directory, or absolutely only
+              when no relative form exists.
             justification: |
               A denial enumerates the permitted locations so a confined model learns the truthful map
-              of where it may work. Each grant contributes a short description naming its resolved
-              location — or the word "anywhere" when unrestricted — and its access level, so the model
-              can tell a read-only location from a read-write one.
+              of where it may work. Each grant contributes a short description naming its location —
+              "." for the working directory itself, a forward-slash relative path such as "session"
+              or "../session" otherwise, or the word "anywhere" when unrestricted — and its access
+              level, so the model can tell a read-only location from a read-write one. The relative
+              form is how a model addresses the location, and it keeps the host's absolute layout out
+              of the transcript; a location on another volume has no relative form and is named
+              absolutely so the map stays complete.
             tests:
               - PathRule_Describe_RootedGrant_NamesLocationAndLevel
+              - PathRule_Describe_WorkingDirectoryAndSibling_AreRelative
+              - "windows@PathRule_Describe_RootOnAnotherVolume_IsAbsolute"
               - PathRule_Describe_UnrestrictedGrant_SaysAnywhere
 
           - id: AgentKitCore-PathRule-RejectInvalidRule

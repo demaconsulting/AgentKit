@@ -386,8 +386,8 @@ public class ImageReadToolTests
         // Assert: the request is echoed and the permitted location is named with its level
         var text = Assert.IsType<string>(result);
         Assert.Contains(outsideFile, text, StringComparison.Ordinal);
-        Assert.Contains(policy.WorkingDirectory, text, StringComparison.Ordinal);
-        Assert.Contains("(read-write)", text, StringComparison.Ordinal);
+        Assert.Contains("  - . (read-write)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(policy.WorkingDirectory, text, StringComparison.Ordinal);
     }
 
     /// <summary>

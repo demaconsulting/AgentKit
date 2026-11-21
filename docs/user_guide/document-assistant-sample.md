@@ -140,7 +140,9 @@ dotnet run --project samples/document-assistant -- \
 
 The `text_file_read` tool returns a `Denied (PathNotPermitted)` result whose message echoes the
 requested path, states the location it was interpreted as, and names every permitted location — the
-workspace and the session folder — with its access level. The agent's turn continues normally — a
+workspace and the session folder — with its access level. Locations are stated relative to the
+workspace, the working directory (for example `.` and `../session`), so the refusal never reveals
+where on the host they live. The agent's turn continues normally — a
 refusal is a value, not an error — so the model can act on the guidance rather than simply failing.
 Asking the text tool to read the image instead produces a `Denied (UnsupportedMediaType)` result that
 redirects the model to `image_read`.

@@ -353,8 +353,10 @@ The path-safety API:
   and a denial on refusal. A read consults any grant; a write consults only read-write grants. A
   relative path is interpreted against `WorkingDirectory`; an omitted, empty, whitespace or
   placeholder path denotes `WorkingDirectory` itself. A denial echoes the request, states the
-  absolute interpretation only when a relative request was joined to the working directory, and
-  enumerates the permitted locations with their access levels.
+  interpretation only when a relative request was joined to the working directory, and enumerates
+  the permitted locations with their access levels, stating every location relative to the working
+  directory so no host absolute path appears beyond the request the caller supplied (a grant with no
+  relative form, on another volume, is the one exception).
 - **PathPolicy.EnumerateFiles(string? directory, string searchPattern)**: Returns the real
   locations of the permitted files beneath a directory, which is `WorkingDirectory` when no
   directory is named.
@@ -692,7 +694,8 @@ is released, and the original failure is what the caller learns even when that r
    grants for a write. Each grant applies its denied patterns first and then its location
    constraint
 5. **Output**: Either the real location the caller may act on, or a denial carrying the request,
-   any working-directory interpretation, and the permitted locations with access levels
+   any working-directory interpretation, and the permitted locations with access levels, all stated
+   relative to the working directory
 6. **Enumeration**: A directory listing routes the directory and every candidate file through the
    same read decision, so the listing and direct access always agree
 
