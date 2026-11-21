@@ -63,7 +63,8 @@ Invariants:
   nothing is copied or re-encoded.
 - No forwarded tool result carries a promoted image; each is replaced by
   `[Image promoted to the following user message: {media type}, {bytes} bytes.]`, with the byte
-  count formatted with invariant-culture group separators.
+  count formatted with invariant-culture group separators. A rewritten tool message and a
+  rewritten function result carry no raw representation.
 - The caller's messages, their content lists and their function results are never modified.
 
 ### Key Methods
@@ -104,8 +105,9 @@ Private helper producing the rewritten conversation.
 3. When none was found, forward the original message — a text-only result needs no announcement
    and no copy.
 4. Otherwise forward a clone of the message whose `Contents` is the rebuilt list (a clone shares
-   the original's list, so a new one is assigned rather than edited), then append a `User` message
-   holding the fixed announcement followed by the same image instances.
+   the original's list, so a new one is assigned rather than edited) and whose `RawRepresentation`
+   is cleared, because the original's provider-native form may still hold the image bytes; then
+   append a `User` message holding the fixed announcement followed by the same image instances.
 
 **Postconditions:** message order is preserved, no original message is dropped, and no message,
 content list or function result the caller holds is altered.
@@ -134,8 +136,11 @@ the invariant culture so the text does not vary with the host's locale.
 #### CopyWithResult(FunctionResultContent original, object value)
 
 Private helper creating a `FunctionResultContent` with the original's call identifier and the
-replacement value, copying the exception, raw representation, annotations and additional
-properties so that a provider adapter or telemetry reading them sees what the original carried.
+replacement value, copying the exception, annotations and additional properties so that a provider
+adapter or telemetry reading them sees what the original carried. The raw representation is
+deliberately not copied: it is the provider-native form of the original result and may still hold
+the image bytes, so an adapter that prefers a raw object over the result value would resend
+exactly what the placeholder removed.
 
 ### Error Handling
 

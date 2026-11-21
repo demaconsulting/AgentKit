@@ -32,7 +32,8 @@ sections:
             title: >-
               The image-promoting client shall forward a tool result whose promoted images are
               each replaced by a short placeholder naming the image's media type and size, so that
-              no image content remains in the tool result.
+              no image content remains in the tool result, including in a provider-native raw
+              representation of it.
             justification: |
               A provider adapter that cannot carry an image in a tool response may still
               serialize it into the tool message as text. OllamaSharp writes such content as a
@@ -41,7 +42,9 @@ sections:
               itself had been promoted correctly. The image must be sent once, on the user
               message, and the tool result must stay small whatever the size of the image. The
               placeholder keeps the tool result readable as a complete answer that points to the
-              attachment, and names only values the image itself carries.
+              attachment, and names only values the image itself carries. An adapter that prefers
+              a message's provider-native raw form over its contents would otherwise resend the
+              original bytes, so the rewritten copies carry no raw representation.
             tests:
               - >-
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithImage_ToolMessageCarriesPlaceholderNotImage
@@ -55,6 +58,8 @@ sections:
                 ImagePromotingChatClient_GetResponseAsync_ToolResultWithTwoImagesInList_EachReplacedInPlaceAndBothPromotedInOrder
               - >-
                 ImagePromotingChatClient_GetResponseAsync_ToolMessageWithParallelImageResults_EveryResultReplacedAndCallerUntouched
+              - >-
+                ImagePromotingChatClient_GetResponseAsync_ToolMessageWithRawRepresentation_ForwardedCopyCarriesNone
 
           - id: AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged
             title: >-

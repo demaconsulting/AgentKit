@@ -549,6 +549,58 @@ public class ImagePromotingChatClientTests
     }
 
     /// <summary>
+    ///     Proves that a rewritten tool message and its rewritten function result carry no
+    ///     provider-native raw representation, while an untouched message keeps its own.
+    /// </summary>
+    /// <remarks>
+    ///     A raw representation is the provider-native form of the original object, so it may
+    ///     still hold the image bytes. An adapter that prefers a raw object over the contents
+    ///     would otherwise resend exactly what the placeholder removed. The caller's objects keep
+    ///     their raw forms, because the rewrite is applied to copies.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ImagePromotingChatClient_GetResponseAsync_ToolMessageWithRawRepresentation_ForwardedCopyCarriesNone()
+    {
+        // Arrange: an image tool message and a text tool message, each with a stand-in native form
+        var nativeMessage = new object();
+        var nativeResult = new object();
+        var nativeText = new object();
+        var result = new FunctionResultContent("call-1", new DataContent(SampleBytes, "image/png"))
+        {
+            RawRepresentation = nativeResult
+        };
+        var imageTool = new ChatMessage(ChatRole.Tool, [result]) { RawRepresentation = nativeMessage };
+        var textTool = new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-2", "plain")])
+        {
+            RawRepresentation = nativeText
+        };
+        using var inner = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(inner);
+        var messages = new List<ChatMessage> { imageTool, textTool };
+
+        // Act: send the conversation through the decorator
+        await client.GetResponseAsync(messages, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the rewritten tool message and its result carry no raw representation
+        Assert.Equal(3, inner.ReceivedMessages.Count);
+        var forwarded = inner.ReceivedMessages[0];
+        Assert.Null(forwarded.RawRepresentation);
+        var forwardedResult = Assert.IsType<FunctionResultContent>(Assert.Single(forwarded.Contents));
+        Assert.Equal("call-1", forwardedResult.CallId);
+        Assert.Null(forwardedResult.RawRepresentation);
+
+        // Assert: the promoted message follows, and the untouched message keeps its raw form
+        Assert.Equal(ChatRole.User, inner.ReceivedMessages[1].Role);
+        Assert.Same(textTool, inner.ReceivedMessages[2]);
+        Assert.Same(nativeText, inner.ReceivedMessages[2].RawRepresentation);
+
+        // Assert: the caller's message and result keep their raw representations
+        Assert.Same(nativeMessage, imageTool.RawRepresentation);
+        Assert.Same(nativeResult, result.RawRepresentation);
+    }
+
+    /// <summary>
     ///     Proves that the decorator cannot be created without a client to forward to.
     /// </summary>
     [Fact]

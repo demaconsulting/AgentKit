@@ -43,11 +43,11 @@ Unit tests reside in `ImagePromotingChatClientTests.cs`, with the fake client in
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass without error or exception beyond those
+A unit test run passes when all seventeen scenarios below pass without error or exception beyond those
 explicitly asserted. Any image that fails to reach a user message, any content instance that is
 copied rather than carried, any message dropped or reordered, any message added for a text-only
 tool result or for content that is not an image, any promoted message that does not land
-immediately after the tool result it came from, any image content left in a forwarded tool result,
+immediately after the tool result it came from, any image content left in a forwarded tool result or in a raw representation forwarded with it,
 any change to the caller's messages, and any difference between the streaming and non-streaming
 paths constitutes a failure.
 
@@ -110,6 +110,18 @@ placeholder and the second is the same caption followed by the `image/jpeg` plac
 order. Also asserts the caller's tool message still holds the same contents list, the same two
 result instances and the same image and part-list instances, so this scenario is also linked to
 `AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged`.
+
+#### AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes: A Rewritten Copy Carries No Raw Representation
+
+**Test**:
+`ImagePromotingChatClient_GetResponseAsync_ToolMessageWithRawRepresentation_ForwardedCopyCarriesNone`
+
+An image tool message and its function result, and a text-only tool message, each carrying a
+stand-in provider-native raw representation. Asserts the forwarded image tool message and its
+rewritten function result have no raw representation and keep the call identifier, that the
+text-only message is forwarded as the same instance with its raw representation intact, and that
+the caller's message and result still hold their original raw representations. An adapter that
+prefers a raw object over the contents would otherwise resend the bytes the placeholder removed.
 
 #### AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged: The Caller's Messages Are Not Modified
 

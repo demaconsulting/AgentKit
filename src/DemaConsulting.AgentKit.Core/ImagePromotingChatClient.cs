@@ -35,7 +35,9 @@ namespace DemaConsulting.AgentKit.Core;
 ///     cannot carry an image in a tool response may still serialize it there as text: OllamaSharp
 ///     writes such content as a base64 data URI in the tool message, so a 316 KB image became a
 ///     421,629-character tool message that truncated the context and lost the user's question.
-///     The image is sent once, on the user message, where the model can see it.
+///     The image is sent once, on the user message, where the model can see it. The rewritten
+///     tool message and function result carry no provider-native raw representation, because
+///     the original's raw form may still hold the bytes the placeholder removed.
 ///     </para>
 ///     <para>
 ///     <b>The caller's conversation is never modified.</b> A tool message carrying an image is
@@ -180,9 +182,12 @@ public sealed class ImagePromotingChatClient(IChatClient innerClient)
             }
 
             // Forward a copy of the tool message with the rewritten results. A clone shares its
-            // contents list with the original, so a new list is assigned rather than edited.
+            // contents list with the original, so a new list is assigned rather than edited. The
+            // clone's raw representation is the provider-native form of the original message and
+            // may still hold the image bytes, so it is cleared rather than forwarded.
             var forwarded = message.Clone();
             forwarded.Contents = contents;
+            forwarded.RawRepresentation = null;
             rewritten.Add(forwarded);
 
             // Announce the attachment first, then carry the bytes on the one channel every
@@ -263,12 +268,14 @@ public sealed class ImagePromotingChatClient(IChatClient innerClient)
 
     /// <summary>
     ///     Copies a function result with a replacement result value, preserving everything else
-    ///     the original carried.
+    ///     the original carried except its raw representation.
     /// </summary>
     /// <remarks>
-    ///     The call identifier ties the result to its call, and the exception, raw representation,
-    ///     annotations and additional properties may be read by a provider adapter or by
-    ///     telemetry, so all of them travel with the copy.
+    ///     The call identifier ties the result to its call, and the exception, annotations and
+    ///     additional properties may be read by a provider adapter or by telemetry, so all of them
+    ///     travel with the copy. The raw representation deliberately does not: it is the
+    ///     provider-native form of the original result and may still hold the image bytes, so an
+    ///     adapter that prefers a raw object over the result value would resend them.
     /// </remarks>
     /// <param name="original">The function result being copied.</param>
     /// <param name="value">The result value the copy carries.</param>
@@ -278,7 +285,6 @@ public sealed class ImagePromotingChatClient(IChatClient innerClient)
         return new FunctionResultContent(original.CallId, value)
         {
             Exception = original.Exception,
-            RawRepresentation = original.RawRepresentation,
             AdditionalProperties = original.AdditionalProperties,
             Annotations = original.Annotations
         };
