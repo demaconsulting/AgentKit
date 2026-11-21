@@ -50,13 +50,20 @@ and session, so the production channel withholds them, on the one path `Open`, `
    released and deleted; a resumed session is only released, because refusing to continue a
    conversation must not destroy it.
 
-Servers the runtime's MCP discovery returns are named in the session's disabled servers before the
-session exists, so the runtime does not start or authenticate them. The SDK documents that discovery
-as covering the user, workspace, plugin and builtin sources. A server from a source it cannot
-enumerate before creation, such as a managed catalog or a signed-in account, may start, and
-authenticate with the host environment, while the session is created. Step 3 disables any such
-server before any turn runs, and the session is refused if one stays enabled. This guarantees that
-the model cannot reach an ambient MCP server; it does not prevent one from running.
+**Prevention and containment.** Servers the runtime's MCP discovery returns are named in the
+session's disabled servers before the session exists, so the runtime does not start or authenticate
+them: measured against the live runtime, a server in the runtime's data directory is reported by
+discovery and never executed through this protocol, while the same server is executed when the
+session is created without it. The built-in GitHub server is named by the factory, not by discovery,
+and is never started either. A server from a source the SDK cannot enumerate before creation, such as
+a managed catalog or a signed-in account, may start, and authenticate, while the session is created.
+Step 3 disables it before any turn runs, and the session is refused if one stays enabled: that
+contains such a server, it does not prevent it. Step 3 relies on the session's configuration
+listing, which is not complete — measured against the live runtime, it does not report the built-in
+GitHub server even while that server is connected — so the seal is defense in depth rather than
+proof that no server runs. On the runtime AgentKit owns the user, workspace and plugin sources hold
+nothing to begin with; *Runtime Ownership* in *AgentKitAgentsCopilot System Design* states the
+guarantee per source.
 
 **What it deliberately does not do.** It exposes no event subscription and no configuration. A
 session's event handler and every other setting are reached through the session options at creation
@@ -69,8 +76,8 @@ summarizer opened is finished with when it is released — a rotated conversatio
 consolidation — so it is released and then **deleted**. So is the session of an agent's run made
 without a conversation, which nothing could resume. An agent's *conversation* continues on the next
 run, possibly on another agent instance given the serialized session, so its session is released and
-**kept**: the runtime preserves its state under the client's data directory until the host deletes
-it.
+**kept**: the runtime preserves its state under the runtime's data directory until the host deletes
+it through `CopilotRuntime.DeleteSessionAsync`.
 
 The unit is internal throughout: it is an implementation detail of this package, and an application
 has no use for it.
@@ -97,8 +104,8 @@ that the confinement was re-applied.
 
 **`CopilotSessionChannel`** (sealed class) — The production implementation.
 
-- **`_client`** (`CopilotClient`) — The client the session was created on. Held only to delete the
-  session on release. Invariant: never disposed here.
+- **`_client`** (`CopilotClient`) — The runtime's client the session was created on. Held only to
+  delete the session on release. Invariant: never disposed here.
 - **`_session`** (`CopilotSession`) — The session handle this channel owns and releases.
 - **`_deleteOnRelease`** (`bool`) — Whether release also asks the runtime to delete the session's
   persisted state. Invariant: fixed by the factory method that opened the channel.
@@ -113,10 +120,12 @@ conversation create their sessions through.
 **Algorithm:** Return a delegate that creates a session from the options on `client` and wraps it in
 a channel that **deletes** the session on release. Produced once per factory rather than per session,
 so the client reference is captured in exactly one place and every session a rotation creates
-demonstrably runs on the same client the host started.
+demonstrably runs on the same client the runtime started.
 
-**Preconditions:** `client` is not null. A client not yet started is started on the first creation,
-through `CopilotClientStarter`.
+**Preconditions:** `client` is not null. Production passes the client of a `CopilotRuntime`, which is
+already started; the opt-in live suite also passes hostile CodingAgent clients through this internal
+seam. A client not yet started, or whose connection was lost, is started on the first creation,
+through `CopilotRuntime.StartClientAsync`.
 
 **Postconditions:** An opener over that client; every session it creates went through
 `CreateConfinedSessionAsync`.
@@ -307,7 +316,7 @@ recoverable disk state.
 | --- | --- |
 | Turn canceled by the caller | `OperationCanceledException` propagates |
 | Runtime failure during a turn | Propagates to the provider session, summarizer or agent |
-| Starting the client fails while opening | Explained by `CopilotClientStarter`; nothing opened |
+| Starting the client fails while opening | Explained by `CopilotRuntime.StartClientAsync`; nothing opened |
 | MCP discovery fails | Propagates from the opener or resumer; nothing opened |
 | Creating or resuming a session fails | Propagates from the opener or resumer; nothing to release |
 | The seal fails | Session abandoned (see below); the failure propagates |
@@ -336,8 +345,8 @@ discards an error — everywhere the system cannot know something it needs, it r
   opening protocol uses: the client's MCP discovery, the session's options patch with its plugin
   options, and the session's MCP configuration listing and disable; see
   *Microsoft.Copilot.SDK Design*.
-- **CopilotClientStarter** — starts the client before discovery, so a runtime that cannot load is
-  explained; see *CopilotClientStarter*.
+- **CopilotRuntime** — its explained start runs before discovery, so a runtime that cannot start is
+  explained on this path too; see *CopilotRuntime Unit Design*.
 
 ### Callers
 

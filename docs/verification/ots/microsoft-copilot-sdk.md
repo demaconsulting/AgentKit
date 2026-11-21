@@ -23,7 +23,9 @@ This document provides the verification evidence for the `Microsoft.Copilot.SDK`
 - MCP and plugin control: discovery of a runtime's MCP servers from the sources it documents,
   per-session disabling of named servers at creation and on a live session, a listing of a session's
   effective MCP configuration with each server's enablement, and a session-options patch replacing
-  the session's installed plugins.
+  the session's installed plugins;
+- an Empty-mode client that spawns the runtime it provisions as a child process with a supplied
+  replacement environment and a supplied data directory, and stops it when disposed.
 
 ### Verification Approach
 
@@ -47,8 +49,9 @@ credential.
 AgentKit relies on.** It drives the real SDK against the real Copilot runtime and a real model:
 the tools a confined session exposes, the names the runtime reserves for its built-ins, the
 permission requests the handler is asked, inline delivery of large and image tool results, a
-rotation on the runtime's own usage, an agent's streaming, resumption and attachments, and the
-disabling of an ambient MCP server on a client in CodingAgent mode. It never
+rotation on the runtime's own usage, an agent's streaming, resumption and attachments, the
+disabling of an ambient MCP server on a client in CodingAgent mode, the runtime AgentKit starts
+ignoring the host's Copilot variables, and which MCP sources start on that runtime. It never
 runs in the pipeline that builds the trace matrix, so none of its tests is linked to a requirement
 below. Its scenarios, gating, evidence location and recorded results are described in
 *AgentKitAgentsCopilot System Verification Design*.
@@ -251,6 +254,27 @@ installed plugins are cleared, the server is disabled, and the session is refuse
 
 **Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-McpAndPluginControl`.
 
+#### AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined
+
+**Scenario**: The runtime's client options are built from a hostile host environment on a fresh data
+directory.
+
+**Expected**: The SDK's options carry Empty mode and a spawned stdio connection with no runtime path
+or arguments, the prepared data directory as its base directory, and a replacement environment free
+of `COPILOT_` and `GITHUB_COPILOT_` variables.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`.
+
+#### CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
+
+**Scenario**: An Empty-mode `CopilotClient` is constructed on a spawned connection with a base
+directory, wrapped in a runtime and disposed twice.
+
+**Expected**: The SDK accepts the Empty-mode options, which it rejects without a base directory, and
+the client is disposed once.
+
+**Requirement coverage**: `AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`.
+
 ### Requirements Coverage
 
 The lifecycle entries are qualified, and the qualification is part of the evidence rather than a
@@ -263,8 +287,14 @@ SDK's own result and patch types. The live suite shows on the real runtime that 
 ambient server and the create-time disabled list names it (L12a), that the seal's session-scoped
 disable turns off a server left enabled at creation and the re-listing confirms it (L12c), and that a
 session resumed through the channel has the server named before the resume and no server enabled
-afterwards (L12d); it shows the plugins patch accepted, not clearing an installed
-plugin, because no fixture installs one.
+afterwards (L12d); that a data-directory server discovery reports is never executed through the channel
+while it is executed without it (L14c, L14d); and that the listing does not report the built-in GitHub
+server while it is connected, so that server is prevented by the create-time disabled list (L14a,
+L14b). It shows the plugins patch accepted, not clearing an installed plugin, because no fixture
+installs one. The Empty-mode spawned runtime is qualified the same way: the offline tests show the SDK
+accepts the options AgentKit builds, and the live suite shows the runtime honors them — every scenario
+runs on such a runtime, and one started under a bogus runtime-path variable and an approve-all switch
+opens a confined session while an in-process client under the same environment fails to start (L11).
 
 - **`AgentKit-OTS-MicrosoftCopilotSDK-SessionOptions`**:
   AgentKitAgentsCopilot_BuildSessionConfig_AvailableToolsDerivedFromSuppliedTools,
@@ -292,6 +322,9 @@ plugin, because no fixture installs one.
   CopilotSessionChannel_Seal_ServerThatStaysEnabled_RefusesNamingIt,
   CopilotSessionChannel_NoInstalledPluginsPatch_ReplacesTheListWithAnEmptyOne,
   AgentKitAgentsCopilot_EverySession_AmbientMcpServersAreClosed
+- **`AgentKit-OTS-MicrosoftCopilotSDK-EmptyModeSpawnedRuntime`** _(evidence above the runtime only)_:
+  AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined,
+  CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable
 
 The live suite's supplementary evidence for the same functionality, by scenario:
 
@@ -311,4 +344,13 @@ The live suite's supplementary evidence for the same functionality, by scenario:
 - **MCP and plugin control**: `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled`,
   `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled`,
   `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal`,
-  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnAResumedSession_IsDisabled`
+  `AgentKitAgentsCopilotLive_Confinement_AmbientMcpServerOnAResumedSession_IsDisabled`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_BuiltInGitHubMcpServer_IsNeverStarted`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_BuiltInGitHubMcpServer_StartsWhenNotNamed`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_UserMcpServerInItsDataDirectory_IsNeverExecuted`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_UserMcpServerWithoutTheChannel_IsExecuted`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_WorkspaceMcpServer_IsNeverExecuted`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted`,
+  `AgentKitAgentsCopilotLive_OwnedRuntime_AmbientChannels_AreAbsent`
+- **Empty-mode spawned runtime**: `AgentKitAgentsCopilotLive_Runtime_AmbientCopilotEnvironment_DoesNotReachTheRuntime`,
+  and the fixture every scenario runs on

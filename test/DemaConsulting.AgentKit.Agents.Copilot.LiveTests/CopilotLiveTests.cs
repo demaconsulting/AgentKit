@@ -1106,7 +1106,7 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
-    ///     Builds an unstarted client in CodingAgent mode — the hostile client a host could have
+    ///     Builds a client, not yet started, in CodingAgent mode — the hostile client a host could have
     ///     built before AgentKit owned the runtime — spawned on a data directory under the run's root.
     /// </summary>
     /// <remarks>

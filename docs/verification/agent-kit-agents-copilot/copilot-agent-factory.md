@@ -141,11 +141,11 @@ session itself, but only on the first run, far from the line the application wro
 reserved-name set still covers every built-in the runtime ships is a property of the runtime, checked
 on each live run by the live suite's reserved-name scenario.
 
-#### AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullClient: A Missing Client Is Refused
+#### AgentKitAgentsCopilot-CopilotAgentFactory-RejectsNullRuntime: A Missing Runtime Is Refused
 
-**Test**: `CopilotAgentFactory_Create_NullClient_Throws`
+**Test**: `CopilotAgentFactory_Create_NullRuntime_Throws`
 
-Error path: an agent with no client to run on cannot be built, so a null client is refused with
+Error path: an agent with no runtime to run on cannot be built, so a null runtime is refused with
 `ArgumentNullException` before any session is requested.
 
 #### AgentKitAgentsCopilot-CopilotAgentFactory-HostHandlerOverride: A Host Handler Is Installed Verbatim

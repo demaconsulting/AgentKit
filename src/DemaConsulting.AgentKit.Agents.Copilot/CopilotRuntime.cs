@@ -154,7 +154,7 @@ public sealed class CopilotRuntime : IAsyncDisposable
     /// </summary>
     /// <remarks>
     ///     Internal: production obtains a runtime only from <see cref="StartAsync"/>, which builds and
-    ///     starts the client itself. A test passes an unstarted client, which spawns nothing.
+    ///     starts the client itself. A test passes a client that was never started, which spawns nothing.
     /// </remarks>
     /// <param name="client">The client this runtime owns and disposes.</param>
     /// <param name="dataDirectory">The prepared data directory's full path.</param>

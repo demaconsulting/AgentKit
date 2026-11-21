@@ -5,8 +5,8 @@ This document describes the system-level verification strategy for the AgentKitA
 ## Verification Approach
 
 The AgentKitAgentsCopilot system is verified through system-level integration tests that exercise the
-factory's session-options path, its permission handling, the agent it builds, the client starter,
-and a whole compacting conversation **without a live Copilot runtime and without any credential**.
+factory's session-options path, its permission handling, the agent it builds, the runtime AgentKit
+starts and owns, and a whole compacting conversation **without a live Copilot runtime and without any credential**.
 The safety-critical property of the original increment — that the session allow-list is derived from
 the same collection as the published tools, so the two cannot drift apart — is asserted directly
 against constructed session options, which are plain constructable objects requiring no client. The
@@ -26,8 +26,10 @@ therefore reaches them through one internal seam — `ICopilotTurnChannel` with 
 production implementation forwards a turn, owns one release and opens every session through one confining protocol, the
 protocol's order and failure handling factored out and tested with the runtime's steps as delegates; see
 *CopilotTurnChannel Unit Verification Design*, which states plainly what that leaves unexercised. The SDK's options,
-permission and event types, by contrast, are all constructable, so nothing about their shapes is simulated. The client's
-start is reached the same way: the starter's internal overload takes the start and the environment as delegates.
+permission and event types, by contrast, are all constructable, so nothing about their shapes is simulated. The runtime
+AgentKit owns is reached through pure internal seams: its client options and the runtime's environment are built from a
+host environment the test supplies, its data-directory rules run against temporary directories, and its start is a
+delegate, so no runtime process is started.
 
 **The live runtime is exercised by a separate, opt-in suite.** What a scripted runtime cannot
 establish — what the real runtime does with the options it is handed — is measured by the live
@@ -118,10 +120,11 @@ against the built options, where each value is set.
 - **External services**: None. **No Copilot runtime is started, no credential is used, and no network
   access is made.** The session options and the permission requests are plain constructable objects,
   the runtime session is reached only through the package's own internal turn-channel seam, and the
-  client start is supplied to the starter's internal overload
+  runtime's start is supplied as a delegate
 - **Mocking**: A hand-written scripted runtime replaying the SDK's own event types; no mocking
   framework
-- **File system**: None
+- **File system**: Temporary directories under the system temporary folder for the runtime's
+  data-directory scenarios, deleted afterwards
 - **Isolation**: Each test constructs its own tools, options, runtime, agent and session; no state is
   shared
 
@@ -163,15 +166,15 @@ session's installed plugins were cleared, that the server was disabled for the s
 session was then refused with an error naming the server and abandoned. A confined agent receives no
 MCP server: the allow-list keeps a server's tools from the model, but a started server still runs a
 process with the user's environment and can contribute instructions, so a server that stays enabled
-refuses the session rather than letting the run continue. AgentKit keeps every ambient MCP server
-from the model. Discovered servers are disabled before the session exists, any other before the
-first turn, and the session is refused if one stays enabled. A server the SDK cannot enumerate
-before creation, such as a managed catalog's or a signed-in account's, may still start during
-session creation, so this scenario evidences that ambient servers are withheld from the model, not
-that none runs. That the runtime honors the
-create-time disabled list (L12a), the seal's session-scoped disable (L12c), and the resume-time
-disabled list on a session resumed through the channel (L12d) is shown by the live suite's
-ambient-server scenarios.
+refuses the session rather than letting the run continue. Discovered servers and the built-in GitHub
+server are named disabled before the session exists; any other server the session lists is disabled
+before the first turn, and the session is refused if one stays enabled. This scenario evidences the
+protocol, not which servers the runtime starts: a server the SDK cannot enumerate before creation,
+such as a managed catalog's or a signed-in account's, may still start during session creation and is
+then contained rather than prevented, and the session's listing does not report the built-in server
+at all. That the runtime honors the create-time disabled list (L12a), the seal's session-scoped
+disable (L12c) and the resume-time disabled list (L12d) is shown by the live suite's ambient-server
+scenarios, and which sources never start on the runtime AgentKit owns by its L14 scenarios.
 
 ### Permission Handling: A Supplied Tool Is Approved
 
@@ -206,12 +209,13 @@ session path was added after the agent path and takes no host-supplied handler a
 that was confined only by inheriting the agent path's code, without a test saying so, would be
 confined by accident rather than by design.
 
-### Agent Construction: A Missing Client Is Refused
+### Agent Construction: A Missing Runtime Is Refused
 
-**Test**: `CopilotAgentFactory_Create_NullClient_Throws`
+**Test**: `CopilotAgentFactory_Create_NullRuntime_Throws`
 
-Verifies the public entry point refuses a null client with `ArgumentNullException` before any session
-is constructed. Together with the built-in name scenario above, this is the system-level evidence
+Verifies the public entry point refuses a null runtime with `ArgumentNullException` before any session
+is constructed. No overload takes a client of the host's, so a runtime AgentKit started is the only
+thing an agent can be built on. Together with the built-in name scenario above, this is the system-level evidence
 that agent construction is validated; the remaining validation — the tool list, the instructions,
 the model and the working directory — is asserted at the unit level in *CopilotAgentFactory Unit
 Verification Design*.
@@ -323,16 +327,35 @@ every run the same tool instances, so a reference outlives the run that produced
 
 ### Runtime Startup: A Failed Start Is Explained
 
-**Test**: `AgentKitAgentsCopilot_ClientStarter_FailedStart_IsExplained`
+**Test**: `AgentKitAgentsCopilot_Runtime_FailedStart_IsExplained`
 
-Starts a client through the starter with a start that fails the way an in-process runtime does when
-`COPILOT_CLI_PATH` redirects it — an error naming the folder the variable points into — and an
-environment reporting that variable set. Asserts the failure reaching the host carries the runtime's
-error, names `COPILOT_CLI_PATH`, gives the fix, and keeps the original failure as its inner exception.
-A host started from a Copilot CLI shell inherits that variable without having written it, so a start
-failure that did not name it would leave the host looking everywhere but the cause. The other
-explanations and the pass-through of a cancellation are asserted in *CopilotClientStarter Unit
-Verification Design*.
+Starts the runtime with a start that fails the way the SDK does when no runtime was provisioned — an
+error naming the runtime wrapper it did not find. Asserts the failure reaching the host carries the
+runtime's error, names the remedy, a `PackageReference` to `Microsoft.Copilot.SDK`, and keeps the
+original failure as its inner exception. The pass-through of a cancellation and the disposal of a
+client whose start failed are asserted in *CopilotRuntime Unit Verification Design*.
+
+### Runtime: The Runtime AgentKit Owns Is Confined Before It Starts
+
+**Test**: `AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined`
+
+Prepares a fresh data directory and builds the client options from a hostile host environment — a
+runtime path override, an approve-all switch, a skills directory and an injected MCP configuration —
+and asserts the options are in Empty mode on a spawned stdio connection to the provisioned runtime,
+with no runtime path or arguments, on the prepared data directory, with a replacement environment that
+carries no `COPILOT_` or `GITHUB_COPILOT_` variable but keeps `GH_TOKEN`, and with no plugin
+directory, session filesystem or extension launcher. This is the client-level half of the
+confinement, which no session option can reach. That the runtime honors it is shown by the live
+suite (L11, L14, L15).
+
+### Runtime: A Foreign Data Directory Is Refused
+
+**Test**: `AgentKitAgentsCopilot_Runtime_ForeignDataDirectory_IsRefused`
+
+Starts the runtime on a non-empty directory AgentKit did not create, one holding an
+`mcp-config.json`, and asserts the start is refused with an `InvalidOperationException` naming the
+directory and saying it was not created by AgentKit — before any runtime process exists, so the
+directory's configuration is never read.
 
 ## Acceptance Criteria
 
@@ -341,18 +364,18 @@ those explicitly asserted. Any allow-list that diverges from the published tools
 unqualified entry, any tool named like a built-in that reaches the runtime, any session opened with a
 discovered MCP server left enabled on its options or accepted while one stays enabled, any supplied
 tool that is
-rejected, any unlisted or built-in request that is approved on either path, any missing client that
-is accepted, any occupancy figure that is not the one the runtime reported, any rotation that fails
+rejected, any unlisted or built-in request that is approved on either path, any missing runtime that
+is accepted, any runtime client options not confined as asserted, any foreign data directory that is
+accepted, any occupancy figure that is not the one the runtime reported, any rotation that fails
 to seed the consolidated record, any part of a seeded record appearing in a session's system message,
 any rotation that costs more than the one request the engine was already making, any superseded
 session left unreleased, any session created with the runtime's own compaction left at the runtime's
 default threshold, any agent run that is not confined, streamed or released as asserted, any
 resumption under a different confinement, any session that diverts a large tool result, any failed
-start whose explanation omits the runtime's error or blames `COPILOT_CLI_PATH` for an error that does
-not name its location, any reader of a retaining composition missing from a session's published
-tools, its custom-qualified allow-list or the requests its default handler approves, or any
-configured retaining tool that does not deliver its preview and the page it names constitutes a
-failure.
+start whose explanation omits the runtime's error or the remedy, any reader of a retaining
+composition missing from a session's published tools, its custom-qualified allow-list or the requests
+its default handler approves, or any configured retaining tool that does not deliver its preview and
+the page it names constitutes a failure.
 
 ## Supplementary Live Verification
 
@@ -361,9 +384,10 @@ package's confinement, its agent and AgentKit's session engine against the **rea
 and a real model, and asserts what the runtime actually did. It re-measures, on every run, the
 runtime properties the package's design depends on — which tools a confined session exposes, which
 names the runtime reserves for its built-ins, what the permission handler is asked, how large and
-image results are delivered, whether an agent's conversation streams and resumes, how a failed
-start is reported, whether an ambient MCP server is disabled on a session opened through the
-package's channel, and whether agent definitions reach such a session.
+image results are delivered, whether an agent's conversation streams and resumes, whether the host's
+Copilot variables reach the runtime AgentKit starts, whether an ambient MCP server is disabled on a
+session opened through the package's channel, which MCP sources actually start on the runtime
+AgentKit owns, and whether agent definitions and the other ambient channels reach such a session.
 
 **It is supplementary evidence and is not linked to ReqStream.** The suite never runs in the pipeline
 that builds the trace matrix — that pipeline is hermetic and holds no credential — so a requirement
@@ -381,27 +405,36 @@ that what those tests assert about the options is what the runtime honors.
   it.
 - **Gate**: every test calls `Assert.SkipUnless` on the environment variable
   `AGENTKIT_COPILOT_LIVE_MODEL`, which also names the model every scenario uses. Unset, the fixture
-  starts no client and every test reports itself skipped, naming the variable, so an accidental run
+  starts no runtime and every test reports itself skipped, naming the variable, so an accidental run
   costs nothing.
 - **Log**: the optional environment variable `AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY` names the folder a
   `live-*.log` of the run is written to, recording what the runtime reported and decided.
-- **Fixture**: one shared client per run, in Empty mode on the in-process runtime, authenticated as
-  the logged-in user or from `GH_TOKEN`/`GITHUB_TOKEN`, and started through `CopilotClientStarter` as a
-  host should. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
+- **Fixture**: one shared `CopilotRuntime` per run, started exactly as a host starts one — Empty
+  mode, the provisioned runtime spawned with the host's Copilot variables withheld, a data directory
+  AgentKit created under the run's temporary root — authenticated as the logged-in user or from
+  `GH_TOKEN`/`GITHUB_TOKEN`. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
   generated PNG split blue and yellow; a file outside the sandbox carries a second codeword no confined
   tool may return. The tests run sequentially in one collection, to control cost and because one
   scenario changes the process environment. The ambient-server scenario, L12, starts a second,
-  short-lived client of its own per test in CodingAgent mode, spawned out of process on the runtime the SDK
-  provisioned, whose data directory under the run's temporary root configures one non-GitHub MCP
-  server whose command does not exist — never the user's own Copilot home. The agent-definitions
-  scenario, L13, starts one more such client whose data directory under the run's root defines a user
-  agent, and gives its session a workspace under the run's root that defines a project agent.
+  short-lived client of its own per test in CodingAgent mode — the hostile client a host could have
+  built before AgentKit owned the runtime, reached through the channel's internal seam — spawned on the
+  runtime the SDK provisioned with the same withheld environment, whose data directory under the run's
+  temporary root configures one non-GitHub MCP server whose command does not exist — never the user's
+  own Copilot home. The agent-definitions scenario, L13, starts one more such client whose data
+  directory under the run's root defines a user agent, and gives its session a workspace under the
+  run's root that defines a project agent. The MCP-source scenarios, L14c to L14f, each start a
+  `CopilotRuntime` of their own on a data directory under the run's root, which they stop, change and
+  start again — AgentKit accepts it because it marked it — and configure a **marker probe**: an MCP
+  server whose command appends a line to a marker file under the run's root and then waits. The
+  marker is the observation that separates a server the runtime executed from one it merely
+  configured; each prevention scenario is paired with a control showing the same probe does execute
+  without the protection.
 
 ### Running the Live Suite
 
-**Manually**, from the repository root in PowerShell. `COPILOT_CLI_PATH` must be unset first: every
-Copilot CLI shell sets it, and in-process hosting would then load the runtime from beside the CLI
-install instead of the one the SDK provisioned.
+**Manually**, from the repository root in PowerShell. `COPILOT_CLI_PATH` no longer needs to be unset:
+the runtime AgentKit starts never receives it, and L11 sets a bogus value itself. Unsetting it is
+still harmless, and is what the recorded run did.
 
 ```pwsh
 Remove-Item Env:COPILOT_CLI_PATH -ErrorAction SilentlyContinue
@@ -422,9 +455,9 @@ holding the TRX test results and the run's `live-*.log`. A manual run leaves the
 
 ### Live Scenarios
 
-Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Eighteen tests
-cover thirteen scenarios; the agent scenario, L10, is three tests, and the ambient-server scenario, L12,
-is four.
+Every test name carries the prefix `AgentKitAgentsCopilotLive_`, omitted in the table. Twenty-five tests
+cover fifteen scenarios; the agent scenario, L10, is three tests, the ambient-server scenario, L12, is
+four, and the MCP-source scenario, L14, is six.
 
 | # | Test | Recorded result |
 | --- | --- | --- |
@@ -440,12 +473,19 @@ is four.
 | L10a | `Agent_Streams_TextDeltas` | Pass |
 | L10b | `Agent_SerializedSession_ResumesOnANewAgent` | Pass |
 | L10c | `Agent_ImageAttachment_ReachesTheModel` | Pass |
-| L11 | `ClientStarter_AmbientCopilotCliPath_IsExplained` | Pass |
+| L11 | `Runtime_AmbientCopilotEnvironment_DoesNotReachTheRuntime` | Pass |
 | L12a | `Confinement_AmbientMcpServerOnACodingAgentClient_IsDisabled` | Pass |
 | L12b | `Confinement_AmbientMcpServerWithoutTheChannel_IsEnabled` | Pass |
 | L12c | `Confinement_AmbientMcpServerEnabledAtCreation_IsDisabledByTheSeal` | Pass |
 | L12d | `Confinement_AmbientMcpServerOnAResumedSession_IsDisabled` | Pass |
 | L13 | `Confinement_AgentDefinitionsOnACodingAgentClient_AreWithheld` | Pass |
+| L14a | `OwnedRuntime_BuiltInGitHubMcpServer_IsNeverStarted` | Pass (no server started) |
+| L14b | `OwnedRuntime_BuiltInGitHubMcpServer_StartsWhenNotNamed` | Pass (connected; not listed) |
+| L14c | `OwnedRuntime_UserMcpServerInItsDataDirectory_IsNeverExecuted` | Pass (no marker) |
+| L14d | `OwnedRuntime_UserMcpServerWithoutTheChannel_IsExecuted` | Pass (marker written) |
+| L14e | `OwnedRuntime_WorkspaceMcpServer_IsNeverExecuted` | Pass (no marker) |
+| L14f | `OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted` | Pass (marker written) |
+| L15 | `OwnedRuntime_AmbientChannels_AreAbsent` | Pass |
 
 What each asserts. Assertions are made on the runtime's events and metadata wherever possible; the
 few that rest on the model's prose are marked.
@@ -475,9 +515,11 @@ few that rest on the model's prose are marked.
   runtime session and recalls a fact from before the serialization (prose).
 - **L10c**: an image passed to the agent as inline data reaches the model as an attachment; the answer
   names blue and yellow (prose).
-- **L11**: a second client started through the starter with a bogus `COPILOT_CLI_PATH` fails with an
-  explanation that carries the runtime's error — which names the folder the variable points into —
-  and names the variable, its value and the fix; the variable is restored afterwards.
+- **L11**: with a bogus `COPILOT_CLI_PATH` and `COPILOT_ALLOW_ALL` set in the process environment,
+  the control — an in-process Empty client, the SDK's default, which inherits the environment — fails
+  to start with an error naming the bogus folder, while a second `CopilotRuntime` started under the
+  same environment starts and opens a confined session exposing exactly the supplied tools. Both
+  variables are restored afterwards.
 - **L12a**: on a CodingAgent-mode client whose data directory configures a non-GitHub MCP server —
   which the runtime's discovery is first asserted to report, so the scenario cannot pass on a fixture
   the runtime ignores — a session opened through the package's production channel named the server
@@ -501,6 +543,35 @@ few that rest on the model's prose are marked.
   report, so the scenario cannot pass on a fixture the runtime ignores — a session opened through the
   package's production channel lists no agent, built-in sub-agents included, and exposes exactly the
   supplied tools, so no agent can be selected or delegated to. No model turn is taken.
+- **L14a**: on the fixture's runtime, a tool-free session opened through the production channel takes
+  one turn. The runtime's loaded-servers event lists the built-in GitHub MCP server as disabled, no
+  status event reports any server pending or connected, and no configured server is enabled. Because
+  no server of any source started, this is also the evidence available for managed-catalog and
+  account servers — for the account the run uses.
+- **L14b**: a control for L14a. The same session with the built-in server no longer named disabled,
+  created directly, connects the GitHub MCP server on its first turn, so Empty mode alone does not
+  prevent it; and the session's configuration listing does not report the server while it is
+  connected, which is why the seal cannot be relied on for it. A failure of the listing assertion
+  means the runtime now lists built-in servers, and the documentation's statement of that gap should
+  be revisited.
+- **L14c**: a runtime whose data directory gained an `mcp-config.json` probe after AgentKit created
+  it. A session opened through the production channel takes one turn; the probe's marker never
+  appears within thirty seconds, the probe was named on the create-time disabled list and is listed
+  disabled from the user source, and no server reaches pending or connected.
+- **L14d**: a control for L14c. The same configuration, with the session created from AgentKit's own
+  options but without the channel, executes the probe: Empty mode and the session options alone do
+  not prevent a user server.
+- **L14e**: a workspace whose `.mcp.json` configures a probe, on a runtime whose data directory was
+  changed to trust that workspace. A session opened through the channel with that working directory
+  takes one turn; the marker never appears within thirty seconds, no configured server is enabled and
+  no server reaches pending or connected.
+- **L14f**: a control for L14e. The same trusted workspace, with configuration discovery switched back
+  on and the session created directly, executes the probe.
+- **L15**: a session opened through the channel on the fixture's runtime lists no plugin, skill,
+  instruction source or agent, and no enabled MCP server, and its system-prompt attribution is
+  smaller than a control session's whose system message keeps the environment-context section. Hooks
+  have no listing; they are covered by repository hooks being off, no installed plugin and a fresh
+  data directory.
 
 ### Live Acceptance Criteria
 
@@ -510,19 +581,23 @@ failure of L1, L2, L5 or L6 means a confined session is not confined on the real
 that the reserved-name set or the guard no longer matches the runtime; of L7 or L8, that a tool's
 result does not reach the model intact; of L9, that the session engine does not hold on the
 runtime's own usage; of L10a to L10c, that the agent does not stream, resume or deliver attachments
-as designed; of L11, that a host is not told why its runtime did not load; of L12a, that an ambient
+as designed; of L11, that a host's Copilot variable reaches the runtime AgentKit starts, or that the
+control no longer fails, so L11 proves nothing; of L12a, that an ambient
 MCP server survives the confinement; of L12b, that the fixture no longer injects one, so L12a proves
 nothing; of L12c, that the seal's session-scoped disable does not take effect on the real runtime;
 of L12d, that the resume-time disabled list is not honored on a session resumed through the
-channel; of L13, that an agent definition or built-in sub-agent reaches a confined session. Any such
-failure is investigated before a release.
+channel; of L13, that an agent definition or built-in sub-agent reaches a confined session; of L14a,
+L14c or L14e, that an MCP server of that source starts on the runtime AgentKit owns, or, for L14a,
+that some server of any source started — a renamed built-in server, or a managed-catalog or account
+server for the run's account; of L14b, L14d or L14f, that the probe no longer runs without the
+protection, so the paired scenario proves nothing; of L15, that an ambient channel reaches a session.
+Any such failure is investigated before a release.
 
 ### Recorded Run
 
-The suite was run manually on 2026-11-20, on Windows 11 (build 26100), with the model
-`claude-haiku-5.5`. All 13 tests passed, in 1 minute 48 seconds, with the results shown in the table
-above. Two behaviors for which the design kept a fallback in reserve held on the real runtime: a
-released session resumed on a new agent instance, and an in-memory image attachment reached the
+The suite was run manually on 2026-11-20, on Windows 11 (build 26100), with the model `claude-haiku-5.5`. All 13 tests
+then in the suite passed, in 1 minute 48 seconds. Two behaviors for which the design kept a fallback in reserve held on
+the real runtime: a released session resumed on a new agent instance, and an in-memory image attachment reached the
 model.
 
 When the turn channel gained its confining opening protocol, the scenarios that go through it were
@@ -545,12 +620,50 @@ takes one short turn before releasing it, after which the resume through the cha
 probe on the disabled list and listed it disabled. Every session opened or resumed through the
 channel exposed exactly the two supplied tools.
 
-When L13 was added and the starter came to report the runtime's error and to blame
-`COPILOT_CLI_PATH` only when that error names the variable's location, L13 and L11 were run on
-2026-11-20, on the same machine and model, filtered to `*AgentDefinitions*` and `*ClientStarter*`;
-both passed, in 10 seconds. L13's discovery reported the user agent from the user source and the
-workspace agent from the project source; the session opened through the channel listed no agent,
-built-ins included, and exposed exactly the two supplied tools. L11's runtime error named the three
-paths it searched in the folder `COPILOT_CLI_PATH` points into, so the explanation carried that error
-and named the variable, its value and the fix. Later runs of the CI job record their results in the
+When L13 was added and the client starter, since replaced by `CopilotRuntime`, came to report the runtime's error and to
+blame `COPILOT_CLI_PATH` only when that error names the variable's location, L13 and L11 were run on 2026-11-20, on the
+same machine and model, filtered to `*AgentDefinitions*` and `*ClientStarter*`; both passed, in 10 seconds. L13's
+discovery reported the user agent from the user source and the workspace agent from the project source; the session
+opened through the channel listed no agent, built-ins included, and exposed exactly the two supplied tools. L11's
+runtime error named the three paths it searched in the folder `COPILOT_CLI_PATH` points into, so the explanation carried
+that error and named the variable, its value and the fix.
+
+When AgentKit came to start and own the runtime, the whole suite was run once on 2026-11-20, on the
+same machine and model, with `COPILOT_CLI_PATH` removed from the shell first; all 25 tests passed, in
+5 minutes 14 seconds, every one of them on a `CopilotRuntime` or, for L12 and L13, on a CodingAgent
+client spawned with the same withheld environment. The table above shows this run's results; L2
+admitted `powershell` and `view`, L3 listed 15 Windows built-ins, and L9 rotated three times, as in
+the earlier runs. What the MCP-source scenarios observed:
+
+- **Built-in GitHub server.** On L14a's session the loaded-servers event listed `github-mcp-server`
+  from the builtin source as disabled, the turn answered, and no status event reported any server
+  pending or connected, so no server of any source started for this account. On L14b's session,
+  with the name removed, the server went pending and then connected three seconds later, from the
+  builtin source, during the first turn — and the session's configuration listing taken while it was
+  connected was empty.
+- **User source.** L14c's discovery reported the probe from the user source; the session named it on
+  the create-time disabled list, the loaded-servers event listed it disabled from the user source,
+  the listing showed it from the user source with enablement false, and no marker appeared in the
+  thirty seconds after a turn. In L14d the probe went pending at session creation and its marker was
+  present when creation returned; the runtime reported it failed some thirty seconds later, when the
+  probe exited without completing a handshake, and creation waited for that.
+- **Workspace source.** L14e's session listed no configured server; the loaded-servers event listed
+  the probe as disabled with **no** source — the entry for a name on the disabled list that no loaded
+  configuration supplies, which is what configuration discovery being off leaves — and no marker
+  appeared in the thirty seconds after a turn. In L14f, with configuration discovery on, the probe
+  went pending at session creation from the workspace source and its marker was present when
+  creation returned.
+- **Other channels.** L15's session listed no plugin, skill, instruction source, agent or configured
+  server, and its system prompt was attributed 3,252 tokens against 3,464 for the control that keeps
+  the environment context.
+- **Host environment.** L11's in-process control failed with `FFI runtime library not found`, naming
+  the paths it searched in the bogus folder, while the `CopilotRuntime` started under the same
+  environment opened a session exposing exactly the two supplied tools.
+
+Nothing else started where it was observed: in the scenarios that record MCP status events, L14a to L14f, the only
+servers that reached pending or connected were the probe or the built-in server of a control scenario (L14b, L14d,
+L14f); the other scenarios do not record those events. Managed-catalog and account servers could not be configured for
+the run, so for those sources the evidence is L14a's observation that none started for this account. After this run the
+agent scenarios' cleanup moved from the client's session deletion to `CopilotRuntime.DeleteSessionAsync`, which forwards
+to the same SDK call; that change was not re-run live. Later runs of the CI job record their results in the
 `live-copilot-suite` artifact of each workflow run.

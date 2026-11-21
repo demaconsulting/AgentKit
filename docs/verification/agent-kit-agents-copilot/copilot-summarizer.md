@@ -119,7 +119,7 @@ engine has a documented fallback for.
 - `CopilotSummarizer_Consolidate_Fails_DisposesTheSession`
 - `CopilotSummarizer_Consolidate_NullRequest_Throws`
 - `CopilotSummarizer_Consolidate_Canceled_OpensNothing`
-- `CopilotSummarizer_Constructor_NullClient_Throws`
+- `CopilotSummarizer_Constructor_NullRuntime_Throws`
 
 The first two are the scenarios that matter, and the **second** is the one a leak hides on: a
 consolidation that failed has still left a session on the runtime, and a long conversation performs
@@ -128,4 +128,4 @@ conversation this exists to prolong. Both assert exactly one release.
 
 The remainder are error paths. A missing request is refused where the engine composed it; a
 consolidation canceled before it began opens nothing, so a canceled rotation leaves nothing behind on
-the runtime; and a missing client is refused where the application composed its provider.
+the runtime; and a missing runtime is refused where the application composed its provider.

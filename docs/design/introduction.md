@@ -170,16 +170,16 @@ software items, specifically:
 - **CopilotAgentFactory (Unit)** — The static factory that refuses built-in tool names, derives the
   source-qualified allow-list, withholds the runtime's injection channels, pins the permission mode,
   installs a default-deny permission handler, and builds the agent without taking ownership of the
-  client; the single place a Copilot session's options are built, created or resumed
+  runtime; the single place a Copilot session's options are built, created or resumed
 - **CopilotAgent (Unit)** — AgentKit's own `AIAgent` over confined Copilot sessions, with the public
   `CopilotAgentSession` naming one conversation: creates a runtime session on the first run and
   resumes it on every later one, streams the runtime's events as agent updates, sends inline data as
   in-memory attachments, and releases a conversation's session without deleting it after every run
   (a run made without a conversation deletes its session)
-- **CopilotClientStarter (Unit)** — Starts the host's Copilot client and explains a failed start
-  with the runtime's error and, where that error identifies it, the cause — an ambient
-  `COPILOT_CLI_PATH`, or a host that does not reference the SDK directly — without changing the
-  connection or the environment
+- **CopilotRuntime (Unit)** — The Copilot runtime AgentKit starts, confines and owns: Empty mode,
+  the provisioned runtime spawned as a child process with the host's Copilot configuration variables
+  withheld, a data directory AgentKit created; exposes only neutral options, explains a runtime that
+  cannot start, and lets the host delete a kept conversation
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
@@ -335,8 +335,8 @@ justified by runtime dependencies that must be kept out of Core: `AgentKitAgents
 `Microsoft.Agents.AI.Abstractions`. `AgentKitAgentsChatClient` builds its agent through the Agent
 Framework's own `ChatClientAgent`; the Copilot SDK ships no Agent Framework agent, so
 `AgentKitAgentsCopilot` carries an agent of its own over confined Copilot sessions.
-`AgentKitAgentsCopilot` carries eight units: that agent, its factory, a starter that explains a
-client that cannot load its runtime, a provider session, its factory, a summarizer, the observer that
+`AgentKitAgentsCopilot` carries eight units: that agent, its factory, the runtime it starts and owns,
+a provider session, its factory, a summarizer, the observer that
 reads occupancy from the runtime's event stream, and the internal turn channel that makes all of it
 testable without a live runtime. `AgentKitAgentsChatClient` holds five:
 that factory, a provider session, its factory, a summarizer, and the recorder that reads occupancy
@@ -482,9 +482,10 @@ src/DemaConsulting.AgentKit.Agents.Copilot/
 ├── CopilotAgent.cs                   — AgentKit's AIAgent over confined Copilot sessions
 ├── CopilotAgentFactory.cs            — builds a Copilot agent, and every session's options
 ├── CopilotAgentSession.cs            — one agent conversation: its runtime session and state bag
-├── CopilotClientStarter.cs           — starts the host's client, explaining a failed start
 ├── CopilotProviderSession.cs         — one Core session over one Copilot session
 ├── CopilotProviderSessionFactory.cs  — creates one seeded Copilot session per rotation
+├── CopilotRuntime.cs                 — the runtime AgentKit starts, confines and owns
+├── CopilotRuntimeOptions.cs          — the neutral options a host may give the runtime
 ├── CopilotSessionObserver.cs         — watches the runtime's event stream
 ├── CopilotSummarizer.cs              — consolidates on a separate tool-free session
 └── CopilotTurnChannel.cs             — the seam over the sealed SDK session types

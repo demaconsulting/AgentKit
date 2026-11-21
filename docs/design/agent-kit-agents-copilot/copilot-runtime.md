@@ -1,160 +1,211 @@
-## CopilotClientStarter
+## CopilotRuntime
 
 ![AgentKit Copilot Agents Structure](AgentKitAgentsCopilotView.svg)
 
-The `CopilotClientStarter` class starts a host's GitHub Copilot `CopilotClient`, turning a runtime that
-cannot load into an error that says why and what to do.
+The `CopilotRuntime` class is the GitHub Copilot runtime AgentKit starts, confines and owns.
+`CopilotRuntimeOptions` carries the few options a host may give it. Every agent, provider-session
+factory and summarizer in this system runs on a `CopilotRuntime`; none accepts a client the host built.
 
 ### Purpose
 
-**A Copilot client that cannot load its runtime fails opaquely, for one of two common reasons.**
+**The confinement a Copilot session needs is only partly a property of the session.** The rest belongs
+to the client the session runs on. The client's mode, its data directory and the environment of its
+runtime decide which MCP servers, plugins and configuration exist before any session option is read,
+and the SDK offers no way to read any of them back from a client. Measured against the live runtime:
 
-- **An ambient `COPILOT_CLI_PATH`.** In-process hosting loads the runtime library from the
-  application's output, where `Microsoft.Copilot.SDK` provisions it at build time — unless the
-  `COPILOT_CLI_PATH` environment variable is set, in which case it loads the library from beside that
-  path instead. There is no per-client override. Every shell the Copilot CLI starts sets the variable
-  to the CLI's own installation, which does not ship the in-process runtime library, so an application
-  launched from such a shell fails to start with an error about a missing library that names neither
-  the variable nor the remedy.
-- **A runtime that was never provisioned.** The SDK provisions its runtime only into a project that
-  references the package directly. A host application that reaches the SDK only transitively, through
-  AgentKit, has no runtime in its output.
+- **Empty mode alone does not prevent ambient MCP servers.** It starts the built-in GitHub MCP server
+  on a session's first turn, and it executes an MCP server that the data directory's `mcp-config.json`
+  configures.
+- **In-process hosting gives the runtime the host's whole environment.** The runtime reads hundreds of
+  `COPILOT_` variables, among them approve-all switches, instruction, skill, hook and plugin
+  directories, provider rerouting and a runtime path override (`COPILOT_CLI_PATH`) that every Copilot
+  CLI shell sets. A library cannot change that without mutating process-global state.
+- **A client of the host's can be anything.** It can be in CodingAgent mode, use a shared Copilot CLI
+  home, or connect to an external runtime whose mode, data directory and environment are not the
+  client's at all.
 
-This class reports the runtime's own error, and names `COPILOT_CLI_PATH` as the cause, with the
-remedies, only when that error names the location the variable points to. Every Copilot CLI shell sets
-the variable, so most failed starts from such shells have other causes; when the error does not name
-that location, the class reports the variable's value without blaming it. When the variable is unset,
-it names the missing direct SDK reference as the likely cause of a runtime that was not found.
-
-**It diagnoses and changes nothing.** The host owns the client and chooses its connection. This class
-never alters the connection and never changes the process environment: pointing `COPILOT_CLI_PATH` at
-a valid runtime is a supported configuration, so silently ignoring or clearing it would be wrong, and
-changing the process environment from a library is a global side effect. Two alternatives were
-rejected for the same reason: switching the host to a spawned-process connection automatically would
-override the host's choice, and wrapping session-creation failures inside AgentKit would catch only a
-client started implicitly and would misattribute failures that have nothing to do with starting.
-
-**It is optional.** A host that starts the client itself loses only the diagnosis of that start. A host
-that hands AgentKit a client it has not started gets the diagnosis anyway, because the production turn
-channel starts the client through this class before the first session; only the start is wrapped,
-never a session's creation, so no other failure is misattributed. The samples and the opt-in live suite
-start their clients through it.
-
-The class is static, holds no state, and is safe for concurrent use. It reads one environment
-variable, and only once a start has already failed.
+So AgentKit does not take a client; it builds one. Only options that cannot widen what reaches the
+model are expressible, which matches the project's principle that an unsafe configuration should be
+impossible to express rather than refused when used.
 
 ### Data Model
 
-- **`CliPathVariable`** (`const string`) — `COPILOT_CLI_PATH`, the environment variable that redirects
-  in-process hosting to another runtime.
+`CopilotRuntimeOptions` (immutable, safe for concurrent use):
 
-The class has no fields.
+- **`DataDirectory`** (`string`) — the full path of the runtime's data directory. A relative path is
+  resolved against the current directory when the options are built; a null, empty or whitespace
+  path is refused.
+- **`GitHubToken`** (`string?`) — the token to authenticate with, or `null` (a blank token is
+  normalized to `null`) to authenticate as the signed-in user.
+- **`LogLevel`** (`CopilotLogLevel?`) — the runtime's log level, or `null` for its default.
+- **`Logger`** (`ILogger?`) — a logger for the SDK's diagnostic output.
+
+`CopilotRuntime`:
+
+- **`_client`** (`CopilotClient?`) — the client this runtime owns; `null` once disposed. Exposed
+  internally as `Client`, which throws `ObjectDisposedException` after disposal. Never exposed
+  publicly, so nothing outside AgentKit can open a session on it or reconfigure it.
+- **`DataDirectory`** (`string`) — the prepared data directory's full path; available after disposal.
+- **`PassThroughVariables`** (`FrozenSet<string>`) — the `COPILOT_` variables that reach the runtime:
+  `COPILOT_GITHUB_TOKEN`, `COPILOT_GH_HOST`, `COPILOT_SYSTEM_PROXY`, `COPILOT_PROXY_KERBEROS`,
+  `COPILOT_PROXY_KERBEROS_SPN`, `COPILOT_TELEMETRY_DISABLED` and `COPILOT_GITHUB_TELEMETRY_DISABLED`.
+  Each carries only a credential, network settings, or a switch that can only turn telemetry off.
+- **`OwnershipMarkerFileName`** (`const string`) — `.agentkit-copilot-runtime`, the file that marks a
+  data directory as AgentKit's.
 
 ### Key Methods
 
-#### StartAsync(CopilotClient client, CancellationToken cancellationToken)
+#### StartAsync(CopilotRuntimeOptions options, CancellationToken cancellationToken)
 
-**Purpose:** The public entry point: start the host's client, explaining a failure to start.
+**Purpose:** The only way to obtain a runtime: build the confined client and start it.
 
-**Algorithm:** Reject a null `client`, then delegate to the internal overload with the client's own
-start and the process environment's reader.
+**Algorithm:**
 
-**Preconditions:** `client` is not null.
+1. Reject null options; honor a cancellation already requested.
+2. Prepare the data directory (`PrepareDataDirectory`), so a foreign directory is refused before any
+   runtime reads it.
+3. Build the client options (`BuildClientOptions`) from the options, the prepared directory and the
+   process environment, read once.
+4. Create the client and start it through `StartOwnedAsync`, whose start step is `StartClientAsync`
+   over the client's own start. A failed or canceled start disposes the client.
+5. Return a runtime over the started client.
 
-**Postconditions:** The client has started; or an exception as below, with the client left not
-started and still the host's to dispose.
+**Postconditions:** The runtime process is running on the prepared data directory; the caller owns
+the runtime and disposes it.
 
-#### StartAsync(Func&lt;CancellationToken, Task&gt; start, Func&lt;string, string?&gt; getEnvironmentVariable, CancellationToken)
+#### PrepareDataDirectory(string dataDirectory)
 
-**Purpose:** Run a start and explain its failure, with the start and the environment supplied.
+**Purpose:** Make sure the data directory is one AgentKit owns.
 
-**Algorithm:** Await the start. On an `OperationCanceledException`, let it propagate unchanged: a
-cancellation is not a fault to explain. On any other exception, read `COPILOT_CLI_PATH` and throw an
-`InvalidOperationException` whose message is `Explain` of that value and the failure, and whose
-`InnerException` is the original failure.
+**Algorithm:** Resolve the full path. A path naming an existing file is refused. An existing
+directory containing the ownership marker is accepted as it is, whatever the runtime has written
+there since. Any other non-empty directory is refused with an `InvalidOperationException` naming the
+directory and explaining that it was not created by AgentKit. A missing directory is created with its
+parents. The marker is written only after the directory is known to be new or empty, so a refused
+directory is left untouched.
 
-Internal, as the test seam: the SDK's client cannot be made to fail on demand without a broken
-runtime, and a test must not change the process environment, so both are injected.
+A fresh directory is what keeps user-configured MCP servers, installed plugins, user hooks and trusted
+folders from existing at all. A directory another tool populated is refused rather than inspected,
+because a list of files to object to would go stale with every runtime release. The runtime's own
+content in a marked directory is not policed; an MCP server added there later is still found by
+discovery and disabled before a session is created (see *CopilotTurnChannel Unit Design*).
 
-**Postconditions:** As the public overload.
+**Postconditions:** The directory exists, carries the marker, and its full path is returned.
 
-#### Explain(string? cliPath, Exception failure)
+#### BuildRuntimeEnvironment(IDictionary hostEnvironment)
 
-**Purpose:** Compose the explanation for a client that failed to start.
+**Purpose:** Build the runtime process's replacement environment.
 
-**Algorithm:** Every message begins with the runtime's own error — the failure's message — and points
-at the inner exception for it. Then:
+**Algorithm:** Copy every host variable except those whose name starts with `COPILOT_` or
+`GITHUB_COPILOT_`, unless the name is in `PassThroughVariables`. Names are compared case-insensitively
+on Windows, whose variable names are, and ordinally elsewhere — the rule the SDK applies when it reads
+the replacement environment. An entry whose name or value is not a string is skipped. The SDK then
+adds its own settings — the data directory as `COPILOT_HOME`, the switch that keeps credentials out
+of the system keychain, and a supplied token — so those cannot be overridden from the host either.
 
-- **When `cliPath` is non-blank and `NamesLocation` reports that the failure names the location it
-  points to**, the message names the variable and its value, and explains that the runtime is loaded
-  from beside that path instead of from the runtime `Microsoft.Copilot.SDK` provisioned into the
-  application's output; that a Copilot CLI installation does not ship the in-process runtime library;
-  and that every shell the Copilot CLI starts sets the variable. It gives three remedies: unset
-  `COPILOT_CLI_PATH` for the process, point it at a runtime that ships the in-process library, or
-  connect with `RuntimeConnection.ForSpawnedStdio` and an environment that omits it.
-- **When `cliPath` is non-blank but the failure does not name that location**, the message reports the
-  variable's value and states that the error does not name that location, so the variable is not shown
-  to be the cause. It gives no fix; it notes only that, if the error is that the in-process runtime
-  library could not be loaded, unsetting the variable is the remedy, because a Copilot CLI installation
-  does not ship that library.
-- **When it is null or blank**, the message states that the runtime is loaded from the application's
-  output and that, if the error is that the runtime library was not found, the most common cause is a
-  host application that does not reference `Microsoft.Copilot.SDK` directly, because the SDK
-  provisions its runtime only into a project that references the package itself. The remedy is to add
-  that reference.
+#### BuildClientOptions(CopilotRuntimeOptions options, string dataDirectory, IDictionary hostEnvironment)
 
-**Postconditions:** The explanation text.
+**Purpose:** The single place the client is configured.
 
-#### NamesLocation(Exception failure, string cliPath)
+**Algorithm:** Set `Mode` to `CopilotClientMode.Empty` and `Runtime` to
+`RuntimeConnection.ForSpawnedStdio(environment: BuildRuntimeEnvironment(hostEnvironment),
+baseDirectory: dataDirectory)`, with no runtime path, no arguments and no child working directory.
+Copy the token, log level and logger. Everything else keeps the SDK's default, which for every
+capability channel is none.
 
-**Purpose:** Decide whether a failure shows `COPILOT_CLI_PATH` to be its cause, without parsing the
-runtime's message format.
+The SDK's client options, classified:
 
-**Algorithm:** The location is the directory containing the value's full path
-(GetDirectoryName(GetFullPath(value))), followed by a directory separator. That is the form in which
-the SDK prints every path it searched for the runtime library beside the value, and the trailing
-separator keeps a sibling directory whose name merely begins with the same text from matching. The
-bare value is not matched: the SDK always prints full paths, and a relative value such as copilot
-would match unrelated text. Nothing is matched when the value cannot be resolved as a path or when the
-directory is a filesystem root, which would match almost any path. Walk the failure and its chain of
-inner exceptions, skipping any null message so the diagnosis never throws and masks the failure; the
-result is true when any message contains the location, ignoring case on Windows, whose paths are
-case-insensitive, and matching case elsewhere.
+| Option | Classification | Rationale |
+| --- | --- | --- |
+| `Mode` | Forced: Empty | No coding-agent defaults; credentials in the data directory |
+| `Runtime` spawned over stdio | Forced | A child process whose environment AgentKit decides |
+| ↳ `BaseDirectory` | Forced | The prepared data directory |
+| ↳ `Environment` | Forced | The host's minus Copilot configuration variables |
+| ↳ `Path`, `Args` | Not expressible | A foreign runtime or flags such as approve-all |
+| ↳ `WorkingDirectory`, `SessionIdleTimeoutSeconds` | Not exposed | Neutral; sessions carry a working directory |
+| In-process, spawned TCP | Not expressible | The host's whole environment; a TCP listener |
+| External TCP, default | Not expressible | A runtime not AgentKit's; an environment switch |
+| `SessionFs` | Not expressible | Moves state out of the data directory |
+| `InternalTestOptions` | Not expressible | Injects environment variables |
+| `Plugins.BuiltinDirectories` | Not expressible | Registers plugins with servers, hooks, skills and agents |
+| `Extensions.LaunchProvider` | Not expressible | A channel for injected capability |
+| `Installations.ConfirmationHandler` | Not expressible | Plugin and MCP installation flows |
+| `Models.RequestHandler` | Not expressible | Intercepts every inference request |
+| `GitHub.Token` | Allowed | Authentication |
+| `Observability.LogLevel`, `Observability.Logger` | Allowed | Host-side diagnostics |
+| `GitHub.UseLoggedInUser` | Derived | The SDK default: the signed-in user unless a token is given |
+| `Observability.Telemetry`, `Network`, `ClientInfo` | Not exposed | Neutral; deferred |
+| `Entra`, `Models.OnListModels`, `GitHub.OnTelemetry` | Not exposed | Neutral; deferred |
 
-This is a containment check against a value the class already holds, so it survives changes to the
-SDK's wording for as long as the SDK names the path it searched; if a future SDK stopped naming it, the
-explanation would fall back to the hedged wording rather than to a wrong assertion.
+#### StartClientAsync(Func&lt;CancellationToken, Task&gt; start, CancellationToken cancellationToken)
 
-**Postconditions:** True when the failure names the location; otherwise false.
+**Purpose:** Run a client's start and explain its failure. Shared by `StartAsync` and by the turn
+channel's discovery, which starts a client idempotently before using its RPC surface.
+
+**Algorithm:** Await the start. An `OperationCanceledException` propagates unchanged. Any other
+exception is rethrown as an `InvalidOperationException` whose message is `ExplainStartFailure` of it
+and whose `InnerException` is the original.
+
+#### ExplainStartFailure(Exception failure)
+
+**Purpose:** Compose the explanation.
+
+**Algorithm:** The runtime's own error first. Then the runtime AgentKit runs (the one
+`Microsoft.Copilot.SDK` provisions into the application's output, as a child process), and the common
+cause of a runtime that was not found: a host application that does not reference
+`Microsoft.Copilot.SDK` directly, with the remedy of adding that reference. Then the pass-through set
+and the authentication sources, so an authentication or proxy failure can be traced. A runtime path
+override can no longer be the cause, because `COPILOT_CLI_PATH` is withheld. A null message is
+tolerated.
+
+#### StartOwnedAsync&lt;T&gt;(create, start, dispose, cancellationToken)
+
+**Purpose:** The create-start-dispose-on-failure ordering, factored out so it is testable without a
+runtime.
+
+**Algorithm:** Create; start; on any exception, dispose (swallowing a disposal failure so it cannot
+replace the start's) and rethrow.
+
+#### DeleteSessionAsync(string sessionId, CancellationToken cancellationToken)
+
+**Purpose:** Let the host delete a conversation the runtime kept — the one session operation a host
+needs — without handing out the client, through which a session could be opened outside the
+confinement.
+
+**Algorithm:** Reject a null, empty or whitespace identifier; ask the client to delete the session.
+The SDK's own exception for a session the runtime does not hold propagates unchanged.
+
+#### DisposeAsync()
+
+**Purpose:** Stop the runtime process.
+
+**Algorithm:** Atomically take the client and dispose it; a second call finds none and returns.
+Sessions open on the runtime end with it; their persisted state stays in the data directory.
 
 ### Error Handling
 
 | Condition | Handling |
 | --- | --- |
-| Null `client` | `ArgumentNullException` propagates |
-| Start canceled | `OperationCanceledException` propagates unchanged |
-| Start failed; variable set; error names its location | runtime's error, the variable, its value and remedies |
-| Start failed; variable set; error does not name it | runtime's error and the variable's value, not blamed |
-| Start failed; `COPILOT_CLI_PATH` unset | runtime's error and the missing direct SDK reference |
-| Start failed; a message in the chain is null | treated as not naming the location; original kept |
-
-Every failed start raises an `InvalidOperationException` whose message begins with the runtime's error and carries
-what the table names; the variable is `COPILOT_CLI_PATH`. The original exception is the `InnerException`, so nothing
-the runtime reported is lost. The class handles nothing locally: every failure propagates, explained or
-unchanged.
+| Null options | `ArgumentNullException` |
+| Null, empty or whitespace data directory | `ArgumentNullException` or `ArgumentException` from the options |
+| Data directory path names a file | `InvalidOperationException` naming the path |
+| Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
+| Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |
+| Runtime fails to start | client disposed; `InvalidOperationException` with the runtime's error as cause |
+| Start canceled | client disposed; `OperationCanceledException` propagates unchanged |
+| Runtime used after disposal | `ObjectDisposedException` from `Client` |
+| Null or blank session identifier to delete | `ArgumentNullException` or `ArgumentException` |
 
 ### Dependencies
 
-- **Microsoft.Copilot.SDK** — supplies `CopilotClient` and its start; see *Microsoft.Copilot.SDK
-  Design*.
+- **Microsoft.Copilot.SDK** — supplies `CopilotClient`, its options, the spawned stdio connection and
+  the provisioned runtime; see *Microsoft.Copilot.SDK Design*.
 
 ### Callers
 
-A host application calls `CopilotClientStarter.StartAsync` once, after constructing its client and
-before handing it to `CopilotAgentFactory`, `CopilotProviderSessionFactory` or `CopilotSummarizer`.
-Within this system, the production turn channel calls it before every session it opens or resumes,
-because the client's RPC surface, which the channel uses to discover MCP servers, exists only once
-the client has started. On a started client the start returns at once; on one the host has not
-started, it starts the client exactly as a host would, so a runtime that cannot load is explained
-rather than surfacing as a bare runtime error. The client is still the host's to start, to own and
-to dispose; see *CopilotTurnChannel Unit Design*.
+A host application calls `CopilotRuntime.StartAsync` once and disposes the runtime when finished,
+handing it to `CopilotAgentFactory.Create`, `CopilotProviderSessionFactory` and `CopilotSummarizer`,
+which read its client for their channel openers and never dispose it. A host deletes a finished
+conversation with `DeleteSessionAsync`, passing `CopilotAgentSession.SessionId`. The production turn channel
+calls `StartClientAsync` before every session it opens or resumes; see *CopilotTurnChannel Unit
+Design*.

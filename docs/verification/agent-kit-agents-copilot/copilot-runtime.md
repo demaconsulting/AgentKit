@@ -1,37 +1,37 @@
-## CopilotClientStarter Unit Verification Design
+## CopilotRuntime Unit Verification Design
 
-This document describes the unit-level verification strategy for the `CopilotClientStarter` class.
+This document describes the unit-level verification strategy for the `CopilotRuntime` class and its
+options type, `CopilotRuntimeOptions`.
 
 ### Verification Approach
 
-`CopilotClientStarter` is verified through unit tests that call an internal overload of its start
-method, which takes the client's start as a delegate and reads the environment through an injected
-reader. The public `StartAsync(CopilotClient, CancellationToken)` is a thin forwarder to that
-overload, passing the client's own start and the process environment.
+`CopilotRuntime` is verified through unit tests of its pure, internal seams, so no test starts a
+Copilot runtime:
 
-**Both dependencies are injected, and for the same reason.** Starting a real `CopilotClient` would
-load the native Copilot runtime, which a unit test must not depend on, and the condition under test
-is precisely a runtime that *cannot* load. Reading `COPILOT_CLI_PATH` from the real process
-environment would make the tests depend on the shell they run in, and every Copilot CLI shell sets
-that variable; changing it would race any other test in the process. So the start is scripted to
-succeed, fail with a chosen exception, or be canceled, and the environment reader answers with a
-chosen value or none. Nothing about the starter's own logic is stubbed: the classification of the
-failure, the message it composes and the cause it keeps are the production code.
+- **`BuildClientOptions` and `BuildRuntimeEnvironment`** take the host environment as a parameter, so
+  a test passes a hostile environment of its own and inspects the client options and the replacement
+  environment AgentKit would hand the SDK. The process environment is never read or changed.
+- **`PrepareDataDirectory`** runs against real directories created under the system temporary folder
+  and deleted afterwards, because the behavior under test is what the directory holds.
+- **`StartClientAsync` and `StartOwnedAsync`** take the start, and the creation and disposal, as
+  delegates, because the SDK's client cannot be made to fail on demand without a broken runtime.
+- **Disposal and deletion** are exercised on a runtime constructed over a `CopilotClient` that was never started
+  through the internal constructor. Constructing a client spawns nothing, and the SDK accepts the
+  Empty-mode options because they carry a base directory.
 
-Every failure test asserts that the original exception is kept as the inner exception and that its
-message is carried in the explanation, because the explanation is a judgment about the cause and the
-original failure is the fact.
+Nothing about the runtime's own logic is stubbed: the classification of options, the filtering of
+variables, the data-directory rules, the explanation and the disposal ordering are production code.
 
-**What is out of automated scope, stated honestly.** That a real in-process runtime fails to load when
-`COPILOT_CLI_PATH` names a Copilot CLI install, and that the starter's explanation then reaches the host, is a property
-of the runtime rather than of this class. It is shown by the opt-in live Copilot suite's
-`AgentKitAgentsCopilotLive_ClientStarter_AmbientCopilotCliPath_IsExplained`, which starts a second client with a bogus
-value set and asserts the explanation carries the runtime's error, which names the variable's folder, and names the
-variable, its value and the remedies. That suite is supplementary evidence outside the trace matrix, described in
+**What is out of automated scope, stated honestly.** That the runtime the SDK spawns honors the forced
+options is a property of the runtime rather than of this class. The opt-in live Copilot suite starts
+every scenario on a `CopilotRuntime` and shows the effect: L11 starts a runtime with a bogus
+`COPILOT_CLI_PATH` and an approve-all switch in the process environment, while an in-process client
+under the same environment fails to start, and L14 and L15 show which MCP sources and ambient channels
+reach a session on it. That suite is supplementary evidence outside the trace matrix, described in
 *AgentKitAgentsCopilot System Verification Design*.
 
-Unit tests reside in `CopilotClientStarterTests.cs` within the
-`DemaConsulting.AgentKit.Agents.Copilot.Tests` project.
+Unit tests reside in `CopilotRuntimeTests.cs` within the `DemaConsulting.AgentKit.Agents.Copilot.Tests`
+project.
 
 ### Test Environment
 
@@ -39,106 +39,139 @@ Unit tests reside in `CopilotClientStarterTests.cs` within the
 - **Execution**: `dotnet test` invoked by `build.ps1` and the CI pipeline
 - **External services**: None. No Copilot runtime is started, **no credential is used**, and no
   network access is made
-- **Mocking**: A delegate standing in for the client's start and a delegate standing in for the
-  environment; no mocking framework
-- **File system**: None
+- **Mocking**: Delegates standing in for the client's start, creation and disposal, and a hashtable
+  standing in for the host environment; no mocking framework
+- **File system**: Directories under the system temporary folder, one per test, deleted afterwards
 - **Isolation**: No test reads or changes the process environment; no state is shared
 
 ### Acceptance Criteria
 
 A unit test run passes when every scenario below passes without error or exception beyond those
-explicitly asserted. Any successful start that throws or consults the environment, any failed start
-whose explanation omits the runtime's error, any failed start whose explanation omits the variable,
-its value or the remedies when the error names the variable's location, any explanation that blames
-the variable for an error that does not name its location, any failed start that does not name the
-direct SDK reference when the variable is unset, any explanation that loses the original failure, any
-cancellation that is wrapped or explained, any diagnosis that throws instead of explaining, or a
-missing client that is accepted constitutes a failure.
+explicitly asserted. Any client options in another mode, on another connection, with a runtime path,
+arguments or a child working directory, or with any client-level capability channel set; any
+`COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
+or any other host variable dropped; a pass-through set other than the documented one; a data directory
+accepted when it names a file or is a non-empty directory without the marker, or marked when refused;
+a failed start whose explanation omits the runtime's error or the direct SDK reference, or loses the
+original failure; a cancellation that is wrapped; a failed or canceled start that leaves the client
+undisposed; a disposal that is not idempotent or leaves the client usable; or invalid options or a
+blank session identifier that are accepted constitutes a failure.
 
 ### Test Scenarios
 
-#### AgentKitAgentsCopilot-CopilotClientStarter-StartsTheClient: A Good Start Passes Through
+#### AgentKitAgentsCopilot-CopilotRuntime-ForcesEmptyMode: Empty Mode Is Forced
 
-**Test**: `CopilotClientStarter_Start_Succeeds_DoesNotThrow`
+**Test**: `CopilotRuntime_BuildClientOptions_ForcesEmptyMode`
 
-Normal operation. The scripted start succeeds; the test asserts the start was invoked, nothing was
-thrown, and the environment was **not** consulted. The last assertion pins that the starter's only
-work on the success path is the start itself, so a host that never has a failure never pays for the
-diagnosis.
+Normal operation. The client options are built from the default runtime options; the test asserts
+the mode is `CopilotClientMode.Empty`.
 
-#### AgentKitAgentsCopilot-CopilotClientStarter-ExplainsARuntimeOverride: The Ambient Override, by Name
+#### AgentKitAgentsCopilot-CopilotRuntime-SpawnsTheBundledRuntime: The Provisioned Runtime, Spawned
 
-**Tests**:
+**Test**: `CopilotRuntime_BuildClientOptions_SpawnsTheBundledRuntimeOverStdio`
 
-- `CopilotClientStarter_Start_FailsWithCliPathSet_ExplainsTheOverrideAndKeepsTheCause`
-- `CopilotClientStarter_NamesLocation_NullMessageInChain_SearchesTheRest`
-- `CopilotClientStarter_NamesLocation_BareRelativeValue_MatchesTheFullPathTheSdkSearched`
-- `CopilotClientStarter_NamesLocation_MatchOnlyInInnerException_ReturnsTrue`
+The test asserts the connection is a spawned stdio connection with no runtime path, no arguments and
+no child working directory, whose base directory is the prepared data directory and whose environment
+is a replacement rather than inherited.
 
-Error path. The start fails, while the environment reader reports `COPILOT_CLI_PATH` set to a Copilot
-CLI path, with the error the SDK raises when the runtime library is not beside that path — one naming
-the variable's folder. The paths are built from the temporary directory, so the scenario holds on
-every operating system. The test asserts the result is an `InvalidOperationException` whose message
-carries the runtime's error, names the variable and its value, gives the fix — unset it — and offers
-`RuntimeConnection.ForSpawnedStdio` as the alternative, and whose inner exception is the original
-failure, by reference. The variable is named because it is the cause a host is least likely to
-suspect: it is set by the shell the host was started from, not by anything the host wrote.
-
-The other three tests exercise the location check directly and assert that it reports the location
-whenever the error names the full path the SDK searched. They cover a bare relative value, matched
-through the full path the SDK resolves it to and prints; an error found only in an inner exception;
-and an inner error wrapped by an exception whose message is null, which is skipped while the rest of
-the chain is still searched.
-
-#### AgentKitAgentsCopilot-CopilotClientStarter-DoesNotBlameAnUnrelatedOverride: Another Cause, Not Misattributed
+#### AgentKitAgentsCopilot-CopilotRuntime-WithholdsCopilotEnvironment: The Host's Copilot Variables Stay Out
 
 **Tests**:
 
-- `CopilotClientStarter_Start_FailsWithCliPathSetForAnotherCause_ReportsTheCauseWithoutBlamingTheVariable`
-- `CopilotClientStarter_Start_FailsWithNullMessage_ReportsWithoutThrowing`
-- `CopilotClientStarter_NamesLocation_BareRelativeValue_DoesNotMatchTheBareValue`
-- `CopilotClientStarter_NamesLocation_SiblingDirectory_DoesNotMatch`
-- `CopilotClientStarter_NamesLocation_RootDirectory_IsNotMatched`
+- `CopilotRuntime_BuildRuntimeEnvironment_RemovesCopilotConfigurationVariables`
+- `CopilotRuntime_BuildRuntimeEnvironment_MixedCaseOnWindows_IsRemoved` (Windows only)
+- `CopilotRuntime_BuildRuntimeEnvironment_KeepsHostVariablesAndThePassThroughSet`
+- `CopilotRuntime_PassThroughVariables_AreTheDocumentedSet`
+- `CopilotRuntime_BuildClientOptions_CarriesTheWithheldEnvironment`
 
-Error path and the boundary of the previous scenario. The variable is set, but the start fails with
-an error that does not name its location — an authentication failure. The test asserts the message
-carries the runtime's error, reports the variable and its value, and states that the variable *is not
-shown to be the cause*. It gives none of the previous scenario's remedies: the message contains no
-"To fix it". It mentions unsetting the variable only conditionally, for the case where the error is
-that the in-process runtime library could not be loaded. Every Copilot CLI shell sets the variable, so
-most failures from such shells have other causes; a fix aimed at the variable would send the host
-after the wrong one. The original failure is kept as the cause, by reference.
+A host environment carrying a runtime path override, an approve-all switch, an instructions directory
+and an injected MCP configuration is filtered; the tests assert none of them reaches the runtime, that
+a mixed-case name is withheld on Windows, whose names are case-insensitive, that `PATH`, `GH_TOKEN`,
+`GITHUB_TOKEN`, `HTTPS_PROXY` and every pass-through variable are kept with their values, that the
+pass-through set is exactly the seven documented names, and that the client options carry the
+filtered environment rather than the host's.
 
-The other tests pin the cases that must not blame the variable. A failure whose message is null is
-still reported, with the original kept as the cause, rather than the diagnosis throwing and masking it.
-The location check does not match a bare relative value such as `copilot` against unrelated text that
-contains the same word. It does not match a sibling directory whose name merely begins with the
-variable's directory name. And it does not match a variable whose directory is a filesystem root,
-which would match almost any path.
+#### AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory: A Directory AgentKit Owns
 
-#### AgentKitAgentsCopilot-CopilotClientStarter-ExplainsAMissingRuntime: The Missing Direct Reference
+**Tests**:
 
-**Test**: `CopilotClientStarter_Start_FailsWithoutCliPath_ExplainsTheMissingRuntime`
+- `CopilotRuntime_PrepareDataDirectory_Missing_IsCreatedAndMarked`
+- `CopilotRuntime_PrepareDataDirectory_Empty_IsMarked`
+- `CopilotRuntime_PrepareDataDirectory_Marked_IsAcceptedWithRuntimeContent`
+- `CopilotRuntime_PrepareDataDirectory_UnmarkedNonEmpty_IsRefused`
+- `CopilotRuntime_PrepareDataDirectory_PathIsAFile_IsRefused`
 
-Error path. The start fails while the variable is not set. The test asserts the message carries the
-runtime's error, says the variable is not set and names `Microsoft.Copilot.SDK`, the package a host
-must reference directly
-for the runtime to be provisioned beside it, and that the original failure is kept as the cause.
-This is the boundary of the previous scenario: the same failure, explained by the other common cause
-when the first cannot apply.
+Normal operation and the error paths. A missing nested directory is created and marked, and its full
+path returned; an empty one is marked; a marked one is accepted with the runtime's own content in it,
+which is left in place. A directory holding an `mcp-config.json` it did not get from AgentKit is
+refused with an `InvalidOperationException` naming it and is left unmarked, and a path naming a file
+is refused naming the path.
 
-#### AgentKitAgentsCopilot-CopilotClientStarter-PassesCancellationThrough: Cancellation Is Not a Fault
+#### AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions: Nothing That Widens the Session
 
-**Test**: `CopilotClientStarter_Start_Canceled_PropagatesUnchanged`
+**Tests**:
 
-The scripted start is canceled while the environment reader would report a value. The test asserts
-the very same `OperationCanceledException` instance reaches the caller. A cancellation the host asked
-for is not a runtime that failed to load, and explaining it as one would send the host looking for a
-fault that does not exist.
+- `CopilotRuntime_BuildClientOptions_LeavesEveryCapabilityChannelUnset`
+- `CopilotRuntime_BuildClientOptions_CarriesTokenLogLevelAndLogger`
+- `CopilotRuntimeOptions_Constructor_BlankToken_IsNull`
+- `CopilotRuntimeOptions_Constructor_RelativeDataDirectory_IsResolvedToAFullPath`
 
-#### AgentKitAgentsCopilot-CopilotClientStarter-RejectsNullClient: A Missing Client Is Refused
+With every option a host can set supplied, the tests assert no plugin directory, session filesystem,
+test options, extension launch provider, installation handler, model request handler, model listing
+handler, telemetry, network callbacks, Entra registration or telemetry forwarder is set; that the
+token, log level and logger reach the client options; that a blank token is treated as none; and that
+a relative data directory is resolved to a full path when the options are built.
 
-**Test**: `CopilotClientStarter_Start_NullClient_Throws`
+#### AgentKitAgentsCopilot-CopilotRuntime-ExplainsAMissingRuntime: The Missing Direct Reference
 
-Error path through the public entry point: a null client is refused with `ArgumentNullException`
-before anything is started.
+**Tests**:
+
+- `CopilotRuntime_StartClient_FailedStart_ExplainsTheMissingRuntimeAndKeepsTheCause`
+- `CopilotRuntime_StartClient_Succeeds_DoesNotThrow`
+
+Error path and normal operation. A start failing with the SDK's runtime-not-found error is rethrown as
+an `InvalidOperationException` whose message carries the runtime's error and the remedy — a
+`PackageReference` to `Microsoft.Copilot.SDK` — and whose inner exception is the original, by
+reference; a failure whose message is null is explained the same way rather than masked. A start that
+succeeds passes through.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-PassesCancellationThrough: Cancellation Is Not a Fault
+
+**Test**: `CopilotRuntime_StartClient_Canceled_PropagatesUnchanged`
+
+The very same `OperationCanceledException` instance reaches the caller.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-LeavesNoRuntimeBehind: Disposed on Failure, Once on Request
+
+**Tests**:
+
+- `CopilotRuntime_StartOwned_FailedStart_DisposesTheClient`
+- `CopilotRuntime_StartOwned_Canceled_DisposesTheClient`
+- `CopilotRuntime_StartOwned_Succeeds_ReturnsTheClientUndisposed`
+- `CopilotRuntime_DisposeAsync_IsIdempotentAndClientIsThenUnavailable`
+
+A start that fails or is canceled disposes the created client and rethrows; a start that succeeds
+returns the client undisposed. A runtime disposed twice disposes once, its client is then unavailable
+with `ObjectDisposedException`, and its data directory remains readable.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-DeletesAKeptConversation: Deletion Without the Client
+
+**Tests**:
+
+- `CopilotRuntime_DeleteSessionAsync_BlankSessionId_Throws`
+- `CopilotRuntime_DeleteSessionAsync_AfterDisposal_Throws`
+
+A null or blank session identifier is refused before the runtime is reached, and deletion through a
+disposed runtime fails with `ObjectDisposedException`. That the runtime deletes a real session is a
+property of the SDK call the method forwards to; the opt-in live suite's agent scenarios delete their
+conversations through this method.
+
+#### AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions: Missing Options Are Refused
+
+**Tests**:
+
+- `CopilotRuntime_StartAsync_NullOptions_Throws`
+- `CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws`
+
+Null options are refused with `ArgumentNullException` before anything is created; a null data
+directory with `ArgumentNullException` and a whitespace one with `ArgumentException`.

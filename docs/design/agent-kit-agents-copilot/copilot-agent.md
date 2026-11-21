@@ -22,14 +22,14 @@ what happens around a turn:
   runtime session and records its identifier; every later run resumes that session with freshly
   built, identically confined options. After every run — successful, failed or canceled — the
   runtime session handle is released. A conversation's session is **kept**, not deleted, so it stays
-  resumable under the client's data directory. A run made without a conversation deletes its
-  session, because nothing could resume it. No handle outlives a run. The client is never disposed.
+  resumable under the runtime's data directory. A run made without a conversation deletes its
+  session, because nothing could resume it. No handle outlives a run. The runtime is never disposed.
 - **Stream the run.** The runtime's events for the root agent become `AgentResponseUpdate` items as
   they arrive.
 - **Carry the input.** The text of the input messages becomes one prompt, and inline data becomes
   in-memory attachments.
 - **Serialize the conversation**, so it can outlive the process and be resumed by another agent
-  instance over the same client data directory.
+  instance over the same runtime data directory.
 
 **Thread safety.** The agent holds no mutable state and may be shared. Runs on one
 `CopilotAgentSession` are serialized, so two concurrent first runs cannot fork a conversation into two
@@ -132,7 +132,7 @@ resumes the recorded runtime session.
 identifier writes the serialized form around it and deserializes it; there is no typed
 resume-by-identifier method (see *Intentional Gaps*).
 
-**Preconditions:** The serialized form was produced over the same client data directory, so the
+**Preconditions:** The serialized form was produced over the same runtime data directory, so the
 runtime still holds the session it names.
 
 **Postconditions:** Serializing returns the object above; deserializing returns a session that
@@ -200,7 +200,7 @@ handler as `Events.OnEvent`, and resume the session through the resumer. Otherwi
 options, set the handler the same way, create the session through the opener, and record the new
 channel's `SessionId` on the conversation at once. When `ephemeral`, the session is created through
 the ephemeral opener instead, whose sessions are deleted when released: nothing could
-ever resume that session, so keeping it would only accumulate persisted state under the client's data
+ever resume that session, so keeping it would only accumulate persisted state under the runtime's data
 directory. A null channel from either delegate is refused.
 
 The handler is set on the options before the session is opened because the SDK registers it before
@@ -394,5 +394,5 @@ run's resume fails and propagates, as in the table above; the host starts a new 
 `CopilotAgentFactory.CreateAgent` constructs the agent, and `CopilotAgentFactory.Create` returns it
 to the application as an `AIAgent`. The application then drives it through the Agent Framework's own
 surface — creating, running, serializing and deserializing sessions — and deletes a finished
-conversation's persisted state by passing `CopilotAgentSession.SessionId` to the client's
-`DeleteSessionAsync`.
+conversation's persisted state by passing `CopilotAgentSession.SessionId` to
+`CopilotRuntime.DeleteSessionAsync`.
