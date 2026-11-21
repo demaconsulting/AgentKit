@@ -1232,7 +1232,9 @@ writes each conversation's retention to the session's state bag after every run,
 its earlier references. Set `PersistRetainedOutputs = false` to persist only the reference counter: a
 reference made before a reload is then answered "no longer retained", never re-issued. Task lists and
 in-memory memory stores are not persisted; a reloaded conversation starts them empty. A session
-serialized while a run is in flight carries the state of the previous run. Give each provider its own
+serialized while a run is in flight carries the state of the previous run. One provider serves any
+number of conversations at once, but runs of one session must not overlap, as the Agent Framework
+requires; if they do, the provider still persists the newest retention state. Give each provider its own
 `StateKey` when an agent has two.
 
 **Only `ChatClientAgent` uses contributed tools.** Any other agent would accept the provider and never

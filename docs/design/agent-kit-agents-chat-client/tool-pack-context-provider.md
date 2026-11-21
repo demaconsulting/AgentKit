@@ -98,7 +98,10 @@ not deserialize as a snapshot throws the state bag's `JsonException`; neither is
 After every run, successful or failed — overriding the base, which skips failed runs, because a run
 that failed after a tool retained output has still issued references — exports the session's
 retention and writes it to the state bag under the state key. With `PersistRetainedOutputs` false, the
-snapshot written carries the counter and no outputs.
+snapshot written carries the counter and no outputs. The export and the write are made together under a
+lock on the session's composition, so whichever run writes last writes the newest export and the
+persisted counter never regresses; `AgentSessionStateBag.SetValue` is synchronous, so nothing is awaited
+under the lock.
 
 #### StateKeys
 
@@ -132,8 +135,10 @@ opts out of the text while keeping references honest.
 **Timing.** State is written after a run, so a session serialized while a run is in flight carries the
 state of the previous run.
 
-The provider is safe for concurrent use: the weak table is thread-safe, each retention is thread-safe,
-and every other member is immutable.
+The provider is safe for concurrent use across sessions: the weak table is thread-safe, each retention
+is thread-safe, and every other member is immutable. Runs of one session must not overlap, as the Agent
+Framework requires; should they, the per-session lock in `InvokedCoreAsync` still makes the newest
+export the one persisted.
 
 ### Dependencies
 

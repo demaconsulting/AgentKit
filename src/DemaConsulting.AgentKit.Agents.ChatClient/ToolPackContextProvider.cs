@@ -99,8 +99,11 @@ public sealed class ToolPackContextProviderOptions
 ///     </para>
 ///     <para>
 ///     A run with no session composes a throwaway tool set and persists nothing. The provider is safe
-///     for concurrent use: per-session state is held in a <see cref="ConditionalWeakTable{TKey,TValue}"/>
-///     and each retention is itself thread-safe.
+///     for concurrent use across sessions: per-session state is held in a
+///     <see cref="ConditionalWeakTable{TKey,TValue}"/> and each retention is itself thread-safe. Runs
+///     of one session must not overlap, as the Agent Framework requires of a session; should they,
+///     each run's snapshot is exported and written under a per-session lock, so the newest is the one
+///     persisted.
 ///     </para>
 /// </remarks>
 /// <example>
@@ -318,7 +321,9 @@ public sealed class ToolPackContextProvider : AIContextProvider
     /// </summary>
     /// <remarks>
     ///     Overridden rather than relying on the base behavior, which skips a failed run: a run that
-    ///     failed after a tool retained output has still issued references the history may hold.
+    ///     failed after a tool retained output has still issued references the history may hold. The
+    ///     export and the write are made under a per-session lock, so the snapshot persisted is always
+    ///     the newest.
     /// </remarks>
     /// <param name="context">The run's outcome. Must not be null.</param>
     /// <param name="cancellationToken">A token that cancels the call.</param>
@@ -331,14 +336,21 @@ public sealed class ToolPackContextProvider : AIContextProvider
             && _sessions.TryGetValue(session, out var composed)
             && composed.Retention is { } retention)
         {
-            var snapshot = retention.Export();
-            if (!_options.PersistRetainedOutputs)
+            // Export and write under the conversation's own lock, so if runs of one session overlap -
+            // which the Agent Framework does not support - the snapshot written last is the newest and
+            // the persisted counter never moves backwards. SetValue is synchronous, so nothing awaits
+            // under it.
+            lock (composed)
             {
-                // The counter alone keeps a reference made before a reload from being re-issued.
-                snapshot = new ToolOutputRetentionSnapshot(snapshot.LastIssued, []);
-            }
+                var snapshot = retention.Export();
+                if (!_options.PersistRetainedOutputs)
+                {
+                    // The counter alone keeps a reference made before a reload from being re-issued.
+                    snapshot = new ToolOutputRetentionSnapshot(snapshot.LastIssued, []);
+                }
 
-            session.StateBag.SetValue(_options.StateKey, snapshot, ToolOutputRetentionSnapshot.JsonTypeInfo.Options);
+                session.StateBag.SetValue(_options.StateKey, snapshot, ToolOutputRetentionSnapshot.JsonTypeInfo.Options);
+            }
         }
 
         return default;
