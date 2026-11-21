@@ -1083,7 +1083,10 @@ public sealed class PathPolicy
     ///     example <c>a/../../outside/x</c> is stated as <c>../outside/x</c>. Expressing it relative
     ///     to the working directory keeps that value without disclosing where the working directory
     ///     is. The input is caller-controlled, so a value the platform cannot relativize falls back
-    ///     to the request as supplied, keeping the non-throwing contract.
+    ///     to the request as supplied, keeping the non-throwing contract. This is reached only for a
+    ///     non-rooted request combined with the working directory, so the interpretation always
+    ///     shares the working directory's root and the relative path returned is never rooted; no
+    ///     guard against a rooted result is needed.
     /// </remarks>
     /// <param name="interpretedAbsolute">The normalized absolute interpretation.</param>
     /// <param name="requested">The relative request exactly as supplied.</param>
