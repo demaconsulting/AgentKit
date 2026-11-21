@@ -29,6 +29,7 @@ context, so a long-running agent behaves the same way on every provider.
 - 🧩 **Custom Tools**: Build your own tools through the same guarded factory and publish them as packs
 - 🔌 **Provider-Neutral**: Plain `AIFunction` tools for Microsoft Agent Framework, Copilot, and any `IChatClient`
 - 🧠 **Self-Compacting Sessions**: Tiered context compaction keeps a long conversation alive on any provider
+- 🗄️ **Large Output Retention**: Opt-in, any provider; held in memory for `tool_output_read` and `tool_output_search`
 - 📏 **Honest Context Windows**: Sessions account against the window a provider really runs, Ollama included
 - 🖼️ **Images That Arrive**: Tool-returned images reach the model even on providers that would drop them
 - 🧪 **Testable Offline**: An in-memory provider session exercises the whole session lifecycle without a model
@@ -117,10 +118,10 @@ Three runnable [samples][link-samples] show AgentKit end to end:
 
 ## Documentation
 
-Each release publishes build notes, the User Guide, a code quality report, requirements,
-justifications, and a trace matrix. Each NuGet package also ships its API reference in its `api/`
-folder: an index, then a page per namespace, type, and member, with every example compiled against
-the real API by the build.
+Each release publishes build notes, the User Guide, requirements, a trace matrix, the software and verification design
+documents, the code review plan and report, and a code quality report. Each NuGet package also ships its API reference
+in its `api/` folder: an index, then a page per namespace, type, and member, with every example compiled against the
+real API by the build.
 
 ## Contributing
 
