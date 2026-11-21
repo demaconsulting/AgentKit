@@ -39,12 +39,12 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     exactly as a conversation session is.
 ///     </para>
 ///     <para>
-///     <b>Ownership.</b> The <see cref="CopilotClient"/> is the host's and is disposed by the host;
-///     every session this summarizer creates is its own and is released by it.
+///     <b>Ownership.</b> The <see cref="CopilotRuntime"/> is the host's and is disposed by the
+///     host; every session this summarizer creates is its own and is released by it.
 ///     </para>
 ///     <para>
 ///     Safe for concurrent use: each call creates a session of its own and shares nothing but the
-///     client reference and the model name.
+///     runtime's client and the model name.
 ///     </para>
 /// </remarks>
 public sealed class CopilotSummarizer : ISummarizer
@@ -63,9 +63,10 @@ public sealed class CopilotSummarizer : ISummarizer
     /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotSummarizer"/> class.
     /// </summary>
-    /// <param name="client">
-    ///     The Copilot client each consolidation runs on. Must not be <see langword="null"/>, and
-    ///     must already be started. The host owns it: this summarizer disposes it never.
+    /// <param name="runtime">
+    ///     The Copilot runtime each consolidation runs on, from <see cref="CopilotRuntime.StartAsync"/>.
+    ///     Must not be <see langword="null"/> or disposed. Whoever started it disposes it: this
+    ///     summarizer disposes it never, and a consolidation made after it was disposed fails.
     /// </param>
     /// <param name="model">
     ///     The Copilot model to perform each consolidation — for example <c>gpt-5.4-mini</c>. When
@@ -73,12 +74,13 @@ public sealed class CopilotSummarizer : ISummarizer
     ///     smaller and cheaper model is usually the right choice, because consolidation is
     ///     summarization rather than reasoning.
     /// </param>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public CopilotSummarizer(CopilotClient client, string? model = null)
+    /// <exception cref="ArgumentNullException"><paramref name="runtime"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException"><paramref name="runtime"/> has been disposed.</exception>
+    public CopilotSummarizer(CopilotRuntime runtime, string? model = null)
     {
-        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(runtime);
 
-        _opener = CopilotSessionChannel.Open(client);
+        _opener = CopilotSessionChannel.Open(runtime.Client);
         _model = model;
     }
 

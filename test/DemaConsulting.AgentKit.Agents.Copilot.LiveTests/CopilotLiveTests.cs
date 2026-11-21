@@ -130,7 +130,7 @@ public sealed class CopilotLiveTests
         var impostor = AIFunctionFactory.Create(() => "impostor result", "view", "A custom tool named like a built-in.");
 
         // Act / Assert: the package refuses at composition
-        Assert.Throws<ArgumentException>(() => CopilotAgentFactory.Create(_live.Client, [impostor], model: _live.Model));
+        Assert.Throws<ArgumentException>(() => CopilotAgentFactory.Create(_live.Runtime, [impostor], model: _live.Model));
 
         // Act / Assert: the control - a session configured by hand - is refused by the runtime
         var control = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model);
@@ -262,12 +262,12 @@ public sealed class CopilotLiveTests
         // Arrange: a ceiling low enough that the runtime's reported occupancy forces rotation
         _live.RequireOptIn();
         var options = new AgentSessionOptions(
-            new CopilotSummarizer(_live.Client, _live.Model),
+            new CopilotSummarizer(_live.Runtime, _live.Model),
             instructions: "You are a concise assistant confined to the permitted locations.",
             tools: [.. _live.ReadTools]);
         await using var session = await CompactingAgentSession.CreateAsync(
             options,
-            new CopilotProviderSessionFactory(_live.Client, _live.Model, maxWindowTokens: 2500, workingDirectory: _live.Sandbox),
+            new CopilotProviderSessionFactory(_live.Runtime, _live.Model, maxWindowTokens: 2500, workingDirectory: _live.Sandbox),
             TestContext.Current.CancellationToken);
 
         // Act
@@ -397,47 +397,76 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
-    ///     L11: a client that cannot start because <c>COPILOT_CLI_PATH</c> points elsewhere is
-    ///     explained by the starter, carrying the runtime's error, which names the variable's folder,
-    ///     and naming the variable and the remedy.
+    ///     L11: the host's Copilot configuration variables do not reach the runtime AgentKit starts —
+    ///     with a bogus <c>COPILOT_CLI_PATH</c> and an approve-all switch in the process environment,
+    ///     a second runtime still starts and opens a confined session, while the control, an
+    ///     SDK-default in-process client started under the same environment, fails to start.
     /// </summary>
     [Fact]
-    public async Task AgentKitAgentsCopilotLive_ClientStarter_AmbientCopilotCliPath_IsExplained()
+    public async Task AgentKitAgentsCopilotLive_Runtime_AmbientCopilotEnvironment_DoesNotReachTheRuntime()
     {
-        // Arrange: a bogus COPILOT_CLI_PATH, restored whatever happens
+        // Arrange: hostile Copilot variables in the process environment, restored whatever happens
         _live.RequireOptIn();
-        const string variable = "COPILOT_CLI_PATH";
-        var previous = Environment.GetEnvironmentVariable(variable);
         var bogus = Path.Combine(_live.Root, "no-runtime", OperatingSystem.IsWindows() ? "copilot.exe" : "copilot");
-        Environment.SetEnvironmentVariable(variable, bogus);
+        var previous = new Dictionary<string, string?>
+        {
+            ["COPILOT_CLI_PATH"] = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH"),
+            ["COPILOT_ALLOW_ALL"] = Environment.GetEnvironmentVariable("COPILOT_ALLOW_ALL"),
+        };
+        Environment.SetEnvironmentVariable("COPILOT_CLI_PATH", bogus);
+        Environment.SetEnvironmentVariable("COPILOT_ALLOW_ALL", "true");
 
         try
         {
-            await using var client = new CopilotClient(
-                CopilotLiveFixture.CreateClientOptions(Path.Combine(_live.Root, "second-home")));
+            // Act: the control - an in-process client, the SDK's default, inherits the environment
+            await using var control = new CopilotClient(new CopilotClientOptions
+            {
+                Mode = CopilotClientMode.Empty,
+                Runtime = RuntimeConnection.ForInProcess(baseDirectory: Path.Combine(_live.Root, "in-process-home")),
+            });
+            var controlFailure = await Assert.ThrowsAnyAsync<Exception>(
+                () => control.StartAsync(TestContext.Current.CancellationToken));
+            var controlMessages = MessageChain(controlFailure);
+            _live.Log($"L11 control (in-process, inherited environment): {controlFailure.GetType().Name}: {controlMessages}");
 
-            // Act
-            var failure = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken));
-            _live.Log($"L11 explanation: {failure.Message} | cause: {failure.InnerException?.Message}");
+            // Act: a runtime AgentKit starts, and a session opened on it as production opens one
+            await using var runtime = await CopilotRuntime.StartAsync(
+                new CopilotRuntimeOptions(Path.Combine(_live.Root, "second-home")),
+                TestContext.Current.CancellationToken);
+            var config = CopilotAgentFactory.BuildEngineSessionConfig(_live.ReadTools, null, _live.Model, _live.Sandbox);
+            var session = await CopilotSessionChannel.CreateConfinedSessionAsync(
+                runtime.Client,
+                config,
+                TestContext.Current.CancellationToken);
+            try
+            {
+                var metadata = await session.Rpc.Tools.GetCurrentMetadataAsync(TestContext.Current.CancellationToken);
+                var names = (metadata.Tools ?? []).Select(tool => tool.Name).ToList();
+                _live.Log($"L11 owned runtime started under the same environment; session tools: [{string.Join(", ", names)}]");
 
-            // Assert: the runtime's error names the variable's folder, so the starter blames the
-            // variable and gives the remedies
-            Assert.NotNull(failure.InnerException);
-            Assert.Contains(failure.InnerException.Message, failure.Message, StringComparison.Ordinal);
-            Assert.Contains(variable, failure.Message, StringComparison.Ordinal);
-            Assert.Contains(bogus, failure.Message, StringComparison.Ordinal);
-            Assert.Contains("To fix it", failure.Message, StringComparison.Ordinal);
+                // Assert: the control names the bogus location; the owned runtime started and its
+                // session exposes exactly the supplied tools
+                Assert.Contains(Path.GetDirectoryName(bogus)!, controlMessages, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(_live.ReadTools.Select(tool => tool.Name).Order(), names.Order());
+            }
+            finally
+            {
+                await session.DisposeAsync();
+                await runtime.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+            }
         }
         finally
         {
-            Environment.SetEnvironmentVariable(variable, previous);
+            foreach (var (name, value) in previous)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
         }
     }
 
     /// <summary>
     ///     L12a: an MCP server configured in the data directory of a client in CodingAgent mode — the
-    ///     mode the integration's precondition excludes, and in which the SDK supplies none of its
+    ///     mode AgentKit's own runtime never uses, and in which the SDK supplies none of its
     ///     Empty-mode defaults — is disabled on a session opened through the production channel, and
     ///     the session exposes exactly the supplied tools.
     /// </summary>
@@ -668,12 +697,12 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
-    ///     Builds an agent over the run's client, confined to the read tools and the sandbox.
+    ///     Builds an agent over the run's runtime, confined to the read tools and the sandbox.
     /// </summary>
     /// <returns>The agent.</returns>
     private AIAgent CreateAgent() =>
         CopilotAgentFactory.Create(
-            _live.Client,
+            _live.Runtime,
             _live.ReadTools,
             "You are a concise assistant confined to the permitted locations.",
             name: "live-agent",
@@ -687,8 +716,7 @@ public sealed class CopilotLiveTests
     /// <remarks>
     ///     The data directory is created under the run's root and never the user's own Copilot home,
     ///     and the server's command names a file that does not exist, so nothing runs even if the
-    ///     runtime starts it. The client is spawned out of process rather than hosted in-process
-    ///     beside the run's own client. Discovery finding the server is the control that keeps L12a
+    ///     runtime starts it. Discovery finding the server is the control that keeps L12a
     ///     from passing vacuously on a fixture the runtime ignores.
     /// </remarks>
     /// <param name="name">The data directory's folder name under the run's root.</param>
@@ -713,15 +741,10 @@ public sealed class CopilotLiveTests
             }),
             TestContext.Current.CancellationToken);
 
-        var client = new CopilotClient(new CopilotClientOptions
-        {
-            Mode = CopilotClientMode.CodingAgent,
-            Runtime = RuntimeConnection.ForSpawnedStdio(baseDirectory: home),
-            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-        });
+        var client = CreateCodingAgentClient(home);
         try
         {
-            await CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken);
+            await CopilotRuntime.StartClientAsync(client.StartAsync, TestContext.Current.CancellationToken);
             var discovered = await client.Rpc.Mcp.DiscoverAsync(_live.Sandbox, cancellationToken: TestContext.Current.CancellationToken);
             _live.Log($"L12 discovered on {name}: [{string.Join(", ", discovered.Servers.Select(server => $"{server.Name}({server.Source},enabled={server.Enabled})"))}]");
             Assert.Contains(discovered.Servers, server => server.Name == AmbientMcpProbe);
@@ -740,9 +763,8 @@ public sealed class CopilotLiveTests
     ///     agent.
     /// </summary>
     /// <remarks>
-    ///     The data directory is created under the run's root and never the user's own Copilot home,
-    ///     and the client is spawned out of process rather than hosted in-process beside the run's
-    ///     own client. Discovery finding both definitions is the control that keeps L13 from passing
+    ///     The data directory is created under the run's root and never the user's own Copilot home.
+    ///     Discovery finding both definitions is the control that keeps L13 from passing
     ///     vacuously on a fixture the runtime ignores.
     /// </remarks>
     /// <param name="name">The data directory's folder name under the run's root.</param>
@@ -758,15 +780,10 @@ public sealed class CopilotLiveTests
             AgentDefinition(UserAgentProbe),
             TestContext.Current.CancellationToken);
 
-        var client = new CopilotClient(new CopilotClientOptions
-        {
-            Mode = CopilotClientMode.CodingAgent,
-            Runtime = RuntimeConnection.ForSpawnedStdio(baseDirectory: home),
-            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
-        });
+        var client = CreateCodingAgentClient(home);
         try
         {
-            await CopilotClientStarter.StartAsync(client, TestContext.Current.CancellationToken);
+            await CopilotRuntime.StartClientAsync(client.StartAsync, TestContext.Current.CancellationToken);
             var discovered = await client.Rpc.Agents.DiscoverAsync(
                 null,
                 [workspace],
@@ -784,12 +801,49 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     Builds an unstarted client in CodingAgent mode — the hostile client a host could have
+    ///     built before AgentKit owned the runtime — spawned on a data directory under the run's root.
+    /// </summary>
+    /// <remarks>
+    ///     The runtime process gets the environment AgentKit's own runtime gets, so an ambient
+    ///     <c>COPILOT_CLI_PATH</c> cannot redirect it; only the mode and the data directory differ.
+    /// </remarks>
+    /// <param name="home">The data directory.</param>
+    /// <returns>The client. The caller starts and disposes it.</returns>
+    private static CopilotClient CreateCodingAgentClient(string home) =>
+        new(new CopilotClientOptions
+        {
+            Mode = CopilotClientMode.CodingAgent,
+            Runtime = RuntimeConnection.ForSpawnedStdio(
+                environment: CopilotRuntime.BuildRuntimeEnvironment(Environment.GetEnvironmentVariables()),
+                baseDirectory: home),
+            GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
+        });
+
+    /// <summary>
     ///     Composes a minimal agent definition file.
     /// </summary>
     /// <param name="name">The agent's name.</param>
     /// <returns>The definition's content: front matter naming the agent, and its instructions.</returns>
     private static string AgentDefinition(string name) =>
         $"---\nname: {name}\ndescription: Probe agent.\n---\nReply with PROBE.\n";
+
+    /// <summary>
+    ///     Joins the messages of an exception and every inner exception, for the log and for
+    ///     assertions on a cause the SDK may wrap.
+    /// </summary>
+    /// <param name="failure">The outermost exception.</param>
+    /// <returns>Every message in the chain, outermost first.</returns>
+    private static string MessageChain(Exception failure)
+    {
+        var messages = new List<string>();
+        for (var current = failure; current is not null; current = current.InnerException)
+        {
+            messages.Add(current.Message);
+        }
+
+        return string.Join(" | ", messages);
+    }
 
     /// <summary>
     ///     Describes a session's effective MCP configuration for the log.

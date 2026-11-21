@@ -104,12 +104,14 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
     CancellationToken cancellationToken);
 
 /// <summary>
-///     The production turn channel: one <see cref="CopilotSession"/> on a client the host owns.
+///     The production turn channel: one <see cref="CopilotSession"/> on the client of a
+///     <see cref="CopilotRuntime"/>.
 /// </summary>
 /// <remarks>
 ///     <para>
 ///     <b>Ownership is split, and the split is the whole point.</b> The <see cref="CopilotClient"/>
-///     is the host's — it constructs, starts and disposes it — and this channel disposes it never.
+///     belongs to the <see cref="CopilotRuntime"/> the host started and disposes, and this channel
+///     disposes it never.
 ///     The <see cref="CopilotSession"/> handle is AgentKit's: created or resumed by one of the
 ///     opener factories below and released by <see cref="DisposeAsync"/> on every path.
 ///     </para>
@@ -133,9 +135,11 @@ internal delegate Task<ICopilotTurnChannel> CopilotChannelResumer(
 ///     in which a server stays enabled is refused — a created one released and deleted, a resumed
 ///     one only detached, so a conversation is never destroyed. A server the SDK cannot enumerate
 ///     before creation, such as a managed catalog's or a signed-in account's, may still start
-///     during session creation: the protocol guarantees that the model cannot reach an ambient
-///     MCP server, not that none runs. These steps need the live client and session, which the
-///     factory's configuration builders deliberately do not have, so they live here.
+///     during session creation; the seal then contains it rather than preventing it. The session's
+///     MCP listing does not report the built-in GitHub server even while it runs, so that server is
+///     kept from starting by name, before creation, rather than by the seal. These steps need the
+///     live client and session, which the factory's configuration builders deliberately do not
+///     have, so they live here.
 ///     </para>
 ///     <para>
 ///     Deliberately a forwarded turn, one guarded release and one opening protocol. It is the one
@@ -187,7 +191,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     For the session engine, the summarizer and an agent's run made without a conversation,
     ///     whose sessions are finished with when released. Produced once per factory rather than per
     ///     session, so the client reference is captured in exactly one place and every session a
-    ///     rotation creates demonstrably runs on the same client the host started.
+    ///     rotation creates demonstrably runs on the same client the runtime started.
     /// </remarks>
     /// <param name="client">The client to create sessions on. Must not be <see langword="null"/>.</param>
     /// <returns>An opener over <paramref name="client"/>.</returns>
@@ -298,13 +302,16 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     ///     <b>Why sealing follows anyway.</b> Servers the runtime's MCP discovery returns are named in
     ///     the session's disabled servers before the session exists, so the runtime does not start or
     ///     authenticate them. The SDK documents that discovery as covering the user, workspace, plugin
-    ///     and builtin sources. A server from a source it cannot enumerate before creation, such as a
-    ///     managed catalog or a signed-in account, may start, and authenticate with the host
-    ///     environment, while the session is created. The seal disables any such server before any
-    ///     turn runs, and the session is refused if one stays enabled. This guarantees that the model
-    ///     cannot reach an ambient MCP server; it does not prevent one from running. The session's
-    ///     installed plugins, too, can only be cleared once it exists. A host that needs prevention:
-    ///     see the client precondition on <c>CopilotAgentFactory</c>.
+    ///     and builtin sources; the built-in GitHub server is named by the factory as well. A server
+    ///     from a source it cannot enumerate before creation, such as a managed catalog or a signed-in
+    ///     account, may start, and authenticate, while the session is created. The seal disables every
+    ///     server the session's MCP configuration lists before any turn runs, and the session is
+    ///     refused if one stays enabled: that contains such a server, it does not prevent it. The
+    ///     listing is not complete — it does not report the built-in GitHub server even while that
+    ///     server runs — so the seal is defense in depth, not proof that no server runs. The session's
+    ///     installed plugins, too, can only be cleared once it exists. On a
+    ///     <see cref="CopilotRuntime"/> the user, workspace and plugin sources hold nothing to begin
+    ///     with; see the per-source statement there.
     ///     </para>
     ///     <para>
     ///     <b>An unsealed session never reaches a caller.</b> If the seal fails — a server stays
@@ -399,10 +406,9 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
                 "The Copilot runtime kept the MCP server(s) "
                 + string.Join(", ", stillEnabled.Select(name => $"'{name}'"))
                 + " enabled for this session after AgentKit disabled them, so the session was refused: a "
-                + "confined agent receives no MCP server. Run the Copilot client in CopilotClientMode.Empty on a "
-                + "data directory the host owns and that configures no MCP servers, and check for MCP servers "
-                + "provided by a managed catalog or by the signed-in account or its organization, and for an "
-                + "owned MCP installation, which a session cannot disable by name.");
+                + "confined agent receives no MCP server. Check for MCP servers provided by a managed catalog or "
+                + "by the signed-in account or its organization, and for an owned MCP installation, which a "
+                + "session cannot disable by name.");
         }
     }
 
@@ -475,10 +481,10 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
     /// </summary>
     /// <remarks>
     ///     The client's RPC surface exists only once the client has started, so the client is
-    ///     started first. Starting is idempotent on a started client, and creating a session would
-    ///     start one not yet started anyway; it goes through <see cref="CopilotClientStarter"/> so a
-    ///     runtime that cannot load still reports why, as it would for a host that started the
-    ///     client itself.
+    ///     started first. Starting is idempotent on a started client — a <see cref="CopilotRuntime"/>
+    ///     hands over a started one — and it reconnects a client whose connection was lost; it goes
+    ///     through <see cref="CopilotRuntime.StartClientAsync"/> so a runtime that cannot start still
+    ///     reports why.
     /// </remarks>
     /// <param name="client">The client to discover on.</param>
     /// <param name="workingDirectory">The session's working directory, whose workspace configuration is included.</param>
@@ -489,7 +495,7 @@ internal sealed class CopilotSessionChannel : ICopilotTurnChannel
         string? workingDirectory,
         CancellationToken cancellationToken)
     {
-        await CopilotClientStarter.StartAsync(client, cancellationToken).ConfigureAwait(false);
+        await CopilotRuntime.StartClientAsync(client.StartAsync, cancellationToken).ConfigureAwait(false);
 
         var discovered = await client.Rpc.Mcp
             .DiscoverAsync(workingDirectory, cancellationToken: cancellationToken)

@@ -9,11 +9,12 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 /// </summary>
 /// <remarks>
 ///     <para>
-///     Holds the client and, optionally, the model and the working directory, so an application
+///     Holds the runtime and, optionally, the model and the working directory, so an application
 ///     states them once — where it configures its provider — and a rotating session asks for none
-///     of them again. The client is shared
-///     by every session this factory creates and is disposed by none of them: the host constructs,
-///     starts and disposes it, exactly as <see cref="CopilotAgentFactory"/> records. Each session is
+///     of them again. The runtime is shared by every session this factory creates and is disposed by
+///     none of them: the host starts and disposes the <see cref="CopilotRuntime"/>, exactly as
+///     <see cref="CopilotAgentFactory"/> records, and every session runs under the confinement that
+///     runtime guarantees. Each session is
 ///     AgentKit's and is released when the engine finishes with it.
 ///     </para>
 ///     <para>
@@ -31,31 +32,31 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 ///     composes an agent, where that choice is offered.
 ///     </para>
 ///     <para>
-///     Safe for concurrent use: creating a session reads the client reference, the model name and
+///     Safe for concurrent use: creating a session reads the runtime's client, the model name and
 ///     the working directory and touches nothing else this factory owns, and each session gets an observer and a runtime
 ///     session of its own.
 ///     </para>
 /// </remarks>
 /// <example>
 ///     <para>
-///     Running a long conversation on Copilot that compacts itself. The host owns the client; the
-///     factory and the summarizer are what AgentKit needs to rotate the conversation as its window
-///     fills.
+///     Running a long conversation on Copilot that compacts itself. The host starts and disposes
+///     the runtime; the factory and the summarizer are what AgentKit needs to rotate the
+///     conversation as its window fills.
 ///     </para>
 ///     <code>
 ///     public async Task&lt;CompactingAgentSession&gt; StartAsync(
-///         CopilotClient client,
+///         CopilotRuntime runtime,
 ///         IList&lt;AIFunction&gt; tools,
 ///         CancellationToken cancellationToken)
 ///     {
 ///         var options = new AgentSessionOptions(
-///             new CopilotSummarizer(client),
+///             new CopilotSummarizer(runtime),
 ///             instructions: "You are a research assistant confined to the permitted locations.",
 ///             tools: [.. tools]);
 ///
 ///         return await CompactingAgentSession.CreateAsync(
 ///             options,
-///             new CopilotProviderSessionFactory(client),
+///             new CopilotProviderSessionFactory(runtime),
 ///             cancellationToken);
 ///     }
 ///     </code>
@@ -95,7 +96,7 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
 
     /// <summary>
     ///     Opens one runtime session per rotation. In production a real Copilot session on the
-    ///     host's client; in a test, a scripted channel.
+    ///     runtime's client; in a test, a scripted channel.
     /// </summary>
     private readonly CopilotChannelOpener _opener;
 
@@ -120,9 +121,10 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <summary>
     ///     Initializes a new instance of the <see cref="CopilotProviderSessionFactory"/> class.
     /// </summary>
-    /// <param name="client">
-    ///     The Copilot client every session runs on. Must not be <see langword="null"/>, and must
-    ///     already be started. The host owns it: this factory disposes it never.
+    /// <param name="runtime">
+    ///     The Copilot runtime every session runs on, from <see cref="CopilotRuntime.StartAsync"/>.
+    ///     Must not be <see langword="null"/> or disposed. Whoever started it disposes it: this
+    ///     factory disposes it never, and a session created after it was disposed fails.
     /// </param>
     /// <param name="model">
     ///     The Copilot model to back each session — for example <c>gpt-5.4-mini</c>. When
@@ -130,7 +132,8 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     ///     own default. The name is not validated here: only the runtime knows which models the
     ///     signed-in user may use, so an unrecognized name is refused at session creation.
     /// </param>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="runtime"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException"><paramref name="runtime"/> has been disposed.</exception>
     /// <param name="maxWindowTokens">
     ///     A ceiling on the window each session accounts against, or <see langword="null"/> to
     ///     account against whatever the runtime reports. Only ever lowers: the runtime's figure is
@@ -144,21 +147,21 @@ public sealed class CopilotProviderSessionFactory : IProviderSessionFactory
     /// <param name="workingDirectory">
     ///     The working directory the runtime gives each session — typically the root of the
     ///     workspace the tools are confined to. When <see langword="null"/>, empty, or whitespace,
-    ///     none is set and the runtime uses the host process's working directory. In-process hosting
-    ///     has no client-level working directory, so this is where a host sets one. It grants
+    ///     none is set and the runtime uses the host process's working directory. AgentKit sets no
+    ///     working directory on the runtime process, so this is where a host sets one. It grants
     ///     nothing: what the conversation may read or write is decided by the tools' own path policy.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxWindowTokens"/> is less than 1.</exception>
     public CopilotProviderSessionFactory(
-        CopilotClient client,
+        CopilotRuntime runtime,
         string? model = null,
         int? maxWindowTokens = null,
         string? workingDirectory = null)
     {
-        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(runtime);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxWindowTokens ?? 1, 1);
 
-        _opener = CopilotSessionChannel.Open(client);
+        _opener = CopilotSessionChannel.Open(runtime.Client);
         _model = model;
         _maxWindowTokens = maxWindowTokens;
         _workingDirectory = workingDirectory;

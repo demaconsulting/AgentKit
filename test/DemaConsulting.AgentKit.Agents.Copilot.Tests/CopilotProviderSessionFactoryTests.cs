@@ -366,11 +366,11 @@ public class CopilotProviderSessionFactoryTests
     }
 
     /// <summary>
-    ///     Proves a missing client is refused where the application composed its provider, rather
+    ///     Proves a missing runtime is refused where the application composed its provider, rather
     ///     than at the first rotation.
     /// </summary>
     [Fact]
-    public void CopilotProviderSessionFactory_Constructor_NullClient_Throws()
+    public void CopilotProviderSessionFactory_Constructor_NullRuntime_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new CopilotProviderSessionFactory(null!));
     }

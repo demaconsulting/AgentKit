@@ -212,10 +212,10 @@ public class CopilotSummarizerTests
     }
 
     /// <summary>
-    ///     Proves a missing client is refused where the application composed its provider.
+    ///     Proves a missing runtime is refused where the application composed its provider.
     /// </summary>
     [Fact]
-    public void CopilotSummarizer_Constructor_NullClient_Throws()
+    public void CopilotSummarizer_Constructor_NullRuntime_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new CopilotSummarizer(null!));
     }

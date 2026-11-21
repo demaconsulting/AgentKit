@@ -107,7 +107,7 @@ internal sealed class CopilotAgent : AIAgent
     /// <remarks>
     ///     Every collaborator is injected so the whole run — opening, resuming, streaming and
     ///     releasing — can be exercised against a scripted channel; the factory supplies the
-    ///     production channels over the host's client.
+    ///     production channels over the client of the runtime AgentKit owns.
     /// </remarks>
     /// <param name="createOptions">Builds a fresh, confined configuration for a new runtime session.</param>
     /// <param name="resumeOptions">Builds a fresh, identically confined configuration for a resumed one.</param>

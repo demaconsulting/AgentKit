@@ -59,10 +59,10 @@ public class CopilotAgentFactoryTests
     }
 
     /// <summary>
-    ///     Proves a null client is refused before any session is built.
+    ///     Proves a null runtime is refused before any session is built.
     /// </summary>
     [Fact]
-    public void CopilotAgentFactory_Create_NullClient_Throws()
+    public void CopilotAgentFactory_Create_NullRuntime_Throws()
     {
         var tools = new List<AIFunction> { MakeTool("doc_read") };
 
