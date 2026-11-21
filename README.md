@@ -46,9 +46,10 @@ dotnet add package DemaConsulting.AgentKit.Tools
 dotnet add package DemaConsulting.AgentKit.Agents.ChatClient   # any IChatClient provider
 ```
 
-For the GitHub Copilot SDK, add `DemaConsulting.AgentKit.Agents.Copilot` instead of the `IChatClient`
-adapter. On Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told the context
-window the instance is actually running.
+For the GitHub Copilot runtime, add `DemaConsulting.AgentKit.Agents.Copilot` instead of the `IChatClient` adapter, and
+reference `Microsoft.Copilot.SDK` 2.0.1 directly from the host application: the SDK provisions its runtime only into a
+project that references it directly. On Ollama, also add `DemaConsulting.AgentKit.Agents.Ollama` so a session is told
+the context window the instance is actually running.
 
 ## Usage
 
@@ -89,7 +90,7 @@ the model's context window, run the agent on a `CompactingAgentSession`, as the 
 
 ## Architecture
 
-![AgentKit architecture: your application adds AgentKit.Tools packs, which are built through the AgentKit.Core tool safety contract that enforces its controls, and builds an agent or session through an AgentKit.Agents adapter, which feeds the Core session lifecycle and builds on Microsoft Agent Framework, any IChatClient provider, the GitHub Copilot SDK, or an Ollama server, none of which is part of AgentKit][img-architecture]
+![AgentKit architecture: your application adds AgentKit.Tools packs, which are built through the AgentKit.Core tool safety contract that enforces its controls, and builds an agent or session through an AgentKit.Agents adapter, which feeds the Core session lifecycle: Agents.ChatClient builds on Microsoft Agent Framework and any IChatClient provider, Agents.Copilot provides its own AIAgent on the Microsoft Copilot SDK, and Agents.Ollama reads an Ollama server's window, none of which is part of AgentKit][img-architecture]
 
 Your application chooses the tools and sets their controls; `AgentKit.Core` enforces those controls
 for every tool and runs the self-compacting session that each provider adapter plugs into.

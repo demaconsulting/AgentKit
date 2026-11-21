@@ -66,7 +66,7 @@
     <text x="592" y="223" font-size="12" fill="#1e40af" text-anchor="end">any IChatClient</text>
     <rect x="336" y="244" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
     <text x="348" y="265" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.Copilot</text>
-    <text x="592" y="265" font-size="12" fill="#1e40af" text-anchor="end">GitHub Copilot runtime</text>
+    <text x="592" y="265" font-size="12" fill="#1e40af" text-anchor="end">its own AIAgent on Copilot</text>
     <rect x="336" y="286" width="268" height="32" rx="6" fill="#ffffff" stroke="#2563eb"/>
     <text x="348" y="307" font-size="13" font-family="Consolas, monospace" font-weight="600" fill="#1e3a8a">.Ollama</text>
     <text x="592" y="307" font-size="12" fill="#1e40af" text-anchor="end">optional: the real window</text>
@@ -98,7 +98,7 @@
       <rect x="666" y="201" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
       <text x="785" y="223">Any IChatClient provider</text>
       <rect x="666" y="243" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
-      <text x="785" y="265">GitHub Copilot SDK</text>
+      <text x="785" y="265">Microsoft Copilot SDK</text>
       <rect x="666" y="285" width="238" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
       <text x="785" y="307">Ollama server</text>
     </g>
@@ -112,9 +112,10 @@
       <text x="785" y="526">behaves the same on every provider.</text>
     </g>
 
-    <!-- Adapters build on the runtime and providers -->
-    <line x1="620" y1="167" x2="664" y2="167" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-    <line x1="604" y1="218" x2="664" y2="218" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <!-- Each adapter builds on its runtime or provider: .ChatClient on Microsoft Agent Framework and any IChatClient,
+         .Copilot on the Microsoft Copilot SDK with an AIAgent of its own, .Ollama on an Ollama server -->
+    <path d="M604,210 H636 V167 H664" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="604" y1="226" x2="664" y2="226" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
     <line x1="604" y1="260" x2="664" y2="260" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
     <line x1="604" y1="302" x2="664" y2="302" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
   </g>
