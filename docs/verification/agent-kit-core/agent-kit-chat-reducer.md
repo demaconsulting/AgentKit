@@ -26,12 +26,12 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all eleven scenarios below pass. Any history within the threshold that is
+A unit test run passes when all thirteen scenarios below pass. Any history within the threshold that is
 changed or consolidated, any system message or kept turn lost, altered or reordered, any tool call
 separated from its result, any request with the wrong tier, clause or material, any previous record
-kept beside the new one, any material lost on a blank record, any null record accepted, any image
-bytes in the material, any invalid construction accepted, or any cancellation ignored constitutes a
-failure.
+kept beside the new one, any ordinary assistant message treated as a record, any material lost on a
+blank record, any null record accepted, any image bytes in the material, any invalid construction
+accepted, or any cancellation ignored constitutes a failure.
 
 ### Test Scenarios
 
@@ -77,6 +77,23 @@ At the high level with one turn kept over three turns, asserts one request at ti
 
 A history opening with a previous record. Asserts the material opens with `RECORD: first record`, the
 result holds exactly one record message, and it carries the new record.
+
+#### AgentKitCore-AgentKitChatReducer-RecognizesOnlyItsOwnRecords: A Reply Beginning With the Header Is Assistant Text
+
+**Test**: `AgentKitChatReducer_ReduceAsync_AssistantTextStartingWithHeader_IsConsolidatedAsAssistantText`
+
+Older messages hold an assistant reply that begins with the header words without a line break, and an
+assistant message whose text is the header, a line break and more text alongside a tool call. Asserts
+the material carries both as `ASSISTANT:` lines, keeps the `TOOL CALL [c1]` line, and holds no
+`RECORD:` line.
+
+#### AgentKitCore-AgentKitChatReducer-RecognizesOnlyItsOwnRecords: A Lone Reply Beginning With the Header Is Consolidated
+
+**Test**: `AgentKitChatReducer_ReduceAsync_OnlyOlderMessageStartsWithHeader_IsStillConsolidated`
+
+The only message older than the kept turn is an assistant reply beginning with the header words.
+Asserts the summarizer is called once with that reply as an `ASSISTANT:` line, the result opens with
+the new record, and the kept turn follows as the same instances.
 
 #### AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory: A Blank Record Keeps the History
 

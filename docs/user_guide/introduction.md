@@ -1255,9 +1255,11 @@ var agent = new ChatClientAgent(client, new ChatClientAgentOptions { ChatHistory
 ```
 
 Over the threshold, every message older than the last `verbatimTurns` turns is consolidated through the
-summarizer into one assistant message opening with `[Consolidated record of the earlier conversation]`;
-system messages and the kept turns are untouched, a tool call is never separated from its result, and a
-previous record is folded into the next. Images are described by type and size, never sent to the
+summarizer into one assistant message opening with `[Consolidated record of the earlier conversation]`
+on its own first line; system messages and the kept turns are untouched, a tool call is never separated
+from its result, and a previous record is folded into the next. Only a message of exactly that shape is
+treated as a previous record, so an ordinary reply that happens to begin with those words is
+consolidated as what the assistant said. Images are described by type and size, never sent to the
 summarizer.
 
 **It is a reduced-fidelity option.** Compared with `CompactingAgentSession` it loses:

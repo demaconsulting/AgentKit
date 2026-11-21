@@ -70,6 +70,20 @@ sections:
             tests:
               - AgentKitChatReducer_ReduceAsync_PreviousRecord_IsFoldedIntoMaterial
 
+          - id: AgentKitCore-AgentKitChatReducer-RecognizesOnlyItsOwnRecords
+            title: >-
+              The chat reducer shall treat as a previous record only an assistant message in the
+              exact shape it writes — a single text content of the record header, a line break and a
+              non-blank record — and shall consolidate any other assistant message as assistant text.
+            justification: |
+              The model sees records in its own history and may echo the header words in an ordinary
+              reply. Recognizing a record by its header prefix alone would relabel such a reply as a
+              record, drop any other content it carried, or skip the reduction entirely when it was
+              the only older message, so history would be rewritten without being consolidated.
+            tests:
+              - AgentKitChatReducer_ReduceAsync_AssistantTextStartingWithHeader_IsConsolidatedAsAssistantText
+              - AgentKitChatReducer_ReduceAsync_OnlyOlderMessageStartsWithHeader_IsStillConsolidated
+
           - id: AgentKitCore-AgentKitChatReducer-BlankRecordKeepsHistory
             title: >-
               The chat reducer shall return the history unchanged when the summarizer returns a

@@ -42,7 +42,7 @@ history and wants AgentKit's consolidation in the hook it has.
 | Member | Type | Description |
 | --- | --- | --- |
 | `DefaultVerbatimTurns` | `const int` | 4 — the turns kept word for word when none is specified. |
-| `RecordHeader` | `const string` | The record message's first line (see the constant). |
+| `RecordHeader` | `const string` | The record message's first line; a record is recognized only in the exact shape the reducer writes. |
 | `_summarizer` | `ISummarizer` | Writes each record; injected, never null. |
 | `ThresholdCharacters` | `int` | The estimated size above which a reduction is attempted; greater than zero. |
 | `VerbatimTurns` | `int` | The most recent turns kept unchanged; one or greater. |
@@ -73,7 +73,9 @@ verbatim turn, or an undefined level (`ArgumentOutOfRangeException`).
    never split them. With no more turns than are kept, the tail starts at the first turn.
 5. When every message before the tail is a previous record (or there is none), return unchanged.
 6. Render the older messages as `TranscriptEntry` lines (`ToTranscriptLine`): a previous record — an
-   assistant message opening with `RecordHeader` — as a `ContextRecord`, so records fold; text by role
+   assistant message whose only content is text of `RecordHeader`, a line break and a non-blank
+   record, the exact shape step 9 writes — as a `ContextRecord`, so records fold; any other message,
+   even one whose text begins with the header words, by its content; text by role
    as `User` or `Assistant`; a function call as `ToolCall(callId, name(arguments))`; a function result
    as `ToolResult(callId, text)`; image and binary content as `[media type, N bytes]`; other content
    not at all. A blank call identifier is rendered as `unidentified`.

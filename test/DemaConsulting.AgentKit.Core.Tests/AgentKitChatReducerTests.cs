@@ -128,6 +128,69 @@ public class AgentKitChatReducerTests
     }
 
     /// <summary>
+    ///     Proves an ordinary assistant message that merely begins with the record header is
+    ///     consolidated as what the assistant said, not relabeled as a previous record.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitChatReducer_ReduceAsync_AssistantTextStartingWithHeader_IsConsolidatedAsAssistantText()
+    {
+        // Arrange: older replies that begin with the header words but are not in the record's shape —
+        // one with no line break after the header, one that also carries a tool call
+        var summarizer = new FakeSummarizer(_ => "record");
+        var reducer = new AgentKitChatReducer(summarizer, thresholdCharacters: 10, verbatimTurns: 1);
+        List<ChatMessage> history =
+        [
+            new(ChatRole.User, "question 0"),
+            new(ChatRole.Assistant, AgentKitChatReducer.RecordHeader + " is the title I would use."),
+            new(ChatRole.Assistant,
+            [
+                new TextContent(AgentKitChatReducer.RecordHeader + "\nnot a record"),
+                new FunctionCallContent("c1", "report_build")
+            ]),
+            new(ChatRole.Tool, [new FunctionResultContent("c1", "built")]),
+            .. Conversation(turns: 1)
+        ];
+
+        // Act: reduce, keeping only the last turn
+        await reducer.ReduceAsync(history, TestContext.Current.CancellationToken);
+
+        // Assert: both replies reached the summarizer as assistant text, the call kept, no record line
+        var material = Assert.Single(summarizer.Requests).Material;
+        Assert.Contains("ASSISTANT: " + AgentKitChatReducer.RecordHeader + " is the title I would use.", material, StringComparison.Ordinal);
+        Assert.Contains("ASSISTANT: " + AgentKitChatReducer.RecordHeader + "\nnot a record", material, StringComparison.Ordinal);
+        Assert.Contains("TOOL CALL [c1]: report_build({})", material, StringComparison.Ordinal);
+        Assert.DoesNotContain("RECORD:", material, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a history whose only older message is an ordinary reply beginning with the record
+    ///     header is still consolidated, rather than skipped as if it were already a record.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitChatReducer_ReduceAsync_OnlyOlderMessageStartsWithHeader_IsStillConsolidated()
+    {
+        // Arrange: one older assistant reply beginning with the header words, then one kept turn
+        var summarizer = new FakeSummarizer(_ => "record");
+        var reducer = new AgentKitChatReducer(summarizer, thresholdCharacters: 10, verbatimTurns: 1);
+        List<ChatMessage> history =
+        [
+            new(ChatRole.Assistant, AgentKitChatReducer.RecordHeader + " noted."),
+            .. Conversation(turns: 1)
+        ];
+
+        // Act: reduce
+        var reduced = (await reducer.ReduceAsync(history, TestContext.Current.CancellationToken)).ToList();
+
+        // Assert: the reply was consolidated as assistant text and replaced by a record
+        Assert.Equal(1, summarizer.CallCount);
+        Assert.Equal("ASSISTANT: " + AgentKitChatReducer.RecordHeader + " noted.", Assert.Single(summarizer.Requests).Material);
+        Assert.Equal(AgentKitChatReducer.RecordHeader + "\nrecord", reduced[0].Text);
+        Assert.Equal(history.Skip(1), reduced.Skip(1));
+    }
+
+    /// <summary>
     ///     Proves a blank record leaves the history unchanged rather than losing the material.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>

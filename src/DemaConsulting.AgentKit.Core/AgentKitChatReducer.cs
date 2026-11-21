@@ -23,8 +23,9 @@ namespace DemaConsulting.AgentKit.Core;
 ///     <see cref="ThresholdCharacters"/>, every message older than the last
 ///     <see cref="VerbatimTurns"/> turns is rendered as labeled transcript lines — a previous record
 ///     included, so records fold — and consolidated by the summarizer at <see cref="Level"/>. The
-///     result is the system messages, then one assistant message opening with
-///     <see cref="RecordHeader"/> and holding the record, then the verbatim tail. A turn starts at a
+///     result is the system messages, then one assistant message whose text is
+///     <see cref="RecordHeader"/> on its own first line followed by the record, then the verbatim
+///     tail. A turn starts at a
 ///     user message, so a tool call is never separated from its result. Image and binary content is
 ///     rendered as its media type and size, never as bytes. At or under the threshold, or when no
 ///     message precedes the tail, the history is returned unchanged.
@@ -73,8 +74,10 @@ public sealed class AgentKitChatReducer : IChatReducer
     ///     The first line of the assistant message that carries a consolidated record.
     /// </summary>
     /// <remarks>
-    ///     A later reduction recognizes a previous record by this header and folds it into the new
-    ///     material as a record rather than as something the assistant said.
+    ///     A later reduction recognizes a previous record — an assistant message whose only content is
+    ///     text of this header on its own first line followed by the record — and folds it into the
+    ///     new material as a record rather than as something the assistant said. Any other message,
+    ///     even one beginning with these words, is consolidated as what it is.
     /// </remarks>
     public const string RecordHeader = "[Consolidated record of the earlier conversation]";
 
@@ -252,11 +255,21 @@ public sealed class AgentKitChatReducer : IChatReducer
     /// <summary>
     ///     Determines whether a message is a record an earlier reduction produced.
     /// </summary>
+    /// <remarks>
+    ///     Only the exact shape <see cref="ReduceAsync"/> writes is a record: an assistant message
+    ///     whose only content is text made of <see cref="RecordHeader"/>, a line break and a
+    ///     non-blank record. An ordinary reply that merely begins with the header words — the model
+    ///     sees records in its history and may echo them — is consolidated as what the assistant
+    ///     said.
+    /// </remarks>
     /// <param name="message">The message to test.</param>
-    /// <returns><see langword="true"/> for an assistant message opening with the record header.</returns>
+    /// <returns><see langword="true"/> for a message in the exact record shape.</returns>
     private static bool IsRecord(ChatMessage message) =>
         message.Role == ChatRole.Assistant
-        && message.Text.StartsWith(RecordHeader, StringComparison.Ordinal);
+        && message.Contents.Count == 1
+        && message.Contents[0] is TextContent { Text: { } text }
+        && text.StartsWith(RecordHeader + "\n", StringComparison.Ordinal)
+        && !string.IsNullOrWhiteSpace(text[(RecordHeader.Length + 1)..]);
 
     /// <summary>
     ///     Renders one message as the transcript entries the consolidation material is made of.
