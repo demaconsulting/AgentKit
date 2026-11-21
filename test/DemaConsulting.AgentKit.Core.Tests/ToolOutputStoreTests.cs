@@ -199,6 +199,38 @@ public class ToolOutputStoreTests
     }
 
     /// <summary>
+    ///     Proves measuring an output without copying it gives exactly the size normalization
+    ///     reports, across every line ending, a trailing break, wrapping and a wrap at a surrogate
+    ///     pair, and indented structured data.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Measure_EqualsTheNormalizedSize()
+    {
+        // Arrange: outputs exercising every rule normalization applies
+        using var document = JsonDocument.Parse("{\"name\":\"café <b>\",\"items\":[1,2,3]}");
+        string[] outputs =
+        [
+            string.Empty,
+            "a",
+            "a\n",
+            "a\r\nb\rc\n",
+            "\r\n\r\n",
+            new string('x', 4_500),
+            new string('x', ToolOutputStore.MaxLineCharacters - 1) + "\U0001F600" + "tail",
+            ToolOutputStore.Indent(document.RootElement),
+        ];
+
+        foreach (var output in outputs)
+        {
+            // Act: normalize and measure
+            ToolOutputStore.Normalize(output, out var characters, out _);
+
+            // Assert: the same size
+            Assert.Equal(characters, ToolOutputStore.Measure(output));
+        }
+    }
+
+    /// <summary>
     ///     Proves the oldest outputs are evicted first when the count ceiling would be exceeded.
     /// </summary>
     [Fact]

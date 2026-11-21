@@ -12,9 +12,9 @@ sections:
           - id: AgentKitCore-ToolOutputSpill-ThresholdIsResultCeiling
             title: >-
               A composition retaining large outputs shall return a result within the result ceiling
-              unchanged, and shall retain a textual result exceeding it, returning in its place a
-              preview no longer than the ceiling that names the reference, the source tool, the
-              output's size, and both reader tools.
+              with its content unchanged, and shall retain a textual result exceeding it, returning
+              in its place a preview no longer than the ceiling that names the reference, the source
+              tool, the output's size, and both reader tools.
             justification: |
               The result ceiling already states how much of the context window one result may
               spend; reusing it keeps one budget with one meaning. Naming the reference and the
@@ -64,35 +64,60 @@ sections:
           - id: AgentKitCore-ToolOutputSpill-TextualResultsRetained
             title: >-
               A composition retaining large outputs shall retain an oversized string, JSON document,
-              text content or sequence of text content, indenting a JSON document for paging, from
-              any tool in the composition including one not built by the guarded factory.
+              text content or sequence of text content, measuring a JSON document - a JSON string
+              included - by its JSON text, retaining a JSON string as its decoded text and indenting
+              any other JSON document for paging, from any tool in the composition including one not
+              built by the guarded factory.
             justification: |
               Hosts write their own tools, and an oversized custom result is exactly what would
-              otherwise reach a provider unbounded. Compact JSON is one line a model cannot page, so
-              structured data is indented when it is retained.
+              otherwise reach a provider unbounded. A JSON string reaches a chat adapter as quoted,
+              escaped JSON, so measuring its decoded text would let an over-ceiling result through;
+              its JSON text never under-counts. The retained copy is what the model pages by line and
+              searches literally, so a JSON string is retained decoded and structured data indented:
+              escaped or compact JSON is one line a model cannot page.
             tests:
               - ToolOutputSpill_Apply_OversizedStructuredResult_IsRetainedIndented
               - ToolOutputSpill_Apply_OversizedTextContentList_IsRetained
               - ToolOutputSpill_Apply_ToolNotBuiltByTheFactory_IsRetainedToo
+              - ToolOutputSpill_Apply_JsonString_IsMeasuredByItsJsonTextAndRetainedDecoded
+
+          - id: AgentKitCore-ToolOutputSpill-SequenceEnumeratedOnce
+            title: >-
+              A composition retaining large outputs shall enumerate a tool's sequence of content at
+              most once, delivering the parts it enumerated when the sequence is not retained.
+            tags: [reliability]
+            justification: |
+              A tool may return a single-pass or lazily produced sequence. Enumerating it to measure
+              it and again in the provider's adapter would deliver it empty or altered, so the parts
+              enumerated once are what is delivered; a list or array is delivered as the very
+              instance the tool returned.
+            tests:
+              - ToolOutputSpill_Apply_SinglePassSequence_IsEnumeratedOnce
 
           - id: AgentKitCore-ToolOutputSpill-BinaryNeverRetained
             title: >-
               A composition retaining large outputs shall pass binary content, any result containing
-              it, and an absent result through unchanged.
+              it, and an absent result - null or an undefined JSON element - through with their
+              content unchanged.
             justification: |
               Binary content is already bounded by its own ceiling and is meaningless as numbered
-              lines; a captioned image must reach the provider as the image it is.
+              lines; a captioned image must reach the provider as the image it is. An absent result
+              carries nothing to retain and must reach the runtime exactly as without retention.
             tests:
               - ToolOutputSpill_Apply_BinaryContent_PassesThroughUnchanged
               - ToolOutputSpill_Apply_NullResult_PassesThrough
+              - ToolOutputSpill_Apply_UndefinedJsonElement_PassesThrough
 
           - id: AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained
             title: >-
               A composition retaining large outputs shall retain an output a tool declared oversized,
-              whatever its measured size.
+              whatever its measured size, without claiming in the preview that it exceeds a result
+              ceiling it fits within.
             justification: |
               A tool that measures its result against a ceiling of its own decides when it is
-              oversized; the composition honors that decision rather than second-guessing it.
+              oversized; the composition honors that decision rather than second-guessing it. The
+              preview then states the tool's declaration, because a size comparison the output fails
+              would tell the model something false.
             tests:
               - ToolOutputSpill_Apply_OversizedMarker_IsRetained
 
@@ -100,15 +125,19 @@ sections:
             title: >-
               A composition retaining large outputs shall refuse an output larger than the
               per-output retention ceiling, giving the tool's own refusal when the tool declared the
-              output oversized and otherwise a refusal naming the retention ceiling, and shall never
-              truncate it.
+              output oversized and otherwise a refusal naming the retention ceiling and stating the
+              output's size as it would be retained, and shall never truncate it.
             tags: [reliability]
             justification: |
               Retention is bounded, and an output too large to retain must still be answered
-              honestly. A truncated output would hide what the model never knew to ask for.
+              honestly. A truncated output would hide what the model never knew to ask for. The
+              ceiling is measured on the retained form - line endings normalized, long lines
+              wrapped, structured data indented - so that is the size the refusal states; the size
+              the tool returned may be smaller and would contradict the limit it is said to exceed.
             tests:
               - ToolOutputSpill_Apply_MarkerOverRetentionCeiling_ReturnsTheToolsRefusal
               - ToolOutputSpill_Apply_PlainOutputOverRetentionCeiling_IsRefusedNamingTheCeiling
+              - ToolOutputSpill_Apply_OutputOverRetentionCeilingOnceRetained_ReportsTheRetainedSize
 
           - id: AgentKitCore-ToolOutputSpill-ReadersAppendedNotRetained
             title: >-

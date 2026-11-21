@@ -43,18 +43,21 @@ sections:
               The output store shall not retain an output larger than the per-output ceiling, and
               shall release nothing already retained when it refuses one; an output whose raw length
               alone proves it exceeds the ceiling shall be refused before it is normalized, and no
-              output that would fit shall be refused that way.
+              output that would fit shall be refused that way; the store shall measure an output's
+              retained size exactly without copying it.
             tags: [reliability]
             justification: |
               One unbounded output must not be able to exhaust a host's memory, and refusing it must
               not cost the model references it already holds. Refusing on the raw length first
               means a very large output is never copied into lines only to be discarded; the bound
               is exact, so the early refusal never turns away an output the ceiling admits.
+              Measuring without a copy lets a refusal state the very size the ceiling judged.
             tests:
               - ToolOutputStore_Add_OutputOverPerOutputCeiling_IsNotRetained
               - ToolOutputStore_Add_OutputAtTheRawLengthBound_IsRetainedWhenItFits
               - ToolOutputStore_Add_OutputBeyondTheRawLengthBound_IsRefusedAndEvictsNothing
               - ToolOutputStore_MustExceed_NeverRefusesAnOutputThatFits
+              - ToolOutputStore_Measure_EqualsTheNormalizedSize
 
           - id: AgentKitCore-ToolOutputStore-OldestEvictedFirst
             title: >-

@@ -31,13 +31,15 @@ namespace DemaConsulting.AgentKit.Core;
 ///     the ceiling — a string, a JSON document, or text content — is retained too. Binary and
 ///     image content are never retained: they are already bounded by
 ///     <see cref="ToolLimits.MaxBinaryBytes"/> and pass through unchanged, as does a result with no
-///     text. The model receives a successful result that opens with a bracketed header naming the
-///     reference (for example <c>output-3</c>), the output's size, and the reader tools, followed
-///     by about three quarters of the preview from the head of the output and a quarter from its
-///     tail, numbered <c>N| </c> exactly as <c>text_file_read</c> numbers a file. The preview and
-///     its header always fit within the result ceiling; the header alone is delivered when
-///     <see cref="ToolOutputOptions.PreviewCharacters"/> is zero or the lines are too long for the
-///     preview size, because the reference is the result.
+///     text. A sequence of content that is not already a list is enumerated once and delivered as
+///     the list it was enumerated into, the same parts in the same order; a list or an array is
+///     delivered as returned. The model receives a successful result that opens with a bracketed
+///     header naming the reference (for example <c>output-3</c>), the output's size, and the reader
+///     tools, followed by about three quarters of the preview from the head of the output and a
+///     quarter from its tail, numbered <c>N| </c> exactly as <c>text_file_read</c> numbers a file.
+///     The preview and its header always fit within the result ceiling; the header alone is
+///     delivered when <see cref="ToolOutputOptions.PreviewCharacters"/> is zero or the lines are
+///     too long for the preview size, because the reference is the result.
 ///     </para>
 ///     <para>
 ///     <b>Retention requires a result ceiling the reference fits in.</b> A composition whose
@@ -263,34 +265,43 @@ public static class ToolOutputSpill
     /// <remarks>
     ///     Composed from the same code that composes a real preview, at the extremes every part can
     ///     reach: a name of <see cref="ToolName.MaxLength"/> characters, a reference numbered at
-    ///     <see cref="long.MaxValue"/>, every count at <see cref="int.MaxValue"/>, and the
-    ///     wrapped-lines note. <see cref="MinimumResultCharacters"/> must be at least this, which a
-    ///     test asserts, so lengthening the header's wording cannot silently break the guarantee.
+    ///     <see cref="long.MaxValue"/>, every count at <see cref="int.MaxValue"/>, the
+    ///     wrapped-lines note, and both the size-comparison and the declared-oversized wording.
+    ///     <see cref="MinimumResultCharacters"/> must be at least this, which a test asserts, so
+    ///     lengthening the header's wording cannot silently break the guarantee.
     /// </remarks>
     /// <returns>The worst-case fixed overhead of a preview, in characters.</returns>
     internal static int WorstCaseOverheadCharacters()
     {
         var name = new string('a', ToolName.MaxLength);
         var id = ToolOutputStore.IdPrefix + long.MaxValue.ToString(CultureInfo.InvariantCulture);
-        var showing = SpillAttachment.ComposeHeader(
-            name,
-            originalCharacters: int.MaxValue,
-            id,
-            wrapped: true,
-            ceiling: int.MaxValue,
-            total: int.MaxValue,
-            headCount: int.MaxValue,
-            tailCount: 1);
-        var none = SpillAttachment.ComposeHeader(
-            name,
-            originalCharacters: int.MaxValue,
-            id,
-            wrapped: true,
-            ceiling: int.MaxValue,
-            total: int.MaxValue,
-            headCount: 0,
-            tailCount: 0);
-        return Math.Max(showing.Length, none.Length)
+        var widest = 0;
+        foreach (var declared in new[] { false, true })
+        {
+            var showing = SpillAttachment.ComposeHeader(
+                name,
+                originalCharacters: int.MaxValue,
+                declared,
+                id,
+                wrapped: true,
+                ceiling: int.MaxValue,
+                total: int.MaxValue,
+                headCount: int.MaxValue,
+                tailCount: 1);
+            var none = SpillAttachment.ComposeHeader(
+                name,
+                originalCharacters: int.MaxValue,
+                declared,
+                id,
+                wrapped: true,
+                ceiling: int.MaxValue,
+                total: int.MaxValue,
+                headCount: 0,
+                tailCount: 0);
+            widest = Math.Max(widest, Math.Max(showing.Length, none.Length));
+        }
+
+        return widest
                + SpillAttachment.ComposeOmission(int.MaxValue, int.MaxValue).Length
                + 1;
     }
@@ -401,25 +412,44 @@ internal sealed class SpillAttachment
     }
 
     /// <summary>
-    ///     Resolves a tool's result for delivery: retains and previews an oversized output, and
-    ///     returns anything else unchanged.
+    ///     Resolves a tool's result for delivery: retains and previews an oversized output,
+    ///     delivers a sequence of content that is not already a list as the list it was enumerated
+    ///     into — the same parts in the same order — and returns anything else, a list or an array
+    ///     included, as it arrived.
     /// </summary>
     /// <param name="toolName">The name of the tool that produced the result, named in the preview.</param>
     /// <param name="result">The result the tool produced; may be null.</param>
     /// <returns>
-    ///     A preview string, a refusal when the output is too large to retain, or the result itself.
+    ///     A preview string, a refusal when the output is too large to retain, the list a sequence
+    ///     of content was enumerated into, or the result itself.
     /// </returns>
     public object? Deliver(string toolName, object? result)
     {
         // A tool that declared its output oversized is retained whatever the measured size, and
-        // its own refusal is the one given if the output cannot be retained.
+        // its own refusal is the one given if the output cannot be retained. When the output fits
+        // the ceiling - its tool judged it against a tighter one - the preview must not claim it
+        // is larger than this ceiling.
         if (result is OversizedResult oversized)
         {
-            return Retain(toolName, oversized.Text, oversized.Text.Length, oversized.DenialMessage);
+            return Retain(
+                toolName,
+                oversized.Text,
+                oversized.Text.Length,
+                oversized.DenialMessage,
+                declared: oversized.Text.Length <= _limits.MaxResultCharacters);
+        }
+
+        // A tool may return a single-pass sequence of content. Enumerating it here to measure it
+        // and again in the provider's adapter would deliver it empty or altered, so it is
+        // enumerated exactly once and the parts enumerated are what is delivered. A list or an
+        // array is already materialized and is delivered as the very instance the tool returned.
+        if (result is IEnumerable<AIContent> sequence and not IReadOnlyList<AIContent>)
+        {
+            result = sequence.ToList();
         }
 
         // Only text is retained. Binary content, mixed content and absent results pass through, as
-        // does any text within the ceiling - measured as it would have been delivered.
+        // does any text within the ceiling - measured by the result's own representation.
         if (!TryGetText(result, out var text, out var delivered)
             || delivered <= _limits.MaxResultCharacters)
         {
@@ -427,22 +457,35 @@ internal sealed class SpillAttachment
         }
 
         // Structured data is indented only once it is known to be retained, so a document that
-        // fits is never reshaped and the ceiling is judged on what the provider would have seen.
+        // fits is never reshaped and the ceiling is judged on the JSON text the tool returned.
         if (result is JsonElement { ValueKind: JsonValueKind.Object or JsonValueKind.Array } element)
         {
             text = ToolOutputStore.Indent(element);
         }
 
-        return Retain(toolName, text, delivered, denialMessage: null);
+        return Retain(toolName, text, delivered, denialMessage: null, declared: false);
     }
 
     /// <summary>
-    ///     Extracts the text of a result that is purely textual.
+    ///     Extracts the text of a result that is purely textual, and measures the result.
     /// </summary>
-    /// <param name="result">The result to inspect.</param>
-    /// <param name="text">On success, the text the result carries.</param>
+    /// <remarks>
+    ///     A result is measured by its own representation - a string by its characters, any JSON
+    ///     element by its JSON text, text content by its text - not by any envelope a provider adds
+    ///     around it, which differs from provider to provider. A JSON string is measured by its JSON
+    ///     text, quotes and escapes included, because that is the form the chat adapters send, and
+    ///     it never under-counts an adapter that sends the decoded value instead. It is retained as
+    ///     its decoded value, just as structured data is retained indented: the retained copy is
+    ///     what a model pages by line and searches literally, which an escaped single line defeats.
+    /// </remarks>
+    /// <param name="result">
+    ///     The result to inspect. A sequence of content must already be a list, so it is enumerated
+    ///     only by the caller.
+    /// </param>
+    /// <param name="text">On success, the text the result is retained as.</param>
     /// <param name="delivered">
-    ///     On success, the characters the result would occupy if delivered unchanged.
+    ///     On success, the characters the result's own representation occupies: what the ceiling
+    ///     judges and the preview header reports.
     /// </param>
     /// <returns><see langword="true"/> when the result is purely textual.</returns>
     private static bool TryGetText(object? result, out string text, out int delivered)
@@ -451,43 +494,46 @@ internal sealed class SpillAttachment
         {
             case string value:
                 text = value;
+                delivered = value.Length;
+                return true;
+
+            // An undefined element carries no value at all, so it is not text; it must reach the
+            // runtime exactly as it would without retention.
+            case JsonElement { ValueKind: JsonValueKind.Undefined }:
                 break;
 
-            // A JSON string is text a function serialized; any other JSON is structured data whose
-            // raw form is what the provider would have received.
+            // A JSON string is text a function serialized: measured by its JSON text, retained
+            // decoded so its lines can be paged and searched.
             case JsonElement { ValueKind: JsonValueKind.String } element:
                 text = element.GetString() ?? string.Empty;
-                break;
+                delivered = element.GetRawText().Length;
+                return true;
 
             case JsonElement element:
                 text = element.GetRawText();
-                break;
+                delivered = text.Length;
+                return true;
 
             case TextContent content:
                 text = content.Text;
-                break;
+                delivered = text.Length;
+                return true;
 
             // A sequence is textual only when every part is text; a caption beside an image is not.
-            case IEnumerable<AIContent> parts:
-                var list = parts.ToList();
-                if (list.Count == 0 || !list.TrueForAll(part => part is TextContent))
+            case IReadOnlyList<AIContent> parts:
+                if (parts.Count == 0 || parts.Any(part => part is not TextContent))
                 {
-                    text = string.Empty;
-                    delivered = 0;
-                    return false;
+                    break;
                 }
 
-                text = string.Join("\n", list.Cast<TextContent>().Select(part => part.Text));
-                break;
-
-            default:
-                text = string.Empty;
-                delivered = 0;
-                return false;
+                text = string.Join("\n", parts.Cast<TextContent>().Select(part => part.Text));
+                delivered = text.Length;
+                return true;
         }
 
-        delivered = text.Length;
-        return true;
+        text = string.Empty;
+        delivered = 0;
+        return false;
     }
 
     /// <summary>
@@ -495,25 +541,36 @@ internal sealed class SpillAttachment
     /// </summary>
     /// <param name="toolName">The tool that produced the output.</param>
     /// <param name="text">The output text to retain.</param>
-    /// <param name="delivered">The characters the output would have occupied if delivered.</param>
+    /// <param name="delivered">
+    ///     The characters of the result as the tool returned it, reported in the preview header.
+    ///     A refusal instead reports the size the output would be retained at, the figure the
+    ///     retention limit is measured on.
+    /// </param>
     /// <param name="denialMessage">
     ///     The refusal the tool supplied, or <see langword="null"/> to compose one naming the
     ///     retention ceiling.
     /// </param>
+    /// <param name="declared">
+    ///     Whether the output is retained only because its tool declared it oversized, though it
+    ///     fits the result ceiling.
+    /// </param>
     /// <returns>The preview, or the refusal.</returns>
-    private object Retain(string toolName, string text, int delivered, string? denialMessage)
+    private object Retain(string toolName, string text, int delivered, string? denialMessage, bool declared)
     {
         var entry = _store.Add(text);
         if (entry is not null)
         {
-            return RenderPreview(toolName, delivered, entry);
+            return RenderPreview(toolName, delivered, declared, entry);
         }
 
+        // The store refuses on the normalized size - line endings normalized, long lines wrapped,
+        // structured data indented - so that is the size stated; the size the tool returned may
+        // be smaller and would contradict the limit it is said to exceed. Measured without a copy.
         return ToolResult.Denied(
             DenialReason.ResourceTooLarge,
             denialMessage
             ?? "The output of '" + toolName + "' is "
-            + delivered.ToString(CultureInfo.InvariantCulture)
+            + ToolOutputStore.Measure(text).ToString(CultureInfo.InvariantCulture)
             + " characters, which exceeds the "
             + _store.Options.MaxOutputCharacters.ToString(CultureInfo.InvariantCulture)
             + "-character retention limit.");
@@ -524,9 +581,12 @@ internal sealed class SpillAttachment
     /// </summary>
     /// <param name="toolName">The tool that produced the output.</param>
     /// <param name="originalCharacters">The characters the tool produced.</param>
+    /// <param name="declared">
+    ///     Whether the output was declared oversized by its tool though it fits the result ceiling.
+    /// </param>
     /// <param name="entry">The retained entry.</param>
     /// <returns>The header followed by the numbered head and tail lines.</returns>
-    private string RenderPreview(string toolName, int originalCharacters, ToolOutputEntry entry)
+    private string RenderPreview(string toolName, int originalCharacters, bool declared, ToolOutputEntry entry)
     {
         var lines = entry.Lines;
         var total = lines.Count;
@@ -540,7 +600,7 @@ internal sealed class SpillAttachment
         // ToolOutputSpill.MinimumResultCharacters, which is at least this overhead, so the clamp
         // to zero below never discards part of the header's room.
         var ceiling = _limits.MaxResultCharacters;
-        var widestHeader = ComposeHeader(toolName, originalCharacters, entry.Id, entry.Wrapped, ceiling, total, headCount: total, tailCount: 1);
+        var widestHeader = ComposeHeader(toolName, originalCharacters, declared, entry.Id, entry.Wrapped, ceiling, total, headCount: total, tailCount: 1);
         var omission = ComposeOmission(total, total);
         var budget = Math.Min(
             _store.Options.PreviewCharacters,
@@ -566,7 +626,7 @@ internal sealed class SpillAttachment
 
         // Compose the real header and the body.
         var builder = new StringBuilder();
-        builder.Append(ComposeHeader(toolName, originalCharacters, entry.Id, entry.Wrapped, ceiling, total, headCount, tailCount));
+        builder.Append(ComposeHeader(toolName, originalCharacters, declared, entry.Id, entry.Wrapped, ceiling, total, headCount, tailCount));
         for (var index = 0; index < headCount; index++)
         {
             AppendLine(builder, lines[index], index + 1, width);
@@ -591,6 +651,10 @@ internal sealed class SpillAttachment
     /// </summary>
     /// <param name="toolName">The tool that produced the output.</param>
     /// <param name="originalCharacters">The characters the tool produced.</param>
+    /// <param name="declared">
+    ///     Whether the output was declared oversized by its tool though it fits the result ceiling,
+    ///     in which case the header names the declaration rather than a size comparison it would fail.
+    /// </param>
     /// <param name="id">The reference the output was retained under.</param>
     /// <param name="wrapped">Whether long lines were wrapped when the output was retained.</param>
     /// <param name="ceiling">The result ceiling the output exceeded.</param>
@@ -601,6 +665,7 @@ internal sealed class SpillAttachment
     internal static string ComposeHeader(
         string toolName,
         int originalCharacters,
+        bool declared,
         string id,
         bool wrapped,
         int ceiling,
@@ -612,9 +677,21 @@ internal sealed class SpillAttachment
         builder.Append("[Output ").Append(id)
             .Append(" from ").Append(toolName).Append(": ")
             .Append(originalCharacters.ToString(CultureInfo.InvariantCulture)).Append(" characters in ")
-            .Append(total.ToString(CultureInfo.InvariantCulture)).Append(" lines, larger than the ")
-            .Append(ceiling.ToString(CultureInfo.InvariantCulture))
-            .Append("-character result limit. ");
+            .Append(total.ToString(CultureInfo.InvariantCulture)).Append(" lines, ");
+
+        // An output its tool declared oversized may fit this ceiling - the tool judged it against
+        // a tighter one - so the header then states the declaration, never a comparison it fails.
+        // The declared form is shorter than the comparison at its widest, so the worst-case
+        // overhead is unchanged.
+        if (declared)
+        {
+            builder.Append("which its tool reported as too large to return. ");
+        }
+        else
+        {
+            builder.Append("larger than the ").Append(ceiling.ToString(CultureInfo.InvariantCulture))
+                .Append("-character result limit. ");
+        }
 
         // State plainly which lines the preview holds, so the model knows what it has not seen.
         // Every form is no longer than the two-range form the budget is computed against, except

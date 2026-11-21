@@ -37,9 +37,12 @@ retaining composition accepts. Its derivation is the worst-case fixed overhead o
 the tool name bounded at `ToolName.MaxLength` (64), a reference numbered at `long.MaxValue`
 (`output-` and 19 digits), every count at `int.MaxValue` (10 digits) and the wrapped-lines note,
 the header is at most 485 characters, the omission marker 45 and its line break 1 — 531 in all.
+The header naming a tool's declaration instead of a size comparison is shorter than the comparison
+at its widest, so it does not raise the worst case.
 The internal `WorstCaseOverheadCharacters()` composes exactly that worst case from the same code
-that composes a real preview, and a unit test asserts it does not exceed the minimum, so lengthening
-the header's wording cannot silently break the guarantee. 1,000 leaves at least 469 characters for
+that composes a real preview, taking the maximum over both header forms, and a unit test asserts it
+does not exceed the minimum, so lengthening the header's wording cannot silently break the
+guarantee. 1,000 leaves at least 469 characters for
 preview lines in the worst case, and covers every fixed result the readers return (an empty window,
 `No matches.`) and every refusal the composition writes itself.
 
@@ -76,13 +79,29 @@ The internal `SpillAttachment` is one composition's retention. It holds:
 Called by the wrapper with every result:
 
 - An `OversizedResult` marker (from `ToolResult.Oversized`) is always retained; if it cannot be
-  retained the tool's own refusal is returned.
-- A purely textual result — a `string`, a `JsonElement`, a `TextContent`, or a non-empty sequence
-  made only of `TextContent` — is retained when its delivered length exceeds the result ceiling,
-  measured as the provider would have received it (raw JSON text for a `JsonElement`). A JSON
-  object or array is indented only once it is known to be retained.
-- Anything else — `null`, `DataContent`, a caption beside an image, any other shape — passes
-  through unchanged. Binary content is already bounded by `MaxBinaryBytes`.
+  retained the tool's own refusal is returned. When its text fits the result ceiling — the tool
+  judged it against a tighter ceiling of its own — the preview header states that the tool reported
+  it as too large to return, rather than a size comparison the output would fail.
+- A sequence of `AIContent` that is not already an `IReadOnlyList<AIContent>` is materialized once,
+  and when it is not retained the materialized list — the same parts in the same order — is what is
+  delivered. A tool may return a single-pass or lazily produced sequence; measuring it and then
+  letting the provider's adapter enumerate it again would deliver it empty or altered. A list or an
+  array is delivered as the very instance the tool returned.
+- A purely textual result — a `string`, a `JsonElement`, a `TextContent`, or a non-empty list
+  made only of `TextContent` — is retained when its size exceeds the result ceiling. A result is
+  measured by its own representation, not by any envelope a provider adds around it, which differs
+  from provider to provider: a string by its characters, any `JsonElement` by its JSON text
+  (`GetRawText()`), text content by its text (a list's parts joined by `\n`). A JSON *string* is
+  therefore measured with its quotes and escapes — the form the Microsoft.Extensions.AI chat
+  adapters send — which never under-counts an adapter that sends the decoded value instead.
+- What is retained is the form a model can page and search: a JSON string is retained as its
+  decoded value (`GetString()`), and a JSON object or array is indented, only once it is known to
+  be retained. Retaining escaped or compact JSON would collapse a multi-line output into one line
+  that `tool_output_read` could not page by line and `tool_output_search` could not match literally.
+- Anything else — `null`, an undefined `JsonElement` (which carries no value), `DataContent`, a
+  caption beside an image, any other shape — passes through as it arrived, except that a sequence
+  of content that is not already a list is the list it was enumerated into, the same parts in the
+  same order. Binary content is already bounded by `MaxBinaryBytes`.
 
 #### Preview composition
 
@@ -116,15 +135,22 @@ below zero, so every preview — header, body and marker — is within `MaxResul
 
 **What a retaining composition guarantees.** Every successful result it produces fits within
 `MaxResultCharacters`: previews (including header-only previews), reader pages, empty windows,
-search listings and `No matches.`. A result that already fit is returned unchanged. Every refusal
-the composition writes itself — the retention-limit refusal and the reader refusals, whose
-malformed-identifier echo `ToolOutputStore` bounds — is far shorter than the minimum. A refusal a
-tool writes itself (the message given to `ToolResult.Oversized`, or any `ToolResult.Denied`) is the
-tool's own text, exactly as without retention.
+search listings and `No matches.`. A result that already fit is returned as it arrived, or, for a
+sequence of content that is not already a list, as the list it was enumerated into, the same parts
+in the same order. Every refusal the composition writes itself — the retention-limit refusal and
+the reader refusals, whose malformed-identifier echo `ToolOutputStore` bounds — is far shorter
+than the minimum. A refusal a tool writes itself (the message given to `ToolResult.Oversized`, or
+any `ToolResult.Denied`) is the tool's own text, exactly as without retention.
 
 An output whose normalized size exceeds `MaxOutputCharacters` is not retained: the result is the
 marker's own refusal, or `Denied (ResourceTooLarge): The output of '<tool>' is N characters, which
-exceeds the M-character retention limit.` It is never truncated.
+exceeds the M-character retention limit.` It is never truncated. `N` is the size the output would
+be retained at — line endings normalized, long lines wrapped, structured data indented — which is
+the figure `MaxOutputCharacters` is measured on; it comes from `ToolOutputStore.Measure`, which
+shares the store's normalization scan without copying the output. The size the tool returned can be
+smaller (compact JSON, or one long line that wrapping lengthens) and would contradict the limit it
+is said to exceed. The preview header, by contrast, reports the size the tool returned, the figure
+the result ceiling judged.
 
 ### Error Handling
 
@@ -133,8 +159,10 @@ exceeds the M-character retention limit.` It is never truncated.
 | Null `tools` or `limits` | `ArgumentNullException` propagates |
 | `MaxResultCharacters` below `MinimumResultCharacters` | `ArgumentException` (`limits`) propagates |
 | Null tool, name over 64 characters, reserved name, duplicate name | `ArgumentException` propagates |
-| Output over the retention ceiling | A refusal is returned to the model |
-| Binary or non-textual result | Passed through unchanged |
+| Output over the retention ceiling | A refusal stating the retained size is returned to the model |
+| Binary or non-textual result | Passed through; a single-pass sequence as its enumerated list |
+| Single-pass sequence of content | Enumerated once; the parts enumerated are delivered |
+| Undefined `JsonElement` | Passed through unchanged; never measured |
 
 ### Dependencies
 

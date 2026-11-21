@@ -24,9 +24,10 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all fifteen scenarios below pass. Any identifier issued out of order
+A unit test run passes when all sixteen scenarios below pass. Any identifier issued out of order
 or twice, any retained line altered or lost, any output over the per-output ceiling retained, any
-output that fits refused by the early raw-length check, any eviction other than oldest-first, any
+output that fits refused by the early raw-length check, any measured size differing from the
+normalized size, any eviction other than oldest-first, any
 lookup outcome misreported, any over-long malformed identifier echoed, or any inconsistency under
 concurrent addition constitutes a failure.
 
@@ -94,6 +95,15 @@ Exhaustive boundary analysis: for every output of up to eight characters drawn f
 and LF, and every ceiling from one to five, an output the raw-length check refuses normalizes to
 more than the ceiling; and for each ceiling the CRLF output of exactly the bound is not refused and
 normalizes to exactly the ceiling, proving the bound tight.
+
+#### AgentKitCore-ToolOutputStore-PerOutputCeiling: Measuring Gives Exactly the Normalized Size
+
+**Test**: `ToolOutputStore_Measure_EqualsTheNormalizedSize`
+
+Boundary values: for an empty output, one character, a trailing break, mixed CRLF, CR and LF
+endings, nothing but CRLF pairs, a line wrapped onto continuation lines, a wrap boundary at a
+surrogate pair, and an indented JSON document, the size measured without copying equals the size
+normalization reports.
 
 #### AgentKitCore-ToolOutputStore-OldestEvictedFirst: The Count Ceiling Evicts the Oldest
 

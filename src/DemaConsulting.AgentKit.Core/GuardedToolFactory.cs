@@ -287,11 +287,13 @@ public static class GuardedToolFactory
 ///     </para>
 ///     <para>
 ///     <b>With retention composed</b>, every result is handed to the composition's attachment,
-///     which retains an oversized output and returns a preview naming its reference, and returns
-///     everything else unchanged. The attachment is added by <see cref="ToolOutputSpill.Apply"/>
-///     through <see cref="WithSpill"/>, which builds a new wrapper over the same inner function
-///     rather than mutating this one, so a tool list composed without retention is never altered
-///     by a later composition that has it.
+///     which retains an oversized output and returns a preview naming its reference, delivers a
+///     sequence of content that is not already a list as the list it was enumerated into — the
+///     same parts in the same order — and returns everything else, a list or an array included,
+///     as it arrived. The attachment is added by <see cref="ToolOutputSpill.Apply"/> through
+///     <see cref="WithSpill"/>, which builds a new wrapper over the same inner function rather
+///     than mutating this one, so a tool list composed without retention is never altered by a
+///     later composition that has it.
 ///     </para>
 ///     <para>
 ///     Instances are immutable and safe for concurrent use; the attachment they may carry is
@@ -350,7 +352,9 @@ internal sealed class GuardedFunction : DelegatingAIFunction
     /// <param name="cancellationToken">A token that cancels the invocation.</param>
     /// <returns>
     ///     The wrapped function's result, with an oversized-output marker replaced by its refusal
-    ///     or, when retention is composed, an oversized result replaced by its preview.
+    ///     or, when retention is composed, an oversized result replaced by its preview and a
+    ///     sequence of content that is not already a list delivered as the list it was enumerated
+    ///     into.
     /// </returns>
     protected override async ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments,
@@ -359,7 +363,9 @@ internal sealed class GuardedFunction : DelegatingAIFunction
         var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
 
         // With retention composed, the attachment decides: an oversized output is retained and
-        // previewed, and anything else is returned exactly as it arrived.
+        // previewed, a sequence of content that is not already a list is delivered as the list it
+        // was enumerated into - the same parts in the same order - and anything else is returned
+        // as it arrived.
         if (_spill is not null)
         {
             return _spill.Deliver(Name, result);

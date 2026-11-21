@@ -164,8 +164,9 @@ Invokes the inner function and resolves its result for delivery:
   tool returned before the marker existed — and every other result passes through untouched. A
   host that has not opted in therefore observes no change, and a marker never reaches a provider.
 - **Retention composed:** every result is handed to `SpillAttachment.Deliver`, which retains an
-  oversized output and returns its preview, and returns anything else unchanged; see
-  *ToolOutputSpill Unit Design*.
+  oversized output and returns its preview, delivers a sequence of content that is not already a
+  list as the list it was enumerated into — the same parts in the same order — and returns anything
+  else, a list or an array included, as it arrived; see *ToolOutputSpill Unit Design*.
 
 **The wrapper is transparent.** `DelegatingAIFunction` forwards the name, the description, the
 parameter and return schemas, the serializer options, the underlying method, the additional

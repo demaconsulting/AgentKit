@@ -26,12 +26,13 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twenty-two scenarios below pass. Any result within the ceiling
+A unit test run passes when all twenty-six scenarios below pass. Any result within the ceiling
 altered, any oversized textual result not retained, any preview exceeding the ceiling or omitting
-the reference or the readers, any header misstating the lines shown, any binary content retained,
-any output truncated, any reader result retained, any store shared between compositions, any
-result ceiling below the retention minimum accepted, or any invalid list accepted constitutes a
-failure.
+the reference or the readers, any header misstating the lines shown or claiming an output exceeds a
+ceiling it fits within, any binary content or absent result retained, any sequence of content
+enumerated twice, any output truncated, any refusal misstating the size it refuses, any reader
+result retained, any store shared between compositions, any result ceiling below the retention
+minimum accepted, or any invalid list accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -122,6 +123,24 @@ Normal operation: two large text parts are retained as one output of their combi
 Normal operation: a function built directly by the underlying factory is wrapped and its oversized
 result retained.
 
+#### AgentKitCore-ToolOutputSpill-TextualResultsRetained: A JSON String Is Measured by Its JSON Text and Retained Decoded
+
+**Test**: `ToolOutputSpill_Apply_JsonString_IsMeasuredByItsJsonTextAndRetainedDecoded`
+
+Boundary value: a hand-built function returns a JSON string of 400 lines that is 800 characters
+decoded and 1,202 as JSON text, against a 1,000-character ceiling. It is retained, the header
+reports 1,202 characters in 400 lines, and reading the first two lines shows the decoded text
+(`a` on each line), not the escaped form.
+
+#### AgentKitCore-ToolOutputSpill-SequenceEnumeratedOnce: A Single-Pass Sequence Is Enumerated Once
+
+**Test**: `ToolOutputSpill_Apply_SinglePassSequence_IsEnumeratedOnce`
+
+Boundary values: tools return sequences that throw when enumerated a second time — one small text
+part, and a caption beside an image. Each delivered result enumerates without error to exactly the
+parts the tool produced, in order, the image the same instance. A list within the ceiling is
+delivered as the very instance the tool returned.
+
 #### AgentKitCore-ToolOutputSpill-BinaryNeverRetained: Binary Content Passes Through
 
 **Test**: `ToolOutputSpill_Apply_BinaryContent_PassesThroughUnchanged`
@@ -135,11 +154,20 @@ content.
 
 Boundary value: a null result remains null.
 
+#### AgentKitCore-ToolOutputSpill-BinaryNeverRetained: An Undefined JSON Element Passes Through
+
+**Test**: `ToolOutputSpill_Apply_UndefinedJsonElement_PassesThrough`
+
+Boundary value: a hand-built function returning an undefined `JsonElement` delivers that element
+unchanged, without an exception.
+
 #### AgentKitCore-ToolOutputSpill-DeclaredOversizedRetained: A Declared-Oversized Output Is Retained
 
 **Test**: `ToolOutputSpill_Apply_OversizedMarker_IsRetained`
 
-Normal operation: a small output the tool declared oversized is retained rather than refused.
+Normal operation: a small output the tool declared oversized is retained rather than refused, and
+the header states that the tool reported it as too large to return rather than claiming it is
+larger than a ceiling it fits within.
 
 #### AgentKitCore-ToolOutputSpill-OverRetentionCeilingRefused: The Tool's Own Refusal Is Kept
 
@@ -154,6 +182,15 @@ refusal.
 
 Error path: an ordinary output above the retention ceiling is refused naming the tool and the
 ceiling.
+
+#### AgentKitCore-ToolOutputSpill-OverRetentionCeilingRefused: A Refusal States the Retained Size
+
+**Test**: `ToolOutputSpill_Apply_OutputOverRetentionCeilingOnceRetained_ReportsTheRetainedSize`
+
+Error path and boundary values: against a 5,000-character retention ceiling, compact JSON of 3,894
+characters that indents to 6,895, and one 5,000-character line that wraps to 5,002, are each refused
+stating the retained size (6,895 and 5,002) rather than the size the tool returned, with the
+5,000-character limit named.
 
 #### AgentKitCore-ToolOutputSpill-ReadersAppendedNotRetained: The Readers Follow the Tools
 

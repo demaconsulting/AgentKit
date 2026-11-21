@@ -401,8 +401,39 @@ internal sealed class ToolOutputStore
     internal static string[] Normalize(string text, out long characters, out bool wrapped)
     {
         var lines = new List<string>();
+        characters = Scan(text, lines, out wrapped);
+        return [.. lines];
+    }
+
+    /// <summary>
+    ///     Measures the size an output would be retained at, without copying it.
+    /// </summary>
+    /// <remarks>
+    ///     Exactly the size <see cref="Normalize"/> reports and <see cref="Add"/> compares to
+    ///     <see cref="ToolOutputOptions.MaxOutputCharacters"/>: both run the same scan, this one
+    ///     without assembling the lines. A refusal can therefore state the size it refuses without
+    ///     a very large output ever being copied into lines only to be discarded.
+    /// </remarks>
+    /// <param name="text">The output text.</param>
+    /// <returns>The characters the output would be retained as, counting one per line break.</returns>
+    internal static long Measure(string text) => Scan(text, lines: null, out _);
+
+    /// <summary>
+    ///     Scans an output into the lines it is retained as, and measures them.
+    /// </summary>
+    /// <remarks>
+    ///     The single scan behind <see cref="Normalize"/> and <see cref="Measure"/>, so the size a
+    ///     refusal states can never drift from the size the store judged.
+    /// </remarks>
+    /// <param name="text">The output text.</param>
+    /// <param name="lines">The list to assemble the lines in, or <see langword="null"/> to only measure.</param>
+    /// <param name="wrapped">On return, whether any line was wrapped.</param>
+    /// <returns>The characters retained, counting one per line break.</returns>
+    private static long Scan(string text, List<string>? lines, out bool wrapped)
+    {
         wrapped = false;
-        characters = 0;
+        long characters = 0;
+        long count = 0;
 
         var start = 0;
         while (true)
@@ -411,7 +442,12 @@ internal sealed class ToolOutputStore
             var end = text.IndexOfAny(['\r', '\n'], start);
             var lineEnd = end < 0 ? text.Length : end;
 
-            wrapped |= AppendWrapped(lines, text, start, lineEnd);
+            // Wrapping splits a line without dropping a character, so the line's characters are
+            // counted whole and only the number of lines it becomes depends on the wrap.
+            var chunks = AppendWrapped(lines, text, start, lineEnd);
+            wrapped |= chunks > 1;
+            count += chunks;
+            characters += lineEnd - start;
 
             if (end < 0)
             {
@@ -433,33 +469,30 @@ internal sealed class ToolOutputStore
             }
         }
 
-        foreach (var line in lines)
-        {
-            characters += line.Length;
-        }
-
         // Count the line breaks between lines, so the figure is the length of the normalized text.
-        characters += lines.Count - 1;
-        return [.. lines];
+        return characters + count - 1;
     }
 
     /// <summary>
     ///     Appends one physical line, wrapped into chunks no longer than
     ///     <see cref="MaxLineCharacters"/>.
     /// </summary>
-    /// <param name="lines">The lines being assembled.</param>
+    /// <param name="lines">The lines being assembled, or <see langword="null"/> to only count them.</param>
     /// <param name="text">The output text.</param>
     /// <param name="start">The index the physical line starts at.</param>
     /// <param name="end">The index one past the physical line's last character.</param>
-    /// <returns><see langword="true"/> when the line was wrapped; otherwise <see langword="false"/>.</returns>
-    private static bool AppendWrapped(List<string> lines, string text, int start, int end)
+    /// <returns>
+    ///     The number of lines the physical line becomes: one, or more when it was wrapped.
+    /// </returns>
+    private static int AppendWrapped(List<string>? lines, string text, int start, int end)
     {
         if (end - start <= MaxLineCharacters)
         {
-            lines.Add(text[start..end]);
-            return false;
+            lines?.Add(text[start..end]);
+            return 1;
         }
 
+        var chunks = 0;
         var position = start;
         while (position < end)
         {
@@ -471,11 +504,12 @@ internal sealed class ToolOutputStore
                 length--;
             }
 
-            lines.Add(text.Substring(position, length));
+            lines?.Add(text.Substring(position, length));
             position += length;
+            chunks++;
         }
 
-        return true;
+        return chunks;
     }
 
     /// <summary>

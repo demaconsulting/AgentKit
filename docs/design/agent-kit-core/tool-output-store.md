@@ -71,7 +71,9 @@ indented one.
 **Normalization:** `\r\n`, `\r` and `\n` each end a line, and a break at the very end ends the last
 line rather than opening an empty one (matching how `text_file_read` counts a file's lines). A line
 longer than `MaxLineCharacters` (2,000) is split into chunks no longer than that, never between the
-two halves of a surrogate pair. An empty output is one empty line.
+two halves of a surrogate pair. An empty output is one empty line. `Normalize` and `Measure` run
+one shared scan, which assembles the lines only when asked to, so the size measured and the size
+retained can never drift apart.
 
 **Retention:** when the normalized size exceeds `MaxOutputCharacters` the method returns `null` and
 evicts nothing — refusing one output must not cost the model references it already holds. Otherwise
@@ -112,6 +114,14 @@ Reports whether `rawLength > 2(maxCharacters + 1)`, computed in 64 bits: the ear
 `Add` makes before normalizing, derived under `Add` above. Internal so the unit tests can prove it
 never refuses an output that fits.
 
+#### Measure(string text)
+
+Returns exactly the normalized size `Normalize` reports and `Add` compares to
+`MaxOutputCharacters` — line breaks normalized and counted one each, long lines wrapped — by
+running the same scan without assembling any line, so nothing is copied. `ToolOutputSpill` uses it
+to state, in the retention-limit refusal, the very size the store judged, even for an output far
+too large to have been normalized.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -130,5 +140,6 @@ never refuses an output that fits.
 
 ### Callers
 
-- **ToolOutputSpill** — allocates the store, adds outputs, and indents structured results.
+- **ToolOutputSpill** — allocates the store, adds outputs, indents structured results, and measures
+  an output it must refuse.
 - **ToolOutputReadTool** and **ToolOutputSearchTool** — look outputs up and compose refusals.

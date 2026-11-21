@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 
 namespace DemaConsulting.AgentKit.Core.Tests;
@@ -192,8 +194,11 @@ public class ToolOutputSpillTests
         // Act: invoke it
         var result = Assert.IsType<string>(await InvokeAsync(tools, "probe_marker"));
 
-        // Assert: a reference, not the refusal
+        // Assert: a reference, not the refusal, and no claim that ten characters exceed the
+        // 1,000-character ceiling - the header names the tool's declaration instead
         Assert.StartsWith("[Output output-1 from probe_marker", result, StringComparison.Ordinal);
+        Assert.Contains("which its tool reported as too large to return", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("larger than", result, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -237,6 +242,118 @@ public class ToolOutputSpillTests
         // Assert: a refusal naming the tool and the retention ceiling, never a truncation
         Assert.StartsWith("Denied (ResourceTooLarge): The output of 'probe_big'", result, StringComparison.Ordinal);
         Assert.Contains("2000-character retention limit", result, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a refusal over the retention ceiling states the size the output would be retained
+    ///     at - the size the ceiling is measured on - not the smaller size the tool returned.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_OutputOverRetentionCeilingOnceRetained_ReportsTheRetainedSize()
+    {
+        // Arrange: compact JSON of 3,894 characters that indents to 6,895, and one 5,000-character
+        // line that wraps to 5,002, against a 5,000-character retention ceiling
+        using var document = JsonDocument.Parse("[" + string.Join(",", Enumerable.Range(1, 1_000)) + "]");
+        var compact = new FixedFunction("probe_compact", document.RootElement.Clone());
+        var tools = ToolOutputSpill.Apply(
+            [compact, TextTool("probe_line", new string('x', 5_000))],
+            new ToolLimits(maxResultCharacters: Ceiling),
+            new ToolOutputOptions(maxOutputCharacters: 5_000, maxRetainedCharacters: 5_000));
+
+        // Act: invoke both
+        var json = Assert.IsType<string>(await InvokeAsync(tools, "probe_compact"));
+        var line = Assert.IsType<string>(await InvokeAsync(tools, "probe_line"));
+
+        // Assert: each refusal states a size that does exceed the limit it names
+        Assert.Contains("is 6895 characters", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("3894", json, StringComparison.Ordinal);
+        Assert.Contains("5000-character retention limit", json, StringComparison.Ordinal);
+        Assert.Contains("is 5002 characters", line, StringComparison.Ordinal);
+        Assert.Contains("5000-character retention limit", line, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a single-pass sequence of content is enumerated exactly once, so the parts reach
+    ///     the runtime intact whether text alone or beside an image, and that a list is still
+    ///     delivered as the very instance the tool returned.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_SinglePassSequence_IsEnumeratedOnce()
+    {
+        // Arrange: single-pass sequences that throw when enumerated twice, and a list
+        var image = new DataContent(new byte[16], "image/png");
+        var listed = new List<AIContent> { new TextContent("listed") };
+        var tools = ToolOutputSpill.Apply(
+            [
+                ContentTool("probe_lazy_text", () => new SinglePassSequence(new TextContent("small"))),
+                ContentTool("probe_lazy_image", () => new SinglePassSequence(new TextContent("caption"), image)),
+                ContentTool("probe_list", () => listed),
+            ],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke each and enumerate what was delivered
+        var text = Assert.IsAssignableFrom<IEnumerable<AIContent>>(await InvokeAsync(tools, "probe_lazy_text")).ToList();
+        var mixed = Assert.IsAssignableFrom<IEnumerable<AIContent>>(await InvokeAsync(tools, "probe_lazy_image")).ToList();
+        var list = await InvokeAsync(tools, "probe_list");
+
+        // Assert: every part delivered, in order, and the list untouched
+        Assert.Equal("small", Assert.IsType<TextContent>(Assert.Single(text)).Text);
+        Assert.Equal(2, mixed.Count);
+        Assert.Equal("caption", Assert.IsType<TextContent>(mixed[0]).Text);
+        Assert.Same(image, mixed[1]);
+        Assert.Same(listed, list);
+    }
+
+    /// <summary>
+    ///     Proves a JSON string is measured by its JSON text, quotes and escapes included, and is
+    ///     retained as its decoded text so its lines can be paged.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_JsonString_IsMeasuredByItsJsonTextAndRetainedDecoded()
+    {
+        // Arrange: a JSON string of 400 lines - 800 characters decoded, 1,202 as JSON text
+        using var document = JsonDocument.Parse("\"" + string.Concat(Enumerable.Repeat("a\\n", 400)) + "\"");
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_json", document.RootElement.Clone())],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke it and read the first two retained lines
+        var preview = Assert.IsType<string>(await InvokeAsync(tools, "probe_json"));
+        var page = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 1,
+            ["lineCount"] = 2,
+        }));
+
+        // Assert: retained because its JSON text exceeds the ceiling, and paged as decoded lines
+        Assert.StartsWith("[Output output-1 from probe_json: 1202 characters in 400 lines", preview, StringComparison.Ordinal);
+        Assert.Contains("1| a\n", page, StringComparison.Ordinal);
+        Assert.Contains("2| a", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\n", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves an undefined JSON element, which carries no value, reaches the runtime exactly as
+    ///     it would without retention.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolOutputSpill_Apply_UndefinedJsonElement_PassesThrough()
+    {
+        // Arrange: a hand-built function returning an undefined element
+        var tools = ToolOutputSpill.Apply(
+            [new FixedFunction("probe_undefined", default(JsonElement))],
+            new ToolLimits(maxResultCharacters: Ceiling));
+
+        // Act: invoke it
+        var result = await InvokeAsync(tools, "probe_undefined");
+
+        // Assert: the undefined element itself, no exception
+        Assert.Equal(JsonValueKind.Undefined, Assert.IsType<JsonElement>(result).ValueKind);
     }
 
     /// <summary>
@@ -558,6 +675,17 @@ public class ToolOutputSpillTests
         "Returns an oversized output.");
 
     /// <summary>
+    ///     Builds a guarded tool returning content built on each call.
+    /// </summary>
+    /// <param name="name">The tool name.</param>
+    /// <param name="content">Builds the content the tool returns.</param>
+    /// <returns>The tool.</returns>
+    private static AIFunction ContentTool(string name, Func<IEnumerable<AIContent>> content) => GuardedToolFactory.Create(
+        (Func<Task<object>>)(() => Task.FromResult<object>(content())),
+        name,
+        "Returns content.");
+
+    /// <summary>
     ///     Builds numbered text of the requested number of lines.
     /// </summary>
     /// <param name="count">The number of lines.</param>
@@ -579,5 +707,82 @@ public class ToolOutputSpillTests
     {
         var tool = tools.Single(candidate => candidate.Name == name);
         return await tool.InvokeAsync(arguments ?? new AIFunctionArguments(), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    ///     A hand-built function returning one fixed value, as a function not built by the guarded
+    ///     factory may return a shape the factory never produces.
+    /// </summary>
+    private sealed class FixedFunction : AIFunction
+    {
+        /// <summary>
+        ///     The function's name.
+        /// </summary>
+        private readonly string _name;
+
+        /// <summary>
+        ///     The value every invocation returns.
+        /// </summary>
+        private readonly object? _result;
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="FixedFunction"/> class.
+        /// </summary>
+        /// <param name="name">The function's name.</param>
+        /// <param name="result">The value every invocation returns.</param>
+        public FixedFunction(string name, object? result)
+        {
+            _name = name;
+            _result = result;
+        }
+
+        /// <inheritdoc/>
+        public override string Name => _name;
+
+        /// <inheritdoc/>
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments,
+            CancellationToken cancellationToken) => new(_result);
+    }
+
+    /// <summary>
+    ///     A sequence of content that can be enumerated only once, as a lazily produced sequence
+    ///     may be; a second enumeration throws.
+    /// </summary>
+    private sealed class SinglePassSequence : IEnumerable<AIContent>
+    {
+        /// <summary>
+        ///     The parts the one enumeration yields.
+        /// </summary>
+        private readonly AIContent[] _parts;
+
+        /// <summary>
+        ///     Whether the sequence has been enumerated.
+        /// </summary>
+        private bool _enumerated;
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="SinglePassSequence"/> class.
+        /// </summary>
+        /// <param name="parts">The parts the one enumeration yields.</param>
+        public SinglePassSequence(params AIContent[] parts)
+        {
+            _parts = parts;
+        }
+
+        /// <inheritdoc/>
+        public IEnumerator<AIContent> GetEnumerator()
+        {
+            if (_enumerated)
+            {
+                throw new InvalidOperationException("The sequence was already enumerated.");
+            }
+
+            _enumerated = true;
+            return ((IEnumerable<AIContent>)_parts).GetEnumerator();
+        }
+
+        /// <inheritdoc/>
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }
