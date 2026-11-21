@@ -164,11 +164,12 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-RejectsInvalidOptions
             title: >-
-              The runtime shall reject missing options and a missing or blank data directory as
-              programming errors.
+              The runtime shall reject missing options and a missing, blank or invalid data directory
+              as programming errors.
             justification: |
               A runtime with no data directory could not be confined to one the library owns; the
               defect is surfaced where the composing application wrote it.
             tests:
               - CopilotRuntime_StartAsync_NullOptions_Throws
               - CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws
+              - CopilotRuntimeOptions_Constructor_InvalidDataDirectory_ThrowsNamingTheParameter

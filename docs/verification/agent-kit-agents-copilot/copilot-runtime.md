@@ -199,6 +199,9 @@ conversations through this method.
 
 - `CopilotRuntime_StartAsync_NullOptions_Throws`
 - `CopilotRuntimeOptions_Constructor_BlankDataDirectory_Throws`
+- `CopilotRuntimeOptions_Constructor_InvalidDataDirectory_ThrowsNamingTheParameter`
 
 Null options are refused with `ArgumentNullException` before anything is created; a null data
-directory with `ArgumentNullException` and a whitespace one with `ArgumentException`.
+directory with `ArgumentNullException`, a whitespace one with `ArgumentException`, and a path the
+platform cannot represent with `ArgumentException` naming `dataDirectory`, the platform's own failure
+kept as its inner exception.

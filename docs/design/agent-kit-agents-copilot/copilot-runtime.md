@@ -211,7 +211,7 @@ restart the client for that open. Disposal is not serialized against open runs, 
 | Condition | Handling |
 | --- | --- |
 | Null options | `ArgumentNullException` |
-| Null, empty or whitespace data directory | `ArgumentNullException` or `ArgumentException` from the options |
+| Null, blank or invalid data directory | `ArgumentNullException` or `ArgumentException` naming `dataDirectory` |
 | Data directory path names a file | `InvalidOperationException` naming the path |
 | Non-empty data directory without the marker | `InvalidOperationException` naming the directory |
 | Directory or marker cannot be created | `IOException` or `UnauthorizedAccessException` propagates |

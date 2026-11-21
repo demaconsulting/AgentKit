@@ -69,8 +69,19 @@ public sealed class CopilotRuntimeOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
 
         // Resolved now, so the directory a runtime uses does not depend on the current directory at
-        // the moment it starts.
-        DataDirectory = Path.GetFullPath(dataDirectory);
+        // the moment it starts. A path the platform cannot represent is the caller's argument error.
+        try
+        {
+            DataDirectory = Path.GetFullPath(dataDirectory);
+        }
+        catch (ArgumentException failure)
+        {
+            throw new ArgumentException(
+                "The Copilot data directory is not a valid path; the inner exception says why.",
+                nameof(dataDirectory),
+                failure);
+        }
+
         GitHubToken = string.IsNullOrWhiteSpace(gitHubToken) ? null : gitHubToken;
         LogLevel = logLevel;
         Logger = logger;

@@ -335,6 +335,21 @@ public class CopilotRuntimeTests
     }
 
     /// <summary>
+    ///     Proves a data directory that is not a valid path is refused naming the parameter, with the
+    ///     platform's own failure kept as the cause.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntimeOptions_Constructor_InvalidDataDirectory_ThrowsNamingTheParameter()
+    {
+        // Act
+        var failure = Assert.Throws<ArgumentException>(() => new CopilotRuntimeOptions("copilot\0runtime"));
+
+        // Assert
+        Assert.Equal("dataDirectory", failure.ParamName);
+        Assert.IsType<ArgumentException>(failure.InnerException);
+    }
+
+    /// <summary>
     ///     Proves a relative data directory is resolved to a full path when the options are built.
     /// </summary>
     [Fact]
