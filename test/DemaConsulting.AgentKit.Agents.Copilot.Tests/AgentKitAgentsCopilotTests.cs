@@ -398,8 +398,8 @@ public class AgentKitAgentsCopilotTests
     /// <summary>
     ///     Proves the runtime AgentKit owns is confined before it starts, whatever the host's
     ///     environment holds: Empty mode, the bundled runtime spawned over stdio on the prepared data
-    ///     directory, none of the host's Copilot configuration variables, and no client-level channel
-    ///     of injected capability.
+    ///     directory, none of the host's Copilot configuration variables beyond the pass-through set,
+    ///     and no client-level channel of injected capability.
     /// </summary>
     [Fact]
     public void AgentKitAgentsCopilot_Runtime_ClientOptionsAreConfined()

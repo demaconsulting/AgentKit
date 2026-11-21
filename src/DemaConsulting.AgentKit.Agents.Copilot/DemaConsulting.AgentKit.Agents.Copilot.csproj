@@ -11,7 +11,7 @@
     <Version>0.0.0</Version>
     <Authors>DEMA Consulting</Authors>
     <Company>DEMA Consulting</Company>
-    <Description>A Microsoft Agent Framework AIAgent on a GitHub Copilot runtime AgentKit starts and owns (Empty mode, the host's Copilot variables withheld, a data directory AgentKit created), which suppresses the Copilot runtime's built-in tools through a source-qualified allow-list derived from the supplied tools, plus an AgentKit compacting session over the same runtime</Description>
+    <Description>A Microsoft Agent Framework AIAgent on a GitHub Copilot runtime AgentKit starts and owns (Empty mode, the host's COPILOT_ and GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, proxy and telemetry-off set, a data directory AgentKit owns), which suppresses the Copilot runtime's built-in tools through a source-qualified allow-list derived from the supplied tools, plus an AgentKit compacting session over the same runtime</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/demaconsulting/AgentKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/demaconsulting/AgentKit</RepositoryUrl>

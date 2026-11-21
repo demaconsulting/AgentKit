@@ -22,8 +22,8 @@ sections:
           options and the live session can reach — including every MCP server the session lists,
           which is disabled before any turn runs, the session's installed plugins and the host
           environment context — while running every session on a runtime the library starts in Empty
-          mode, on a data directory it created, with the host's Copilot configuration variables
-          withheld.
+          mode, on a data directory it owns, with the host's COPILOT_ and GITHUB_COPILOT_ variables
+          withheld apart from an allow-listed credential, proxy and telemetry-off set.
         tags: [security]
         justification: |
           Copilot arrives as a complete agent runtime carrying its own tools — shell, fetch, file
@@ -371,9 +371,9 @@ sections:
       - id: AgentKitAgentsCopilot-Runtime-OwnedAndConfined
         title: >-
           The library shall start, confine and own the Copilot runtime every agent, provider session
-          and summarizer runs on — in Empty mode, as a child process that receives none of the host's
-          Copilot configuration variables, on a data directory the library created — and shall
-          accept no client a host built.
+          and summarizer runs on — in Empty mode, as a child process with the host's COPILOT_ and
+          GITHUB_COPILOT_ variables withheld apart from an allow-listed credential, proxy and telemetry-off set, on
+          a data directory the library owns — and shall accept no client a host built.
         tags: [security]
         justification: |
           The confinement a Copilot session needs is only partly a property of the session. The rest

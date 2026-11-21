@@ -6,8 +6,9 @@ namespace DemaConsulting.AgentKit.Agents.Copilot;
 
 /// <summary>
 ///     The GitHub Copilot runtime AgentKit starts, confines and owns: a runtime process in
-///     <c>CopilotClientMode.Empty</c> whose environment carries none of the host's Copilot
-///     configuration variables, on a data directory AgentKit created.
+///     <c>CopilotClientMode.Empty</c> whose environment withholds the host's <c>COPILOT_</c> and
+///     <c>GITHUB_COPILOT_</c> variables apart from an allow-listed credential, proxy and telemetry-off set,
+///     on a data directory AgentKit owns.
 /// </summary>
 /// <remarks>
 ///     <para>

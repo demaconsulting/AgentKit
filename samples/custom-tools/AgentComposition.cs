@@ -178,8 +178,9 @@ public static class AgentComposition
         string instructions,
         CancellationToken cancellationToken)
     {
-        // AgentKit starts the runtime itself - Empty mode, none of the shell's COPILOT_ variables,
-        // a data directory AgentKit created - and the host disposes it; the factory takes no
+        // AgentKit starts the runtime itself - Empty mode, the shell's COPILOT_/GITHUB_COPILOT_
+        // variables withheld apart from an allow-listed credential, proxy and telemetry-off set,
+        // a data directory AgentKit owns - and the host disposes it; the factory takes no
         // ownership. A per-user application-data folder keeps that state out of the workspace. A
         // start that fails or is canceled has already released the runtime.
         var runtime = await CopilotRuntime.StartAsync(

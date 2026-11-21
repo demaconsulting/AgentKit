@@ -412,8 +412,9 @@ default: it is not composed with it, so a host that supplies a handler forfeits 
 its handler reproduces it. The pinned manual mode applies either way.
 
 **Only a runtime AgentKit owns.** `Create` takes a `CopilotRuntime`, which AgentKit started in Empty
-mode, as a child process that receives none of the host's Copilot configuration variables, on a data
-directory AgentKit created. A client of the host's could be in another mode, on a shared data
+mode, as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+allow-listed credential, proxy and telemetry-off set, on a data directory AgentKit owns. A client of the host's could be
+in another mode, on a shared data
 directory, or in-process with the host's whole environment, and none of that can be read back, so no
 overload takes one. The factory still sets on each session every capability or context default Empty
 mode supplies, so the confinement does not rest on the mode alone, and the turn channel clears the

@@ -137,7 +137,8 @@ end-of-input to leave.
   - Network access on the first build: the sample references `Microsoft.Copilot.SDK` directly, so
     that build downloads the Copilot runtime (about 100 MB, adding about 356 MB to the sample's
     output) and later builds reuse it.
-  - Nothing about the shell: AgentKit starts the runtime with none of its `COPILOT_` variables, so
-    the sample runs from a Copilot CLI shell too. The runtime keeps its state in
+  - Nothing about the shell: AgentKit starts the runtime with the shell's `COPILOT_`/`GITHUB_COPILOT_`
+    variables withheld apart from an allow-listed credential, proxy and telemetry-off set, so the sample
+    runs from a Copilot CLI shell too. The runtime keeps its state in
     `AgentKit/custom-tools/copilot-runtime` under the user's local application data.
 - For `--provider ollama`: a reachable Ollama server hosting a model with tool-calling.

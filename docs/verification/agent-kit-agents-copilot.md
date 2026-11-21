@@ -410,8 +410,9 @@ that what those tests assert about the options is what the runtime honors.
 - **Log**: the optional environment variable `AGENTKIT_COPILOT_LIVE_LOG_DIRECTORY` names the folder a
   `live-*.log` of the run is written to, recording what the runtime reported and decided.
 - **Fixture**: one shared `CopilotRuntime` per run, started exactly as a host starts one — Empty
-  mode, the provisioned runtime spawned with the host's Copilot variables withheld, a data directory
-  AgentKit created under the run's temporary root — authenticated as the logged-in user or from
+  mode, the provisioned runtime spawned with the host's Copilot variables withheld bar the
+  pass-through set, a data directory AgentKit created under the run's temporary root —
+  authenticated as the logged-in user or from
   `GH_TOKEN`/`GITHUB_TOKEN`. A sandbox folder holds a `notes.txt` carrying the codeword `PERIWINKLE-42` and a
   generated PNG split blue and yellow; a file outside the sandbox carries a second codeword no confined
   tool may return. The tests run sequentially in one collection, to control cost and because one

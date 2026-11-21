@@ -174,8 +174,8 @@ constituent software items, specifically:
   confined Copilot session on a conversation's first run and resumes it on every later run, streams
   what the runtime produces, delivers inline data as attachments, and serializes the conversation
 - **CopilotRuntime (Unit)** — Starts, confines and owns the Copilot runtime — Empty mode, the host's
-  Copilot configuration variables withheld, a data directory AgentKit created — and explains a runtime
-  that cannot start
+  `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an allow-listed credential, proxy and
+  telemetry-off set, a data directory AgentKit owns — and explains a runtime that cannot start
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for

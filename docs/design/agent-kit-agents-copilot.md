@@ -21,8 +21,9 @@ safety-critical behavior of the whole increment.
 The system also wires a permission handler that is safe by default — approving exactly the supplied
 tools and rejecting every other request — while letting a host supply its own; see *Permission
 Handling Is Default-Deny*. And it starts the runtime itself — `CopilotRuntime`, in Empty mode, as a
-child process that receives none of the host's Copilot configuration variables, on a data directory it
-created — because what reaches a session depends on the client as much as on the session; see
+child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+allow-listed credential, proxy and telemetry-off set, on a data directory it owns — because what reaches a session
+depends on the client as much as on the session; see
 *Runtime Ownership*. The host starts and disposes that runtime; nothing else in this system takes
 ownership of it.
 
@@ -450,9 +451,9 @@ agent uses, and the five that carry a Core session over the runtime.
   conversation.
 - **CopilotRuntime (Unit)** — the runtime AgentKit starts, confines and owns, with its options type:
   builds the only Copilot client the package runs on — Empty mode, the provisioned runtime spawned as
-  a child process with the host's Copilot configuration variables withheld, a data directory it
-  created — exposes only neutral options, explains a runtime that cannot start, and is disposed by
-  whoever started it.
+  a child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+  allow-listed credential, proxy and telemetry-off set, a data directory it owns — exposes only neutral options,
+  explains a runtime that cannot start, and is disposed by whoever started it.
 - **CopilotProviderSession (Unit)** — an `IProviderSession` over one Copilot session: sends a turn,
   carries the seeded record ahead of the first message it sends, refuses a turn that reported no
   usage or whose history the runtime rewrote, ends the session on any turn the runtime processed that
@@ -687,9 +688,10 @@ so no path can acquire capability another path withholds.
   creation, such as a managed catalog's or a signed-in account's, may still start during session
   creation: it is contained, not prevented.
 - **The runtime AgentKit owns.** Every session runs on a runtime AgentKit started in Empty mode, as a
-  child process that receives none of the host's Copilot configuration variables, on a data directory
-  AgentKit created; no client of the host's is accepted. This is what prevents the user, workspace
-  and plugin sources, which Empty mode alone does not; see *Runtime Ownership*.
+  child process with the host's `COPILOT_`/`GITHUB_COPILOT_` variables withheld apart from an
+  allow-listed credential, proxy and telemetry-off set, on a data directory AgentKit owns; no client of the
+  host's is accepted. This is what prevents the user, workspace and plugin sources, which Empty mode
+  alone does not; see *Runtime Ownership*.
 - **The refused built-in names.** A supplied tool cannot carry a built-in tool's name, and AgentKit
   never marks a tool as overriding a built-in, so no supplied tool can stand in for one the model
   associates with other behavior.

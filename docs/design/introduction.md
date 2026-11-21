@@ -177,9 +177,10 @@ software items, specifically:
   in-memory attachments, and releases a conversation's session without deleting it after every run
   (a run made without a conversation deletes its session)
 - **CopilotRuntime (Unit)** — The Copilot runtime AgentKit starts, confines and owns: Empty mode,
-  the provisioned runtime spawned as a child process with the host's Copilot configuration variables
-  withheld, a data directory AgentKit created; exposes only neutral options, explains a runtime that
-  cannot start, and lets the host delete a kept conversation
+  the provisioned runtime spawned as a child process with the host's `COPILOT_`/`GITHUB_COPILOT_`
+  variables withheld apart from an allow-listed credential, proxy and telemetry-off set, a data directory AgentKit
+  owns; exposes only neutral options, explains a runtime that cannot start, and lets the host delete a
+  kept conversation
 - **CopilotProviderSession (Unit)** — One Core session over one Copilot session: sends a turn,
   carries the seeded record ahead of its first message, records the runtime's tool traffic, reports
   the runtime's own occupancy, and ends the session on a turn it cannot account for
