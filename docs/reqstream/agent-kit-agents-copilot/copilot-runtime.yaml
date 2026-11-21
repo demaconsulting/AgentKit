@@ -61,10 +61,11 @@ sections:
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-OwnsACleanDataDirectory
             title: >-
-              The runtime shall keep its state in a data directory it created, creating and marking
-              a missing or empty directory, reusing a directory it marked earlier, and refusing a path
-              that names a file or a non-empty directory it did not create, before any runtime reads
-              it.
+              The runtime shall keep its state in a data directory it created, creating a missing or
+              empty directory and marking it with a versioned marker file it never overwrites,
+              reusing a directory whose marker is a regular file holding exactly what it writes, and
+              refusing a path that names a file, a non-empty directory without the marker, or one
+              whose marker is a link, a directory or other content, before any runtime reads it.
             tags: [security]
             justification: |
               Empty mode alone still runs an MCP server that the data directory configures, and a
@@ -72,13 +73,24 @@ sections:
               hooks and trusted folders. A directory the library created holds none of those to begin
               with. Reusing a directory the library marked lets conversations persist across restarts.
               A directory another tool populated is refused rather than inspected, because a list of
-              files to object to would go stale with every runtime release.
+              files to object to would go stale with every runtime release. A marker is trusted only
+              as a regular file with exactly the expected bytes, so an entry that merely has the
+              marker's name is not mistaken for one. The marker guards against reusing a foreign
+              directory by mistake; it is not a security boundary against a process that can already
+              write to the directory, which keeping the directory private to the application addresses.
             tests:
               - CopilotRuntime_PrepareDataDirectory_Missing_IsCreatedAndMarked
               - CopilotRuntime_PrepareDataDirectory_Empty_IsMarked
               - CopilotRuntime_PrepareDataDirectory_Marked_IsAcceptedWithRuntimeContent
               - CopilotRuntime_PrepareDataDirectory_UnmarkedNonEmpty_IsRefused
               - CopilotRuntime_PrepareDataDirectory_PathIsAFile_IsRefused
+              - CopilotRuntime_PrepareDataDirectory_Fresh_WritesExactlyTheVersionedMarker
+              - CopilotRuntime_PrepareDataDirectory_MarkerWithOtherContent_IsRefusedAsInvalid
+              - CopilotRuntime_PrepareDataDirectory_MarkerOversized_IsRefusedAsInvalid
+              - CopilotRuntime_PrepareDataDirectory_MarkerIsADirectory_IsRefusedAsInvalid
+              - CopilotRuntime_PrepareDataDirectory_MarkerIsASymbolicLink_IsRefusedAsInvalid
+              - CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValid_IsAcceptedNotOverwritten
+              - CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyInvalid_IsRefusedNotOverwritten
 
           - id: AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions
             title: >-

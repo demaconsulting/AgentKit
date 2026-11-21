@@ -513,10 +513,12 @@ token, a log level and a logger — and disposes the runtime when finished. The 
 mode, runs as a child process whose environment carries none of the host's `COPILOT_` or
 `GITHUB_COPILOT_` configuration variables apart from a credential, network and telemetry-off
 pass-through set, and keeps its state in a data directory AgentKit created and marked; any other
-non-empty directory is refused. Each of these closes a channel a host-built client could leave open,
-and none can be detected on such a client, so the overloads that took a host's `CopilotClient` were
-removed rather than kept as a weaker path. *CopilotRuntime Unit Design* classifies every client
-option and records the alternatives rejected.
+non-empty directory, including one whose marker is not exactly the bytes AgentKit writes, is
+refused. The marker guards against reusing another tool's directory by mistake; it is not a security
+boundary against a process that can already write to the directory. Each of these closes a channel a
+host-built client could leave open, and none can be detected on such a client, so the overloads that
+took a host's `CopilotClient` were removed rather than kept as a weaker path. *CopilotRuntime Unit
+Design* classifies every client option and records the alternatives rejected.
 
 **What is guaranteed, per MCP source.** On that runtime, before any session exists:
 

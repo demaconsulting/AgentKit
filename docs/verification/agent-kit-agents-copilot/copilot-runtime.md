@@ -11,8 +11,12 @@ Copilot runtime:
 - **`BuildClientOptions` and `BuildRuntimeEnvironment`** take the host environment as a parameter, so
   a test passes a hostile environment of its own and inspects the client options and the replacement
   environment AgentKit would hand the SDK. The process environment is never read or changed.
-- **`PrepareDataDirectory`** runs against real directories created under the system temporary folder
-  and deleted afterwards, because the behavior under test is what the directory holds.
+- **`PrepareDataDirectory` and `MarkDataDirectory`** run against real directories created under the
+  system temporary folder and deleted afterwards, because the behavior under test is what the
+  directory holds. `MarkDataDirectory` is driven directly to reproduce a concurrent writer that
+  created the marker first. The symbolic-link case is skipped on a Windows session that lacks the
+  privilege to create symbolic links; it runs on Linux, macOS and elevated or Developer Mode Windows,
+  and a marker that is a directory covers the non-link refusal everywhere.
 - **`StartClientAsync` and `StartOwnedAsync`** take the start, and the creation and disposal, as
   delegates, because the SDK's client cannot be made to fail on demand without a broken runtime.
 - **Disposal and deletion** are exercised on a runtime constructed over a `CopilotClient` that was never started
@@ -61,7 +65,9 @@ explicitly asserted. Any client options in another mode, on another connection, 
 arguments or a child working directory, or with any client-level capability channel set; any
 `COPILOT_` or `GITHUB_COPILOT_` variable outside the pass-through set reaching the runtime environment,
 or any other host variable dropped; a pass-through set other than the documented one; a data directory
-accepted when it names a file or is a non-empty directory without the marker, or marked when refused;
+accepted when it names a file, is a non-empty directory without the marker, or has a marker that is a
+link, a directory, the wrong size or the wrong content, or marked when refused; a marker written in
+any form other than the exact versioned bytes, or an existing marker overwritten;
 a failed start whose explanation omits the runtime's error, the direct SDK reference or an
 authentication source, or loses the
 original failure; a cancellation that is wrapped; a failed or canceled start that leaves the client
@@ -112,12 +118,33 @@ filtered environment rather than the host's.
 - `CopilotRuntime_PrepareDataDirectory_Marked_IsAcceptedWithRuntimeContent`
 - `CopilotRuntime_PrepareDataDirectory_UnmarkedNonEmpty_IsRefused`
 - `CopilotRuntime_PrepareDataDirectory_PathIsAFile_IsRefused`
+- `CopilotRuntime_PrepareDataDirectory_Fresh_WritesExactlyTheVersionedMarker`
+- `CopilotRuntime_PrepareDataDirectory_MarkerWithOtherContent_IsRefusedAsInvalid`
+- `CopilotRuntime_PrepareDataDirectory_MarkerOversized_IsRefusedAsInvalid`
+- `CopilotRuntime_PrepareDataDirectory_MarkerIsADirectory_IsRefusedAsInvalid`
+- `CopilotRuntime_PrepareDataDirectory_MarkerIsASymbolicLink_IsRefusedAsInvalid` (skipped on
+  unprivileged Windows)
+- `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValid_IsAcceptedNotOverwritten`
+- `CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyInvalid_IsRefusedNotOverwritten`
 
 Normal operation and the error paths. A missing nested directory is created and marked, and its full
-path returned; an empty one is marked; a marked one is accepted with the runtime's own content in it,
-which is left in place. A directory holding an `mcp-config.json` it did not get from AgentKit is
-refused with an `InvalidOperationException` naming it and is left unmarked, and a path naming a file
-is refused naming the path.
+path returned; an empty one is marked; in both cases the marker's bytes equal the format-1 marker,
+which the test writes out independently of the library: UTF-8 without a byte order mark, LF line
+endings, the signature and format version on the first line and a final line feed. A marked
+directory is accepted with the runtime's own content in it, which is left in place. A directory
+holding an `mcp-config.json` it did not get from AgentKit is refused with an
+`InvalidOperationException` naming it and saying it was not created by AgentKit, not that its marker
+is invalid, and is left unmarked; a path naming a file is refused naming the path.
+
+A marker that is empty, carries a byte order mark, has CRLF line endings, has an extra or a missing
+final line feed, or holds the earlier unversioned text is refused as "not the marker AgentKit
+writes", naming the directory, and is left byte for byte as it was. So is a marker that starts with
+the expected bytes but is a megabyte (1 MiB) larger (the reason names its size), a marker entry that
+is a directory (the reason says so, rather than reporting the directory as unmarked), and a symbolic
+link whose target outside the data directory holds exactly the valid bytes (the reason names a link;
+the target is left alone). When a concurrent writer created the marker first, a valid one is
+accepted with its bytes and last-write time unchanged, and a partial one is refused as invalid and
+left as it was.
 
 #### AgentKitAgentsCopilot-CopilotRuntime-OffersOnlyNeutralOptions: Nothing That Widens the Session
 

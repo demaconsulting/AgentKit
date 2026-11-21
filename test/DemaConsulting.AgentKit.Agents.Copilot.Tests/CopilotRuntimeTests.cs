@@ -246,7 +246,7 @@ public class CopilotRuntimeTests
         // Assert
         Assert.Equal(Path.GetFullPath(dataDirectory), prepared);
         Assert.True(Directory.Exists(prepared));
-        Assert.True(File.Exists(Path.Combine(prepared, CopilotRuntime.OwnershipMarkerFileName)));
+        Assert.Equal(ExpectedMarker, File.ReadAllBytes(Path.Combine(prepared, CopilotRuntime.OwnershipMarkerFileName)));
     }
 
     /// <summary>
@@ -262,7 +262,188 @@ public class CopilotRuntimeTests
         var prepared = CopilotRuntime.PrepareDataDirectory(directory.Path);
 
         // Assert
-        Assert.True(File.Exists(Path.Combine(prepared, CopilotRuntime.OwnershipMarkerFileName)));
+        Assert.Equal(ExpectedMarker, File.ReadAllBytes(Path.Combine(prepared, CopilotRuntime.OwnershipMarkerFileName)));
+    }
+
+    /// <summary>
+    ///     Proves the marker AgentKit writes is the versioned format-1 marker, byte for byte: UTF-8
+    ///     without a byte order mark, LF line endings, a signature and format version on its first
+    ///     line, and a final line feed.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_Fresh_WritesExactlyTheVersionedMarker()
+    {
+        // Arrange
+        using var directory = new TemporaryDirectory();
+        var dataDirectory = Path.Combine(directory.Path, "copilot-runtime");
+
+        // Act
+        var prepared = CopilotRuntime.PrepareDataDirectory(dataDirectory);
+
+        // Assert
+        var written = File.ReadAllBytes(Path.Combine(prepared, CopilotRuntime.OwnershipMarkerFileName));
+        Assert.Equal(ExpectedMarker, written);
+        Assert.Equal(ExpectedMarker, CopilotRuntime.OwnershipMarkerContent.ToArray());
+        Assert.NotEqual(0xEF, written[0]);
+        Assert.DoesNotContain((byte)'\r', written);
+        var text = System.Text.Encoding.UTF8.GetString(written);
+        Assert.StartsWith("AgentKit Copilot runtime data directory, marker format 1\n", text, StringComparison.Ordinal);
+        Assert.EndsWith("\n", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a data directory whose marker is a regular file holding anything other than exactly
+    ///     the marker AgentKit writes is refused as carrying an invalid marker, and the marker is left
+    ///     as it was rather than overwritten.
+    /// </summary>
+    /// <param name="variant">The kind of content the marker holds.</param>
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("byte-order-mark")]
+    [InlineData("crlf")]
+    [InlineData("extra-line-feed")]
+    [InlineData("no-final-line-feed")]
+    [InlineData("earlier-unversioned")]
+    public void CopilotRuntime_PrepareDataDirectory_MarkerWithOtherContent_IsRefusedAsInvalid(string variant)
+    {
+        // Arrange: a data directory whose marker holds content AgentKit does not write
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        var content = MarkerVariant(variant);
+        File.WriteAllBytes(marker, content);
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.Equal(content, File.ReadAllBytes(marker));
+    }
+
+    /// <summary>
+    ///     Proves a data directory whose marker begins with the expected bytes but is far larger is
+    ///     refused as carrying an invalid marker.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_MarkerOversized_IsRefusedAsInvalid()
+    {
+        // Arrange: the expected marker followed by a megabyte (1 MiB) of padding
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        File.WriteAllBytes(marker, [.. ExpectedMarker, .. new byte[1024 * 1024]]);
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("size", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    ///     Proves a data directory whose marker entry is a directory is refused as carrying an invalid
+    ///     marker, not reported as a directory without one.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_MarkerIsADirectory_IsRefusedAsInvalid()
+    {
+        // Arrange: a directory named like the marker, with a file in it
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        Directory.CreateDirectory(marker);
+        File.WriteAllBytes(Path.Combine(marker, "content"), ExpectedMarker);
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("is a directory", failure.Message, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(marker));
+    }
+
+    /// <summary>
+    ///     Proves a data directory whose marker is a symbolic link is refused as carrying an invalid
+    ///     marker, even when the link's target holds exactly the marker AgentKit writes.
+    /// </summary>
+    /// <remarks>
+    ///     Skipped on a Windows session that lacks the privilege to create symbolic links; it runs on
+    ///     Linux, macOS and elevated or Developer Mode Windows.
+    /// </remarks>
+    [Fact]
+    public void CopilotRuntime_PrepareDataDirectory_MarkerIsASymbolicLink_IsRefusedAsInvalid()
+    {
+        // Arrange: a marker that links to a valid marker outside the data directory
+        using var directory = new TemporaryDirectory();
+        using var elsewhere = new TemporaryDirectory();
+        var target = Path.Combine(elsewhere.Path, "marker");
+        File.WriteAllBytes(target, ExpectedMarker);
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        try
+        {
+            File.CreateSymbolicLink(marker, target);
+        }
+        catch (Exception ex) when (OperatingSystem.IsWindows() && ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("Creating a symbolic link needs SeCreateSymbolicLinkPrivilege, which this Windows session lacks.");
+        }
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.PrepareDataDirectory(directory.Path));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("symbolic link", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(ExpectedMarker, File.ReadAllBytes(target));
+    }
+
+    /// <summary>
+    ///     Proves that when another writer has already written a valid marker by the time AgentKit
+    ///     marks the directory, the existing marker is accepted and not overwritten.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyValid_IsAcceptedNotOverwritten()
+    {
+        // Arrange: a racing writer already wrote the marker
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        File.WriteAllBytes(marker, ExpectedMarker);
+        var writtenAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(marker, writtenAt);
+
+        // Act
+        CopilotRuntime.MarkDataDirectory(directory.Path);
+
+        // Assert
+        Assert.Equal(writtenAt, File.GetLastWriteTimeUtc(marker));
+        Assert.Equal(ExpectedMarker, File.ReadAllBytes(marker));
+    }
+
+    /// <summary>
+    ///     Proves that when another writer has left a partial marker by the time AgentKit marks the
+    ///     directory, the directory is refused as carrying an invalid marker and the partial marker is
+    ///     left as it was.
+    /// </summary>
+    [Fact]
+    public void CopilotRuntime_MarkDataDirectory_MarkerWrittenConcurrentlyInvalid_IsRefusedNotOverwritten()
+    {
+        // Arrange: a racing writer left half a marker
+        using var directory = new TemporaryDirectory();
+        var marker = Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName);
+        var partial = ExpectedMarker[..(ExpectedMarker.Length / 2)];
+        File.WriteAllBytes(marker, partial);
+
+        // Act
+        var failure = Assert.Throws<InvalidOperationException>(() => CopilotRuntime.MarkDataDirectory(directory.Path));
+
+        // Assert
+        Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
+        Assert.Equal(partial, File.ReadAllBytes(marker));
     }
 
     /// <summary>
@@ -302,6 +483,8 @@ public class CopilotRuntimeTests
 
         // Assert
         Assert.Contains(directory.Path, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("not created by AgentKit", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(InvalidMarkerPhrase, failure.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(directory.Path, CopilotRuntime.OwnershipMarkerFileName)));
     }
 
@@ -596,6 +779,40 @@ public class CopilotRuntimeTests
         // Act / Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() => runtime.DeleteSessionAsync("session", TestContext.Current.CancellationToken));
     }
+
+    /// <summary>
+    ///     Builds the content of a marker that is not the one AgentKit writes.
+    /// </summary>
+    /// <param name="variant">The kind of content.</param>
+    /// <returns>The marker's bytes.</returns>
+    private static byte[] MarkerVariant(string variant) => variant switch
+    {
+        "empty" => [],
+        "byte-order-mark" => [0xEF, 0xBB, 0xBF, .. ExpectedMarker],
+        "crlf" => System.Text.Encoding.UTF8.GetBytes(System.Text.Encoding.UTF8.GetString(ExpectedMarker).Replace("\n", "\r\n", StringComparison.Ordinal)),
+        "extra-line-feed" => [.. ExpectedMarker, (byte)'\n'],
+        "no-final-line-feed" => ExpectedMarker[..^1],
+        "earlier-unversioned" => System.Text.Encoding.UTF8.GetBytes(
+            "This directory is the data directory of a GitHub Copilot runtime started by AgentKit.\n"
+            + "AgentKit created it and reuses it. Do not point the Copilot CLI or another tool at it, and do\n"
+            + "not add Copilot configuration to it.\n"),
+        _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, "Unknown marker variant."),
+    };
+
+    /// <summary>
+    ///     The phrase that identifies a refusal for an invalid marker, as distinct from a directory
+    ///     without one.
+    /// </summary>
+    private const string InvalidMarkerPhrase = "is not the marker AgentKit writes";
+
+    /// <summary>
+    ///     The exact bytes of the format-1 marker, written out here independently of the library so a
+    ///     change to the marker's format is a deliberate change to this test as well.
+    /// </summary>
+    private static readonly byte[] ExpectedMarker =
+        ("AgentKit Copilot runtime data directory, marker format 1\n"u8
+        + "This directory is the data directory of a GitHub Copilot runtime started by AgentKit, which created\n"u8
+        + "it and reuses it. Do not point the Copilot CLI or another tool at it, and do not edit this file.\n"u8).ToArray();
 
     /// <summary>
     ///     A directory under the system temporary folder, deleted when disposed.

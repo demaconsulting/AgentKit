@@ -738,11 +738,14 @@ The runtime is always:
   — `PATH`, the home and temporary folders, proxy and certificate settings, `GH_TOKEN`,
   `GITHUB_TOKEN` — passes through.
 - **On a data directory AgentKit owns.** A missing or empty directory is created and marked with a
-  `.agentkit-copilot-runtime` file; a directory AgentKit marked earlier is reused, so conversations
-  survive a restart; any other non-empty directory — a Copilot CLI home, a shared folder, the data
-  directory an earlier release's client used — is refused with an `InvalidOperationException` naming
-  it. Keep the directory private to the application, never point the Copilot CLI at it, and give
-  each runtime running at the same time a directory of its own. The runtime's caches are not kept
+  versioned `.agentkit-copilot-runtime` file; a directory is reused, so conversations survive a
+  restart, only when that file is a regular file holding exactly what AgentKit wrote; any other
+  non-empty directory — a Copilot CLI home, a shared folder, the data directory an earlier release's
+  client used, or one whose marker is a link, a directory or was edited — is refused with an
+  `InvalidOperationException` naming it. The marker guards against reusing another tool's directory
+  by mistake; it is not a security boundary against a process that can already write to the
+  directory. Keep the directory private to the application, never point the Copilot CLI at it, and
+  give each runtime running at the same time a directory of its own. The runtime's caches are not kept
   there: they go to the platform's cache folder (`%LOCALAPPDATA%` on Windows, `XDG_CACHE_HOME` or its
   default elsewhere).
 
@@ -975,6 +978,12 @@ for answer quality across a long conversation, not to save money.
   The directory holds something AgentKit did not put there — a Copilot CLI home, or the data directory
   an earlier release's client used. Give the runtime a new or empty directory of the application's
   own.
+- **`InvalidOperationException`: the data directory's `.agentkit-copilot-runtime` entry "is not the
+  marker AgentKit writes".** The directory has an entry with the marker's name, but it is a link, a
+  directory, or a file whose content is not exactly what AgentKit writes — for example a marker that
+  was edited, or one written by an earlier pre-release build. The message gives the reason. If the
+  application created the directory, delete it and let AgentKit create it again; the conversations
+  kept in it are lost. Otherwise give the runtime a new or empty directory of the application's own.
 - **Build warning or error `MCPSDK001`.** The SDK marks its permission-decision types as being for
   evaluation purposes, and any code that references them — a permission handler of your own — raises
   that diagnostic. Suppress it around the handler, as above, or add it to the project's `NoWarn`.

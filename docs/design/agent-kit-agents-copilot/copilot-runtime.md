@@ -59,6 +59,11 @@ impossible to express rather than refused when used.
   Each carries only a credential, network settings, or a switch that can only turn telemetry off.
 - **`OwnershipMarkerFileName`** (`const string`) — `.agentkit-copilot-runtime`, the file that marks a
   data directory as AgentKit's.
+- **`OwnershipMarkerContent`** (`ReadOnlySpan<byte>`, a UTF-8 literal) — the marker's exact bytes:
+  UTF-8 without a byte order mark, LF line endings and a final line feed. The first line,
+  `AgentKit Copilot runtime data directory, marker format 1`, is a fixed signature with the format
+  version; the rest tells a person who finds the file what the directory is and not to edit it. It
+  holds no secret, path or time stamp, so it is the same on every machine.
 
 ### Key Methods
 
@@ -84,12 +89,46 @@ the runtime and disposes it.
 
 **Purpose:** Make sure the data directory is one AgentKit owns.
 
-**Algorithm:** Resolve the full path. A path naming an existing file is refused. An existing
-directory containing the ownership marker is accepted as it is, whatever the runtime has written
-there since. Any other non-empty directory is refused with an `InvalidOperationException` naming the
-directory and explaining that it was not created by AgentKit. A missing directory is created with its
-parents. The marker is written only after the directory is known to be new or empty, so a refused
-directory is left untouched.
+**Algorithm:** Resolve the full path. A path naming an existing file is refused. For an existing
+directory, look for an entry with the marker's name without following links; unlike `File.Exists`,
+this finds a directory, a junction and a dangling link as well as a file. When the entry exists it is
+validated, checking in this order and following no link:
+
+1. A symbolic link, junction or other reparse point (`LinkTarget` set or `ReparsePoint` attribute) is
+   invalid.
+2. A directory is invalid.
+3. A length other than `OwnershipMarkerContent.Length` is invalid. This is checked before the file is
+   opened, so it caps what is read and refuses a FIFO or device without blocking on it.
+4. The file is read, one byte past the marker's length so a file that grew since its length was read
+   is refused, and compared byte for byte with `OwnershipMarkerContent`.
+
+A valid marker accepts the directory as it is, whatever the runtime has written there since. An
+invalid one refuses it with an `InvalidOperationException` naming the directory, saying its
+`.agentkit-copilot-runtime` entry "is not the marker AgentKit writes", giving the reason, and telling
+the host to delete a directory an earlier build created or to use a new one. A non-empty directory
+without the entry is refused with an `InvalidOperationException` naming the directory and explaining
+that it was not created by AgentKit (it has no marker). A missing directory is created with its
+parents.
+
+No variant of the bytes is tolerated — no byte order mark, CRLF line endings or a different final
+line feed. AgentKit is the marker's only intended writer and writes one fixed form that depends on
+neither the platform newline nor encoder settings; a data directory is not checked out of git or
+passed through an editor, and copying it preserves bytes. A marker someone edited is no longer
+evidence that AgentKit created the directory, and a wrong refusal fails closed with a remedy.
+
+The marker is written only after the directory is known to be new or empty, so a refused directory is
+left untouched. `MarkDataDirectory` creates it with `FileMode.CreateNew`, so an existing entry is
+never overwritten. When another writer created the entry first — `CreateNew` then reports
+`IOException` for a file, or `UnauthorizedAccessException` for a directory or junction — the entry is
+validated as above and the directory accepted or refused accordingly. A write that fails after the
+file was created deletes the partial file, as a best effort, and the failure propagates. A concurrent
+preparation of the same directory therefore fails closed.
+
+**What the marker does and does not guarantee.** The marker guards against reusing a foreign Copilot
+home or a shared folder by mistake. It is not a security boundary against a process that can already
+write to the directory: such a process can write the exact marker, swap the entry for a link between
+the check and the read, or add configuration after the check, and a hard link to a marker elsewhere
+is not detected. The guarantee rests on the host keeping the directory private to the application.
 
 A fresh directory is what keeps user-configured MCP servers, installed plugins, user hooks and trusted
 folders from existing at all. A directory another tool populated is refused rather than inspected,
@@ -97,7 +136,8 @@ because a list of files to object to would go stale with every runtime release. 
 content in a marked directory is not policed; an MCP server added there later is still found by
 discovery and disabled before a session is created (see *CopilotTurnChannel Unit Design*).
 
-**Postconditions:** The directory exists, carries the marker, and its full path is returned.
+**Postconditions:** The directory exists, carries exactly the marker AgentKit writes, and its full
+path is returned.
 
 #### BuildRuntimeEnvironment(IDictionary hostEnvironment)
 
