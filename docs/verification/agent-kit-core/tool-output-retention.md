@@ -29,11 +29,11 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all twelve scenarios below, covering fifteen tests, pass. Any reference not shared across
+A unit test run passes when all thirteen scenarios below, covering sixteen tests, pass. Any reference not shared across
 wraps, any reader instance that changes, any invalid ceiling, tool or list accepted, any restored reference answering
 different content, any reference re-issued after a restore, any snapshot not fitted to the restoring ceilings, any
-malformed snapshot partly restored, any JSON round trip that alters a snapshot, or any reference shared between
-retentions constitutes a failure.
+malformed snapshot partly restored, any reference above the counter restored, any JSON round trip that alters a
+snapshot, or any reference shared between retentions constitutes a failure.
 
 ### Test Scenarios
 
@@ -120,6 +120,13 @@ counter is still 3.
 A negative counter, a malformed reference, a repeated reference, an output with no lines, a line
 holding a break, a line longer than 2,000 characters and a null output each throw
 `ArgumentException`; a null snapshot throws `ArgumentNullException`.
+
+#### AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot: A Reference Above the Counter Is Refused
+
+**Test**: `ToolOutputRetention_Restore_ReferenceAboveCounter_Throws`
+
+A snapshot with counter 1 holding `output-2`, and one with counter 0 holding `output-1`, each throw
+`ArgumentException` naming `snapshot`, so a reference never issued is never installed.
 
 #### AgentKitCore-ToolOutputRetention-Isolated: Two Retentions Share Nothing
 

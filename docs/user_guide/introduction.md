@@ -1195,8 +1195,10 @@ var restored = ToolOutputRetention.Restore(snapshot, limits);
 A restored retention answers the same references with the same content, observes the ceilings it is
 restored with — evicting the oldest outputs first if they are smaller — and continues numbering after
 every reference ever issued, so an old reference is never re-issued to different content. A snapshot
-holds the full text of the retained outputs, up to 16,777,216 characters by default: it has the same
-privacy class as the chat history and should be stored and sized accordingly.
+that could not have been exported — a malformed or repeated reference, a reference above its counter,
+or lines that are not normalized — is rejected with `ArgumentException` rather than partly restored.
+A snapshot holds the full text of the retained outputs, up to 16,777,216 characters by default: it has
+the same privacy class as the chat history and should be stored and sized accordingly.
 
 ## Injecting Tools per Session
 

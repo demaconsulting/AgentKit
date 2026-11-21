@@ -45,8 +45,8 @@ Invariants:
 
 - Every tool an instance wraps, and both its readers, share its one store; two instances share none.
 - `ReaderTools` returns the same two instances for the life of the retention.
-- A restored retention never issues a reference at or below the snapshot's `LastIssued` or its
-  highest output number.
+- A restored retention never issues a reference at or below the snapshot's `LastIssued`, and every
+  reference it restores is at or below it.
 
 ### Key Methods
 
@@ -77,12 +77,13 @@ Takes `ToolOutputStore.Snapshot` under the store's lock and copies each entry's 
 2. Construct a new retention with `limits` and `options`, so ceilings are validated as the constructor
    validates them.
 3. Validate the snapshot: a negative `LastIssued`; a null output; an identifier `ToolOutputStore`
-   could not have issued or one repeated; or lines that are null, empty, hold a null line, a line
-   break, or a line longer than `ToolOutputStore.MaxLineCharacters` — each an `ArgumentException`
-   naming `snapshot`. Nothing is restored from a rejected snapshot.
+   could not have issued, one repeated, or one whose number is above `LastIssued` (a reference never
+   issued); or lines that are null, empty, hold a null line, a line break, or a line longer than
+   `ToolOutputStore.MaxLineCharacters` — each an `ArgumentException` naming `snapshot`. Nothing is
+   restored from a rejected snapshot.
 4. Order the outputs by number and hand them to `ToolOutputStore.Restore`, which re-measures each,
    drops one above the per-output ceiling, evicts oldest first to the count and character ceilings,
-   and sets the counter to the larger of `LastIssued` and the highest number.
+   and sets the counter to `LastIssued`, which validation has made at least the highest number.
 
 ### Error Handling
 

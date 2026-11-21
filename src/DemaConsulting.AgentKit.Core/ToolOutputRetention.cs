@@ -244,13 +244,13 @@ public sealed class ToolOutputRetention
     ///     The supplied ceilings apply, not the exported ones: an output larger than the per-output
     ///     ceiling is dropped and the oldest outputs are evicted until the count and character ceilings
     ///     hold, and a dropped reference is then answered as no longer retained. Numbering continues
-    ///     after the larger of the snapshot's counter and its highest reference, so a reference already
-    ///     in a conversation's history is never re-issued to different content.
+    ///     after the snapshot's counter, so a reference already in a conversation's history is never
+    ///     re-issued to different content.
     ///     </para>
     ///     <para>
-    ///     A snapshot whose references are malformed or repeated, whose counter is negative, or whose
-    ///     lines are missing, empty or not normalized (a line holding a line break, or longer than a
-    ///     retained line may be) is rejected rather than partly restored.
+    ///     A snapshot whose references are malformed, repeated or above its counter, whose counter is
+    ///     negative, or whose lines are missing, empty or not normalized (a line holding a line break,
+    ///     or longer than a retained line may be) is rejected rather than partly restored.
     ///     </para>
     /// </remarks>
     /// <param name="snapshot">The snapshot to restore. Must not be <see langword="null"/>.</param>
@@ -347,11 +347,16 @@ public sealed class ToolOutputRetention
         var seen = new HashSet<long>();
         foreach (var output in snapshot.Outputs)
         {
-            // Each output must name a reference this library could have issued, exactly once.
-            if (output is null || !ToolOutputStore.TryParse(output.Id, out var number) || !seen.Add(number))
+            // Each output must name a reference this library could have issued, exactly once, and at
+            // or below the counter: a number above it was never issued, so it would install content
+            // under a reference the retention never handed out.
+            if (output is null
+                || !ToolOutputStore.TryParse(output.Id, out var number)
+                || number > snapshot.LastIssued
+                || !seen.Add(number))
             {
                 throw new ArgumentException(
-                    "The snapshot holds a missing, malformed or repeated output reference.",
+                    "The snapshot holds a missing, malformed, repeated or never-issued output reference.",
                     nameof(snapshot));
             }
 

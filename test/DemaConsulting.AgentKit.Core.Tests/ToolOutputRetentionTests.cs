@@ -267,6 +267,28 @@ public class ToolOutputRetentionTests
     }
 
     /// <summary>
+    ///     Proves a snapshot holding a reference above its own counter — one the retention never
+    ///     issued — is rejected rather than installed.
+    /// </summary>
+    [Fact]
+    public void ToolOutputRetention_Restore_ReferenceAboveCounter_Throws()
+    {
+        // Arrange: snapshots whose outputs carry a number their counter says was never issued
+        var aboveCounter = new[]
+        {
+            new ToolOutputRetentionSnapshot(1, [new RetainedToolOutput("output-2", ["x"], false)]),
+            new ToolOutputRetentionSnapshot(0, [new RetainedToolOutput("output-1", ["x"], false)])
+        };
+
+        // Act / Assert: each is rejected, naming the snapshot
+        Assert.All(
+            aboveCounter,
+            snapshot => Assert.Equal(
+                "snapshot",
+                Assert.Throws<ArgumentException>(() => ToolOutputRetention.Restore(snapshot, Limits)).ParamName));
+    }
+
+    /// <summary>
     ///     Proves a snapshot survives a JSON round trip through its source-generated contract.
     /// </summary>
     /// <returns>A task that completes when the scenario has been verified.</returns>
