@@ -137,6 +137,45 @@ public class ToolPackContextProviderTests
     }
 
     /// <summary>
+    ///     Proves a retained output is persisted even when the run that retained it fails: the
+    ///     reloaded conversation still pages the reference the failed run issued.
+    /// </summary>
+    /// <remarks>
+    ///     The framework skips a failed run by default when it notifies a context provider, yet a run
+    ///     that fails after a tool retained output has already issued a reference the model may
+    ///     repeat in a later run. The failure is a distinct exception type, so a scripting mistake
+    ///     that made the recording client refuse an unscripted request cannot pass as the expected
+    ///     failure.
+    /// </remarks>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task ToolPackContextProvider_FailedRunAfterRetention_SnapshotStillPersisted()
+    {
+        // Arrange: a run that retains a report and then fails, followed by a run reading it
+        var client = new RecordingChatClient()
+            .Queue(Call("call-1", "report_build"))
+            .QueueFailure(new HttpRequestException("provider unavailable"))
+            .Queue(Call("call-2", ToolOutputReadTool.ToolName, new() { ["id"] = "output-1", ["startLine"] = 300, ["lineCount"] = 1 }))
+            .Queue("paged", 1);
+        var agent = Agent(client, RetainingProvider());
+        var session = await agent.CreateSessionAsync(TestContext.Current.CancellationToken);
+
+        // Act: the failing run, then serialize to JSON text, reload, and read the earlier reference
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => agent.RunAsync("build", session, cancellationToken: TestContext.Current.CancellationToken));
+        var json = (await agent.SerializeSessionAsync(session, cancellationToken: TestContext.Current.CancellationToken)).GetRawText();
+        using var document = JsonDocument.Parse(json);
+        var reloaded = await agent.DeserializeSessionAsync(document.RootElement.Clone(), cancellationToken: TestContext.Current.CancellationToken);
+        await agent.RunAsync("read", reloaded, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the failed run retained the report, the state was in the serialized session, and
+        // the page is the retained content
+        Assert.StartsWith("[Output output-1 from report_build", ResultOf(client.Requests[1], "call-1"), StringComparison.Ordinal);
+        Assert.Contains(ToolPackContextProviderOptions.DefaultStateKey, json, StringComparison.Ordinal);
+        Assert.Equal("output-1 lines 300-300 of 300\n300| report row 300", ResultOf(client.Requests[3], "call-2"));
+    }
+
+    /// <summary>
     ///     Proves that with retained outputs not persisted, a reference made before a reload is
     ///     answered "no longer retained" and never re-issued.
     /// </summary>

@@ -36,11 +36,11 @@ within the `DemaConsulting.AgentKit.Agents.ChatClient.Tests` project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all ten scenarios below pass. Any tool or instruction not contributed, any
+A unit test run passes when all eleven scenarios below pass. Any tool or instruction not contributed, any
 recomposition within a conversation, any reference readable across conversations, any retained output
-lost or re-issued across a reload, any retained text persisted after opting out, any foreign tool left
-unbounded, any non-chat-client agent accepted, any undeclared state key, or any invalid configuration
-accepted constitutes a failure.
+lost or re-issued across a reload, any retention lost after a failed run, any retained text persisted
+after opting out, any foreign tool left unbounded, any non-chat-client agent accepted, any undeclared
+state key, or any invalid configuration accepted constitutes a failure.
 
 ### Test Scenarios
 
@@ -73,6 +73,15 @@ The first session retains `output-1`; reading it from the second is answered "ne
 
 A session retains the report, is serialized to JSON text — which contains the state key — parsed and
 deserialized; reading line 300 of `output-1` returns exactly `300| report row 300`.
+
+#### AgentKitAgentsChatClient-ToolPackContextProvider-PersistsRetention: Retention Survives a Failed Run
+
+**Test**: `ToolPackContextProvider_FailedRunAfterRetention_SnapshotStillPersisted`
+
+A run retains the report and then fails with an `HttpRequestException` from the chat client. Asserts
+the failed run issued `output-1`, that the serialized session contains the state key, and that the
+reloaded conversation's read of line 300 of `output-1` returns exactly `300| report row 300`. The
+framework skips a failed run by default, so this pins the provider persisting after a failure too.
 
 #### AgentKitAgentsChatClient-ToolPackContextProvider-PersistsCounterWhenContentsOptedOut: Only the Counter Is Persisted
 

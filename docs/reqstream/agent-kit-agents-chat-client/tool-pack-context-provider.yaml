@@ -54,9 +54,12 @@ sections:
             justification: |
               An agent framework persists a conversation by serializing its session. Without this, a
               reloaded conversation answered every reference in its history "never retained", even
-              though the model had been told it could page through the output.
+              though the model had been told it could page through the output. The framework skips
+              a failed run by default, yet a run that fails after a tool retained output has already
+              issued a reference, so the retention is persisted after a failed run as well.
             tests:
               - ToolPackContextProvider_SerializeDeserializeSession_RetainedOutputPagesAfterRestore
+              - ToolPackContextProvider_FailedRunAfterRetention_SnapshotStillPersisted
 
           - id: AgentKitAgentsChatClient-ToolPackContextProvider-PersistsCounterWhenContentsOptedOut
             title: >-
