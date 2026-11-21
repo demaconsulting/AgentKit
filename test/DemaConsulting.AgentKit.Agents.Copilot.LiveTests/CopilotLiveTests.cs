@@ -697,6 +697,311 @@ public sealed class CopilotLiveTests
     }
 
     /// <summary>
+    ///     L14a: on the runtime AgentKit owns, the built-in GitHub MCP server is never started — a
+    ///     session opened through the production channel takes a turn, the runtime reports the server
+    ///     disabled, and no MCP server of any source reaches pending or connected. This is also the
+    ///     evidence available for managed-catalog and account servers: none started for the account the
+    ///     run uses.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_BuiltInGitHubMcpServer_IsNeverStarted()
+    {
+        // Arrange: a tool-free session configured exactly as production configures one
+        _live.RequireOptIn();
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        var events = RecordMcpEvents(config, "L14a");
+
+        // Act: open it through the production channel and take one turn, which is when the runtime
+        // starts its built-in server unless told not to
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Client, config, TestContext.Current.CancellationToken);
+        try
+        {
+            var reply = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
+            _live.Log($"L14a reply: {reply?.Data?.Content}");
+            await Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14a configured: [{Describe(configured.Servers)}] disabled at creation: [{string.Join(", ", config.Mcp.DisabledServers ?? [])}]");
+
+            // Assert: the runtime reported the built-in server disabled, and no server started
+            var loaded = events.OfType<SessionMcpServersLoadedEvent>().SelectMany(evt => evt.Data.Servers ?? []).ToList();
+            Assert.Contains(loaded, server =>
+                server.Name == CopilotAgentFactory.BuiltInGitHubMcpServer && server.Status == McpServerStatus.Disabled);
+            Assert.DoesNotContain(loaded, server => server.Status == McpServerStatus.Pending || server.Status == McpServerStatus.Connected);
+            Assert.DoesNotContain(
+                events.OfType<SessionMcpServerStatusChangedEvent>(),
+                evt => evt.Data.Status == McpServerStatus.Pending || evt.Data.Status == McpServerStatus.Connected);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await _live.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L14b: a control for L14a — the same session with the built-in server no longer named
+    ///     disabled, created without the production channel, starts and connects the GitHub MCP server
+    ///     on its first turn. Empty mode alone does not prevent it. The session's MCP listing does not
+    ///     report the server even while it is connected, which is why the seal cannot be relied on
+    ///     for it.
+    /// </summary>
+    /// <remarks>
+    ///     The listing assertion records a limitation of SDK 2.0.1. If it fails, the runtime has begun
+    ///     to list the built-in server, and the documentation's statement that the seal cannot see it
+    ///     should be revisited.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_BuiltInGitHubMcpServer_StartsWhenNotNamed()
+    {
+        // Arrange: the production configuration with the built-in server's name removed
+        _live.RequireOptIn();
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        config.Mcp.DisabledServers = [];
+        var events = RecordMcpEvents(config, "L14b");
+
+        // Act: create the session directly and take one turn
+        var session = await _live.Client.CreateSessionAsync(config, TestContext.Current.CancellationToken);
+        try
+        {
+            var reply = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
+            _live.Log($"L14b reply: {reply?.Data?.Content}");
+            var connected = await WaitForAsync(
+                () => events.OfType<SessionMcpServerStatusChangedEvent>().Any(evt =>
+                    evt.Data.ServerName == CopilotAgentFactory.BuiltInGitHubMcpServer && evt.Data.Status == McpServerStatus.Connected));
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14b connected={connected} configured while connected: [{Describe(configured.Servers)}]");
+
+            // Assert: the built-in server connected, and the listing the seal relies on omits it
+            Assert.True(connected, "The built-in GitHub MCP server did not connect when it was not named disabled.");
+            Assert.DoesNotContain(configured.Servers, server => server.Name == CopilotAgentFactory.BuiltInGitHubMcpServer);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await _live.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L14c: an MCP server configured in the data directory of the runtime AgentKit owns — added
+    ///     after AgentKit created the directory, so the runtime accepts it — is never executed on a
+    ///     session opened through the production channel, even after a turn: the probe's marker
+    ///     never appears, and the server is named disabled before creation and listed disabled.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_UserMcpServerInItsDataDirectory_IsNeverExecuted()
+    {
+        // Arrange: an owned runtime whose data directory has since gained a user MCP server
+        _live.RequireOptIn();
+        var probe = new McpMarkerProbe(Path.Combine(_live.Root, "probes"), "agentkit-user-probe-prevented");
+        await using var runtime = await StartTamperedRuntimeAsync(
+            "user-home-prevented",
+            dataDirectory => File.WriteAllTextAsync(Path.Combine(dataDirectory, "mcp-config.json"), probe.McpConfigJson()));
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        var events = RecordMcpEvents(config, "L14c");
+
+        // Act: open the session through the production channel and take one turn
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime.Client, config, TestContext.Current.CancellationToken);
+        try
+        {
+            _ = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
+            var executed = await probe.WaitForMarkerAsync(TestContext.Current.CancellationToken);
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14c executed={executed?.ToString() ?? "no"} configured: [{Describe(configured.Servers)}] disabled at creation: [{string.Join(", ", config.Mcp.DisabledServers ?? [])}]");
+
+            // Assert: never executed, named before creation, listed disabled, nothing started
+            Assert.Null(executed);
+            Assert.Contains(probe.Name, config.Mcp.DisabledServers ?? []);
+            Assert.Contains(configured.Servers, server => server.Name == probe.Name && !server.Enabled);
+            Assert.DoesNotContain(
+                events.OfType<SessionMcpServerStatusChangedEvent>(),
+                evt => evt.Data.Status == McpServerStatus.Pending || evt.Data.Status == McpServerStatus.Connected);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await runtime.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L14d: a control for L14c — the same data-directory server, on an owned runtime, with the
+    ///     session created from AgentKit's own options but without the production channel, is
+    ///     executed: Empty mode and AgentKit's session options alone do not prevent a user server.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_UserMcpServerWithoutTheChannel_IsExecuted()
+    {
+        // Arrange
+        _live.RequireOptIn();
+        var probe = new McpMarkerProbe(Path.Combine(_live.Root, "probes"), "agentkit-user-probe-control");
+        await using var runtime = await StartTamperedRuntimeAsync(
+            "user-home-control",
+            dataDirectory => File.WriteAllTextAsync(Path.Combine(dataDirectory, "mcp-config.json"), probe.McpConfigJson()));
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        _ = RecordMcpEvents(config, "L14d");
+
+        // Act: create the session directly
+        var session = await runtime.Client.CreateSessionAsync(config, TestContext.Current.CancellationToken);
+        try
+        {
+            var executed = await probe.WaitForMarkerAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14d executed after {executed?.TotalMilliseconds.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) ?? "(never)"} ms");
+
+            // Assert
+            Assert.NotNull(executed);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await runtime.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L14e: an MCP server in a workspace's <c>.mcp.json</c> is never executed on a session opened
+    ///     through the production channel — even with the owned runtime's data directory tampered to
+    ///     trust that workspace, and after a turn.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_WorkspaceMcpServer_IsNeverExecuted()
+    {
+        // Arrange: a workspace configuring a probe, trusted by the owned runtime's data directory
+        _live.RequireOptIn();
+        var probe = new McpMarkerProbe(Path.Combine(_live.Root, "probes"), "agentkit-workspace-probe-prevented");
+        var workspace = await CreateProbeWorkspaceAsync("workspace-prevented", probe);
+        await using var runtime = await StartTamperedRuntimeAsync(
+            "workspace-home-prevented",
+            dataDirectory => TrustAsync(dataDirectory, workspace));
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, workspace);
+        var events = RecordMcpEvents(config, "L14e");
+
+        // Act: open the session through the production channel and take one turn
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(runtime.Client, config, TestContext.Current.CancellationToken);
+        try
+        {
+            _ = await session.SendAndWaitAsync("Reply with OK only.", TurnTimeout, TestContext.Current.CancellationToken);
+            var executed = await probe.WaitForMarkerAsync(TestContext.Current.CancellationToken);
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14e executed={executed?.ToString() ?? "no"} configured: [{Describe(configured.Servers)}] disabled at creation: [{string.Join(", ", config.Mcp.DisabledServers ?? [])}]");
+
+            // Assert: never executed, and nothing started
+            Assert.Null(executed);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+            Assert.DoesNotContain(
+                events.OfType<SessionMcpServerStatusChangedEvent>(),
+                evt => evt.Data.Status == McpServerStatus.Pending || evt.Data.Status == McpServerStatus.Connected);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await runtime.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L14f: a control for L14e — the same trusted workspace, with configuration discovery switched
+    ///     back on and the session created without the production channel, executes the workspace
+    ///     server.
+    /// </summary>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_WorkspaceMcpServerWithConfigDiscovery_IsExecuted()
+    {
+        // Arrange
+        _live.RequireOptIn();
+        var probe = new McpMarkerProbe(Path.Combine(_live.Root, "probes"), "agentkit-workspace-probe-control");
+        var workspace = await CreateProbeWorkspaceAsync("workspace-control", probe);
+        await using var runtime = await StartTamperedRuntimeAsync(
+            "workspace-home-control",
+            dataDirectory => TrustAsync(dataDirectory, workspace));
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, workspace);
+        config.EnableConfigDiscovery = true;
+        _ = RecordMcpEvents(config, "L14f");
+
+        // Act: create the session directly
+        var session = await runtime.Client.CreateSessionAsync(config, TestContext.Current.CancellationToken);
+        try
+        {
+            var executed = await probe.WaitForMarkerAsync(TestContext.Current.CancellationToken);
+            _live.Log($"L14f executed after {executed?.TotalMilliseconds.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) ?? "(never)"} ms");
+
+            // Assert
+            Assert.NotNull(executed);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await runtime.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     L15: the other ambient channels are absent from a session on the runtime AgentKit owns — it
+    ///     lists no plugin, skill, instruction source or agent and no enabled MCP server, and its
+    ///     system prompt is smaller than a control session's that keeps the host environment context.
+    /// </summary>
+    /// <remarks>
+    ///     Hooks have no listing in SDK 2.0.1. They are covered by repository hooks being off, no
+    ///     installed plugin, and a fresh data directory, which holds no user hook.
+    /// </remarks>
+    [Fact]
+    public async Task AgentKitAgentsCopilotLive_OwnedRuntime_AmbientChannels_AreAbsent()
+    {
+        // Arrange: the production configuration, and a control that keeps the environment context
+        _live.RequireOptIn();
+        var config = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        var control = CopilotAgentFactory.BuildEngineSessionConfig([], null, _live.Model, _live.Sandbox);
+        control.SystemMessage = new SystemMessageConfig
+        {
+            Mode = SystemMessageMode.Customize,
+            Sections = new Dictionary<SystemMessageSection, SectionOverride>
+            {
+                [SystemMessageSection.EnvironmentContext] = new SectionOverride { Action = SectionOverrideAction.Preserve },
+            },
+        };
+
+        // Act
+        var session = await CopilotSessionChannel.CreateConfinedSessionAsync(_live.Client, config, TestContext.Current.CancellationToken);
+        var controlSession = await _live.Client.CreateSessionAsync(control, TestContext.Current.CancellationToken);
+        try
+        {
+            var token = TestContext.Current.CancellationToken;
+            var plugins = await session.Rpc.Plugins.ListAsync(token);
+            var skills = await session.Rpc.Skills.ListAsync(token);
+            var instructions = await session.Rpc.Instructions.GetSourcesAsync(token);
+            var agents = await session.Rpc.Agent.ListAsync(new SessionAgentListRequest { IncludeBuiltInAgents = true }, token);
+            var configured = await session.Rpc.Mcp.ListConfiguredAsync(token);
+            var attribution = await session.Rpc.Metadata.GetContextAttributionAsync(token);
+            var controlAttribution = await controlSession.Rpc.Metadata.GetContextAttributionAsync(token);
+            var systemPrompt = attribution.ContextAttribution?.Categories?.SystemPrompt ?? -1;
+            var controlSystemPrompt = controlAttribution.ContextAttribution?.Categories?.SystemPrompt ?? -1;
+            _live.Log(
+                $"L15 plugins={plugins.Plugins.Count} skills={skills.Skills.Count} instructions={instructions.Sources.Count} "
+                + $"agents={agents.Agents.Count} configured=[{Describe(configured.Servers)}] "
+                + $"systemPrompt={systemPrompt} controlSystemPrompt(environment context kept)={controlSystemPrompt}");
+
+            // Assert
+            Assert.Empty(plugins.Plugins);
+            Assert.Empty(skills.Skills);
+            Assert.Empty(instructions.Sources);
+            Assert.Empty(agents.Agents);
+            Assert.DoesNotContain(configured.Servers, server => server.Enabled);
+            Assert.True(systemPrompt > 0, "The runtime reported no system prompt attribution.");
+            Assert.True(
+                systemPrompt < controlSystemPrompt,
+                $"The confined system prompt ({systemPrompt} tokens) is not smaller than the control's ({controlSystemPrompt}).");
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await controlSession.DisposeAsync();
+            await _live.Client.DeleteSessionAsync(session.SessionId, TestContext.Current.CancellationToken);
+            await _live.Client.DeleteSessionAsync(controlSession.SessionId, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>
     ///     Builds an agent over the run's runtime, confined to the read tools and the sandbox.
     /// </summary>
     /// <returns>The agent.</returns>
@@ -819,6 +1124,100 @@ public sealed class CopilotLiveTests
                 baseDirectory: home),
             GitHub = new ClientGitHubOptions { UseLoggedInUser = true },
         });
+
+    /// <summary>
+    ///     Starts a runtime AgentKit owns on a data directory under the run's root after that directory
+    ///     has been tampered with: the runtime is started once so AgentKit creates and marks the
+    ///     directory, disposed, the directory changed, and started again — which AgentKit accepts,
+    ///     because the directory is marked as its own.
+    /// </summary>
+    /// <param name="name">The data directory's folder name under the run's root.</param>
+    /// <param name="tamper">Changes the data directory, given its full path.</param>
+    /// <returns>The started runtime. The caller disposes it.</returns>
+    private async Task<CopilotRuntime> StartTamperedRuntimeAsync(string name, Func<string, Task> tamper)
+    {
+        var options = new CopilotRuntimeOptions(Path.Combine(_live.Root, name));
+        Assert.StartsWith(_live.Root, options.DataDirectory, StringComparison.Ordinal);
+
+        await (await CopilotRuntime.StartAsync(options, TestContext.Current.CancellationToken)).DisposeAsync();
+        await tamper(options.DataDirectory);
+        return await CopilotRuntime.StartAsync(options, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    ///     Creates a workspace under the run's root whose <c>.mcp.json</c> configures a probe server.
+    /// </summary>
+    /// <param name="name">The workspace's folder name under the run's root.</param>
+    /// <param name="probe">The probe the workspace configures.</param>
+    /// <returns>The workspace's full path.</returns>
+    private async Task<string> CreateProbeWorkspaceAsync(string name, McpMarkerProbe probe)
+    {
+        var workspace = Path.Combine(_live.Root, name);
+        Assert.StartsWith(_live.Root, workspace, StringComparison.Ordinal);
+        Directory.CreateDirectory(workspace);
+        await File.WriteAllTextAsync(Path.Combine(workspace, ".mcp.json"), probe.McpConfigJson(), TestContext.Current.CancellationToken);
+        return workspace;
+    }
+
+    /// <summary>
+    ///     Writes a runtime configuration into a data directory that trusts one folder — the setting a
+    ///     Copilot CLI user's home acquires when they trust a repository.
+    /// </summary>
+    /// <param name="dataDirectory">The data directory.</param>
+    /// <param name="folder">The folder to trust.</param>
+    /// <returns>A task that completes when the configuration is written.</returns>
+    private static Task TrustAsync(string dataDirectory, string folder) =>
+        File.WriteAllTextAsync(
+            Path.Combine(dataDirectory, "config.json"),
+            JsonSerializer.Serialize(new Dictionary<string, object> { ["trustedFolders"] = new[] { folder } }),
+            TestContext.Current.CancellationToken);
+
+    /// <summary>
+    ///     Records, and logs, every MCP status and loading event a session dispatches.
+    /// </summary>
+    /// <remarks>
+    ///     These events are what show a server starting — pending, then connected or failed — and the
+    ///     servers the runtime loaded with each one's status, including the built-in server the
+    ///     session's MCP listing omits.
+    /// </remarks>
+    /// <param name="config">The session configuration whose event handler is set.</param>
+    /// <param name="label">The scenario's label in the log.</param>
+    /// <returns>The recorded events, in order.</returns>
+    private ConcurrentQueue<SessionEvent> RecordMcpEvents(SessionOptionsBase config, string label)
+    {
+        var events = new ConcurrentQueue<SessionEvent>();
+        config.Events.OnEvent = evt =>
+        {
+            if (evt is SessionMcpServerStatusChangedEvent or SessionMcpServersLoadedEvent)
+            {
+                events.Enqueue(evt);
+                _live.Log($"{label} [{evt.Type}] {Shorten(evt.ToJson(), 400)}");
+            }
+        };
+
+        return events;
+    }
+
+    /// <summary>
+    ///     Waits for a condition to hold.
+    /// </summary>
+    /// <param name="condition">The condition.</param>
+    /// <returns><see langword="true"/> when it held within <see cref="McpMarkerProbe.Window"/>.</returns>
+    private static async Task<bool> WaitForAsync(Func<bool> condition)
+    {
+        var started = DateTime.UtcNow;
+        while (!condition())
+        {
+            if (DateTime.UtcNow - started > McpMarkerProbe.Window)
+            {
+                return false;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        }
+
+        return true;
+    }
 
     /// <summary>
     ///     Composes a minimal agent definition file.
