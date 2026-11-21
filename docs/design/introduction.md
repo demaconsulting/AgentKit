@@ -550,6 +550,19 @@ test/DemaConsulting.AgentKit.Agents.Copilot.LiveTests/
 Its scenarios are supplementary evidence for behaviors this design records as measured against the
 live runtime; see *AgentKitAgentsCopilot System Verification Design*.
 
+The opt-in live suite for the ChatClient system follows the same pattern against a real Ollama
+server, named with its model in the environment:
+
+```text
+test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/
+├── OllamaLiveFixture.cs     — the run's settings, log and sandbox of granted and denied files
+├── OllamaLiveTests.cs       — the scenarios, asserted on what OllamaSharp sends on the wire
+├── TestPng.cs               — generates the image the image-promotion scenarios read
+└── WireRecordingHandler.cs  — records every request and applies the run's window and thinking setting
+```
+
+Its scenarios are supplementary evidence; see *AgentKitAgentsChatClient System Verification Design*.
+
 ## Document Conventions
 
 Throughout this document:

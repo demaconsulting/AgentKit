@@ -1266,6 +1266,7 @@ reviews:
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/AgentKitAgentsChatClientTests.cs"  # integration tests
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/CapturingHttpHandler.cs"  # HTTP wire capture double
       - "test/DemaConsulting.AgentKit.Agents.ChatClient.Tests/XmlDocExampleTests.cs"  # documented-example compile tests
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/**/*.cs"      # opt-in live Ollama suite
 
   # AgentKitAgentsChatClient-Design Review (one per system)
   - id: AgentKitAgentsChatClient-Design
@@ -1762,6 +1763,7 @@ reviews:
       - "docs/reqstream/ots/ollamasharp.yaml"                              # OTS requirements
       - "docs/design/ots/ollamasharp.md"                                   # OTS integration design
       - "docs/verification/ots/ollamasharp.md"                             # OTS verification
+      - "test/DemaConsulting.AgentKit.Agents.ChatClient.LiveTests/**/*.cs"      # opt-in live Ollama suite
 
   # OTS-Pandoc Review (one per OTS item)
   - id: OTS-Pandoc
