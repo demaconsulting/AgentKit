@@ -122,6 +122,25 @@ running the same scan without assembling any line, so nothing is copied. `ToolOu
 to state, in the retention-limit refusal, the very size the store judged, even for an output far
 too large to have been normalized.
 
+#### Snapshot(out long lastIssued)
+
+Returns the retained entries, oldest first (the eviction order), and the last identifier issued, both
+taken under the lock so they describe one moment. Used by `ToolOutputRetention.Export`.
+
+#### Restore(IEnumerable&lt;(long Number, IReadOnlyList&lt;string&gt; Lines, bool Wrapped)&gt; entries, long lastIssued)
+
+Fills an empty store with previously exported entries, under the lock:
+
+1. Throw `InvalidOperationException` when the store already holds an entry or has issued an
+   identifier: restoring over live outputs would interleave two histories under one counter.
+2. For each entry, in ascending number, re-measure it from its lines (characters plus one per break)
+   so the charge is the store's own figure; skip it when it exceeds `MaxOutputCharacters`; otherwise
+   evict oldest first until `MaxRetainedOutputs` and `MaxRetainedCharacters` hold, then add it.
+3. Set the counter to the larger of `lastIssued` and the highest entry number, so no identifier at or
+   below one ever issued is issued again, and a skipped or evicted entry is answered as evicted.
+
+The caller (`ToolOutputRetention.Restore`) validates identifiers and lines before calling.
+
 ### Error Handling
 
 | Condition | Handling |
@@ -131,6 +150,7 @@ too large to have been normalized.
 | Raw length over `2(M + 1)` | `Add` returns `null` before normalizing; the caller refuses |
 | Malformed, unknown or evicted identifier | `Find` reports the outcome; `Refusal` composes it |
 | `Refusal` asked about `Found` | `ArgumentOutOfRangeException` (a defect in the caller) |
+| `Restore` on a store that has retained output | `InvalidOperationException` (a defect in the caller) |
 
 ### Dependencies
 
@@ -140,6 +160,7 @@ too large to have been normalized.
 
 ### Callers
 
-- **ToolOutputSpill** — allocates the store, adds outputs, indents structured results, and measures
-  an output it must refuse.
+- **ToolOutputRetention** — allocates the store, snapshots it for export and restores it.
+- **ToolOutputSpill** — through its attachment, adds outputs, indents structured results, and
+  measures an output it must refuse.
 - **ToolOutputReadTool** and **ToolOutputSearchTool** — look outputs up and compose refusals.

@@ -452,6 +452,34 @@ sections:
           - AgentKitCore_SystemToolOutput_Readers_AcceptNoPath
           - AgentKitCore_SystemToolOutput_WithoutRetention_OversizedOutputIsRefusedAsBefore
 
+      - id: AgentKitCore-ToolOutput-PerConversationRetention
+        title: >-
+          The library shall let an application own the retention of large tool outputs for one
+          conversation as a single handle that covers tools added at different times, publishes the
+          reader tools once, and exports and restores its retained outputs so references survive the
+          conversation being persisted.
+        tags: [system]
+        justification: |
+          Retention composed into a tool list lives and dies with that list, so a tool added to a
+          conversation later could only be covered by recomposing — losing every reference — and an
+          agent runtime that serializes and reloads a conversation lost them all as well. An
+          application that owns its agent loop, or injects tools into a runtime per conversation,
+          needs the retention as an object it keeps with the conversation.
+        children:
+          - AgentKitCore-ToolOutputRetention-SharedAcrossWraps
+          - AgentKitCore-ToolOutputRetention-ReaderToolsPublished
+          - AgentKitCore-ToolOutputRetention-MinimumResultCeiling
+          - AgentKitCore-ToolOutputRetention-RejectsInvalidTools
+          - AgentKitCore-ToolOutputRetention-ExportRestore
+          - AgentKitCore-ToolOutputRetention-NumberingContinuesAfterRestore
+          - AgentKitCore-ToolOutputRetention-RestoreAppliesCurrentCeilings
+          - AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot
+          - AgentKitCore-ToolOutputRetention-Isolated
+          - AgentKitCore-ToolOutputStore-SnapshotRestore
+        tests:
+          - AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately
+          - AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference
+
       - id: AgentKitCore-ToolOutput-BoundedRetention
         title: >-
           The library shall bound what it retains of large tool outputs, by the size of one output,

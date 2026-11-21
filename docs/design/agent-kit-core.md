@@ -33,6 +33,8 @@ The system consists of:
   opaque references and bounded by count and size
 - **ToolOutputSpill Unit**: Composes opt-in retention of large tool outputs into a tool list,
   replacing an oversized result with a bounded preview and a reference
+- **ToolOutputRetention Unit**: One conversation's retention handle: wraps tools added at any time
+  into one store, publishes the reader tools, and exports and restores the retained outputs
 - **ToolOutputReadTool Unit**: Publishes `tool_output_read`, which pages through a retained output
 - **ToolOutputSearchTool Unit**: Publishes `tool_output_search`, which finds a pattern in a
   retained output
@@ -144,10 +146,11 @@ guarded-construction contract needs none of the session engine. The relationship
 than compiled: the tools an application puts into `AgentSessionOptions` are exactly the ones
 `ToolPackBuilder` produces, expressed in the same `AIFunction` currency.
 
-The five tool-output units form a fifth collaboration, **opt-in retention of large tool outputs**.
+The six tool-output units form a fifth collaboration, **opt-in retention of large tool outputs**.
 Without it, a tool whose output exceeds `ToolLimits.MaxResultCharacters` refuses, and the work that
 produced the output is lost. An application opts in through `ToolPackBuilder.WithToolOutputSpill`
-or `ToolOutputSpill.Apply`. `ToolOutputSpill` then allocates one `ToolOutputStore` per composition,
+or `ToolOutputSpill.Apply`, or owns a `ToolOutputRetention` per conversation directly. `ToolOutputSpill`
+builds one `ToolOutputRetention` per composition, which allocates one `ToolOutputStore`,
 re-wraps every tool's `GuardedFunction` (see *GuardedToolFactory Unit Design*) so that its results
 pass through the composition's retention, and appends `ToolOutputReadTool` and
 `ToolOutputSearchTool` over the same store. A tool whose output is too large either declares it
@@ -161,7 +164,12 @@ carries the tool list unchanged across rotations, a reference survives compactio
 an identifier and nothing else, so retention adds no way to reach the file system.
 `ToolOutputOptions` and `ToolLimits` depend on nothing; the store depends on the options and
 `ToolResult`; the readers on the store, `GuardedToolFactory`, `ToolResult` and `ToolLimits`; and
-`ToolOutputSpill` on all of them — so this collaboration is acyclic as well.
+`ToolOutputRetention` on the store, the readers, `GuardedToolFactory` and `ToolOutputSpill`'s attachment and
+checks; and `ToolOutputSpill.Apply` on `ToolOutputRetention`. Those last two are mutually dependent —
+the retention composes the spill's attachment, and `Apply` is built on the retention — which is why
+their unit designs cross-reference each other; every other edge in the collaboration is acyclic. A
+retention's `Export` and `Restore` carry its outputs and reference counter through a conversation
+being persisted, and a restored retention never re-issues a reference.
 
 ### Rotation, Not In-Place Reduction
 
@@ -505,6 +513,14 @@ The system additionally exposes the large-tool-output retention API:
   two readers. Throws `ArgumentNullException` for missing arguments and `ArgumentException` for a
   result ceiling below `MinimumResultCharacters`, or a null, duplicate, reserved or over-long
   (more than 64 characters) tool name.
+- **new ToolOutputRetention(ToolLimits limits, ToolOutputOptions? options)**, **Wrap(AIFunction)**,
+  **Wrap(IEnumerable&lt;AIFunction&gt;)**, **ReaderTools**, **Export()** and
+  **ToolOutputRetention.Restore(ToolOutputRetentionSnapshot, ToolLimits, ToolOutputOptions?)**: A
+  per-conversation retention handle. The constructor rejects what `Apply` rejects about `limits`;
+  `Wrap` rejects a null, reserved or over-long name, or (for a list) a null entry or duplicate;
+  `Restore` rejects a malformed snapshot with `ArgumentException`. `ToolOutputRetentionSnapshot`,
+  serialized through its source-generated `JsonTypeInfo`, carries the reference counter and the
+  `RetainedToolOutput` entries.
 - **ToolOutputReadTool.ToolName** (`tool_output_read`) and **ToolOutputSearchTool.ToolName**
   (`tool_output_search`): The names the readers are published under, taking an output identifier
   and paging or search arguments, and no path.
@@ -514,6 +530,9 @@ The system additionally exposes the large-tool-output retention API:
 | `new ToolOutputOptions(...)` | Inbound | Constructor call | Ceilings positive and consistent |
 | `ToolPackBuilder.WithToolOutputSpill` | Inbound/Outbound | Method call / builder | None; checked at `Build` |
 | `ToolOutputSpill.Apply` | Inbound/Outbound | Method call / `IReadOnlyList` | Valid names; ceiling ≥ 1,000 |
+| `new ToolOutputRetention(...)` | Inbound | Constructor call | Ceiling ≥ 1,000 |
+| `ToolOutputRetention.Wrap` | Inbound/Outbound | Method call / `AIFunction` or list | Valid names |
+| `ToolOutputRetention.Export` / `Restore` | Inbound/Outbound | Method call / snapshot (JSON) | Well-formed snapshot |
 | `tool_output_read` | Model-facing | Tool call / `string` | Identifier from a preview |
 | `tool_output_search` | Model-facing | Tool call / `string` | Identifier and pattern |
 

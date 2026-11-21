@@ -504,6 +504,73 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that a retention handle an application owns covers tools wrapped into it at
+    ///     different times, so every reference is paged through one pair of readers.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately()
+    {
+        // Arrange: one retention for a conversation, a tool wrapped at the start and a foreign tool
+        // added later
+        var retention = new ToolOutputRetention(new ToolLimits(maxResultCharacters: 2_000));
+        var early = retention.Wrap(LargeReportTool());
+        var late = retention.Wrap(AIFunctionFactory.Create(
+            () => string.Join("\n", Enumerable.Range(1, 500).Select(n => "late " + n)),
+            "late_report",
+            "A report added later."));
+        List<AIFunction> tools = [early, late, .. retention.ReaderTools];
+
+        // Act: both tools retain, and the readers page each reference
+        await InvokeAsync(tools, "report_build");
+        await InvokeAsync(tools, "late_report");
+        var first = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 1,
+            ["lineCount"] = 1,
+        }));
+        var second = Assert.IsType<string>(await InvokeAsync(tools, ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-2",
+            ["startLine"] = 500,
+            ["lineCount"] = 1,
+        }));
+
+        // Assert: one sequence of references, readable whichever tool issued it
+        Assert.StartsWith("output-1 lines 1-1 of 5000", first, StringComparison.Ordinal);
+        Assert.Equal("output-2 lines 500-500 of 500\n500| late 500", second);
+    }
+
+    /// <summary>
+    ///     Proves that a retention exported with a conversation and restored later answers a
+    ///     reference the model was given before the restore.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference()
+    {
+        // Arrange: a retention that retained a report, persisted as JSON as a host would
+        var limits = new ToolLimits(maxResultCharacters: 2_000);
+        var retention = new ToolOutputRetention(limits);
+        await InvokeAsync([retention.Wrap(LargeReportTool())], "report_build");
+        var json = System.Text.Json.JsonSerializer.Serialize(retention.Export(), ToolOutputRetentionSnapshot.JsonTypeInfo);
+
+        // Act: reload it and read the earlier reference
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize(json, ToolOutputRetentionSnapshot.JsonTypeInfo)!;
+        var restored = ToolOutputRetention.Restore(snapshot, limits);
+        var page = Assert.IsType<string>(await InvokeAsync([.. restored.ReaderTools], ToolOutputReadTool.ToolName, new()
+        {
+            ["id"] = "output-1",
+            ["startLine"] = 5000,
+            ["lineCount"] = 1,
+        }));
+
+        // Assert: the same content the reference named before the restore
+        Assert.StartsWith("output-1 lines 5000-5000 of 5000", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     ///     Proves that a composition retaining large outputs turns an oversized custom tool's result
     ///     into a bounded preview whose reference reads back, and searches, the full output.
     /// </summary>

@@ -42,6 +42,8 @@ software items, specifically:
   by opaque references and bounded by count and size
 - **ToolOutputSpill (Unit)** — Opt-in composition of retention into a tool list: an oversized output
   is retained and replaced by a bounded preview and a reference
+- **ToolOutputRetention (Unit)** — One conversation's retention handle: wraps tools added at any
+  time into one store, publishes the reader tools, and exports and restores the retained outputs
 - **ToolOutputReadTool (Unit)** — Publishes the `tool_output_read` tool, which pages through a
   retained output by line number
 - **ToolOutputSearchTool (Unit)** — Publishes the `tool_output_search` tool, which finds a pattern
@@ -281,11 +283,11 @@ diagram or the prose below.
 
 ![Software Structure](SoftwareStructureView.svg)
 
-`AgentKitCore` is flat: its twenty units sit directly under the system with no intervening
+`AgentKitCore` is flat: its twenty-six units sit directly under the system with no intervening
 subsystems. That is now a decision rather than a consequence of smallness, and the system design
-chapter records what those twenty units actually look like: three path-safety units, four
-tool-contract units, two pack-contract units, ten session units, and `ImagePromotingChatClient`,
-which stands apart from all of them.
+chapter records what those twenty-six units actually look like: three path-safety units, four
+tool-contract units, two pack-contract units, six tool-output units, ten session units, and
+`ImagePromotingChatClient`, which stands apart from all of them.
 
 No single boundary divides that into coherent halves. A subsystem layer would therefore not draw one
 line but four or five, and each would cost a requirements file, a design document, a verification
@@ -387,6 +389,7 @@ src/DemaConsulting.AgentKit.Core/
 ├── ToolName.cs                 — the family-prefix naming convention
 ├── ToolOutputOptions.cs        — preview size and retention ceilings for large outputs
 ├── ToolOutputReadTool.cs       — the tool_output_read tool
+├── ToolOutputRetention.cs      — the per-conversation retention handle and its snapshot
 ├── ToolOutputSearchTool.cs     — the tool_output_search tool
 ├── ToolOutputSpill.cs          — opt-in retention of large outputs, and the preview
 ├── ToolOutputStore.cs          — the per-composition store of retained outputs

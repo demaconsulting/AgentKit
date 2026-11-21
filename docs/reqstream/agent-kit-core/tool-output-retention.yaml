@@ -1,0 +1,127 @@
+---
+# Software Unit Requirements for ToolOutputRetention
+#
+# These requirements describe the design-level behavior of the ToolOutputRetention unit, the
+# per-conversation retention handle an application owns: it wraps tools into one store, publishes
+# the reader tools, and exports and restores what it holds.
+
+sections:
+  - title: AgentKitCore Requirements
+    sections:
+      - title: ToolOutputRetention Requirements
+        requirements:
+          - id: AgentKitCore-ToolOutputRetention-SharedAcrossWraps
+            title: >-
+              A retention shall retain the oversized outputs of every tool it wraps in one store,
+              whether the tools were wrapped together or at different times, numbering their
+              references in one sequence.
+            justification: |
+              A conversation gains tools over its life — a host adds a tool after the first turn, or
+              injects a foreign tool beside the library's own. Re-applying retention to a whole list
+              to cover a new tool allocated a new store and lost every reference the model already
+              held. One handle per conversation, owning one store, keeps every reference valid
+              whatever tool issued it.
+            tests:
+              - ToolOutputRetention_Wrap_ToolsWrappedSeparately_ShareOneStore
+
+          - id: AgentKitCore-ToolOutputRetention-ReaderToolsPublished
+            title: >-
+              A retention shall publish the two reader tools that page through and search the
+              outputs it holds, as the same two instances on every request.
+            justification: |
+              A host adds the readers to the agent's tools once and wraps further tools later, so the
+              readers must be available independently of any wrapping call and must not change, or a
+              tool list built earlier would hold readers over a different store.
+            tests:
+              - ToolOutputRetention_ReaderTools_AreTheTwoReadersAndStable
+
+          - id: AgentKitCore-ToolOutputRetention-MinimumResultCeiling
+            title: >-
+              A retention shall reject a result ceiling below the minimum a preview's reference is
+              guaranteed to fit in, and a missing ceiling, when it is created.
+            justification: |
+              A ceiling too small to carry the preview header would make every retained output an
+              over-ceiling result. The mistake is in the configuration and is reported where it was
+              written, as retention composed through a tool list already reports it.
+            tests:
+              - ToolOutputRetention_Constructor_CeilingBelowMinimum_ThrowsArgumentException
+
+          - id: AgentKitCore-ToolOutputRetention-RejectsInvalidTools
+            title: >-
+              A retention shall refuse to wrap a missing tool, a tool named under the readers'
+              reserved prefix, a tool whose name is longer than the naming limit, and two tools of
+              one name in one call.
+            justification: |
+              A tool named like a reader would be indistinguishable from the readers; an over-long
+              name could not be carried in a preview header within the ceiling; and two tools of one
+              name are ambiguous to a model, which selects a tool by name. Each is a composition
+              mistake reported before anything is wrapped.
+            tests:
+              - ToolOutputRetention_Wrap_ReservedPrefix_Throws
+              - ToolOutputRetention_Wrap_OverlongName_Throws
+              - ToolOutputRetention_Wrap_DuplicateNamesInOneCall_Throws
+              - ToolOutputRetention_Wrap_Null_Throws
+
+          - id: AgentKitCore-ToolOutputRetention-ExportRestore
+            title: >-
+              A retention shall export the outputs it holds and its reference counter as a snapshot
+              that serializes to JSON, and a retention restored from that snapshot shall answer every
+              exported reference with the same lines and the same wrapped-lines note.
+            justification: |
+              An agent runtime that persists a conversation — serializing and later deserializing the
+              session — discarded the retention with the tool list, so every reference in the
+              reloaded history was answered "never retained". A serializable snapshot lets the
+              retained outputs travel with the conversation, so a reference stays valid across
+              persistence.
+            tests:
+              - ToolOutputRetention_ExportRestore_RestoredReaderReturnsSameLines
+              - ToolOutputRetention_ExportRestore_WrappedFlagSurvives
+              - ToolOutputRetention_Snapshot_JsonRoundTrip_IsEquivalent
+
+          - id: AgentKitCore-ToolOutputRetention-NumberingContinuesAfterRestore
+            title: >-
+              A restored retention shall number new outputs after the last reference the exported
+              retention ever issued, and shall answer a reference it no longer holds as no longer
+              retained.
+            justification: |
+              A reloaded history still contains every reference the model was given. Re-issuing one
+              of them to a new output would silently alias it to different content, so numbering must
+              continue past every reference ever issued, including evicted ones and ones whose
+              content was not persisted. Such a reference is answered with the honest fact that it is
+              no longer retained.
+            tests:
+              - ToolOutputRetention_Restore_NewOutputsNumberAfterLastIssued
+              - ToolOutputRetention_Restore_CountersOnlySnapshot_EarlierReferenceAnsweredNoLongerRetained
+
+          - id: AgentKitCore-ToolOutputRetention-RestoreAppliesCurrentCeilings
+            title: >-
+              A restored retention shall observe the ceilings it is restored with, evicting the
+              oldest outputs first when they are smaller than those the snapshot was taken under.
+            justification: |
+              An application may tighten its retention ceilings between runs; a restored conversation
+              must then fit them exactly as if the outputs had been retained under them, keeping the
+              most recent outputs a model is most likely to need.
+            tests:
+              - ToolOutputRetention_Restore_SmallerCeilings_EvictsOldestFirst
+
+          - id: AgentKitCore-ToolOutputRetention-RestoreRejectsMalformedSnapshot
+            title: >-
+              A retention shall refuse to restore a snapshot with a negative counter, a missing,
+              malformed or repeated reference, or an output whose lines are missing or not
+              normalized.
+            justification: |
+              A snapshot is persisted data that may have been edited or corrupted. Restoring part of
+              it would leave references answering content that was never retained, and lines that are
+              not normalized would break the paging guarantee that no numbered line exceeds a page.
+            tests:
+              - ToolOutputRetention_Restore_MalformedSnapshot_Throws
+
+          - id: AgentKitCore-ToolOutputRetention-Isolated
+            title: >-
+              Two retentions shall never share references.
+            justification: |
+              One retention per conversation is the isolation boundary: one conversation must not be
+              able to read another's retained outputs by guessing a reference.
+            tags: [security]
+            tests:
+              - ToolOutputRetention_SeparateInstances_AreIsolated

@@ -357,4 +357,50 @@ public class ToolOutputStoreTests
         Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
         Assert.All(ids, id => Assert.Equal(ToolOutputLookup.Found, store.Find(id, out _)));
     }
+
+    /// <summary>
+    ///     Proves a snapshot restored into a new store keeps every identifier, its lines and the
+    ///     order of eviction, and numbering continues after the last identifier issued.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Snapshot_Restore_PreservesIdsAndOrder()
+    {
+        // Arrange: a store that retained three outputs and evicted the first
+        var original = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 2));
+        original.Add("one");
+        original.Add("two\nlines");
+        original.Add("three");
+        var entries = original.Snapshot(out var lastIssued);
+
+        // Act: restore into a new store and retain one more output
+        var restored = new ToolOutputStore(new ToolOutputOptions(maxRetainedOutputs: 2));
+        restored.Restore(
+            entries.Select(entry => (long.Parse(entry.Id["output-".Length..], System.Globalization.CultureInfo.InvariantCulture), entry.Lines, entry.Wrapped)),
+            lastIssued);
+        var next = restored.Add("four");
+
+        // Assert: the snapshot listed the two held outputs oldest first under the issued counter,
+        // the restored store answers them, and the next output is numbered after the last one issued
+        Assert.Equal(3, lastIssued);
+        Assert.Equal(["output-2", "output-3"], entries.Select(entry => entry.Id));
+        Assert.Equal("output-4", next!.Id);
+        Assert.Equal(ToolOutputLookup.Evicted, restored.Find("output-1", out _));
+        Assert.Equal(ToolOutputLookup.Evicted, restored.Find("output-2", out _));
+        Assert.Equal(ToolOutputLookup.Found, restored.Find("output-3", out var three));
+        Assert.Equal(["three"], three!.Lines);
+    }
+
+    /// <summary>
+    ///     Proves a store that already retains output cannot be restored over.
+    /// </summary>
+    [Fact]
+    public void ToolOutputStore_Restore_NonEmptyStore_ThrowsInvalidOperationException()
+    {
+        // Arrange: a store that has retained an output
+        var store = new ToolOutputStore(ToolOutputOptions.Default);
+        store.Add("held");
+
+        // Act / Assert: restoring would interleave two histories under one counter
+        Assert.Throws<InvalidOperationException>(() => store.Restore([], 0));
+    }
 }

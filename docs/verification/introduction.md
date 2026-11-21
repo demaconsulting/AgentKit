@@ -42,6 +42,8 @@ constituent software items, specifically:
   by opaque references and bounded by count and size
 - **ToolOutputSpill (Unit)** — Opt-in composition of retention into a tool list: an oversized output
   is retained and replaced by a bounded preview and a reference
+- **ToolOutputRetention (Unit)** — One conversation's retention handle: wraps tools added at any
+  time into one store, publishes the reader tools, and exports and restores the retained outputs
 - **ToolOutputReadTool (Unit)** — Publishes the `tool_output_read` tool, which pages through a
   retained output by line number
 - **ToolOutputSearchTool (Unit)** — Publishes the `tool_output_search` tool, which finds a pattern

@@ -174,6 +174,22 @@ built with the plain function factory is invoked unwrapped — its JSON result e
 characters — and bounded by a 1,500-character ceiling through `AsGuarded`, which returns a
 `ResourceTooLarge` refusal while keeping the tool's name.
 
+### Large Tool Outputs: A Retention Handle Pages Outputs of Tools Wrapped Separately
+
+**Test**: `AgentKitCore_SystemToolOutput_RetentionHandle_PagesOutputsOfToolsWrappedSeparately`
+
+Verifies the per-conversation handle. One `ToolOutputRetention` wraps a guarded report tool and,
+separately, a foreign tool added later; both retain, their references are numbered `output-1` and
+`output-2` in one sequence, and the readers page each.
+
+### Large Tool Outputs: A Restored Retention Answers an Earlier Reference
+
+**Test**: `AgentKitCore_SystemToolOutput_RestoredRetention_AnswersAnEarlierReference`
+
+Verifies persistence. A retention that retained a 5,000-line report is exported, serialized to JSON
+through the published contract, deserialized and restored; the restored readers page line 5,000 of
+`output-1`.
+
 ### Path Policy: Construction Without a Working Directory Is Rejected
 
 **Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected`

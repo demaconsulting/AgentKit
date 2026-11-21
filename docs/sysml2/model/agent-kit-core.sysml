@@ -8,7 +8,9 @@ package AgentKitCore {
      * model states is interpreted, guarded tool construction, tool result helpers,
      * the tool-pack contract, provider-independent delivery of tool-returned images, and
      * opt-in retention of tool outputs too large to return, which hands the model a bounded
-     * preview and an opaque reference it pages through with confined reader tools.
+     * preview and an opaque reference it pages through with confined reader tools, through a
+     * per-conversation retention handle whose retained outputs can be exported and restored,
+     * and bounding of any tool, including one it did not build, by the same result ceilings.
      * It also owns the provider-agnostic session engine, because a kit of safe tools is
      * worth nothing to an agent that cannot run long enough to use them: the session keeps
      * its own transcript out of session, watches how much of the provider's context window
@@ -37,6 +39,7 @@ package AgentKitCore {
         part toolOutputOptions : ToolOutputOptions;
         part toolOutputStore : ToolOutputStore;
         part toolOutputSpill : ToolOutputSpill;
+        part toolOutputRetention : ToolOutputRetention;
         part toolOutputReadTool : ToolOutputReadTool;
         part toolOutputSearchTool : ToolOutputSearchTool;
         part toolName : ToolName;

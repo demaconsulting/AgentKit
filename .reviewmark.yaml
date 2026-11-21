@@ -290,6 +290,19 @@ reviews:
       - "src/DemaConsulting.AgentKit.Core/ToolOutputStore.cs"  # unit source
       - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputStoreTests.cs"  # unit tests
 
+  # AgentKitCore-ToolOutputRetention Review (one per unit)
+  - id: AgentKitCore-ToolOutputRetention
+    title: Review that AgentKitCore ToolOutputRetention Implementation is Correct
+    context:
+      - "docs/design/agent-kit-core.md"
+      - "docs/reqstream/agent-kit-core.yaml"
+    paths:
+      - "docs/reqstream/agent-kit-core/tool-output-retention.yaml"  # unit requirements
+      - "docs/design/agent-kit-core/tool-output-retention.md"  # unit design
+      - "docs/verification/agent-kit-core/tool-output-retention.md"  # unit verification
+      - "src/DemaConsulting.AgentKit.Core/ToolOutputRetention.cs"  # unit source
+      - "test/DemaConsulting.AgentKit.Core.Tests/ToolOutputRetentionTests.cs"  # unit tests
+
   # AgentKitCore-ToolOutputSpill Review (one per unit)
   - id: AgentKitCore-ToolOutputSpill
     title: Review that AgentKitCore ToolOutputSpill Implementation is Correct

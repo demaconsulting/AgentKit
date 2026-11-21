@@ -96,3 +96,18 @@ sections:
               writes to the same store.
             tests:
               - ToolOutputStore_Add_Concurrently_IssuesDistinctIdsAndRetainsEveryOutput
+
+          - id: AgentKitCore-ToolOutputStore-SnapshotRestore
+            title: >-
+              The output store shall capture its retained outputs, oldest first, with the last
+              identifier it issued, and an empty store shall accept such a capture, re-measuring each
+              output against its own ceilings and never issuing an identifier at or below the last one
+              captured; a store that already retains output shall refuse a capture.
+            justification: |
+              Retained outputs must survive a conversation being persisted and reloaded. Re-measuring
+              rather than trusting supplied sizes keeps the ceilings the store's own, and continuing
+              the identifier sequence keeps an old reference from being re-issued to different
+              content. Restoring over live outputs would interleave two histories under one counter.
+            tests:
+              - ToolOutputStore_Snapshot_Restore_PreservesIdsAndOrder
+              - ToolOutputStore_Restore_NonEmptyStore_ThrowsInvalidOperationException

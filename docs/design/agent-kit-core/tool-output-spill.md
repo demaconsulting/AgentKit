@@ -12,12 +12,15 @@ Without retention, a tool whose output exceeds `ToolLimits.MaxResultCharacters` 
 truncated result would hide what the model never knew to ask for — and the work that produced the
 output is lost. A delegated agent's whole report, a listing of a large tree, or a broad search
 becomes a refusal the model can only answer by guessing how to narrow the request, and a custom
-tool's oversized result reaches the provider unbounded. A provider-side remedy that diverts a
+tool's oversized result reaches the provider unbounded unless the application bounds it with
+`GuardedToolFactory.AsGuarded`. A provider-side remedy that diverts a
 large output to a temporary file is unusable here, because the confined tools cannot read outside
 the locations the application granted.
 
 `ToolOutputSpill` retains the whole output in a per-composition in-memory store and lets the model
-read exactly the part it needs. Because the behavior lives inside each `AIFunction`, it is
+read exactly the part it needs. Each call is built on one `ToolOutputRetention` (see *ToolOutputRetention
+Unit Design*), the handle an application uses directly when it needs to add tools to a conversation
+later or to persist the retained outputs. Because the behavior lives inside each `AIFunction`, it is
 identical on every provider: ChatClient, Ollama and Copilot all invoke the very instances the
 composition produced.
 
@@ -59,17 +62,23 @@ The internal `SpillAttachment` is one composition's retention. It holds:
 
 #### Apply(IEnumerable&lt;AIFunction&gt; tools, ToolLimits limits, ToolOutputOptions? options)
 
-1. Rejects a `limits` whose `MaxResultCharacters` is below `MinimumResultCharacters`, then
-   materializes the list and rejects a null entry, a name longer than `ToolName.MaxLength`, a name
-   carrying the reserved prefix, or a duplicate name. Nothing is allocated for a rejected call.
-2. Allocates one `ToolOutputStore` with the options (or `ToolOutputOptions.Default`) and one
-   `SpillAttachment` over it and the limits.
-3. Wraps each tool: a `GuardedFunction` is re-wrapped over the same inner function through
-   `WithSpill`; any other `AIFunction` is wrapped in a new `GuardedFunction` carrying the
-   attachment. The supplied instances are not modified.
-4. Appends `ToolOutputReadTool` and `ToolOutputSearchTool` over the same store and limits. The
-   readers are **not** wrapped: their own results are bounded and refused when over the ceiling,
-   so a page can never become another reference.
+1. Rejects a null `tools`, then creates one `ToolOutputRetention` with the limits and options. Its
+   constructor rejects a null `limits` and one whose `MaxResultCharacters` is below
+   `MinimumResultCharacters` (`ArgumentException` naming `limits`), and allocates one
+   `ToolOutputStore` (with `ToolOutputOptions.Default` when no options are given), one
+   `SpillAttachment` over it and the limits, and the two readers.
+2. Wraps the list through `ToolOutputRetention.Wrap(IEnumerable<AIFunction>)`, which materializes it
+   and rejects a null entry, a name longer than `ToolName.MaxLength`, a name carrying the reserved
+   prefix, or a duplicate name (`ArgumentException` naming `tools`) before wrapping anything. A
+   `GuardedFunction` is re-wrapped over the same inner function through `WithSpill`; any other
+   `AIFunction` is wrapped in a new `GuardedFunction` carrying the attachment. The supplied
+   instances are not modified.
+3. Appends the retention's `ReaderTools`, `ToolOutputReadTool` then `ToolOutputSearchTool`, over the
+   same store and limits. The readers are **not** wrapped: their own results are bounded and refused
+   when over the ceiling, so a page can never become another reference.
+
+The exceptions, their order and their wording are those `Apply` has always produced; a retention per
+call is the same isolation boundary a store per call was.
 
 **Postconditions:** the result holds the supplied tools in order, then `tool_output_read`, then
 `tool_output_search`; every supplied tool keeps its metadata.
@@ -205,6 +214,9 @@ the result ceiling judged.
   see their unit designs.
 - **Microsoft.Extensions.AI.Abstractions** — `AIFunction`, `AIContent`, `TextContent`,
   `AIJsonUtilities`; **System.Text.Json** — `JsonElement`, `JsonSerializerOptions`.
+
+- **ToolOutputRetention** — the per-call retention `Apply` is built on; see *ToolOutputRetention Unit
+  Design*.
 
 ### Callers
 

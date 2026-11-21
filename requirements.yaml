@@ -25,6 +25,7 @@ includes:
   - docs/reqstream/agent-kit-core/tool-output-options.yaml
   - docs/reqstream/agent-kit-core/tool-output-store.yaml
   - docs/reqstream/agent-kit-core/tool-output-spill.yaml
+  - docs/reqstream/agent-kit-core/tool-output-retention.yaml
   - docs/reqstream/agent-kit-core/tool-output-read-tool.yaml
   - docs/reqstream/agent-kit-core/tool-output-search-tool.yaml
   - docs/reqstream/agent-kit-core/agent-session.yaml

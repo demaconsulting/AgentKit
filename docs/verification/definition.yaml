@@ -20,6 +20,7 @@ input-files:
   - docs/verification/agent-kit-core/tool-output-options.md
   - docs/verification/agent-kit-core/tool-output-store.md
   - docs/verification/agent-kit-core/tool-output-spill.md
+  - docs/verification/agent-kit-core/tool-output-retention.md
   - docs/verification/agent-kit-core/tool-output-read-tool.md
   - docs/verification/agent-kit-core/tool-output-search-tool.md
   - docs/verification/agent-kit-core/agent-session.md

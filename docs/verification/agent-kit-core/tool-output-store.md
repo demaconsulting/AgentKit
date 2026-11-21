@@ -24,12 +24,13 @@ project.
 
 ### Acceptance Criteria
 
-A unit test run passes when all sixteen scenarios below pass. Any identifier issued out of order
+A unit test run passes when all eighteen scenarios below pass. Any identifier issued out of order
 or twice, any retained line altered or lost, any output over the per-output ceiling retained, any
 output that fits refused by the early raw-length check, any measured size differing from the
 normalized size, any eviction other than oldest-first, any
-lookup outcome misreported, any over-long malformed identifier echoed, or any inconsistency under
-concurrent addition constitutes a failure.
+lookup outcome misreported, any over-long malformed identifier echoed, any inconsistency under
+concurrent addition, any snapshot or restore that loses an identifier, reorders entries or re-issues
+an identifier, or any restore over a store already in use constitutes a failure.
 
 ### Test Scenarios
 
@@ -146,3 +147,17 @@ refusal shorter than 200 characters that does not contain it; a 64-character nea
 **Test**: `ToolOutputStore_Add_Concurrently_IssuesDistinctIdsAndRetainsEveryOutput`
 
 Concurrency: two hundred parallel additions receive distinct identifiers and every one resolves.
+
+#### AgentKitCore-ToolOutputStore-SnapshotRestore: A Snapshot Restores With Its Identifiers and Order
+
+**Test**: `ToolOutputStore_Snapshot_Restore_PreservesIdsAndOrder`
+
+A store keeping two outputs retains three. Asserts the snapshot lists `output-2` and `output-3` with
+counter 3; a store restored from it answers `output-3` with its lines and `output-1` as evicted, and
+its next output is `output-4`, evicting `output-2`.
+
+#### AgentKitCore-ToolOutputStore-SnapshotRestore: A Store In Use Cannot Be Restored Over
+
+**Test**: `ToolOutputStore_Restore_NonEmptyStore_ThrowsInvalidOperationException`
+
+Asserts a restore into a store that has retained an output throws `InvalidOperationException`.

@@ -74,8 +74,10 @@ namespace DemaConsulting.AgentKit.Core;
 ///     so a page can never become another reference.
 ///     </para>
 ///     <para>
-///     <b>Lifetime and isolation.</b> Each call allocates one store, shared by the tools it
-///     returns and nothing else. References therefore survive a session's compaction and rotation,
+///     <b>Lifetime and isolation.</b> Each call allocates one <see cref="ToolOutputRetention"/>,
+///     whose store is shared by the tools it returns and nothing else. A host that needs to add
+///     tools to a conversation later, or to persist its retained outputs, uses a
+///     <see cref="ToolOutputRetention"/> directly. References therefore survive a session's compaction and rotation,
 ///     which carry the tool list unchanged, and are lost when the tool list is discarded. A host
 ///     that hands one composed tool list to several sessions shares the store between them, exactly
 ///     as it would share a task list; composing per session keeps them apart.
@@ -183,37 +185,15 @@ public static class ToolOutputSpill
         ToolOutputOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
-        ArgumentNullException.ThrowIfNull(limits);
 
-        // A ceiling the reference cannot fit in would make every retained output an over-ceiling
-        // result, so it is a configuration mistake reported before anything is allocated.
-        if (!AdmitsCeiling(limits))
-        {
-            throw new ArgumentException(DescribeCeilingTooSmall(limits), nameof(limits));
-        }
-
-        // Materialize once and validate before anything is allocated, so a rejected list leaves
-        // nothing behind and a lazily evaluated sequence cannot change between checks.
-        var supplied = tools.ToList();
-        Validate(supplied);
-
-        // One store per call: this is the isolation boundary between compositions.
-        var store = new ToolOutputStore(options ?? ToolOutputOptions.Default);
-        var attachment = new SpillAttachment(store, limits);
-
-        var composed = new List<AIFunction>(supplied.Count + 2);
-        foreach (var tool in supplied)
-        {
-            composed.Add(tool is GuardedFunction guarded
-                ? guarded.WithSpill(attachment)
-                : new GuardedFunction(tool, attachment));
-        }
+        // One retention per call: this is the isolation boundary between compositions. Its
+        // constructor rejects missing or too-small ceilings, and its wrap validates the whole list
+        // before wrapping anything, with the same exceptions this method has always thrown.
+        var retention = new ToolOutputRetention(limits, options);
 
         // The readers are appended unwrapped: their own results are bounded and refused when over
         // the ceiling, so a page can never be retained as yet another reference.
-        composed.Add(ToolOutputReadTool.Create(store, limits));
-        composed.Add(ToolOutputSearchTool.Create(store, limits));
-        return composed;
+        return [.. retention.Wrap(tools), .. retention.ReaderTools];
     }
 
     /// <summary>
@@ -316,50 +296,6 @@ public static class ToolOutputSpill
                + SpillAttachment.ComposeOmission(int.MaxValue, int.MaxValue).Length
                + 1;
     }
-
-    /// <summary>
-    ///     Rejects a tool list retention could not be composed over.
-    /// </summary>
-    /// <param name="tools">The tools to validate.</param>
-    /// <exception cref="ArgumentException">
-    ///     Thrown when a tool is null, two tools share a name, a tool carries the reserved prefix,
-    ///     or a tool's name is longer than <see cref="ToolName.MaxLength"/>.
-    /// </exception>
-    private static void Validate(List<AIFunction> tools)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var tool in tools)
-        {
-            if (tool is null)
-            {
-                throw new ArgumentException("A tool in the collection is null.", nameof(tools));
-            }
-
-            // A name is part of every preview header, so it must be bounded for the header to be.
-            // Only a hand-built function can carry such a name: the guarded factory refuses one.
-            if (IsNameTooLong(tool.Name))
-            {
-                throw new ArgumentException(DescribeNameTooLong(tool.Name), nameof(tools));
-            }
-
-            // A tool already named like a reader would be indistinguishable from the readers this
-            // call appends; the usual cause is applying retention to a list that already has it.
-            if (IsReservedName(tool.Name))
-            {
-                throw new ArgumentException(
-                    "The tool '" + tool.Name + "' carries the reserved '" + ReservedPrefix
-                    + "' prefix, which belongs to the reader tools this composition appends.",
-                    nameof(tools));
-            }
-
-            if (!seen.Add(tool.Name))
-            {
-                throw new ArgumentException(
-                    "Two tools carry the name '" + tool.Name + "', and a model selects a tool by name.",
-                    nameof(tools));
-            }
-        }
-    }
 }
 
 /// <summary>
@@ -368,8 +304,8 @@ public static class ToolOutputSpill
 /// </summary>
 /// <remarks>
 ///     <para>
-///     Allocated by <see cref="ToolOutputSpill.Apply"/> and carried by every wrapped tool of that
-///     composition, so a result is retained in the store of the composition that offered the tool.
+///     Allocated by a <see cref="ToolOutputRetention"/> and carried by every tool it wraps, so a
+///     result is retained in the store of the retention that offered the tool.
 ///     It holds no mutable state of its own; the store it wraps is lock-guarded.
 ///     </para>
 ///     <para>

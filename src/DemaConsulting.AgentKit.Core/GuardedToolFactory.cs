@@ -239,8 +239,8 @@ public static class GuardedToolFactory
     ///     written to bound it.
     ///     </para>
     ///     <para>
-    ///     <b>Composition with retention.</b> When the guarded function is later composed with
-    ///     retention of large outputs (see <see cref="ToolOutputSpill.Apply"/>), an oversized
+    ///     <b>Composition with retention.</b> When the guarded function is later wrapped by a
+    ///     <see cref="ToolOutputRetention"/> (or <see cref="ToolOutputSpill.Apply"/>), an oversized
     ///     text result is retained and previewed instead of refused; the binary ceiling still
     ///     refuses, because retention keeps text only. Applying this extension to a function it
     ///     already guarded replaces the ceilings rather than wrapping twice.
