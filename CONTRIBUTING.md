@@ -280,8 +280,14 @@ Releases are managed by project maintainers. The process includes:
 1. Version bump in project files
 2. Tag the release in Git
 3. Build and test across all supported platforms
-4. Publish NuGet package
-5. Create GitHub release with artifacts and release notes
+4. Create GitHub release with artifacts and release notes
+5. Publish NuGet package
+
+The `Release` workflow runs in the `release` GitHub environment and publishes to NuGet.org using
+[NuGet Trusted Publishing][nuget-trusted-publishing]: the `NuGet/login` action exchanges a GitHub
+OIDC token for a short-lived NuGet API key, so no long-lived NuGet API key is stored in the
+repository. The only NuGet-related secret is `NUGET_USER`, the nuget.org profile name that owns the
+Trusted Publishing policy.
 
 ## Getting Help
 
@@ -301,6 +307,7 @@ Thank you for contributing to AgentKit!
 [python]: https://www.python.org/downloads/
 [csharp-conventions]: https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions
 [reqstream]: https://github.com/demaconsulting/ReqStream
+[nuget-trusted-publishing]: https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
 [discussions]: https://github.com/demaconsulting/AgentKit/discussions
 [issues]: https://github.com/demaconsulting/AgentKit/issues
 [security]: https://github.com/demaconsulting/AgentKit/blob/main/SECURITY.md
