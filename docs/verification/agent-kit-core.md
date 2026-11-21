@@ -148,6 +148,15 @@ loop would, and asserts the client behind it received the image on a following u
 the same content instance. Confirms a host can make image delivery independent of whether its
 provider carries images out of tool results.
 
+### Image Delivery: A Promoted Image Leaves Only a Placeholder in the Tool Result
+
+**Test**: `AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult`
+
+Verifies that the image is delivered once. Sends a caption-then-image tool result carrying a
+250,000-byte image and asserts the tool result the client behind the decorator received keeps the
+caption followed by a placeholder under 200 characters naming the media type, carries no image
+content, and that the image itself arrived on the following user message.
+
 ### Path Policy: Construction Without a Working Directory Is Rejected
 
 **Test**: `AgentKitCore_SystemPathPolicy_ConstructionWithoutWorkingDirectory_IsRejected`

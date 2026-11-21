@@ -227,9 +227,13 @@ sections:
           never received. A control exchange placing the same bytes on a user message was
           described correctly by the same model, so the limitation is one of channel rather than
           capability. A host must therefore be able to make image delivery independent of which
-          provider it chose.
+          provider it chose. The image must be delivered once: a provider adapter that flattens a
+          tool-result image into the tool message as base64 text would otherwise flood the context
+          window, so the delivered tool result carries a short placeholder in its place.
         children:
           - AgentKitCore-ImagePromotingChatClient-PromoteImages
+          - AgentKitCore-ImagePromotingChatClient-ToolResultCarriesNoImageBytes
+          - AgentKitCore-ImagePromotingChatClient-CallerMessagesUnchanged
           - AgentKitCore-ImagePromotingChatClient-AnnouncesAttachment
           - AgentKitCore-ImagePromotingChatClient-TextResultUnchanged
           - AgentKitCore-ImagePromotingChatClient-MessageOrderPreserved
@@ -237,6 +241,7 @@ sections:
           - AgentKitCore-ImagePromotingChatClient-RequiresInnerClient
         tests:
           - AgentKitCore_SystemImagePromotion_ToolImageResult_ReachesTheProviderOnAUserMessage
+          - AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult
 
       - id: AgentKitCore-ToolResult-RefusalIsAResult
         title: >-

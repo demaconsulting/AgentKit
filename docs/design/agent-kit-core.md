@@ -512,7 +512,8 @@ The system additionally exposes the large-tool-output retention API:
 The system additionally exposes one provider-compatibility API:
 
 - **new ImagePromotingChatClient(IChatClient innerClient)**: Wraps a chat client so that an image
-  a tool returned is promoted onto a user message before the request is forwarded. Throws
+  a tool returned is promoted onto a user message before the request is forwarded, with a short
+  placeholder left in its place in a forwarded copy of the tool result. Throws
   `ArgumentNullException` when the inner client is null. Both the whole-response and the
   streaming member rewrite the conversation identically and are otherwise pass-through.
 
@@ -840,4 +841,6 @@ APIs, or framework-version-specific features are used.
   rather than capability. A host targeting such a provider wraps its chat client in
   `ImagePromotingChatClient`, **beneath** the function-invocation loop so that the decorator
   observes tool results after they have been appended; see *ImagePromotingChatClient Unit Design*.
-  A host whose provider already delivers images from tool results installs nothing.
+  The forwarded tool result carries a short placeholder in place of each promoted image, so an
+  adapter that flattens tool-result content into text cannot send the image a second time as
+  base64. A host whose provider already delivers images from tool results installs nothing.

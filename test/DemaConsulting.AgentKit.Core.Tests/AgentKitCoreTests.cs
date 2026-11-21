@@ -207,6 +207,40 @@ public class AgentKitCoreTests
     }
 
     /// <summary>
+    ///     Proves that a promoted image leaves only a placeholder in the tool result the provider
+    ///     receives, so the image is sent once and cannot flood the context as text.
+    /// </summary>
+    /// <returns>A task that completes when the scenario has been verified.</returns>
+    [Fact]
+    public async Task AgentKitCore_SystemImagePromotion_PromotedImage_LeavesOnlyAPlaceholderInTheToolResult()
+    {
+        // Arrange: a conversation whose tool result carries a large image after a caption
+        var image = new DataContent(new byte[250_000], "image/png");
+        var toolResult = new List<AIContent> { new TextContent("A screenshot."), image };
+        using var provider = new ScriptedChatClient();
+        using var client = new ImagePromotingChatClient(provider);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "What does the screenshot show?"),
+            new(ChatRole.Tool, [new FunctionResultContent("call-1", toolResult)])
+        };
+
+        // Act: send the conversation as a function-invocation loop would
+        await client.GetResponseAsync(
+            messages,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert: the tool result keeps the caption and a short placeholder, and no image content
+        var forwarded = Assert.IsType<FunctionResultContent>(Assert.Single(provider.ReceivedMessages[1].Contents));
+        var parts = Assert.IsAssignableFrom<IEnumerable<AIContent>>(forwarded.Result).ToList();
+        Assert.DoesNotContain(parts, part => part is DataContent);
+        var placeholder = Assert.IsType<TextContent>(parts[1]).Text;
+        Assert.Contains("image/png", placeholder, StringComparison.Ordinal);
+        Assert.True(placeholder.Length < 200, $"Placeholder was {placeholder.Length} characters.");
+        Assert.Same(image, Assert.IsType<DataContent>(provider.ReceivedMessages[2].Contents[1]));
+    }
+
+    /// <summary>
     ///     Proves that the system refuses to create a path access policy without a working directory,
     ///     and rejects a null grant.
     /// </summary>
